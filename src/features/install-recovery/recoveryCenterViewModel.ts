@@ -5,6 +5,7 @@ import type {
   InstallRecoverySummary,
   UnsafeInstallStatus,
 } from "../mods/modInstallPlanTypes";
+import type { RecoveryCenterCopy } from "./recoveryCenterCopy";
 
 export type RecoveryCenterStatus = "empty" | "healthy" | "attention";
 export type RecoveryCenterRepairStatus = "clear" | "manual_required" | "unknown";
@@ -83,54 +84,14 @@ const issueDisplayOrder: InstallRecoveryIssue[] = [
   "missing_installed_file_summary",
 ];
 
-const issueMetadata: Record<
-  InstallRecoveryIssue,
-  {
-    label: string;
-    severity: RecoveryCenterIssueSeverity;
-    guidance: string;
-  }
-> = {
-  missing_installed_file_summary: {
-    label: "摘要缺失",
-    severity: "unknown",
-    guidance: "旧安装缺少写入摘要，不能自动删除或恢复，需等待迁移或人工确认。",
-  },
-  target_missing: {
-    label: "目标缺失",
-    severity: "blocking",
-    guidance: "暂停自动处理，等待受控恢复或重新安装流程确认缺失目标。",
-  },
-  target_changed: {
-    label: "目标变更",
-    severity: "blocking",
-    guidance: "暂停自动安装/卸载，等待受控恢复或重新安装流程确认目标状态。",
-  },
-  target_read_failed: {
-    label: "读取未知",
-    severity: "unknown",
-    guidance: "重新扫描；如果仍不可读，先检查权限或占用状态。",
-  },
-  backup_missing: {
-    label: "备份缺失",
-    severity: "blocking",
-    guidance: "不要自动恢复或卸载，先保留当前文件并进入人工确认。",
-  },
-  backup_read_failed: {
-    label: "备份未知",
-    severity: "unknown",
-    guidance: "重新扫描；如果备份仍不可读，暂停恢复并保留当前状态。",
-  },
-};
-
-const statusLabels: Record<InstallRecoveryStatus, string> = {
-  completed: "正常",
-  not_installed: "未安装",
-  committed_cleanup_pending: "重装待收尾",
-  cleanup_pending: "恢复待清理",
-  rollback_required: "需要回滚",
-  repair_required: "需要修复",
-  unknown: "状态未知",
+// severity 是语义分级，与展示语言无关；label/guidance 在派生时经 copy 取。
+const issueSeverities: Record<InstallRecoveryIssue, RecoveryCenterIssueSeverity> = {
+  missing_installed_file_summary: "unknown",
+  target_missing: "blocking",
+  target_changed: "blocking",
+  target_read_failed: "unknown",
+  backup_missing: "blocking",
+  backup_read_failed: "unknown",
 };
 
 const statusSortRank: Record<InstallRecoveryStatus, number> = {
@@ -153,7 +114,10 @@ function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
   );
 }
 
-export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[]): RecoveryCenterViewModel {
+export function deriveRecoveryCenterViewModel(
+  summaries: InstallRecoverySummary[],
+  copy: RecoveryCenterCopy,
+): RecoveryCenterViewModel {
   const issueCounts = new Map<InstallRecoveryIssue, number>();
   let completedModCount = 0;
   let attentionModCount = 0;
@@ -187,13 +151,13 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
       return {
         modId: summary.modId,
         status: summary.status,
-        statusLabel: statusLabels[summary.status],
+        statusLabel: copy.status[summary.status],
         statusTone: statusTone(summary.status),
         managedFileCount: summary.managedFileCount,
         backupCount: summary.backupCount,
         issueCount: summary.issueCount,
-        issues: withIssueLabels(summary.issues),
-        repairSummary: deriveModRepairSummary(summary),
+        issues: withIssueLabels(summary.issues, copy),
+        repairSummary: deriveModRepairSummary(summary, copy),
       };
     })
     .sort((left, right) => {
@@ -213,221 +177,232 @@ export function deriveRecoveryCenterViewModel(summaries: InstallRecoverySummary[
       issueCount,
       issues: issueDisplayOrder.flatMap((issue) => {
         const count = issueCounts.get(issue) ?? 0;
-        return count > 0 ? [issueView(issue, count)] : [];
+        return count > 0 ? [issueView(issue, count, copy)] : [];
       }),
-      repairSummary: deriveOverviewRepairSummary({
-        scannedModCount: summaries.length,
-        attentionModCount,
-        unknownModCount,
-      }),
-      manualDecision: deriveManualDecision({
-        attentionModCount,
-        unknownModCount,
-        rollbackRequiredModCount,
-      }),
+      repairSummary: deriveOverviewRepairSummary(
+        {
+          scannedModCount: summaries.length,
+          attentionModCount,
+          unknownModCount,
+        },
+        copy,
+      ),
+      manualDecision: deriveManualDecision(
+        {
+          attentionModCount,
+          unknownModCount,
+          rollbackRequiredModCount,
+        },
+        copy,
+      ),
     },
     mods,
   };
 }
 
-function withIssueLabels(issues: InstallRecoveryIssueSummary[]): RecoveryCenterIssueView[] {
+function withIssueLabels(issues: InstallRecoveryIssueSummary[], copy: RecoveryCenterCopy): RecoveryCenterIssueView[] {
   const byIssue = new Map(issues.map((issue) => [issue.issue, issue.count]));
 
   return issueDisplayOrder.flatMap((issue) => {
     const count = byIssue.get(issue) ?? 0;
-    return count > 0 ? [issueView(issue, count)] : [];
+    return count > 0 ? [issueView(issue, count, copy)] : [];
   });
 }
 
-function issueView(issue: InstallRecoveryIssue, count: number): RecoveryCenterIssueView {
-  const metadata = issueMetadata[issue];
+function issueView(issue: InstallRecoveryIssue, count: number, copy: RecoveryCenterCopy): RecoveryCenterIssueView {
   return {
     issue,
     count,
-    label: metadata.label,
-    severity: metadata.severity,
-    guidance: metadata.guidance,
+    label: copy.issues[issue].label,
+    severity: issueSeverities[issue],
+    guidance: copy.issues[issue].guidance,
   };
 }
 
-function deriveOverviewRepairSummary(input: {
-  scannedModCount: number;
-  attentionModCount: number;
-  unknownModCount: number;
-}): RecoveryCenterRepairSummary {
+function deriveOverviewRepairSummary(
+  input: {
+    scannedModCount: number;
+    attentionModCount: number;
+    unknownModCount: number;
+  },
+  copy: RecoveryCenterCopy,
+): RecoveryCenterRepairSummary {
   if (input.scannedModCount === 0) {
     return {
       status: "clear",
-      title: "无需处理",
-      description: "当前配置档没有需要恢复中心处理的托管安装状态。",
-      actionLabel: "保持观察",
-      blockingReason: "没有托管安装记录",
+      title: copy.overviewRepair.empty.title,
+      description: copy.overviewRepair.empty.description,
+      actionLabel: copy.overviewRepair.empty.actionLabel,
+      blockingReason: copy.overviewRepair.empty.blockingReason,
     };
   }
 
   if (input.unknownModCount > 0) {
     return {
       status: "unknown",
-      title: "恢复状态需要人工确认",
-      description: "部分托管安装状态无法读取，自动安装、卸载和恢复都应保持阻断。",
-      actionLabel: "刷新后仍异常则保留现场并人工处理",
-      blockingReason: `存在 ${input.unknownModCount} 个状态未知 Mod 和 ${input.attentionModCount} 个需要修复 Mod`,
+      title: copy.overviewRepair.unknown.title,
+      description: copy.overviewRepair.unknown.description,
+      actionLabel: copy.overviewRepair.unknown.actionLabel,
+      blockingReason: copy.overviewRepair.unknown.blockingReason(input.unknownModCount, input.attentionModCount),
     };
   }
 
   if (input.attentionModCount > 0) {
     return {
       status: "manual_required",
-      title: "发现需要人工处理的安装状态",
-      description: "恢复中心发现 manifest、目标文件或备份状态不一致，暂不执行自动处理动作。",
-      actionLabel: "保留现场，等待受控修复或重新安装流程",
-      blockingReason: `存在 ${input.attentionModCount} 个需要修复 Mod`,
+      title: copy.overviewRepair.manualRequired.title,
+      description: copy.overviewRepair.manualRequired.description,
+      actionLabel: copy.overviewRepair.manualRequired.actionLabel,
+      blockingReason: copy.overviewRepair.manualRequired.blockingReason(input.attentionModCount),
     };
   }
 
   return {
     status: "clear",
-    title: "无需处理",
-    description: "当前托管安装状态与 manifest 摘要一致。",
-    actionLabel: "保持观察",
-    blockingReason: "未发现需要阻断的恢复问题",
+    title: copy.overviewRepair.clear.title,
+    description: copy.overviewRepair.clear.description,
+    actionLabel: copy.overviewRepair.clear.actionLabel,
+    blockingReason: copy.overviewRepair.clear.blockingReason,
   };
 }
 
-function deriveModRepairSummary(summary: InstallRecoverySummary): RecoveryCenterRepairSummary {
+function deriveModRepairSummary(summary: InstallRecoverySummary, copy: RecoveryCenterCopy): RecoveryCenterRepairSummary {
   if (summary.status === "rollback_required") {
     return {
       status: "manual_required",
-      title: "需要回滚",
-      description: "该 Mod 有未完成写入窗口的持久化恢复记录，自动安装、卸载和恢复动作必须保持阻断。",
-      actionLabel: "保留现场，等待受控回滚流程",
-      blockingReason: "恢复记录要求回滚",
+      title: copy.modRepair.rollbackRequired.title,
+      description: copy.modRepair.rollbackRequired.description,
+      actionLabel: copy.modRepair.rollbackRequired.actionLabel,
+      blockingReason: copy.modRepair.rollbackRequired.blockingReason,
     };
   }
 
   if (summary.status === "committed_cleanup_pending") {
     return {
       status: "manual_required",
-      title: "重装待收尾",
-      description: "新版本已提交，但完成记录尚未收敛。收尾完成前，新的安装、卸载和重装保持阻断。",
-      actionLabel: "保留现场，重新扫描或导出诊断",
-      blockingReason: "重装提交记录尚未完成收敛",
+      title: copy.modRepair.committedCleanupPending.title,
+      description: copy.modRepair.committedCleanupPending.description,
+      actionLabel: copy.modRepair.committedCleanupPending.actionLabel,
+      blockingReason: copy.modRepair.committedCleanupPending.blockingReason,
     };
   }
 
   if (summary.status === "cleanup_pending") {
     return {
       status: "manual_required",
-      title: "恢复待清理",
-      description: "重装事务已完成，但恢复快照或事务记录尚未清理。清理完成前，新的安装、卸载和重装保持阻断。",
-      actionLabel: "保留现场，重新扫描或导出诊断",
-      blockingReason: "重装恢复数据尚待清理",
+      title: copy.modRepair.cleanupPending.title,
+      description: copy.modRepair.cleanupPending.description,
+      actionLabel: copy.modRepair.cleanupPending.actionLabel,
+      blockingReason: copy.modRepair.cleanupPending.blockingReason,
     };
   }
 
   if (summary.status === "unknown") {
     return {
       status: "unknown",
-      title: "状态未知",
-      description: "该 Mod 的目标或备份状态无法确认，不能自动安装、卸载或恢复。",
-      actionLabel: "重新扫描后仍异常则人工处理",
-      blockingReason: summary.issueCount > 0 ? `检测到 ${summary.issueCount} 个未知恢复问题` : "恢复状态不可确认",
+      title: copy.modRepair.unknown.title,
+      description: copy.modRepair.unknown.description,
+      actionLabel: copy.modRepair.unknown.actionLabel,
+      blockingReason: summary.issueCount > 0
+        ? copy.modRepair.unknown.blockingReasonWithIssues(summary.issueCount)
+        : copy.modRepair.unknown.blockingReasonDefault,
     };
   }
 
   if (summary.status === "repair_required") {
     return {
       status: "manual_required",
-      title: "需要人工处理",
-      description: "该 Mod 的受控安装事实与当前状态不一致，自动破坏性操作应保持阻断。",
-      actionLabel: "保留现场，等待受控恢复或重新安装流程",
-      blockingReason: summary.issueCount > 0 ? `检测到 ${summary.issueCount} 个恢复问题` : "恢复扫描要求人工确认",
+      title: copy.modRepair.repairRequired.title,
+      description: copy.modRepair.repairRequired.description,
+      actionLabel: copy.modRepair.repairRequired.actionLabel,
+      blockingReason: summary.issueCount > 0
+        ? copy.modRepair.repairRequired.blockingReasonWithIssues(summary.issueCount)
+        : copy.modRepair.repairRequired.blockingReasonDefault,
     };
   }
 
   if (summary.status === "not_installed") {
     return {
       status: "clear",
-      title: "未安装",
-      description: "当前 profile 没有该 Mod 的托管安装记录。",
-      actionLabel: "无需处理",
-      blockingReason: "未发现托管安装事实",
+      title: copy.modRepair.notInstalled.title,
+      description: copy.modRepair.notInstalled.description,
+      actionLabel: copy.modRepair.notInstalled.actionLabel,
+      blockingReason: copy.modRepair.notInstalled.blockingReason,
     };
   }
 
   return {
     status: "clear",
-    title: "状态正常",
-    description: "该 Mod 的托管安装摘要与当前状态一致。",
-    actionLabel: "无需处理",
-    blockingReason: "未发现恢复问题",
+    title: copy.modRepair.clear.title,
+    description: copy.modRepair.clear.description,
+    actionLabel: copy.modRepair.clear.actionLabel,
+    blockingReason: copy.modRepair.clear.blockingReason,
   };
 }
 
-function deriveManualDecision(input: {
-  attentionModCount: number;
-  unknownModCount: number;
-  rollbackRequiredModCount: number;
-}): RecoveryCenterManualDecision {
+function deriveManualDecision(
+  input: {
+    attentionModCount: number;
+    unknownModCount: number;
+    rollbackRequiredModCount: number;
+  },
+  copy: RecoveryCenterCopy,
+): RecoveryCenterManualDecision {
   const hasBlockedState = input.attentionModCount > 0 || input.unknownModCount > 0;
 
   if (!hasBlockedState) {
     return {
       status: "clear",
-      title: "无需人工处理",
-      description: "当前没有需要恢复中心人工处理的托管安装状态。",
-      recommendedAction: "保持观察。",
+      title: copy.manualDecision.clearTitle,
+      description: copy.manualDecision.clearDescription,
+      recommendedAction: copy.manualDecision.clearRecommended,
       safeguards: [],
-      actions: safeManualActions(),
+      actions: safeManualActions(copy),
     };
   }
 
-  const actions = safeManualActions();
+  const actions = safeManualActions(copy);
 
   if (input.rollbackRequiredModCount > 0) {
     actions.push({
       id: "controlled_recovery",
-      label: "受控回滚",
-      description: `${input.rollbackRequiredModCount} 个 Mod 可在下方列表中使用逐 Mod 受控回滚。`,
+      label: copy.manualDecision.controlledRollbackLabel,
+      description: copy.manualDecision.controlledRollbackDescription(input.rollbackRequiredModCount),
       state: "available",
     });
   } else {
     actions.push({
       id: "controlled_recovery",
-      label: "受控修复",
-      description: "当前没有可执行受控回滚的 Mod，请保留现场并等待后续恢复能力。",
+      label: copy.manualDecision.controlledRepairLabel,
+      description: copy.manualDecision.controlledRepairUnavailableDescription,
       state: "unavailable",
     });
   }
 
   return {
     status: "blocked",
-    title: "需要人工处理",
-    description: "恢复中心已阻断自动安装、卸载和恢复动作，当前只能执行只读复查或导出诊断。",
+    title: copy.manualDecision.blockedTitle,
+    description: copy.manualDecision.blockedDescription,
     recommendedAction: input.rollbackRequiredModCount > 0
-      ? "在下方 Mod 列表中对需要回滚的 Mod 使用受控回滚按钮。"
-      : "先重新扫描；如果仍异常，导出诊断并保留现场。",
-    safeguards: [
-      "不删除未知文件",
-      "不根据当前 Mod 包猜测恢复动作",
-      "不写入 manifest 或 backup 状态",
-    ],
+      ? copy.manualDecision.recommendedRollback
+      : copy.manualDecision.recommendedRescan,
+    safeguards: [...copy.manualDecision.safeguards],
     actions,
   };
 }
 
-function safeManualActions(): RecoveryCenterManualAction[] {
+function safeManualActions(copy: RecoveryCenterCopy): RecoveryCenterManualAction[] {
   return [
     {
       id: "retry_scan",
-      label: "重新扫描",
-      description: "重新读取后端只读恢复摘要。",
+      label: copy.manualDecision.retryScanLabel,
+      description: copy.manualDecision.retryScanDescription,
       state: "available",
     },
     {
       id: "export_diagnostics",
-      label: "导出诊断",
-      description: "生成已脱敏的支持诊断包。",
+      label: copy.manualDecision.exportDiagnosticsLabel,
+      description: copy.manualDecision.exportDiagnosticsDescription,
       state: "available",
     },
   ];

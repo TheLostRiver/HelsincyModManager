@@ -1,13 +1,16 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { useGameSetup } from "../game-setup/GameSetupProvider";
-import type {
-  RecoveryCenterIssueView,
-  RecoveryCenterManualAction,
-  RecoveryCenterManualDecision,
-  RecoveryCenterModView,
-  RecoveryCenterRepairSummary,
-  RecoveryCenterViewModel,
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { recoveryCenterCopy, type RecoveryCenterCopy } from "./recoveryCenterCopy";
+import {
+  deriveRecoveryCenterViewModel,
+  type RecoveryCenterIssueView,
+  type RecoveryCenterManualAction,
+  type RecoveryCenterManualDecision,
+  type RecoveryCenterModView,
+  type RecoveryCenterRepairSummary,
+  type RecoveryCenterViewModel,
 } from "./recoveryCenterViewModel";
 import {
   useRecoveryDiagnosticsExport,
@@ -24,17 +27,9 @@ import type { InstallRecoveryActionPreview } from "../mods/modInstallPlanTypes";
 
 type ActiveRecoveryDiagnosticsExportState = Exclude<RecoveryDiagnosticsExportState, { status: "idle" }>;
 
-const blockReasonLabels: Record<string, string> = {
-  rollback_state_missing: "回滚状态缺失",
-  missing_installed_file_summary: "摘要缺失",
-  target_missing: "目标缺失",
-  target_changed: "目标变更",
-  target_read_failed: "目标读取失败",
-  backup_missing: "备份缺失",
-  backup_read_failed: "备份读取失败",
-};
-
 export function RecoveryCenterPage() {
+  const { locale } = useI18n();
+  const copy = resolveCopy(recoveryCenterCopy, locale);
   const gameSetup = useGameSetup();
   const isConfigured = gameSetup.status.kind === "configured";
   const diagnostics = useRecoveryDiagnosticsExport();
@@ -57,9 +52,9 @@ export function RecoveryCenterPage() {
     <section className="recovery-center" aria-labelledby="recovery-center-title">
       <header className="recovery-center__hero" data-tour-id="recovery.actions">
         <div className="recovery-center__hero-copy">
-          <span className="recovery-center__eyebrow">受控恢复中心</span>
-          <h2 id="recovery-center-title">恢复中心</h2>
-          <p>查看当前配置档的托管安装健康状态，先定位需要人工处理的条目。</p>
+          <span className="recovery-center__eyebrow">{copy.page.eyebrow}</span>
+          <h2 id="recovery-center-title">{copy.page.title}</h2>
+          <p>{copy.page.subtitle}</p>
         </div>
         <div className="recovery-center__hero-actions">
           <button
@@ -69,7 +64,7 @@ export function RecoveryCenterPage() {
             onClick={diagnostics.requestExport}
           >
             <FileDown size={15} aria-hidden="true" />
-            {diagnostics.state.status === "exporting" ? "导出中" : "导出诊断"}
+            {diagnostics.state.status === "exporting" ? copy.page.exporting : copy.page.exportDiagnostics}
           </button>
           <button
             type="button"
@@ -78,7 +73,7 @@ export function RecoveryCenterPage() {
             onClick={scan.refresh}
           >
             <RefreshCw size={15} aria-hidden="true" />
-            刷新
+            {copy.page.refresh}
           </button>
         </div>
       </header>
@@ -86,6 +81,7 @@ export function RecoveryCenterPage() {
       {diagnostics.state.status !== "idle" ? (
         <DiagnosticExportPanel
           state={diagnostics.state}
+          copy={copy}
           onConfirm={diagnostics.confirmExport}
           onCancel={diagnostics.cancelExport}
         />
@@ -94,16 +90,18 @@ export function RecoveryCenterPage() {
       {rollback.state.status !== "idle" ? (
         <RollbackPanel
           state={rollback.state}
+          copy={copy}
           onConfirm={rollback.confirmRollback}
           onDismiss={rollback.dismiss}
         />
       ) : null}
 
       {!isConfigured ? (
-        <NotConfiguredPanel />
+        <NotConfiguredPanel copy={copy} />
       ) : (
         <RecoveryCenterBody
           state={scan.state}
+          copy={copy}
           onRefresh={scan.refresh}
           onExportDiagnostics={diagnostics.requestExport}
           onScrollToModList={scrollToModList}
@@ -120,21 +118,25 @@ export function RecoveryCenterPage() {
 
 function RollbackPanel({
   state,
+  copy,
   onConfirm,
   onDismiss,
 }: {
   state: Exclude<RecoveryRollbackState, { status: "idle" }>;
+  copy: RecoveryCenterCopy;
   onConfirm: () => void;
   onDismiss: () => void;
 }) {
+  const panelCopy = copy.page.rollbackPanel;
+
   if (state.status === "previewing" || state.status === "starting") {
     return (
-      <section className="recovery-center__rollback-panel" role="status" aria-label="回滚状态">
+      <section className="recovery-center__rollback-panel" role="status" aria-label={panelCopy.statusAria}>
         <div className="recovery-center__rollback-icon" aria-hidden="true">
           <Loader2 size={18} className="is-spinning" />
         </div>
         <div className="recovery-center__rollback-body">
-          <h3>{state.status === "previewing" ? "正在检查回滚条件" : "正在启动回滚任务"}</h3>
+          <h3>{state.status === "previewing" ? panelCopy.previewingTitle : panelCopy.startingTitle}</h3>
           <p>{state.modId}</p>
         </div>
       </section>
@@ -148,13 +150,13 @@ function RollbackPanel({
           <AlertTriangle size={18} />
         </div>
         <div className="recovery-center__rollback-body">
-          <h3 id="rollback-blocked-title">受控回滚不可执行</h3>
-          <p>{state.modId} — 后端预检发现阻断条件，当前无法安全回滚。</p>
-          <BlockReasonList preview={state.preview} />
+          <h3 id="rollback-blocked-title">{panelCopy.blockedTitle}</h3>
+          <p>{panelCopy.blockedDetail(state.modId)}</p>
+          <BlockReasonList preview={state.preview} blockReasons={copy.blockReasons} />
           <div className="recovery-center__rollback-actions">
             <button type="button" onClick={onDismiss}>
               <X size={14} aria-hidden="true" />
-              关闭
+              {panelCopy.close}
             </button>
           </div>
         </div>
@@ -169,16 +171,16 @@ function RollbackPanel({
           <RotateCcw size={18} />
         </div>
         <div className="recovery-center__rollback-body">
-          <h3 id="rollback-confirm-title">确认受控回滚</h3>
-          <p>将对 {state.modId} 执行受控回滚，恢复到安装前状态。</p>
-          <RollbackPreviewStats preview={state.preview} />
+          <h3 id="rollback-confirm-title">{panelCopy.confirmTitle}</h3>
+          <p>{panelCopy.confirmBody(state.modId)}</p>
+          <RollbackPreviewStats preview={state.preview} panelCopy={panelCopy} />
           <div className="recovery-center__rollback-actions">
             <button type="button" className="is-primary" onClick={onConfirm}>
               <RotateCcw size={14} aria-hidden="true" />
-              确认回滚
+              {panelCopy.confirmAction}
             </button>
             <button type="button" onClick={onDismiss}>
-              取消
+              {panelCopy.cancel}
             </button>
           </div>
         </div>
@@ -188,12 +190,12 @@ function RollbackPanel({
 
   if (state.status === "running") {
     return (
-      <section className="recovery-center__rollback-panel" role="status" aria-label="回滚进度">
+      <section className="recovery-center__rollback-panel" role="status" aria-label={panelCopy.progressAria}>
         <div className="recovery-center__rollback-icon" aria-hidden="true">
           <Loader2 size={18} className="is-spinning" />
         </div>
         <div className="recovery-center__rollback-body">
-          <h3>{getRecoveryRollbackPhaseLabel(state.phase)}</h3>
+          <h3>{getRecoveryRollbackPhaseLabel(state.phase, copy.rollback.phases)}</h3>
           <p>{state.modId}</p>
         </div>
       </section>
@@ -207,11 +209,11 @@ function RollbackPanel({
           <ShieldCheck size={18} />
         </div>
         <div className="recovery-center__rollback-body">
-          <h3 id="rollback-done-title">回滚完成</h3>
-          <p>{state.modId} 已恢复到安装前状态。已触发重新扫描。</p>
+          <h3 id="rollback-done-title">{panelCopy.completedTitle}</h3>
+          <p>{panelCopy.completedBody(state.modId)}</p>
           <div className="recovery-center__rollback-actions">
             <button type="button" onClick={onDismiss}>
-              关闭
+              {panelCopy.close}
             </button>
           </div>
         </div>
@@ -225,11 +227,11 @@ function RollbackPanel({
         <AlertTriangle size={18} />
       </div>
       <div className="recovery-center__rollback-body">
-        <h3 id="rollback-failed-title">回滚失败</h3>
-        <p>{state.modId} — {state.message}</p>
+        <h3 id="rollback-failed-title">{panelCopy.failedTitle}</h3>
+        <p>{panelCopy.failedBody(state.modId, rollbackFailureMessage(state, copy))}</p>
         <div className="recovery-center__rollback-actions">
           <button type="button" onClick={onDismiss}>
-            关闭
+            {panelCopy.close}
           </button>
         </div>
       </div>
@@ -237,17 +239,41 @@ function RollbackPanel({
   );
 }
 
-function RollbackPreviewStats({ preview }: { preview: InstallRecoveryActionPreview }) {
+function rollbackFailureMessage(
+  state: Extract<RecoveryRollbackState, { status: "failed" }>,
+  copy: RecoveryCenterCopy,
+) {
+  if (state.reason === "task_failed") {
+    return state.backendMessage ?? copy.rollback.failures.taskFallback;
+  }
+  if (state.reason === "profile_not_ready") return copy.rollback.failures.profileNotReady;
+  if (state.reason === "preview_failed") return copy.rollback.failures.previewFailed;
+  return copy.rollback.failures.startFailed;
+}
+
+function RollbackPreviewStats({
+  preview,
+  panelCopy,
+}: {
+  preview: InstallRecoveryActionPreview;
+  panelCopy: RecoveryCenterCopy["page"]["rollbackPanel"];
+}) {
   return (
     <div className="recovery-center__rollback-stats">
-      <span>将删除 {preview.removeFileCount} 个文件</span>
-      <span>将恢复 {preview.restoreFileCount} 个文件</span>
-      <span>涉及 {preview.backupCount} 个备份</span>
+      <span>{panelCopy.statsRemove(preview.removeFileCount)}</span>
+      <span>{panelCopy.statsRestore(preview.restoreFileCount)}</span>
+      <span>{panelCopy.statsBackups(preview.backupCount)}</span>
     </div>
   );
 }
 
-function BlockReasonList({ preview }: { preview: InstallRecoveryActionPreview }) {
+function BlockReasonList({
+  preview,
+  blockReasons,
+}: {
+  preview: InstallRecoveryActionPreview;
+  blockReasons: RecoveryCenterCopy["blockReasons"];
+}) {
   if (preview.blockingReasons.length === 0) {
     return null;
   }
@@ -256,7 +282,7 @@ function BlockReasonList({ preview }: { preview: InstallRecoveryActionPreview })
     <div className="recovery-center__rollback-blocks">
       {preview.blockingReasons.map((reason) => (
         <span key={reason.reason}>
-          <strong>{blockReasonLabels[reason.reason] ?? reason.reason} · {reason.count}</strong>
+          <strong>{blockReasons[reason.reason] ?? reason.reason} · {reason.count}</strong>
         </span>
       ))}
     </div>
@@ -265,13 +291,17 @@ function BlockReasonList({ preview }: { preview: InstallRecoveryActionPreview })
 
 function DiagnosticExportPanel({
   state,
+  copy,
   onConfirm,
   onCancel,
 }: {
   state: ActiveRecoveryDiagnosticsExportState;
+  copy: RecoveryCenterCopy;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const diagCopy = copy.page.diagnostics;
+
   if (state.status === "confirming") {
     return (
       <section
@@ -279,21 +309,21 @@ function DiagnosticExportPanel({
         aria-labelledby="diagnostic-export-confirm-title"
       >
         <div>
-          <h3 id="diagnostic-export-confirm-title">确认导出诊断包</h3>
-          <p>导出包会由后端生成已脱敏的支持材料，页面只显示安全摘要。</p>
+          <h3 id="diagnostic-export-confirm-title">{diagCopy.confirmTitle}</h3>
+          <p>{diagCopy.confirmBody}</p>
         </div>
         <div className="recovery-center__diagnostic-confirmation">
           <ul>
-            <li>包含平台摘要、已校验 App 日志、已校验任务日志和已校验审计事件。</li>
-            <li>页面不展示日志正文、审计正文、本地路径或第三方 Mod 内容。</li>
+            <li>{diagCopy.bulletContents}</li>
+            <li>{diagCopy.bulletPrivacy}</li>
           </ul>
           <div className="recovery-center__diagnostic-export-actions">
             <button type="button" className="is-primary" onClick={onConfirm}>
               <FileDown size={14} aria-hidden="true" />
-              开始导出
+              {diagCopy.start}
             </button>
             <button type="button" onClick={onCancel}>
-              取消
+              {diagCopy.cancel}
             </button>
           </div>
         </div>
@@ -303,13 +333,13 @@ function DiagnosticExportPanel({
 
   if (state.status === "exporting") {
     return (
-      <section className="recovery-center__panel is-loading" role="status" aria-label="诊断导出状态">
+      <section className="recovery-center__panel is-loading" role="status" aria-label={diagCopy.statusAria}>
         <div className="recovery-center__state-icon" aria-hidden="true">
           <Loader2 size={18} />
         </div>
         <div>
-          <h3>正在导出诊断包</h3>
-          <p>正在生成已脱敏的支持诊断摘要。</p>
+          <h3>{diagCopy.exportingTitle}</h3>
+          <p>{diagCopy.exportingBody}</p>
         </div>
       </section>
     );
@@ -318,7 +348,7 @@ function DiagnosticExportPanel({
   return null;
 }
 
-function NotConfiguredPanel() {
+function NotConfiguredPanel({ copy }: { copy: RecoveryCenterCopy }) {
   return (
     <section
       className="recovery-center__panel is-neutral"
@@ -329,8 +359,8 @@ function NotConfiguredPanel() {
         <CircleHelp size={18} />
       </div>
       <div data-tour-id="recovery.state-detail">
-        <h3 id="recovery-not-configured-title">等待游戏目录配置</h3>
-        <p>恢复中心需要先有受控游戏实例，才能读取当前配置档的托管安装摘要。</p>
+        <h3 id="recovery-not-configured-title">{copy.page.notConfigured.title}</h3>
+        <p>{copy.page.notConfigured.body}</p>
       </div>
     </section>
   );
@@ -338,6 +368,7 @@ function NotConfiguredPanel() {
 
 function RecoveryCenterBody({
   state,
+  copy,
   onRefresh,
   onExportDiagnostics,
   onScrollToModList,
@@ -348,6 +379,7 @@ function RecoveryCenterBody({
   modListRef,
 }: {
   state: RecoveryCenterScanState;
+  copy: RecoveryCenterCopy;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
   onScrollToModList: () => void;
@@ -357,20 +389,26 @@ function RecoveryCenterBody({
   onRequestRollback: (modId: string) => void;
   modListRef: React.RefObject<HTMLElement | null>;
 }) {
+  const summaries = state.status === "ready" ? state.summaries : null;
+  const viewModel = useMemo(
+    () => (summaries ? deriveRecoveryCenterViewModel(summaries, copy) : null),
+    [copy, summaries],
+  );
+
   if (state.status === "idle" || state.status === "loading") {
     return (
       <section
         className="recovery-center__panel is-loading"
         role="status"
-        aria-label="恢复扫描状态"
+        aria-label={copy.page.loading.aria}
         data-tour-id="recovery.state"
       >
         <div className="recovery-center__state-icon" aria-hidden="true">
           <Loader2 size={18} />
         </div>
         <div data-tour-id="recovery.state-detail">
-          <h3>正在读取恢复摘要</h3>
-          <p>正在从后端读取当前配置档的托管安装状态。</p>
+          <h3>{copy.page.loading.title}</h3>
+          <p>{copy.page.loading.body}</p>
         </div>
       </section>
     );
@@ -387,16 +425,21 @@ function RecoveryCenterBody({
           <CircleHelp size={18} />
         </div>
         <div data-tour-id="recovery.state-detail">
-          <h3 id="recovery-unavailable-title">恢复摘要不可用</h3>
-          <p>无法确认当前托管安装状态。请稍后刷新，或先回到 Mod 管理页避免继续安装/卸载。</p>
+          <h3 id="recovery-unavailable-title">{copy.page.unavailable.title}</h3>
+          <p>{copy.page.unavailable.body}</p>
         </div>
       </section>
     );
   }
 
+  if (!viewModel) {
+    return null;
+  }
+
   return (
     <RecoveryCenterSummary
-      viewModel={state.viewModel}
+      viewModel={viewModel}
+      copy={copy}
       onRefresh={onRefresh}
       onExportDiagnostics={onExportDiagnostics}
       onScrollToModList={onScrollToModList}
@@ -411,6 +454,7 @@ function RecoveryCenterBody({
 
 function RecoveryCenterSummary({
   viewModel,
+  copy,
   onRefresh,
   onExportDiagnostics,
   onScrollToModList,
@@ -421,6 +465,7 @@ function RecoveryCenterSummary({
   modListRef,
 }: {
   viewModel: RecoveryCenterViewModel;
+  copy: RecoveryCenterCopy;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
   onScrollToModList: () => void;
@@ -430,40 +475,41 @@ function RecoveryCenterSummary({
   onRequestRollback: (modId: string) => void;
   modListRef: React.RefObject<HTMLElement | null>;
 }) {
-  const copy = overviewCopy(viewModel);
+  const overview = overviewCopy(viewModel, copy.page.overview);
 
   return (
     <>
       <section
-        className={`recovery-center__panel ${copy.panelClass}`}
+        className={`recovery-center__panel ${overview.panelClass}`}
         aria-labelledby="recovery-overview-title"
         data-tour-id="recovery.overview"
       >
         <div className="recovery-center__state-icon" aria-hidden="true">
-          {copy.icon}
+          {overview.icon}
         </div>
         <div className="recovery-center__overview-copy">
           <div className="recovery-center__title-row">
-            <h3 id="recovery-overview-title">{copy.title}</h3>
-            <span className={`recovery-center__badge is-${viewModel.overview.status}`}>{copy.badge}</span>
+            <h3 id="recovery-overview-title">{overview.title}</h3>
+            <span className={`recovery-center__badge is-${viewModel.overview.status}`}>{overview.badge}</span>
           </div>
-          <p>{copy.description}</p>
+          <p>{overview.description}</p>
         </div>
       </section>
 
-      <section className="recovery-center__metrics" aria-label="恢复扫描聚合摘要">
-        <Metric label="扫描 Mod" value={viewModel.overview.scannedModCount} />
-        <Metric label="状态正常" value={viewModel.overview.completedModCount} />
-        <Metric label="需处理" value={viewModel.overview.attentionModCount} />
-        <Metric label="未知" value={viewModel.overview.unknownModCount} />
-        <Metric label="托管文件" value={viewModel.overview.managedFileCount} />
-        <Metric label="问题" value={viewModel.overview.issueCount} />
+      <section className="recovery-center__metrics" aria-label={copy.page.metricsAria}>
+        <Metric label={copy.page.metricScanned} value={viewModel.overview.scannedModCount} />
+        <Metric label={copy.page.metricCompleted} value={viewModel.overview.completedModCount} />
+        <Metric label={copy.page.metricAttention} value={viewModel.overview.attentionModCount} />
+        <Metric label={copy.page.metricUnknown} value={viewModel.overview.unknownModCount} />
+        <Metric label={copy.page.metricManagedFiles} value={viewModel.overview.managedFileCount} />
+        <Metric label={copy.page.metricIssues} value={viewModel.overview.issueCount} />
       </section>
 
-      <RepairSummaryPanel summary={viewModel.overview.repairSummary} />
+      <RepairSummaryPanel summary={viewModel.overview.repairSummary} copy={copy} />
 
       <ManualHandlingPanel
         manualDecision={viewModel.overview.manualDecision}
+        copy={copy}
         onRefresh={onRefresh}
         onExportDiagnostics={onExportDiagnostics}
         onScrollToModList={onScrollToModList}
@@ -472,7 +518,7 @@ function RecoveryCenterSummary({
       />
 
       {viewModel.overview.issues.length > 0 ? (
-        <IssueList label="恢复问题聚合" issues={viewModel.overview.issues} />
+        <IssueList label={copy.page.issuesAggregateAria} issues={viewModel.overview.issues} />
       ) : null}
 
       <section
@@ -482,8 +528,8 @@ function RecoveryCenterSummary({
         data-tour-id="recovery.mods"
       >
         <div className="recovery-center__section-heading">
-          <h3 id="recovery-mod-list-title">托管 Mod 状态</h3>
-          <span>{viewModel.mods.length} 项</span>
+          <h3 id="recovery-mod-list-title">{copy.page.modsTitle}</h3>
+          <span>{copy.page.modsCount(viewModel.mods.length)}</span>
         </div>
 
         {viewModel.mods.length > 0 ? (
@@ -492,6 +538,7 @@ function RecoveryCenterSummary({
               <RecoveryModRow
                 key={mod.modId}
                 mod={mod}
+                copy={copy}
                 rollbackState={rollbackState}
                 onRequestRollback={onRequestRollback}
               />
@@ -500,7 +547,7 @@ function RecoveryCenterSummary({
         ) : (
           <article className="recovery-center__empty">
             <ShieldCheck size={18} aria-hidden="true" />
-            <p>当前配置档没有托管安装记录。</p>
+            <p>{copy.page.modEmpty}</p>
           </article>
         )}
       </section>
@@ -510,6 +557,7 @@ function RecoveryCenterSummary({
 
 function ManualHandlingPanel({
   manualDecision,
+  copy,
   onRefresh,
   onExportDiagnostics,
   onScrollToModList,
@@ -517,6 +565,7 @@ function ManualHandlingPanel({
   isExporting,
 }: {
   manualDecision: RecoveryCenterManualDecision;
+  copy: RecoveryCenterCopy;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
   onScrollToModList: () => void;
@@ -526,7 +575,7 @@ function ManualHandlingPanel({
   return (
     <section
       className={`recovery-center__manual-decision is-${manualDecision.status}`}
-      aria-label="人工处理决策"
+      aria-label={copy.page.manualAria}
       data-tour-id="recovery.manual-actions"
     >
       <div className="recovery-center__manual-copy">
@@ -589,10 +638,12 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 function RecoveryModRow({
   mod,
+  copy,
   rollbackState,
   onRequestRollback,
 }: {
   mod: RecoveryCenterModView;
+  copy: RecoveryCenterCopy;
   rollbackState: RecoveryRollbackState;
   onRequestRollback: (modId: string) => void;
 }) {
@@ -610,7 +661,7 @@ function RecoveryModRow({
         <span className={`recovery-center__status is-${mod.statusTone}`}>{mod.statusLabel}</span>
         <strong>{mod.modId}</strong>
       </div>
-      <div className="recovery-center__mod-metrics" aria-label={`${mod.modId} 恢复摘要`}>
+      <div className="recovery-center__mod-metrics" aria-label={copy.page.modMetricsAria(mod.modId)}>
         {isRollbackTarget ? (
           <button
             type="button"
@@ -619,30 +670,32 @@ function RecoveryModRow({
             onClick={() => onRequestRollback(mod.modId)}
           >
             <RotateCcw size={13} aria-hidden="true" />
-            {isThisModRollingBack ? "处理中" : "回滚"}
+            {isThisModRollingBack ? copy.page.modRollbackBusy : copy.page.modRollbackAction}
           </button>
         ) : null}
-        <span>{mod.managedFileCount} 文件</span>
-        <span>{mod.backupCount} 备份</span>
-        <span>{mod.issueCount} 问题</span>
+        <span>{copy.page.modFiles(mod.managedFileCount)}</span>
+        <span>{copy.page.modBackups(mod.backupCount)}</span>
+        <span>{copy.page.modIssues(mod.issueCount)}</span>
       </div>
-      {mod.repairSummary.status !== "clear" ? <RepairSummaryPanel summary={mod.repairSummary} compact /> : null}
-      {mod.issues.length > 0 ? <IssueList label={`${mod.modId} 恢复问题`} issues={mod.issues} compact /> : null}
+      {mod.repairSummary.status !== "clear" ? <RepairSummaryPanel summary={mod.repairSummary} copy={copy} compact /> : null}
+      {mod.issues.length > 0 ? <IssueList label={copy.page.modIssuesAria(mod.modId)} issues={mod.issues} compact /> : null}
     </article>
   );
 }
 
 function RepairSummaryPanel({
   summary,
+  copy,
   compact = false,
 }: {
   summary: RecoveryCenterRepairSummary;
+  copy: RecoveryCenterCopy;
   compact?: boolean;
 }) {
   return (
     <section
       className={`recovery-center__repair-summary is-${summary.status} ${compact ? "is-compact" : ""}`}
-      aria-label="恢复处理摘要"
+      aria-label={copy.page.repairAria}
     >
       <div>
         <h4>{summary.title}</h4>
@@ -650,11 +703,11 @@ function RepairSummaryPanel({
       </div>
       <dl>
         <div>
-          <dt>阻断原因</dt>
+          <dt>{copy.page.repairBlockingReason}</dt>
           <dd>{summary.blockingReason}</dd>
         </div>
         <div>
-          <dt>下一步</dt>
+          <dt>{copy.page.repairNextStep}</dt>
           <dd>{summary.actionLabel}</dd>
         </div>
       </dl>
@@ -685,35 +738,35 @@ function IssueList({
   );
 }
 
-function overviewCopy(viewModel: RecoveryCenterViewModel) {
+function overviewCopy(viewModel: RecoveryCenterViewModel, copy: RecoveryCenterCopy["page"]["overview"]) {
   if (viewModel.overview.status === "empty") {
     return {
-      title: "没有托管安装记录",
-      badge: "空记录",
+      title: copy.emptyTitle,
+      badge: copy.emptyBadge,
       panelClass: "is-neutral",
-      description: "当前配置档还没有由 Helsincy 托管的安装项。",
+      description: copy.emptyDescription,
       icon: <ShieldCheck size={18} aria-hidden="true" />,
     };
   }
 
   if (viewModel.overview.status === "attention") {
     return {
-      title: "发现需要关注的安装状态",
-      badge: "需要处理",
+      title: copy.attentionTitle,
+      badge: copy.attentionBadge,
       panelClass: "is-attention",
       description:
         viewModel.overview.unknownModCount > 0
-          ? "部分托管安装状态无法确认，恢复中心会先阻断自动处理动作。"
-          : "部分托管安装状态需要人工处理，自动安装/卸载入口应保持阻断。",
+          ? copy.attentionDescriptionUnknown
+          : copy.attentionDescriptionManual,
       icon: <AlertTriangle size={18} aria-hidden="true" />,
     };
   }
 
   return {
-    title: "托管安装状态正常",
-    badge: "正常",
+    title: copy.healthyTitle,
+    badge: copy.healthyBadge,
     panelClass: "is-healthy",
-    description: `${viewModel.overview.completedModCount} 个托管 Mod 与 manifest 摘要一致。`,
+    description: copy.healthyDescription(viewModel.overview.completedModCount),
     icon: <ShieldCheck size={18} aria-hidden="true" />,
   };
 }

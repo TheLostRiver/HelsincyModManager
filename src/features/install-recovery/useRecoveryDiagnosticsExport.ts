@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { recoveryCenterCopy } from "./recoveryCenterCopy";
 import { exportSupportDiagnostics } from "./recoveryDiagnosticsApi";
 
 export type RecoveryDiagnosticsExportState =
@@ -9,6 +11,8 @@ export type RecoveryDiagnosticsExportState =
 
 export function useRecoveryDiagnosticsExport() {
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const toastsCopy = resolveCopy(recoveryCenterCopy, locale).diagnosticsToasts;
   const [state, setState] = useState<RecoveryDiagnosticsExportState>({ status: "idle" });
   const exportInFlightRef = useRef(false);
 
@@ -40,8 +44,15 @@ export function useRecoveryDiagnosticsExport() {
       .then((result) => {
         pushToast({
           eventKey: `recovery.diagnostics.exported.${result.exportId}`,
-          title: "诊断包已导出",
-          message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，Debug 日志 ${result.debugLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`,
+          title: toastsCopy.exportedTitle,
+          message: toastsCopy.exportedMessage({
+            fileName: result.fileName,
+            size: formatBytes(result.sizeBytes),
+            appLogLineCount: result.appLogLineCount,
+            debugLogLineCount: result.debugLogLineCount,
+            taskLogLineCount: result.taskLogLineCount,
+            auditEventCount: result.auditEventCount,
+          }),
           tone: "success",
         });
         setState({ status: "idle" });
@@ -49,8 +60,8 @@ export function useRecoveryDiagnosticsExport() {
       .catch(() => {
         pushToast({
           eventKey: "recovery.diagnostics.export.failed",
-          title: "诊断导出失败",
-          message: "诊断包暂时不可用，请稍后重试并保留当前恢复中心状态。",
+          title: toastsCopy.failedTitle,
+          message: toastsCopy.failedMessage,
           tone: "danger",
         });
         setState({ status: "idle" });
@@ -58,7 +69,7 @@ export function useRecoveryDiagnosticsExport() {
       .finally(() => {
         exportInFlightRef.current = false;
       });
-  }, [pushToast]);
+  }, [pushToast, toastsCopy]);
 
   return {
     state,
