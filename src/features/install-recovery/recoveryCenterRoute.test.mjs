@@ -22,7 +22,7 @@ test("registers Recovery Center as a first-class enabled route and nav item", ()
   assert.match(routeRegistry, /id:\s*"recovery"/);
   assert.match(routeRegistry, /path:\s*"\/recovery"/);
   assert.match(navItems, /id:\s*"recovery"/);
-  assert.match(navItems, /label:\s*"恢复中心"/);
+  assert.match(readSource("src/app/appShellCopy.ts"), /recovery: "恢复中心"/);
   assert.match(navItems, /route:\s*"\/recovery"/);
   const recoveryNavLine = navItems
     .split("\n")

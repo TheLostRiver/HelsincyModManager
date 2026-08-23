@@ -15,7 +15,7 @@ test("backup center is an enabled first-class route with tracked feature-local s
   assert.match(routes, /id:\s*"backups"[\s\S]*?path:\s*"\/backups"[\s\S]*?element:\s*BackupCenterPage/);
   const navLine = nav.split("\n").find((line) => line.includes('id: "backups"'));
   assert.ok(navLine);
-  assert.match(navLine, /label:\s*"备份整理"/);
+  assert.match(read("src/app/appShellCopy.ts"), /backups: "备份整理"/);
   assert.equal(navLine.includes("disabledReason"), false);
   assert.match(main, /features\/backups\/BackupCenterPage\.css/);
   assert.match(gitignore, /!src\/features\/backups\/\*\*/);
@@ -40,22 +40,27 @@ test("backup center uses narrow camelCase DTOs and controlled commands", () => {
 test("backup center keeps restore controlled and exposes note and retention states", () => {
   const page = read("src/features/backups/BackupCenterPage.tsx");
 
-  assert.match(page, /<h1>备份整理<\/h1>/);
-  assert.match(page, /跨配置档查看备份历史、保护点与整理状态/);
+  assert.match(page, /<h1>\{copy\.page\.title\}<\/h1>/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /title: "备份整理"/);
+  assert.match(page, /<p>\{copy\.page\.subtitle\}<\/p>/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /subtitle: "跨配置档查看备份历史、保护点与整理状态。"/);
   assert.match(page, /SaveRestoreDialog/);
   assert.match(page, /backup\.status === "completed"\s*\?/);
-  assert.match(page, /恢复存档/);
+  assert.match(page, /copy\.historyRow\.restore/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /restore: "恢复存档"/);
   assert.match(page, /updateSaveBackupNote/);
   assert.match(page, /runSaveBackupRetention/);
   assert.match(page, /role="alertdialog"/);
-  assert.match(page, /确认立即整理备份/);
-  assert.match(page, /最新普通备份和恢复前保护点不会被删除/);
+  assert.match(page, /title=\{copy\.maintenanceDialog\.title\}/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /title: "确认立即整理备份"/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /最新普通备份和恢复前保护点不会被删除/);
   assert.match(page, /initialFocusRef=\{cancelMaintenanceRef\}/);
   assert.match(page, /report\.outcome === "partial"/);
   assert.match(page, /report\.outcome === "blocked"/);
   assert.match(page, /report\.outcome === "failed"/);
   assert.match(page, /report\.evidenceDegraded/);
-  assert.match(page, /审计记录不可用/);
+  assert.match(page, /copy\.report\.evidenceDegradedSuffix/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /evidenceDegradedSuffix: "，但审计记录不可用"/);
   assert.match(page, /profile\.retention\.maxCount === 0\s*\? 0/);
   assert.match(page, /pageState\.status === "error"/);
   assert.match(page, /retention_partial/);
@@ -68,7 +73,8 @@ test("backup center keeps restore controlled and exposes note and retention stat
   assert.match(page, /maxLength=\{100\}/);
   assert.match(page, /function lastValidPageOffset/);
   assert.match(page, /pageState\.page\.offset > normalizedOffset/);
-  assert.match(page, /aria-label="备份备注"/);
+  assert.match(page, /aria-label=\{copy\.historyRow\.noteAria\}/);
+  assert.match(read("src/features/backups/backupCenterCopy.ts"), /noteAria: "备份备注"/);
 });
 
 test("backup center is responsive without horizontal scrolling or translucent blur surfaces", () => {
