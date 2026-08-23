@@ -93,6 +93,24 @@ pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
     game_root
 }
 const LIFECYCLE_PLAN_TOKEN_TTL_MILLIS: u128 = 5 * 60 * 1000;
+
+/// Token 绑定的运行环境事实。production 与 sandbox 的 token 互不通用：
+/// facts 里的环境标签参与 digest，跨环境重放一律 `PlanTokenInvalid`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleTokenEnvironment {
+    Production,
+    Sandbox,
+}
+
+impl LifecycleTokenEnvironment {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::Sandbox => "sandbox",
+        }
+    }
+}
+
 const INSTALL_APPLY_COMMAND: &str = "install.apply";
 const INSTALL_UNINSTALL_COMMAND: &str = "install.uninstall";
 const INSTALL_REINSTALL_COMMAND: &str = "install.reinstall";
@@ -200,6 +218,7 @@ impl SandboxLifecycleAutomation {
         }
         validate_install_plan_token(
             plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -270,6 +289,7 @@ impl SandboxLifecycleAutomation {
         }
         validate_uninstall_plan_token(
             plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -343,6 +363,7 @@ impl SandboxLifecycleAutomation {
         }
         validate_recovery_plan_token(
             plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -422,6 +443,7 @@ impl SandboxLifecycleAutomation {
             .ok_or(SandboxLifecycleAutomationError::ReinstallBlocked)?;
         validate_reinstall_plan_token(
             plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -699,6 +721,7 @@ impl InstallWriteAdmission for SandboxInstallWriteAdmission {
         }
         validate_install_plan_token(
             &self.plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -734,6 +757,7 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
         }
         validate_uninstall_plan_token(
             &self.plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -795,6 +819,7 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
         }
         validate_reinstall_plan_token(
             &self.plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -838,6 +863,7 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
         }
         validate_recovery_plan_token(
             &self.plan_token,
+            LifecycleTokenEnvironment::Sandbox,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -1000,6 +1026,7 @@ struct ReinstallBlockReasonTokenFacts {
 }
 
 pub(crate) fn issue_install_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1014,6 +1041,7 @@ pub(crate) fn issue_install_plan_token(
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
         .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_install_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1028,6 +1056,7 @@ pub(crate) fn issue_install_plan_token(
 }
 
 pub(crate) fn issue_uninstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1039,6 +1068,7 @@ pub(crate) fn issue_uninstall_plan_token(
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
         .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_uninstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1053,6 +1083,7 @@ pub(crate) fn issue_uninstall_plan_token(
 }
 
 pub(crate) fn issue_recovery_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1064,6 +1095,7 @@ pub(crate) fn issue_recovery_plan_token(
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
         .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_recovery_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1078,6 +1110,7 @@ pub(crate) fn issue_recovery_plan_token(
 }
 
 pub(crate) fn issue_reinstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1089,6 +1122,7 @@ pub(crate) fn issue_reinstall_plan_token(
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
         .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_reinstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1104,6 +1138,7 @@ pub(crate) fn issue_reinstall_plan_token(
 
 fn validate_install_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1115,6 +1150,7 @@ fn validate_install_plan_token(
         return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_install_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1131,6 +1167,7 @@ fn validate_install_plan_token(
 
 fn validate_uninstall_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1142,6 +1179,7 @@ fn validate_uninstall_plan_token(
         return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_uninstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1158,6 +1196,7 @@ fn validate_uninstall_plan_token(
 
 fn validate_recovery_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1169,6 +1208,7 @@ fn validate_recovery_plan_token(
         return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_recovery_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1185,6 +1225,7 @@ fn validate_recovery_plan_token(
 
 fn validate_reinstall_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
@@ -1196,6 +1237,7 @@ fn validate_reinstall_plan_token(
         return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_reinstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1211,6 +1253,7 @@ fn validate_reinstall_plan_token(
 }
 
 fn build_install_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
@@ -1223,7 +1266,7 @@ fn build_install_plan_token(
         &InstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_APPLY_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1240,6 +1283,7 @@ fn build_install_plan_token(
 }
 
 fn build_uninstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
@@ -1252,7 +1296,7 @@ fn build_uninstall_plan_token(
         &UninstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_UNINSTALL_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1266,6 +1310,7 @@ fn build_uninstall_plan_token(
 }
 
 fn build_recovery_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
@@ -1278,7 +1323,7 @@ fn build_recovery_plan_token(
         &RecoveryPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_RECOVERY_APPLY_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1302,6 +1347,7 @@ fn build_recovery_plan_token(
 }
 
 fn build_reinstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
@@ -1314,7 +1360,7 @@ fn build_reinstall_plan_token(
         &ReinstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_REINSTALL_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1786,6 +1832,7 @@ mod tests {
             .build_install_plan("mhw", "default", "mod-a")
             .expect("plan facts");
         let issued = issue_install_plan_token(
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -1797,6 +1844,7 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &issued.token,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &ProfileId::new("other"),
                 &mod_id,
@@ -1805,7 +1853,53 @@ mod tests {
             ),
             Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
         );
+        assert_eq!(
+            validate_install_plan_token(
+                &issued.token,
+                LifecycleTokenEnvironment::Production,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
+            Err(SandboxLifecycleAutomationError::PlanTokenInvalid),
+            "sandbox token 不得在 production 环境通过校验"
+        );
+        let production_issued = issue_install_plan_token(
+            LifecycleTokenEnvironment::Production,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("production token");
+        assert_eq!(
+            validate_install_plan_token(
+                &production_issued.token,
+                LifecycleTokenEnvironment::Sandbox,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
+            Err(SandboxLifecycleAutomationError::PlanTokenInvalid),
+            "production token 不得在 sandbox 环境通过校验"
+        );
+        validate_install_plan_token(
+            &production_issued.token,
+            LifecycleTokenEnvironment::Production,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("production token 在 production 环境有效");
         let expired = build_install_plan_token(
+            LifecycleTokenEnvironment::Sandbox,
             1,
             &game_id,
             &profile_id,
@@ -1817,6 +1911,7 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &expired,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
@@ -1828,6 +1923,7 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 "not-a-token",
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
@@ -1846,6 +1942,7 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &issued.token,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
