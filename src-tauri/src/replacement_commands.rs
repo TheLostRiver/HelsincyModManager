@@ -468,12 +468,10 @@ fn analysis_error_to_command_error(error: ReplacementServiceError) -> CommandErr
 
 impl From<ReplacementTarget> for ReplacementTargetDto {
     fn from(target: ReplacementTarget) -> Self {
-        // I18N-08：不再按固定 locale 投影，DTO 携带全语言名称表；
-        // 空表以 internal_id 兜底，保证前端永远有可展示文本。
-        let mut display_names = target.display_name().clone();
-        if display_names.is_empty() {
-            display_names.insert("en".to_owned(), target.internal_id().to_owned());
-        }
+        // I18N-08：不再按固定 locale 投影，DTO 携带全语言名称表。
+        // LocalizedText 构造时已拒绝空表（EmptyLocalizedText），此处必然非空。
+        let display_names: std::collections::BTreeMap<String, String> =
+            target.display_name().clone().into();
         Self {
             id: target.id().as_str().to_owned(),
             game_id: target.game_id().as_str().to_owned(),
