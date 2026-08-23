@@ -113,7 +113,13 @@ test("select page rejects the whole addition when it exceeds the remaining capac
 
   assert.deepEqual(ids(rejected.selectedIds), ids(previous.selectedIds));
   assert.equal(rejected.notice?.code, "mod_selection_page_limit_exceeded");
-  assert.match(rejected.notice?.message ?? "", /当前仅剩 1 个名额/);
+  // I18N-02 起 notice 只带语义参数，文本由渲染层取词。
+  assert.deepEqual(rejected.notice, {
+    code: "mod_selection_page_limit_exceeded",
+    variant: "select-page",
+    newCount: 2,
+    remainingSlots: 1,
+  });
 });
 
 test("invert page rejects atomically when its complete result exceeds the limit", () => {
@@ -135,17 +141,20 @@ test("invert page rejects atomically when its complete result exceeds the limit"
 test("query context reset clears selection, exits batch mode, and does not repeat once empty", () => {
   const reset = reduceModSelection(state("batch", ["mod-a", "mod-b"]), {
     type: "reset-context",
-    reason: "筛选条件已变化",
+    reason: "filters-changed",
   });
   const repeated = reduceModSelection(reset, {
     type: "reset-context",
-    reason: "筛选条件已变化",
+    reason: "filters-changed",
   });
 
   assert.equal(reset.mode, "single");
   assert.deepEqual(ids(reset.selectedIds), []);
-  assert.equal(reset.notice?.code, "mod_selection_context_reset");
-  assert.match(reset.notice?.message ?? "", /已清空 2 项选择/);
+  assert.deepEqual(reset.notice, {
+    code: "mod_selection_context_reset",
+    reason: "filters-changed",
+    clearedCount: 2,
+  });
   assert.equal(repeated, reset);
 });
 

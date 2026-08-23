@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 
+import { externalImportCopy } from "./externalImportCopy.ts";
 import {
   EXTERNAL_IMPORT_RESULT_10000_VALIDATION_BUDGET_MS,
   appendExternalImportResults,
@@ -12,6 +13,8 @@ import {
   summarizeExternalImportResults,
   toExternalImportResultViewModel,
 } from "./externalImportResultModel.ts";
+
+const zhResult = externalImportCopy.zh_cn.result;
 
 function item(overrides = {}) {
   return {
@@ -184,31 +187,31 @@ test("result presentation and summary distinguish partial success without event-
     cancelled: 0,
     retryable: 1,
   });
-  assert.equal(getExternalImportBatchStatusLabel("completed_with_errors"), "部分完成");
+  assert.equal(getExternalImportBatchStatusLabel("completed_with_errors", zhResult), "部分完成");
 
-  const failed = toExternalImportResultViewModel(results[2]);
+  const failed = toExternalImportResultViewModel(results[2], zhResult);
   assert.equal(failed.statusLabel, "导入失败");
   assert.equal(failed.reasonLabel, "可重试");
   assert.equal(failed.retryable, true);
 
-  const blocked = toExternalImportResultViewModel(results[3]);
+  const blocked = toExternalImportResultViewModel(results[3], zhResult);
   assert.equal(blocked.reasonLabel, "来源已变化");
   assert.equal(blocked.statusTone, "danger");
 });
 
 test("result pagination deduplicates candidate ids and unknown UI errors remain stable", () => {
-  const existing = [toExternalImportResultViewModel(item())];
+  const existing = [toExternalImportResultViewModel(item(), zhResult)];
   const merged = appendExternalImportResults(existing, [
     item(),
     item({ candidateId: "candidate-b", importedModId: null, status: "skipped" }),
-  ]);
+  ], zhResult);
 
   assert.deepEqual(
     merged.map((result) => result.candidateId),
     ["candidate-a", "candidate-b"],
   );
   assert.equal(
-    getExternalImportResultErrorMessage("C:\\private\\raw-error"),
+    getExternalImportResultErrorMessage("C:\\private\\raw-error", zhResult),
     "无法读取批量导入结果，请稍后重试",
   );
   assert.equal(isExternalImportResultCoverageValid(100, "50", 50), true);

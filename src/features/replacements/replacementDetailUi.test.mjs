@@ -20,7 +20,11 @@ test("Mod detail unified panel owns the replacement target tab", () => {
     dialogCss,
     /@media \(max-width: 760px\)[\s\S]*\.mod-detail-dialog__body\.is-replacement[\s\S]*order:\s*-1/,
   );
-  assert.match(dialog, /替换目标/);
+  assert.match(dialog, /dialogCopy\.tabReplacement/);
+  assert.match(
+    readSource("src/features/mods/modDetailDialogCopy.ts"),
+    /tabReplacement: "替换目标"/,
+  );
   assert.match(dialog, /<ReplacementTargetPanel/);
   assert.match(dialog, /replacementCompletedLocally/);
   assert.match(dialog, /completedLocally=\{replacementCompletedLocally\}/);
@@ -39,19 +43,19 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /previewRetargetReinstall/);
   assert.match(panel, /startRetargetReinstallTask/);
   assert.match(panel, /cancelRetargetInstallTask/);
-  assert.match(panel, /取消任务/);
+  assert.match(panel, /rCopy\.panel\.cancelTask/);
   // 错误码 -> 文案的映射已抽到 replacementErrorText.ts，面板只负责调用。
   assert.match(panel, /import \{ replacementErrorMessage \} from "\.\/replacementErrorText"/);
-  const errorText = readSource("src/features/replacements/replacementErrorText.ts");
-  assert.match(errorText, /task_cannot_be_cancelled/);
-  assert.match(errorText, /当前目标已安装/);
+  const errorCopy = readSource("src/features/replacements/replacementCopy.ts");
+  assert.match(errorCopy, /task_cannot_be_cancelled/);
+  assert.match(errorCopy, /当前目标已安装/);
   assert.match(panel, /install\.reinstall/);
   assert.match(panel, /data-installed=\{currentInstalled\}/);
   assert.match(panel, /analysis\.installedTargetId/);
-  assert.match(panel, /保留/);
-  assert.match(panel, /替换/);
-  assert.match(panel, /新增/);
-  assert.match(panel, /移除旧项/);
+  assert.match(panel, /rCopy\.panel\.countRetained/);
+  assert.match(panel, /rCopy\.panel\.countReplaced/);
+  assert.match(panel, /rCopy\.panel\.countAdded/);
+  assert.match(panel, /rCopy\.panel\.countStale/);
   assert.match(panel, /previewState\.preview\.prerequisiteDecision\.status/);
   assert.match(panel, /getPrerequisiteDecisionMessage/);
   assert.match(panel, /getPrerequisiteDecisionCodeLabel/);
@@ -63,8 +67,11 @@ test("Mod detail unified panel owns the replacement target tab", () => {
     panel,
     /completionReloadPendingRef\.current = false;[\s\S]*setRefreshState\(\{ status: "ready" \}\);[\s\S]*setTrackedTaskState\(\{ status: "idle" \}\)/,
   );
-  assert.match(panel, /重试刷新/);
-  assert.match(panel, /weapon_partial_part_set/);
+  assert.match(panel, /rCopy\.panel\.retryRefresh/);
+  assert.match(
+    readSource("src/features/replacements/replacementCopy.ts"),
+    /weapon_partial_part_set/,
+  );
   // catalogScope 随 developer seed 退役（WR-05），面板不得再残留 scope 分支。
   assert.doesNotMatch(panel, /catalogScope|developer_sandbox/);
   assert.doesNotMatch(panel, /source\.pathFamily/);

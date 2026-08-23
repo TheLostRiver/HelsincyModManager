@@ -1,6 +1,11 @@
 import { LoaderCircle } from "lucide-react";
 import { useId } from "react";
+import { resolveCopy, useI18n } from "../../../shared/i18n";
 import type { CategoryItem } from "../../categories/categoryApi";
+import {
+  externalImportCopy,
+  type ExternalImportCopy,
+} from "./externalImportCopy";
 import type { ExternalImportPreviewCandidateViewModel } from "./externalImportPreviewModel";
 import {
   canSelectExternalImportCandidateWithDecision,
@@ -21,10 +26,13 @@ type ExternalImportCandidateSelectionItemProps = {
   onSelectedChange: (selected: boolean) => void;
 };
 
-function resolutionLabel(resolution: ExternalImportConflictResolution) {
+function resolutionLabel(
+  resolution: ExternalImportConflictResolution,
+  candidate: ExternalImportCopy["candidate"],
+) {
   return resolution === "keep_both"
-    ? "保留两者并创建新的 Mod"
-    : "忽略无效元数据并继续导入";
+    ? candidate.keepBothHint
+    : candidate.ignoreInvalidHint;
 }
 
 export function ExternalImportCandidateSelectionItem({
@@ -36,6 +44,8 @@ export function ExternalImportCandidateSelectionItem({
   onDecisionChange,
   onSelectedChange,
 }: ExternalImportCandidateSelectionItemProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(externalImportCopy, locale).candidate;
   const checkboxId = useId();
   const resolutionId = useId();
   const categoryId = useId();
@@ -72,7 +82,7 @@ export function ExternalImportCandidateSelectionItem({
           <LoaderCircle
             className="external-import__spinner"
             size={16}
-            aria-label="正在保存候选选择"
+            aria-label={copy.savingSelection}
           />
         ) : null}
       </div>
@@ -95,7 +105,7 @@ export function ExternalImportCandidateSelectionItem({
 
       {requiredResolution !== null && requiredResolution !== "unsupported" ? (
         <div className="external-import__candidate-field">
-          <label htmlFor={resolutionId}>冲突处理</label>
+          <label htmlFor={resolutionId}>{copy.conflictLabel}</label>
           <select
             id={resolutionId}
             value={decision.conflictResolution ?? ""}
@@ -110,9 +120,9 @@ export function ExternalImportCandidateSelectionItem({
               })
             }
           >
-            <option value="">请选择明确处理方式</option>
+            <option value="">{copy.conflictPlaceholder}</option>
             <option value={requiredResolution}>
-              {resolutionLabel(requiredResolution)}
+              {resolutionLabel(requiredResolution, copy)}
             </option>
           </select>
         </div>
@@ -120,7 +130,7 @@ export function ExternalImportCandidateSelectionItem({
 
       {supported ? (
         <div className="external-import__candidate-field">
-          <label htmlFor={categoryId}>导入分类</label>
+          <label htmlFor={categoryId}>{copy.categoryLabel}</label>
           <select
             id={categoryId}
             value={decision.categoryId ?? ""}
@@ -132,7 +142,7 @@ export function ExternalImportCandidateSelectionItem({
               })
             }
           >
-            <option value="">不分配分类</option>
+            <option value="">{copy.categoryNone}</option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
@@ -142,7 +152,7 @@ export function ExternalImportCandidateSelectionItem({
         </div>
       ) : (
         <p className="external-import__candidate-blocked">
-          此候选由后端标记为不可选择，需要重新扫描或处理来源问题。
+          {copy.unselectable}
         </p>
       )}
     </li>

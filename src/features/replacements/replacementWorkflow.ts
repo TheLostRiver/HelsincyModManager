@@ -1,5 +1,6 @@
 import type { TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
+import type { ReplacementCopy } from "./replacementCopy";
 
 export type RetargetInstallTaskPhase =
   | "install.retarget.queued"
@@ -38,29 +39,33 @@ export type RetargetInstallTaskState =
       message: string;
     };
 
-const phaseLabels: Record<RetargetInstallTaskPhase, string> = {
-  "install.retarget.queued": "等待安装",
-  "install.retarget.plan.building": "重建替换计划",
-  "install.retarget.commit.processing": "写入并记录安装清单",
-  "install.retarget.completed": "替换目标安装完成",
-  "install.retarget.failed": "替换目标安装失败",
-  "install.cancelled": "替换目标安装已取消",
-  "install.reinstall.queued": "等待目标切换",
-  "install.reinstall.plan.building": "生成目标切换计划",
-  "install.reinstall.preflight.processing": "执行提交前检查",
-  "install.reinstall.commit.processing": "提交目标切换",
-  "install.reinstall.rollback.processing": "恢复原目标",
-  "install.reinstall.completed": "替换目标切换完成",
-  "install.reinstall.failed": "替换目标切换失败",
-  "install.reinstall.cancelled": "替换目标切换已取消",
-};
+// 阶段集合只承担语义判断；文本一律经 replacementCopy.phases 取。
+const retargetInstallTaskPhases: ReadonlySet<string> = new Set([
+  "install.retarget.queued",
+  "install.retarget.plan.building",
+  "install.retarget.commit.processing",
+  "install.retarget.completed",
+  "install.retarget.failed",
+  "install.cancelled",
+  "install.reinstall.queued",
+  "install.reinstall.plan.building",
+  "install.reinstall.preflight.processing",
+  "install.reinstall.commit.processing",
+  "install.reinstall.rollback.processing",
+  "install.reinstall.completed",
+  "install.reinstall.failed",
+  "install.reinstall.cancelled",
+]);
 
 export function isRetargetInstallTaskPhase(phase: string): phase is RetargetInstallTaskPhase {
-  return Object.prototype.hasOwnProperty.call(phaseLabels, phase);
+  return retargetInstallTaskPhases.has(phase);
 }
 
-export function retargetInstallTaskPhaseLabel(phase: RetargetInstallTaskPhase) {
-  return phaseLabels[phase];
+export function retargetInstallTaskPhaseLabel(
+  phase: RetargetInstallTaskPhase,
+  phases: ReplacementCopy["phases"],
+) {
+  return phases[phase];
 }
 
 export function canCancelRetargetInstallTaskPhase(phase: RetargetInstallTaskPhase) {
@@ -77,6 +82,7 @@ export function nextRetargetInstallTaskState(
   current: RetargetInstallTaskState,
   event: Pick<TaskProgressEventDto, "taskId" | "kind" | "status" | "phase"> &
     Partial<Pick<TaskProgressEventDto, "error" | "message">>,
+  events: ReplacementCopy["events"],
 ): RetargetInstallTaskState {
   if (
     current.status === "completed" ||
@@ -115,8 +121,8 @@ export function nextRetargetInstallTaskState(
       phase: event.phase,
       message:
         event.phase === "install.reinstall.failed"
-          ? "目标切换失败，请刷新状态并重新生成预览"
-          : "替换目标安装失败，请刷新状态后重试",
+          ? events.reinstallFailed
+          : events.retargetFailed,
     };
   }
   if (
@@ -144,6 +150,7 @@ export type RetargetInstallRefreshState =
 
 export async function refreshRetargetInstallState(
   onInstallCompleted: () => Promise<void> | void,
+  events: ReplacementCopy["events"],
 ): Promise<Extract<RetargetInstallRefreshState, { status: "ready" | "failed" }>> {
   try {
     await onInstallCompleted();
@@ -151,7 +158,7 @@ export async function refreshRetargetInstallState(
   } catch {
     return {
       status: "failed",
-      message: "安装已完成，但状态刷新失败，请重试。",
+      message: events.refreshFailed,
     };
   }
 }

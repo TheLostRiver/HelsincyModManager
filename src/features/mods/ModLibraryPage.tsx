@@ -9,14 +9,24 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
+import {
+  modLibraryCopy,
+  renderModSelectionNotice,
+  type ModLibraryCopy,
+} from "./modLibraryCopy";
+import { modLifecycleCopy } from "./modLifecycleCopy";
 import { useBatchModLifecycleWorkflow } from "./batch-lifecycle/useBatchModLifecycleWorkflow.ts";
 import {
   useBatchModLifecycleCapability,
 } from "./batch-lifecycle/useBatchModLifecycleCapability.ts";
-import { getBatchCapabilityUnavailableLabel } from "./batch-lifecycle/batchModLifecycleCopy.ts";
+import {
+  batchModLifecycleCopy,
+  getBatchCapabilityUnavailableLabel,
+} from "./batch-lifecycle/batchModLifecycleCopy.ts";
 import {
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
@@ -98,13 +108,13 @@ import {
   createInitialModSelectionState,
   reduceModSelection,
   type ModCardSelectionIntent,
+  type ModSelectionResetReason,
 } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
-import { MOD_LIBRARY_QUERY_BUSY_MESSAGE } from "./compactActionAvailability";
 import {
   analyzeImportedModReplacement,
   listReplacementTargets,
@@ -221,7 +231,10 @@ const initialScrollUiState = getModLibraryScrollUiState({
   clientHeight: 0,
 });
 
-function installPlanPreviewErrorMessage(error: unknown) {
+function installPlanPreviewErrorMessage(
+  error: unknown,
+  planPreview: ModLibraryCopy["page"]["planPreview"],
+) {
   const code =
     typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
       ? error.code
@@ -229,21 +242,25 @@ function installPlanPreviewErrorMessage(error: unknown) {
 
   switch (code) {
     case "install_planning_imported_mod_not_found":
-      return "未找到已导入的 Mod";
+      return planPreview.modNotFound;
     case "install_planning_imported_mod_analysis_unavailable":
-      return "无法读取导入分析";
+      return planPreview.analysisUnavailable;
     case "install_planning_imported_mod_sandbox_unavailable":
     case "install_planning_imported_mod_file_scan_unavailable":
-      return "无法读取导入文件";
+      return planPreview.archiveUnavailable;
     case "install_planning_game_adapter_not_found":
     case "game_id_invalid":
-      return "当前游戏不支持安装计划预览";
+      return planPreview.unsupportedGame;
     default:
-      return "安装计划预览失败";
+      return planPreview.failed;
   }
 }
 
-function installTaskErrorMessage(error: unknown, operation: ManagedInstallTaskOperation) {
+function installTaskErrorMessage(
+  error: unknown,
+  operation: ManagedInstallTaskOperation,
+  lifecycleStart: ModLibraryCopy["page"]["lifecycleStart"],
+) {
   const code =
     typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
       ? error.code
@@ -251,14 +268,18 @@ function installTaskErrorMessage(error: unknown, operation: ManagedInstallTaskOp
 
   switch (code) {
     case "install_planning_imported_mod_not_found":
-      return "未找到已导入的 Mod";
+      return lifecycleStart.modNotFound;
     case "install_planning_imported_mod_analysis_unavailable":
-      return "无法读取导入分析";
+      return lifecycleStart.analysisUnavailable;
     case "install_planning_game_adapter_not_found":
     case "game_id_invalid":
-      return operation === "uninstall" ? "当前游戏不支持卸载任务" : "当前游戏不支持安装任务";
+      return operation === "uninstall"
+        ? lifecycleStart.unsupportedUninstall
+        : lifecycleStart.unsupportedInstall;
     default:
-      return operation === "uninstall" ? "卸载任务启动失败" : "安装任务启动失败";
+      return operation === "uninstall"
+        ? lifecycleStart.uninstallStartFailed
+        : lifecycleStart.installStartFailed;
   }
 }
 
@@ -292,6 +313,13 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheet
 }
 
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale);
+  const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
+  const batchCopy = resolveCopy(batchModLifecycleCopy, locale);
+  // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
+  const lifecycleCopyRef = useRef(lifecycleCopy);
+  lifecycleCopyRef.current = lifecycleCopy;
   const { activeProfile, activeProfileId } = useActiveProfile();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
@@ -347,7 +375,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const resetContentScroll = useCallback(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, []);
-  const resetPageInteraction = useCallback((reason = "查询条件已变化") => {
+  const resetPageInteraction = useCallback((reason: ModSelectionResetReason = "query-changed") => {
     dispatchSelection({ type: "reset-context", reason });
     resetContentScroll();
   }, [resetContentScroll]);
@@ -361,6 +389,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const batchCapability = useBatchModLifecycleCapability();
   const batchCapabilityUnavailableReason = getBatchCapabilityUnavailableLabel(
     batchCapability.capability,
+    batchCopy.capability,
   );
   const batchPreviewUnavailableReason =
     batchCapability.status === "loading" || !batchCapability.capability?.previewAvailable
@@ -472,15 +501,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const libraryQueryBlocked = libraryQuery.blockedReason !== null;
   const libraryQueryBusy = !libraryQueryBlocked
     && (libraryQuery.initialLoading || libraryQuery.refreshing);
+  const libraryQueryErrorMessage =
+    libraryQuery.errorCode === null
+      ? null
+      : libraryQuery.errorCode === "unknown"
+        ? copy.page.loadFailedFallback
+        : copy.page.queryErrors[libraryQuery.errorCode];
   const libraryQueryBlockedMessage = libraryQuery.blockedReason === "profile_context_required"
-    ? "请先选择可用的配置档，再查看安装状态筛选。"
-    : "当前安装状态筛选不受支持，请选择其他筛选条件。";
+    ? copy.page.statusFilter.needProfile
+    : copy.page.statusFilter.unsupported;
   const filterChips = useMemo(
     () => buildLibraryFilterChips(categories, {
       statusFiltersEnabled: profileContext !== null,
-      statusDisabledReason: activeProfile.status === "loading" ? "配置档加载中" : "选择配置档后可用",
+      statusDisabledReason:
+        activeProfile.status === "loading"
+          ? copy.page.statusFilter.profileLoading
+          : copy.page.statusFilter.selectProfile,
+      filterLabels: copy.filters,
     }),
-    [activeProfile.status, categories, profileContext],
+    [activeProfile.status, categories, copy, profileContext],
   );
 
   const selectedCount = selectedIds.size;
@@ -547,7 +586,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, []);
 
   const refreshModLibrary = useCallback(async () => {
-    dispatchSelection({ type: "reset-context", reason: "Mod 库已刷新" });
+    dispatchSelection({ type: "reset-context", reason: "library-refreshed" });
     await Promise.all([refreshLibraryPage(), refreshCategories()]);
   }, [refreshCategories, refreshLibraryPage]);
 
@@ -586,26 +625,26 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return null;
     }
     if (libraryQueryBusy) {
-      return MOD_LIBRARY_QUERY_BUSY_MESSAGE;
+      return copy.page.queryBusy;
     }
     if (
       activeProfile.status !== "ready"
       || activeProfileId === null
       || activeProfileId !== uninstallConfirmation.profileId
     ) {
-      return "配置档状态已变化，当前不能安全卸载。";
+      return copy.page.uninstallBlocked.profileChanged;
     }
 
     const currentItem = libraryItems.find((item) => item.id === uninstallConfirmation.modId);
     const currentSummary = currentItem?.installSummary;
     if (currentSummary?.status !== "installed") {
-      return "后端安装状态已变化，请关闭并刷新后重试。";
+      return copy.page.uninstallBlocked.backendStatusChanged;
     }
     return currentSummary.managedFileCount === uninstallConfirmation.managedFileCount
       && currentSummary.backupCount === uninstallConfirmation.backupCount
       ? null
-      : "后端安装摘要已变化，请关闭并刷新后重试。";
-  }, [activeProfile.status, activeProfileId, libraryItems, libraryQueryBusy, uninstallConfirmation]);
+      : copy.page.uninstallBlocked.backendSummaryChanged;
+  }, [activeProfile.status, activeProfileId, copy, libraryItems, libraryQueryBusy, uninstallConfirmation]);
 
   const confirmSelectedReinstall = () => {
     if (libraryQueryBusy) {
@@ -636,13 +675,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
     if (!isSameLibraryFilter(activeFilter, normalizedFilter)) {
       resetLibraryPage();
-      resetPageInteraction("筛选条件已变化");
+      resetPageInteraction("filters-changed");
     }
     setActiveFilter(normalizedFilter);
   }, [activeFilter, filterChips, resetLibraryPage, resetPageInteraction]);
 
   useEffect(() => {
-    dispatchSelection({ type: "reset-context", reason: "活动配置档已变化" });
+    dispatchSelection({ type: "reset-context", reason: "profile-changed" });
     resetLibraryPage();
     resetContentScroll();
   }, [activeProfile.status, activeProfileId, resetContentScroll, resetLibraryPage]);
@@ -763,7 +802,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           failClosedModInstallSummary(items, terminalTask.modId));
       }
 
-      setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh));
+      setLifecycleToast(getManagedInstallTerminalToast(terminalTask, terminalRefresh, lifecycleCopyRef.current.terminalToasts));
     };
 
     void refreshTerminalFacts();
@@ -804,7 +843,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       }
 
       setTrackedInstallTaskState((current) => {
-        return nextManagedInstallTaskStateFromProgress(current, event.payload);
+        return nextManagedInstallTaskStateFromProgress(current, event.payload, lifecycleCopyRef.current.installTask);
       });
     }).then((unlisten) => {
       if (disposed) {
@@ -876,11 +915,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [libraryItems.length, scrollUiState.showScrollUi, updateScrollUiState]);
 
   const selectionInteractionDisabledReason = libraryQueryBusy
-    ? MOD_LIBRARY_QUERY_BUSY_MESSAGE
+    ? copy.page.queryBusy
     : managedInstallTaskActive || reinstallWorkflow.workflowActive
-      ? "请等待当前安装任务完成"
+      ? copy.page.cardAction.waitInstallTask
       : batchWorkflow.state.status !== "idle"
-        ? "请先完成或关闭当前批量操作"
+        ? copy.page.cardAction.closeBatchFirst
         : undefined;
   const selectionInteractionLocked = selectionInteractionDisabledReason !== undefined;
   const contextMenuLifecycleAction = useMemo(() => {
@@ -889,25 +928,25 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       : libraryItems.find((candidate) => candidate.id === contextMenuState.modId) ?? null;
     const status = item?.installSummary?.status;
     const label = status === "installed"
-      ? "卸载 Mod"
+      ? copy.page.cardAction.uninstallLabel
       : status === "not_installed"
-        ? "安装 Mod"
-        : "安装 / 卸载 Mod";
+        ? copy.page.cardAction.installLabel
+        : copy.page.cardAction.installOrUninstallLabel;
 
     if (item === null) {
-      return { actionId: null, label, disabledReason: "当前 Mod 不在列表中" } as const;
+      return { actionId: null, label, disabledReason: copy.page.cardAction.notInList } as const;
     }
     if (selectionMode === "batch") {
-      return { actionId: null, label, disabledReason: "批量选择中，请使用上方批量操作" } as const;
+      return { actionId: null, label, disabledReason: copy.page.cardAction.batchSelecting } as const;
     }
     if (selectionInteractionDisabledReason !== undefined) {
       return { actionId: null, label, disabledReason: selectionInteractionDisabledReason } as const;
     }
     if (activeProfile.status !== "ready" || activeProfileId === null) {
-      return { actionId: null, label, disabledReason: "选择配置档后可执行此操作" } as const;
+      return { actionId: null, label, disabledReason: copy.page.cardAction.selectProfileFirst } as const;
     }
     if (recoveryPanelStateForItem(item) !== null) {
-      return { actionId: null, label, disabledReason: "请先处理安装恢复状态" } as const;
+      return { actionId: null, label, disabledReason: copy.page.cardAction.resolveRecoveryFirst } as const;
     }
     if (status === "installed") {
       return { actionId: "uninstall", label, tone: "danger" } as const;
@@ -915,11 +954,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (status === "not_installed") {
       return { actionId: "install", label, tone: "neutral" } as const;
     }
-    return { actionId: null, label, disabledReason: "当前安装状态不可执行此操作" } as const;
+    return { actionId: null, label, disabledReason: copy.page.cardAction.statusNotActionable } as const;
   }, [
     activeProfile.status,
     activeProfileId,
     contextMenuState,
+    copy,
     libraryItems,
     selectionInteractionDisabledReason,
     selectionMode,
@@ -927,13 +967,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const handleQueryChange = (nextQuery: string) => {
     setQuery(nextQuery);
-    resetPageInteraction("搜索条件已变化");
+    resetPageInteraction("search-changed");
   };
 
   const handleFilterChange = (nextFilter: ModLibraryFilter) => {
     setActiveFilter(nextFilter);
     libraryQuery.resetPage();
-    resetPageInteraction("筛选条件已变化");
+    resetPageInteraction("filters-changed");
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -950,7 +990,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setQuery("");
     setActiveFilter(allLibraryFilter);
     libraryQuery.resetPage();
-    resetPageInteraction("查询条件已重置");
+    resetPageInteraction("query-reset");
   };
 
   const retryLibraryQuery = () => {
@@ -1040,7 +1080,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         setInstallPlanDetailState({
           status: "error",
           modName,
-          message: installPlanPreviewErrorMessage(error),
+          message: installPlanPreviewErrorMessage(error, copy.page.planPreview),
         });
       });
   };
@@ -1067,7 +1107,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       setInstallPlanDetailState({
         status: "error",
         modName,
-        message: "配置档尚未就绪",
+        message: copy.page.toasts.profileNotReady,
       });
       return;
     }
@@ -1108,11 +1148,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             modId,
             modName,
             phase: "install.failed",
-            message: "安装任务返回了无效类型",
+            message: copy.page.toasts.installInvalidType,
           });
           setLifecycleToast({
             id: `install-start-${++startFailureToastSequenceRef.current}`,
-            title: "安装任务启动失败",
+            title: copy.page.toasts.installStartFailedTitle,
             message: modName,
             tone: "danger",
           });
@@ -1135,7 +1175,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           }
 
           return pendingProgressEvent
-            ? nextManagedInstallTaskStateFromProgress(runningState, pendingProgressEvent)
+            ? nextManagedInstallTaskStateFromProgress(
+                runningState,
+                pendingProgressEvent,
+                lifecycleCopyRef.current.installTask,
+              )
             : runningState;
         });
       })
@@ -1149,12 +1193,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           modId,
           modName,
           phase: "install.failed",
-          message: installTaskErrorMessage(error, "install"),
+          message: installTaskErrorMessage(error, "install", copy.page.lifecycleStart),
         });
         setLifecycleToast({
           id: `install-start-${++startFailureToastSequenceRef.current}`,
-          title: "安装任务启动失败",
-          message: installTaskErrorMessage(error, "install"),
+          title: copy.page.toasts.installStartFailedTitle,
+          message: installTaskErrorMessage(error, "install", copy.page.lifecycleStart),
           tone: "danger",
         });
       });
@@ -1228,11 +1272,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             modId,
             modName,
             phase: "install.uninstall.failed",
-            message: "卸载任务返回了无效类型",
+            message: copy.page.toasts.uninstallInvalidType,
           });
           setLifecycleToast({
             id: `uninstall-start-${++startFailureToastSequenceRef.current}`,
-            title: "卸载任务启动失败",
+            title: copy.page.toasts.uninstallStartFailedTitle,
             message: modName,
             tone: "danger",
           });
@@ -1255,7 +1299,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           }
 
           return pendingProgressEvent
-            ? nextManagedInstallTaskStateFromProgress(runningState, pendingProgressEvent)
+            ? nextManagedInstallTaskStateFromProgress(
+                runningState,
+                pendingProgressEvent,
+                lifecycleCopyRef.current.installTask,
+              )
             : runningState;
         });
       })
@@ -1269,12 +1317,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           modId,
           modName,
           phase: "install.uninstall.failed",
-          message: installTaskErrorMessage(error, "uninstall"),
+          message: installTaskErrorMessage(error, "uninstall", copy.page.lifecycleStart),
         });
         setLifecycleToast({
           id: `uninstall-start-${++startFailureToastSequenceRef.current}`,
-          title: "卸载任务启动失败",
-          message: installTaskErrorMessage(error, "uninstall"),
+          title: copy.page.toasts.uninstallStartFailedTitle,
+          message: installTaskErrorMessage(error, "uninstall", copy.page.lifecycleStart),
           tone: "danger",
         });
       });
@@ -1418,7 +1466,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       && batchWorkflow.state.result.status === "completed";
     batchWorkflow.reset();
     if (completed) {
-      dispatchSelection({ type: "reset-context", reason: "批量操作已完成" });
+      dispatchSelection({ type: "reset-context", reason: "batch-completed" });
     }
   };
   const closeInstallPlanDetail = () => {
@@ -1428,7 +1476,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const { showScrollUi, thumbStyle } = scrollUiState;
 
   return (
-    <section className="mod-library" aria-label="模组库">
+    <section className="mod-library" aria-label={copy.page.regionLabel}>
       <div className="mod-library__sticky-controls anim-stagger-item" style={staggerStyle(0)}>
         <div className="mod-library__toolbar-slot">
           <LibraryToolbar
@@ -1451,7 +1499,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             selectedCount={selectedCount}
             selectedPageCount={selectedPageCount}
             pageCount={libraryItems.length}
-            selectionNotice={selectionNotice?.message ?? null}
+            selectionNotice={
+              selectionNotice ? renderModSelectionNotice(selectionNotice, copy.selection) : null
+            }
             selectionInteractionDisabledReason={selectionInteractionDisabledReason}
             batchPreviewUnavailableReason={batchPreviewUnavailableReason}
             batchWriteUnavailableReason={batchWriteUnavailableReason}
@@ -1557,7 +1607,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       >
         <ModLibraryQueryFeedback
           busy={!libraryQueryBlocked && libraryQuery.refreshing}
-          errorMessage={libraryPage === null ? null : libraryQuery.errorMessage}
+          errorMessage={libraryPage === null ? null : libraryQueryErrorMessage}
           onRetry={retryLibraryQuery}
         />
 
@@ -1581,7 +1631,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             <ModLibrarySkeleton viewMode={viewMode} />
           ) : libraryPage === null ? (
             <ModLibraryInitialError
-              message={libraryQuery.errorMessage ?? "Mod 列表加载失败，请稍后重试"}
+              message={libraryQueryErrorMessage ?? copy.page.loadFailedFallback}
               onRetry={retryLibraryQuery}
             />
           ) : libraryPage.libraryTotal === 0 ? (

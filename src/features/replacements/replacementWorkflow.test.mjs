@@ -11,6 +11,9 @@ import {
   refreshRetargetInstallState,
   resolveInstalledReplacementTargetSelection,
 } from "./replacementWorkflow.ts";
+import { replacementCopy } from "./replacementCopy.ts";
+
+const zhEvents = replacementCopy.zh_cn.events;
 
 test("installed replacement target is restored as context, not an executable switch candidate", () => {
   const targets = [
@@ -142,51 +145,71 @@ test("retarget task state consumes only matching install retarget phases", () =>
     taskId: "task-a",
     phase: "install.retarget.plan.building",
   };
-  const otherTask = nextRetargetInstallTaskState(current, {
-    taskId: "task-b",
-    kind: "install",
-    status: "completed",
-    phase: "install.retarget.completed",
-  });
-  assert.equal(otherTask, current);
-
-  assert.deepEqual(
-    nextRetargetInstallTaskState(current, {
-      taskId: "task-a",
+  const otherTask = nextRetargetInstallTaskState(
+    current,
+    {
+      taskId: "task-b",
       kind: "install",
       status: "completed",
       phase: "install.retarget.completed",
-    }),
+    },
+    zhEvents,
+  );
+  assert.equal(otherTask, current);
+
+  assert.deepEqual(
+    nextRetargetInstallTaskState(
+      current,
+      {
+        taskId: "task-a",
+        kind: "install",
+        status: "completed",
+        phase: "install.retarget.completed",
+      },
+      zhEvents,
+    ),
     { status: "completed", taskId: "task-a", phase: "install.retarget.completed" },
   );
 
-  const cancelled = nextRetargetInstallTaskState(current, {
-    taskId: "task-a",
-    kind: "install",
-    status: "cancelled",
-    phase: "install.cancelled",
-  });
+  const cancelled = nextRetargetInstallTaskState(
+    current,
+    {
+      taskId: "task-a",
+      kind: "install",
+      status: "cancelled",
+      phase: "install.cancelled",
+    },
+    zhEvents,
+  );
   assert.deepEqual(
     cancelled,
     { status: "cancelled", taskId: "task-a", phase: "install.cancelled" },
   );
   assert.equal(
-    nextRetargetInstallTaskState(cancelled, {
-      taskId: "task-a",
-      kind: "install",
-      status: "running",
-      phase: "install.retarget.commit.processing",
-    }),
+    nextRetargetInstallTaskState(
+      cancelled,
+      {
+        taskId: "task-a",
+        kind: "install",
+        status: "running",
+        phase: "install.retarget.commit.processing",
+      },
+      zhEvents,
+    ),
     cancelled,
   );
 
   assert.deepEqual(
-    nextRetargetInstallTaskState(current, {
-      taskId: "task-b",
-      kind: "install",
-      status: "cancelled",
-      phase: "install.cancelled",
-    }),
+    nextRetargetInstallTaskState(
+      current,
+      {
+        taskId: "task-b",
+        kind: "install",
+        status: "cancelled",
+        phase: "install.cancelled",
+      },
+      zhEvents,
+    ),
     current,
   );
 });
@@ -197,33 +220,45 @@ test("retarget switch reducer ignores other task ids and accepts terminal reinst
     taskId: "switch-a",
     phase: "install.reinstall.commit.processing",
   };
-  const otherTask = nextRetargetInstallTaskState(current, {
-    taskId: "switch-b",
-    kind: "install",
-    status: "completed",
-    phase: "install.reinstall.completed",
-  });
-  assert.equal(otherTask, current);
-
-  assert.deepEqual(
-    nextRetargetInstallTaskState(current, {
-      taskId: "switch-a",
+  const otherTask = nextRetargetInstallTaskState(
+    current,
+    {
+      taskId: "switch-b",
       kind: "install",
       status: "completed",
       phase: "install.reinstall.completed",
-    }),
+    },
+    zhEvents,
+  );
+  assert.equal(otherTask, current);
+
+  assert.deepEqual(
+    nextRetargetInstallTaskState(
+      current,
+      {
+        taskId: "switch-a",
+        kind: "install",
+        status: "completed",
+        phase: "install.reinstall.completed",
+      },
+      zhEvents,
+    ),
     { status: "completed", taskId: "switch-a", phase: "install.reinstall.completed" },
   );
 
   assert.deepEqual(
-    nextRetargetInstallTaskState(current, {
-      taskId: "switch-a",
-      kind: "install",
-      status: "failed",
-      phase: "install.reinstall.failed",
-      error: "install_reinstall_failed:manifest",
-      message: "C:/Users/private/game/nativePC/file",
-    }),
+    nextRetargetInstallTaskState(
+      current,
+      {
+        taskId: "switch-a",
+        kind: "install",
+        status: "failed",
+        phase: "install.reinstall.failed",
+        error: "install_reinstall_failed:manifest",
+        message: "C:/Users/private/game/nativePC/file",
+      },
+      zhEvents,
+    ),
     {
       status: "failed",
       taskId: "switch-a",
@@ -238,7 +273,7 @@ test("completed retarget install keeps success while durable refresh can be retr
   const failed = await refreshRetargetInstallState(async () => {
     attempts += 1;
     throw new Error("refresh unavailable");
-  });
+  }, zhEvents);
   assert.deepEqual(failed, {
     status: "failed",
     message: "安装已完成，但状态刷新失败，请重试。",
@@ -246,7 +281,7 @@ test("completed retarget install keeps success while durable refresh can be retr
 
   const ready = await refreshRetargetInstallState(async () => {
     attempts += 1;
-  });
+  }, zhEvents);
   assert.deepEqual(ready, { status: "ready" });
   assert.equal(attempts, 2);
 });

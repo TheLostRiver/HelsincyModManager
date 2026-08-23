@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
@@ -19,6 +20,8 @@ import {
   getPrerequisiteDecisionCodeLabel,
   getPrerequisiteDecisionMessage,
 } from "../mods/modPrerequisiteDecision";
+import { modLifecycleCopy } from "../mods/modLifecycleCopy";
+import { modReinstallCopy, type ModReinstallCopy } from "../mods/modReinstallCopy";
 import { getReinstallBlockingReasonLabel } from "../mods/modReinstallTaskState";
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import {
@@ -30,12 +33,12 @@ import {
   startRetargetInstallTask,
   startRetargetReinstallTask,
 } from "./replacementApi";
+import { replacementCopy, type ReplacementCopy } from "./replacementCopy";
 import { replacementErrorMessage } from "./replacementErrorText";
 import type {
   InitialRetargetInstallPreview,
   ReplacementAnalysis,
   ReplacementTarget,
-  ReplacementWarning,
 } from "./replacementTypes";
 import {
   canCancelRetargetInstallTaskPhase,
@@ -83,24 +86,17 @@ type CancellationState =
   | { status: "requesting"; taskId: string }
   | { status: "error"; taskId: string; message: string };
 
-const warningLabels: Record<ReplacementWarning, string> = {
-  no_supported_assets: "未检测到受支持的外观资源",
-  multiple_sources: "检测到多个源槽位，当前版本不会自动拆分",
-  unsupported_source: "包内包含当前版本不支持的源槽位",
-  source_matches_target: "源槽位与目标槽位相同",
-  weapon_partial_part_set: "武器包只包含部分可选部件，将仅处理已检测到的完整文件对",
-};
-
 function installBlockMessage(
   profileId: string | null,
   installStatus: InstallManifestStatus | undefined,
   completedLocally: boolean,
+  block: ReplacementCopy["block"],
 ) {
   if (profileId === null) {
-    return "当前 Profile 不可用。";
+    return block.profileUnavailable;
   }
   if (completedLocally) {
-    return "写入已完成，正在刷新安装状态。";
+    return block.completedRefreshing;
   }
   switch (installStatus) {
     case "not_installed":
@@ -108,21 +104,25 @@ function installBlockMessage(
       return null;
     case "committed_cleanup_pending":
     case "cleanup_pending":
-      return "当前 Profile 有待收尾的重装事务。";
+      return block.cleanupPending;
     case "rollback_required":
-      return "当前 Profile 需要先完成安装回滚。";
+      return block.rollbackRequired;
     case "repair_required":
-      return "当前 Profile 需要先完成人工修复。";
+      return block.repairRequired;
     case "unknown":
     case undefined:
-      return "安装状态未知，替换目标写入已阻止。";
+      return block.statusUnknown;
   }
 }
 
-function targetSwitchBlockingLabel(code: ReinstallPlanPreview["blockingReasons"][number]["code"]) {
+function targetSwitchBlockingLabel(
+  code: ReinstallPlanPreview["blockingReasons"][number]["code"],
+  panel: ReplacementCopy["panel"],
+  reinstallTask: ModReinstallCopy["task"],
+) {
   return code === "candidate_already_installed"
-    ? "当前目标已安装"
-    : getReinstallBlockingReasonLabel(code);
+    ? panel.candidateAlreadyInstalled
+    : getReinstallBlockingReasonLabel(code, reinstallTask);
 }
 
 export function ReplacementTargetPanel({
@@ -134,6 +134,13 @@ export function ReplacementTargetPanel({
   onBusyChange,
   onInstallCompleted,
 }: ReplacementTargetPanelProps) {
+  const { locale } = useI18n();
+  const rCopy = resolveCopy(replacementCopy, locale);
+  const reinstallTask = resolveCopy(modReinstallCopy, locale).task;
+  const prerequisite = resolveCopy(modLifecycleCopy, locale).prerequisite;
+  // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
+  const rCopyRef = useRef(rCopy);
+  rCopyRef.current = rCopy;
   const [retryToken, setRetryToken] = useState(0);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [query, setQuery] = useState("");
@@ -162,7 +169,7 @@ export function ReplacementTargetPanel({
   const refreshCompletedInstall = useCallback(() => {
     const generation = ++refreshGenerationRef.current;
     setRefreshState({ status: "refreshing" });
-    void refreshRetargetInstallState(onInstallCompleted).then((next) => {
+    void refreshRetargetInstallState(onInstallCompleted, rCopyRef.current.events).then((next) => {
       if (refreshGenerationRef.current === generation) {
         if (next.status === "ready") {
           completionReloadPendingRef.current = true;
@@ -209,7 +216,11 @@ export function ReplacementTargetPanel({
         if (!cancelled) {
           setLoadState({
             status: "error",
-            message: replacementErrorMessage(error, "替换目标信息读取失败"),
+            message: replacementErrorMessage(
+              error,
+              rCopyRef.current.events.analysisFallback,
+              rCopyRef.current.errors,
+            ),
           });
         }
       });
@@ -238,7 +249,9 @@ export function ReplacementTargetPanel({
       if (event.payload.taskId !== current.taskId) {
         return;
       }
-      setTrackedTaskState((state) => nextRetargetInstallTaskState(state, event.payload));
+      setTrackedTaskState((state) =>
+        nextRetargetInstallTaskState(state, event.payload, rCopyRef.current.events),
+      );
     })
       .then((dispose) => {
         if (disposed) {
@@ -300,7 +313,12 @@ export function ReplacementTargetPanel({
   }, [query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
   const installCompletedLocally = completedLocally || taskState.status === "completed";
-  const blockMessage = installBlockMessage(profileId, installStatus, installCompletedLocally);
+  const blockMessage = installBlockMessage(
+    profileId,
+    installStatus,
+    installCompletedLocally,
+    rCopy.block,
+  );
   const targetSwitch = installStatus === "installed";
 
   const selectTarget = (targetId: string) => {
@@ -353,7 +371,7 @@ export function ReplacementTargetPanel({
         if (previewRequestGenerationRef.current === requestGeneration) {
           setPreviewState({
             status: "error",
-            message: replacementErrorMessage(error, "替换目标预览失败"),
+            message: replacementErrorMessage(error, rCopy.events.previewFallback, rCopy.errors),
           });
         }
       });
@@ -421,7 +439,7 @@ export function ReplacementTargetPanel({
             status: "failed",
             taskId: null,
             phase: failedPhase,
-            message: "后端返回了无效任务类型",
+            message: rCopy.events.invalidTaskType,
           });
           return;
         }
@@ -432,7 +450,9 @@ export function ReplacementTargetPanel({
         };
         const pending = pendingEventsRef.current.get(task.taskId);
         pendingEventsRef.current.clear();
-        setTrackedTaskState(pending ? nextRetargetInstallTaskState(running, pending) : running);
+        setTrackedTaskState(
+          pending ? nextRetargetInstallTaskState(running, pending, rCopy.events) : running,
+        );
       })
       .catch((error: unknown) => {
         pendingEventsRef.current.clear();
@@ -440,7 +460,7 @@ export function ReplacementTargetPanel({
           status: "failed",
           taskId: null,
           phase: failedPhase,
-          message: replacementErrorMessage(error, "替换目标写入任务启动失败"),
+          message: replacementErrorMessage(error, rCopy.events.startFailed, rCopy.errors),
         });
       });
   };
@@ -462,7 +482,7 @@ export function ReplacementTargetPanel({
           setCancellationState({
             status: "error",
             taskId,
-            message: "后端返回了无效取消结果，请等待任务状态更新",
+            message: rCopy.events.invalidCancelResult,
           });
           return;
         }
@@ -478,7 +498,7 @@ export function ReplacementTargetPanel({
           setCancellationState({
             status: "error",
             taskId,
-            message: replacementErrorMessage(error, "无法取消任务，请等待执行结果"),
+            message: replacementErrorMessage(error, rCopy.events.cancelFailed, rCopy.errors),
           });
         }
       });
@@ -488,7 +508,7 @@ export function ReplacementTargetPanel({
     return (
       <div className="replacement-panel__state" role="status">
         <LoaderCircle className="replacement-panel__spinner" size={20} aria-hidden="true" />
-        <span>正在分析替换资源</span>
+        <span>{rCopy.panel.analyzing}</span>
       </div>
     );
   }
@@ -500,7 +520,7 @@ export function ReplacementTargetPanel({
         <span>{loadState.message}</span>
         <button type="button" onClick={() => setRetryToken((value) => value + 1)}>
           <RefreshCw size={15} aria-hidden="true" />
-          重试
+          {rCopy.panel.retry}
         </button>
       </div>
     );
@@ -518,8 +538,8 @@ export function ReplacementTargetPanel({
       <section className="replacement-panel__source" aria-labelledby="replacement-source-title">
         <div className="replacement-panel__section-heading">
           <Target size={17} aria-hidden="true" />
-          <h3 id="replacement-source-title">检测结果</h3>
-          <span>{analysis?.matchedAssetCount ?? 0} 个资源</span>
+          <h3 id="replacement-source-title">{rCopy.panel.detectionTitle}</h3>
+          <span>{rCopy.panel.resourceCount(analysis?.matchedAssetCount ?? 0)}</span>
         </div>
         {analysis?.sources.length ? (
           <dl className="replacement-panel__source-facts">
@@ -531,14 +551,14 @@ export function ReplacementTargetPanel({
             ))}
           </dl>
         ) : (
-          <p className="replacement-panel__empty">未检测到可替换的外观槽位。</p>
+          <p className="replacement-panel__empty">{rCopy.panel.noSources}</p>
         )}
         {analysis?.warnings.length ? (
-          <ul className="replacement-panel__warnings" aria-label="分析警告">
+          <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
             {analysis.warnings.map((warning) => (
               <li key={warning}>
                 <AlertTriangle size={14} aria-hidden="true" />
-                {warningLabels[warning]}
+                {rCopy.warnings[warning]}
               </li>
             ))}
           </ul>
@@ -547,22 +567,22 @@ export function ReplacementTargetPanel({
 
       <section className="replacement-panel__catalog" aria-labelledby="replacement-catalog-title">
         <div className="replacement-panel__section-heading">
-          <h3 id="replacement-catalog-title">替换目标</h3>
-          <span>{filteredTargets.length} 项</span>
+          <h3 id="replacement-catalog-title">{rCopy.panel.targetsTitle}</h3>
+          <span>{rCopy.panel.targetCount(filteredTargets.length)}</span>
         </div>
         <label className="replacement-panel__search">
           <Search size={16} aria-hidden="true" />
           <input
             type="search"
-            aria-label="搜索替换目标"
+            aria-label={rCopy.panel.searchAria}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索名称、别名或槽位"
+            placeholder={rCopy.panel.searchPlaceholder}
             disabled={taskActive}
           />
         </label>
         {filteredTargets.length ? (
-          <div className="replacement-panel__target-list" role="radiogroup" aria-label="替换目标">
+          <div className="replacement-panel__target-list" role="radiogroup" aria-label={rCopy.panel.targetsAria}>
             {filteredTargets.map((target) => {
               const currentInstalled = isCurrentInstalledReplacementTarget(
                 target.id,
@@ -595,7 +615,7 @@ export function ReplacementTargetPanel({
                     {currentInstalled ? (
                       <span className="replacement-panel__target-status">
                         <CheckCircle2 size={13} aria-hidden="true" />
-                        当前已安装
+                        {rCopy.panel.currentInstalled}
                       </span>
                     ) : null}
                   </span>
@@ -607,7 +627,7 @@ export function ReplacementTargetPanel({
             })}
           </div>
         ) : (
-          <p className="replacement-panel__empty">没有匹配的替换目标。</p>
+          <p className="replacement-panel__empty">{rCopy.panel.noMatches}</p>
         )}
       </section>
 
@@ -616,7 +636,7 @@ export function ReplacementTargetPanel({
           {previewState.status === "loading" ? (
             <div className="replacement-panel__inline-state">
               <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
-              正在生成预览
+              {rCopy.panel.previewLoading}
             </div>
           ) : null}
           {previewState.status === "error" ? (
@@ -629,36 +649,40 @@ export function ReplacementTargetPanel({
             <>
               <div className="replacement-panel__section-heading">
                 <Eye size={17} aria-hidden="true" />
-                <h3>{previewState.mode === "switch" ? "目标切换预览" : "写入预览"}</h3>
+                <h3>
+                  {previewState.mode === "switch"
+                    ? rCopy.panel.switchPreviewTitle
+                    : rCopy.panel.initialPreviewTitle}
+                </h3>
                 {previewState.mode === "initial" ? (
-                  <span>{previewState.preview.actions.length} 个动作</span>
+                  <span>{rCopy.panel.actionCount(previewState.preview.actions.length)}</span>
                 ) : null}
               </div>
               {previewState.mode === "initial" ? (
                 <>
                   <dl className="replacement-panel__preview-facts">
                     <div>
-                      <dt>资源类型</dt>
+                      <dt>{rCopy.panel.factResourceType}</dt>
                       <dd>{previewState.preview.target.targetType}</dd>
                     </div>
                     <div>
-                      <dt>目标编号</dt>
+                      <dt>{rCopy.panel.factTargetId}</dt>
                       <dd>{previewState.preview.target.internalId}</dd>
                     </div>
                     <div>
-                      <dt>写入动作</dt>
+                      <dt>{rCopy.panel.factActions}</dt>
                       <dd>{previewState.preview.actions.length}</dd>
                     </div>
                   </dl>
                   {previewState.preview.installPlan.hasBlockingConflicts ? (
                     <div className="replacement-panel__inline-state is-error">
                       <ShieldAlert size={17} aria-hidden="true" />
-                      检测到 {previewState.preview.installPlan.conflicts.length} 个阻断冲突
+                      {rCopy.panel.blockingConflicts(previewState.preview.installPlan.conflicts.length)}
                     </div>
                   ) : (
                     <div className="replacement-panel__inline-state is-success">
                       <CheckCircle2 size={17} aria-hidden="true" />
-                      未检测到阻断冲突
+                      {rCopy.panel.noBlockingConflicts}
                     </div>
                   )}
                   <div
@@ -683,17 +707,18 @@ export function ReplacementTargetPanel({
                     )}
                     {getPrerequisiteDecisionMessage(
                       previewState.preview.prerequisiteDecision,
+                      prerequisite,
                     )}
                   </div>
                   {previewState.preview.prerequisiteDecision.codes.length > 0 ? (
                     <ul
                       className="replacement-panel__blocking-list"
-                      aria-label="安装前置检查结果"
+                      aria-label={rCopy.panel.prerequisiteResultsAria}
                     >
                       {previewState.preview.prerequisiteDecision.codes.map((code) => (
                         <li key={code}>
                           <AlertTriangle size={15} aria-hidden="true" />
-                          <span>{getPrerequisiteDecisionCodeLabel(code)}</span>
+                          <span>{getPrerequisiteDecisionCodeLabel(code, prerequisite)}</span>
                         </li>
                       ))}
                     </ul>
@@ -703,33 +728,33 @@ export function ReplacementTargetPanel({
                 <>
                   <dl className="replacement-panel__counts">
                     <div data-kind="retained">
-                      <dt>保留</dt>
+                      <dt>{rCopy.panel.countRetained}</dt>
                       <dd>{previewState.preview.counts.retained}</dd>
                     </div>
                     <div data-kind="replaced">
-                      <dt>替换</dt>
+                      <dt>{rCopy.panel.countReplaced}</dt>
                       <dd>{previewState.preview.counts.replaced}</dd>
                     </div>
                     <div data-kind="added">
-                      <dt>新增</dt>
+                      <dt>{rCopy.panel.countAdded}</dt>
                       <dd>{previewState.preview.counts.added}</dd>
                     </div>
                     <div data-kind="stale">
-                      <dt>移除旧项</dt>
+                      <dt>{rCopy.panel.countStale}</dt>
                       <dd>{previewState.preview.counts.stale}</dd>
                     </div>
                   </dl>
                   {previewState.preview.status === "ready" ? (
                     <div className="replacement-panel__inline-state is-success">
                       <CheckCircle2 size={17} aria-hidden="true" />
-                      安全预检通过
+                      {rCopy.panel.preflightPassed}
                     </div>
                   ) : (
-                    <ul className="replacement-panel__blocking-list" aria-label="目标切换阻断项">
+                    <ul className="replacement-panel__blocking-list" aria-label={rCopy.panel.switchBlockedAria}>
                       {previewState.preview.blockingReasons.map((reason) => (
                         <li key={reason.code}>
                           <ShieldAlert size={15} aria-hidden="true" />
-                          <span>{targetSwitchBlockingLabel(reason.code)}</span>
+                          <span>{targetSwitchBlockingLabel(reason.code, rCopy.panel, reinstallTask)}</span>
                           <strong>{reason.count}</strong>
                         </li>
                       ))}
@@ -745,9 +770,9 @@ export function ReplacementTargetPanel({
       {listenerStatus === "failed" ? (
         <div className="replacement-panel__notice is-blocked" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />
-          <span>任务状态监听不可用</span>
+          <span>{rCopy.panel.listenerUnavailable}</span>
           <button type="button" onClick={() => setListenerAttempt((value) => value + 1)}>
-            重试监听
+            {rCopy.panel.retryListener}
           </button>
         </div>
       ) : null}
@@ -760,13 +785,13 @@ export function ReplacementTargetPanel({
           {taskState.status === "starting" ? (
             <>
               <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
-              正在启动安装任务
+              {rCopy.panel.startingInstall}
             </>
           ) : null}
           {taskState.status === "running" ? (
             <>
               <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
-              <span>{retargetInstallTaskPhaseLabel(taskState.phase)}</span>
+              <span>{retargetInstallTaskPhaseLabel(taskState.phase, rCopy.phases)}</span>
               {canCancelRetargetInstallTaskPhase(taskState.phase) ? (
                 <button
                   type="button"
@@ -782,7 +807,9 @@ export function ReplacementTargetPanel({
                   ) : (
                     <XCircle size={15} aria-hidden="true" />
                   )}
-                  {cancellationState.status === "requesting" ? "正在取消" : "取消任务"}
+                  {cancellationState.status === "requesting"
+                    ? rCopy.panel.cancelling
+                    : rCopy.panel.cancelTask}
                 </button>
               ) : null}
             </>
@@ -790,7 +817,7 @@ export function ReplacementTargetPanel({
           {taskState.status === "completed" ? (
             <>
               <CheckCircle2 size={17} aria-hidden="true" />
-              {retargetInstallTaskPhaseLabel(taskState.phase)}
+              {retargetInstallTaskPhaseLabel(taskState.phase, rCopy.phases)}
             </>
           ) : null}
           {taskState.status === "failed" ? (
@@ -802,7 +829,7 @@ export function ReplacementTargetPanel({
           {taskState.status === "cancelled" ? (
             <>
               <AlertTriangle size={17} aria-hidden="true" />
-              {retargetInstallTaskPhaseLabel(taskState.phase)}
+              {retargetInstallTaskPhaseLabel(taskState.phase, rCopy.phases)}
             </>
           ) : null}
         </div>
@@ -818,7 +845,7 @@ export function ReplacementTargetPanel({
       {refreshState.status === "refreshing" ? (
         <div className="replacement-panel__notice" role="status">
           <LoaderCircle className="replacement-panel__spinner" size={17} aria-hidden="true" />
-          <span>正在刷新安装状态</span>
+          <span>{rCopy.panel.refreshing}</span>
         </div>
       ) : null}
 
@@ -828,7 +855,7 @@ export function ReplacementTargetPanel({
           <span>{refreshState.message}</span>
           <button type="button" onClick={refreshCompletedInstall}>
             <RefreshCw size={15} aria-hidden="true" />
-            重试刷新
+            {rCopy.panel.retryRefresh}
           </button>
         </div>
       ) : null}
@@ -848,7 +875,7 @@ export function ReplacementTargetPanel({
           }
         >
           <Eye size={16} aria-hidden="true" />
-          {targetSwitch ? "预览目标切换" : "生成预览"}
+          {targetSwitch ? rCopy.panel.previewSwitch : rCopy.panel.generatePreview}
         </button>
         <button
           type="button"
@@ -880,7 +907,7 @@ export function ReplacementTargetPanel({
           ) : (
             <Target size={16} aria-hidden="true" />
           )}
-          {targetSwitch ? "确认重装并切换" : "安装到此目标"}
+          {targetSwitch ? rCopy.panel.confirmSwitch : rCopy.panel.installToTarget}
         </button>
       </div>
     </div>

@@ -686,4 +686,5 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | LOG-02 日志总空间上限 | P2 | completed | |
 | LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |
 | I18N-00 界面三语本地化设计 | P2 | design-complete | 设计见 [界面中英日本地化设计](docs/I18N_DESIGN.md)（PR #241，2026-08-23 拍板：方案 A typed 字典 + locale 模型）：UI 文案 zh_cn/en/ja、设置页语言切换持久化、catalog 名称 locale 对齐（I18N-08 需契约演进）；含扩展性前提（更多语言 fallback 链、多游戏 per-game 名称 locale 能力声明）；切片 I18N-01~08，与 Sandbox Gate 复验、CLI-3B 并行，不进入当前发版判断 |
-| I18N-01 i18n 基建 + 试点三语 | P2 | in-review | shared/i18n（locales 单一来源、fallback 链、I18nProvider、localStorage 版本化持久化）、设置页「界面偏好」语言切换（跟随系统置顶、自称名、切换后按新语言 toast）、Settings/About 两页全量三语；内嵌面板（后台保护/Debug Log/前置环境）文案随 I18N-04~06 迁移 |
+| I18N-01 i18n 基建 + 试点三语 | P2 | completed | PR #242（2026-08-23 合并）：shared/i18n 基建、设置页语言切换、Settings/About 全量三语；验收中提前并入设置页内嵌面板（后台保护/Debug Log/前置环境），设置页页面内容完整三语 |
+| I18N-02 Mod 库页全域三语 | P2 | in-review | PR #243：库页/工具栏/分页/查询反馈/卡片/右键菜单/快捷面板/导入全量三语（modLibraryCopy + modImportCopy）；选择反馈与导入失败态重构为语义码 + 渲染时取词；查询错误改存稳定 code；验收中按用户反馈两次扩围——外部导入（externalImportCopy）与详情对话框簇（modDetailDialogCopy/modLifecycleCopy/modReinstallCopy/replacementCopy/batchModLifecycleCopy，原 I18N-03 前端范围提前并入），库页可达 UI 已全域闭合；replacementErrorCodeContract 升级三语言扫 generic 覆盖率；mock 数据（Mod 名称/分类）属内容不翻译 |

@@ -11,16 +11,23 @@ test("compact actions expose an explicit persistent batch mode", () => {
 
   assert.match(panel, /ListChecks/);
   assert.match(panel, /aria-pressed=\{batchSelectionActive\}/);
-  assert.match(panel, /batchSelectionActive \? "退出批量选择" : "批量选择"/);
+  assert.match(panel, /batchSelectionActive \? compact\.exitBatch : compact\.enterBatch/);
   assert.match(panel, /"exit-batch-selection" : "enter-batch-selection"/);
   assert.match(panel, /\.filter\(\(a\) => \["select-all", "invert", "refresh"\]\.includes\(a\.id\)\)/);
-  assert.match(panel, /aria-label="清空选择"/);
-  assert.match(panel, /"preview-plan": "预览批量计划"/);
-  assert.match(panel, /install: "批量安装"/);
-  assert.match(panel, /reinstall: "批量重装"/);
-  assert.match(panel, /uninstall: "批量卸载"/);
-  assert.match(panel, /已选 \{selectedCount\} \/ \{MAX_MOD_SELECTION_COUNT\}/);
-  assert.match(panel, /本页已选 \{selectedPageCount\} \/ \{pageCount\} 项/);
+  assert.match(panel, /aria-label=\{compact\.clearSelectionAria\}/);
+  // I18N-02 起批量文案钉在 modLibraryCopy 的 zh_cn 字典。
+  const copySource = readSource("src/features/mods/modLibraryCopy.ts");
+  assert.match(panel, /"preview-plan": compact\.batchActionLabels\.previewPlan/);
+  assert.match(panel, /install: compact\.batchActionLabels\.install/);
+  assert.match(panel, /reinstall: compact\.batchActionLabels\.reinstall/);
+  assert.match(panel, /uninstall: compact\.batchActionLabels\.uninstall/);
+  assert.match(copySource, /预览批量计划/);
+  assert.match(copySource, /批量安装/);
+  assert.match(
+    panel,
+    /compact\.selectedSummary\(selectedCount, MAX_MOD_SELECTION_COUNT, selectedPageCount, pageCount\)/,
+  );
+  assert.match(copySource, /已选 \$\{selected\} \/ \$\{max\}，本页已选 \$\{pageSelected\} \/ \$\{pageCount\} 项/);
 
   const pageSelectionGroupIndex = panel.indexOf('<div className="compact-action-group">');
   const batchModeToggleIndex = panel.indexOf('className="compact-action is-neutral is-mode-toggle"');
@@ -34,7 +41,7 @@ test("refresh remains visible but honors the workflow selection lock and page-lo
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(panel, /const disabledReason = selectionInteractionDisabledReason\s*\n\s*\?\? getCompactActionDisabledReason/);
-  assert.match(panel, /本页已选 \{selectedPageCount\} \/ 当前页 \{pageCount\} 项/);
+  assert.match(panel, /compact\.footerSinglePage\(selectedPageCount, pageCount\)/);
   assert.match(page, /case "refresh":\s*if \(!selectionInteractionLocked\) \{\s*void refreshModLibrary\(\)/);
 });
 
@@ -104,7 +111,7 @@ test("batch mode keeps right-click selection intact and disables single-item wri
   const menu = readSource("src/features/mods/ModContextMenu.tsx");
 
   assert.match(page, /if \(selectionMode === "single" && !selectedIds\.has\(modId\)\)/);
-  assert.match(page, /selectionMode === "batch"[\s\S]*?批量选择中，请使用上方批量操作/);
+  assert.match(page, /selectionMode === "batch"[\s\S]*?copy\.page\.cardAction\.batchSelecting/);
   assert.match(menu, /disabled=\{lifecycleDisabled\}/);
 });
 
@@ -112,24 +119,24 @@ test("context menu lifecycle action reuses the existing single-item install and 
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const menu = readSource("src/features/mods/ModContextMenu.tsx");
 
-  assert.match(page, /status === "installed"[\s\S]*?"卸载 Mod"/);
-  assert.match(page, /status === "not_installed"[\s\S]*?"安装 Mod"/);
+  assert.match(page, /status === "installed"[\s\S]*?copy\.page\.cardAction\.uninstallLabel/);
+  assert.match(page, /status === "not_installed"[\s\S]*?copy\.page\.cardAction\.installLabel/);
   assert.match(page, /case "install":\s*startSelectedInstallTask\(modId\)/);
   assert.match(page, /case "uninstall":\s*promptSelectedUninstallTask\(modId\)/);
   assert.match(page, /const startSelectedInstallTask = \(requestedModId\?: string\)/);
   assert.match(page, /const promptSelectedUninstallTask = \(requestedModId\?: string\)/);
   assert.match(page, /selectionInteractionLocked/);
-  assert.match(menu, /handleItemClick\(lifecycleAction\.actionId\)/);
+  assert.match(menu, /handleItemClick\(resolvedLifecycleAction\.actionId\)/);
   assert.doesNotMatch(menu, /toggle-enable|启用 \/ 禁用/);
 });
 
 test("query context changes reset selection while pagination keeps it", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
 
-  assert.match(page, /resetPageInteraction\("搜索条件已变化"\)/);
-  assert.match(page, /resetPageInteraction\("筛选条件已变化"\)/);
-  assert.match(page, /dispatchSelection\(\{ type: "reset-context", reason: "活动配置档已变化" \}\)/);
-  assert.match(page, /dispatchSelection\(\{ type: "reset-context", reason: "Mod 库已刷新" \}\)/);
+  assert.match(page, /resetPageInteraction\("search-changed"\)/);
+  assert.match(page, /resetPageInteraction\("filters-changed"\)/);
+  assert.match(page, /dispatchSelection\(\{ type: "reset-context", reason: "profile-changed" \}\)/);
+  assert.match(page, /dispatchSelection\(\{ type: "reset-context", reason: "library-refreshed" \}\)/);
   assert.match(page, /const handlePageChange[\s\S]*?libraryQuery\.setPage\(nextPage\);\s*resetContentScroll\(\);/);
   assert.match(page, /const handlePageSizeChange[\s\S]*?libraryQuery\.setPageSize\(nextPageSize\);\s*resetContentScroll\(\);/);
 });

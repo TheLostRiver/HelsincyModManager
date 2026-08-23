@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, RefreshCw, RotateCcw, X } from "lucide-react";
 import { useId, useRef } from "react";
 import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import {
   canPreviewReinstall,
@@ -8,6 +9,8 @@ import {
   getReinstallTaskPhaseLabel,
   type ReinstallTaskState,
 } from "./modReinstallTaskState";
+import { modLifecycleCopy } from "./modLifecycleCopy";
+import { modReinstallCopy, type ModReinstallCopy } from "./modReinstallCopy";
 import type { ReinstallPlanPreview } from "./modReinstallTypes";
 import {
   getPrerequisiteDecisionCodeLabel,
@@ -28,43 +31,46 @@ type ReinstallPlanPreviewPanelProps = {
   onRetryListener: () => void;
 };
 
-function cleanupPendingMessage(status: InstallManifestStatus) {
+function cleanupPendingMessage(
+  status: InstallManifestStatus,
+  dialog: ModReinstallCopy["dialog"],
+) {
   if (status === "committed_cleanup_pending" || status === "cleanup_pending") {
-    return "新版本已提交，但收尾尚未完成。写入操作已暂停，请前往恢复中心完成收敛。";
+    return dialog.cleanupPending.committed;
   }
   if (status === "rollback_required") {
-    return "当前重装需要受控恢复，写入操作已暂停。";
+    return dialog.cleanupPending.rollbackRequired;
   }
   if (status === "repair_required") {
-    return "当前安装状态需要人工处理，写入操作已暂停。";
+    return dialog.cleanupPending.repairRequired;
   }
   if (status === "unknown") {
-    return "无法确认当前安装状态，写入操作已暂停。";
+    return dialog.cleanupPending.statusUnknown;
   }
   return null;
 }
 
-function blockingReasonDetail(code: string) {
+function blockingReasonDetail(code: string, dialog: ModReinstallCopy["dialog"]) {
   switch (code) {
     case "candidate_not_found":
-      return "候选版本可能已被移除，请刷新版本列表。";
+      return dialog.blockingDetails.candidateNotFound;
     case "preview_stale":
-      return "重装事实已变化，请重新生成预览。";
+      return dialog.blockingDetails.previewStale;
     default:
       return null;
   }
 }
 
-function taskStatus(taskState: ReinstallTaskState) {
+function taskStatus(taskState: ReinstallTaskState, copy: ModReinstallCopy) {
   switch (taskState.status) {
     case "starting":
-      return { tone: "progress", label: "正在启动重装任务" } as const;
+      return { tone: "progress", label: copy.dialog.starting } as const;
     case "running":
-      return { tone: "progress", label: getReinstallTaskPhaseLabel(taskState.phase) } as const;
+      return { tone: "progress", label: getReinstallTaskPhaseLabel(taskState.phase, copy.task) } as const;
     case "completed":
-      return { tone: "success", label: "重装完成" } as const;
+      return { tone: "success", label: copy.dialog.completed } as const;
     case "cancelled":
-      return { tone: "neutral", label: "重装已取消" } as const;
+      return { tone: "neutral", label: copy.dialog.cancelled } as const;
     case "failed":
       return { tone: "danger", label: taskState.message } as const;
     default:
@@ -73,31 +79,41 @@ function taskStatus(taskState: ReinstallTaskState) {
 }
 
 function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
+  const { locale } = useI18n();
+  const reCopy = resolveCopy(modReinstallCopy, locale);
+  const dialog = reCopy.dialog;
+  const prerequisite = resolveCopy(modLifecycleCopy, locale).prerequisite;
   return (
-    <section className="reinstall-dialog__preview" aria-label="重装计划摘要">
+    <section className="reinstall-dialog__preview" aria-label={dialog.summaryAria}>
       <div className="reinstall-dialog__revision-flow">
-        <span>当前 {preview.installedRevision?.revisionId ?? "未知"}</span>
+        <span>
+          {preview.installedRevision
+            ? dialog.currentRevision(preview.installedRevision.revisionId)
+            : dialog.currentRevisionUnknown}
+        </span>
         <RefreshCw size={14} aria-hidden="true" />
         <span>
-          候选 {preview.candidateRevision ? preview.candidateRevision.revisionId : "不可用"}
+          {preview.candidateRevision
+            ? dialog.candidateRevision(preview.candidateRevision.revisionId)
+            : dialog.candidateRevisionUnavailable}
         </span>
       </div>
 
       <dl className="reinstall-dialog__counts">
         <div data-kind="retained">
-          <dt>保留</dt>
+          <dt>{dialog.countRetained}</dt>
           <dd>{preview.counts.retained}</dd>
         </div>
         <div data-kind="replaced">
-          <dt>替换</dt>
+          <dt>{dialog.countReplaced}</dt>
           <dd>{preview.counts.replaced}</dd>
         </div>
         <div data-kind="added">
-          <dt>新增</dt>
+          <dt>{dialog.countAdded}</dt>
           <dd>{preview.counts.added}</dd>
         </div>
         <div data-kind="stale">
-          <dt>移除旧项</dt>
+          <dt>{dialog.countStale}</dt>
           <dd>{preview.counts.stale}</dd>
         </div>
       </dl>
@@ -111,11 +127,11 @@ function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
         >
           <AlertTriangle size={17} aria-hidden="true" />
           <span>
-            {getPrerequisiteDecisionMessage(preview.prerequisiteDecision)}
+            {getPrerequisiteDecisionMessage(preview.prerequisiteDecision, prerequisite)}
             {preview.prerequisiteDecision.codes.length > 0
               ? ` ${preview.prerequisiteDecision.codes
-                  .map(getPrerequisiteDecisionCodeLabel)
-                  .join("、")}`
+                  .map((code) => getPrerequisiteDecisionCodeLabel(code, prerequisite))
+                  .join(dialog.codeSeparator)}`
               : ""}
           </span>
         </div>
@@ -124,7 +140,7 @@ function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
       {preview.status === "ready" && preview.prerequisiteDecision.status === "ready" ? (
         <div className="reinstall-dialog__notice is-success" role="status">
           <CheckCircle2 size={17} aria-hidden="true" />
-          <span>预检通过，可以提交重装。</span>
+          <span>{dialog.preflightPassed}</span>
         </div>
       ) : null}
 
@@ -132,14 +148,14 @@ function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
         <div className="reinstall-dialog__blocked" role="alert">
           <div className="reinstall-dialog__notice is-warning">
             <AlertTriangle size={17} aria-hidden="true" />
-            <span>当前预览存在阻断项。</span>
+            <span>{dialog.blockedNotice}</span>
           </div>
           <ul>
             {preview.blockingReasons.map((reason) => {
-              const detail = blockingReasonDetail(reason.code);
+              const detail = blockingReasonDetail(reason.code, dialog);
               return (
                 <li key={reason.code}>
-                  <span>{getReinstallBlockingReasonLabel(reason.code)}</span>
+                  <span>{getReinstallBlockingReasonLabel(reason.code, reCopy.task)}</span>
                   <strong>{reason.count}</strong>
                   {detail ? <small>{detail}</small> : null}
                 </li>
@@ -163,10 +179,13 @@ export function ReinstallPlanPreviewPanel({
   onConfirm,
   onRetryListener,
 }: ReinstallPlanPreviewPanelProps) {
+  const { locale } = useI18n();
+  const reCopy = resolveCopy(modReinstallCopy, locale);
+  const dialog = reCopy.dialog;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const taskActive = taskState.status === "starting" || taskState.status === "running";
-  const currentTaskStatus = taskStatus(taskState);
+  const currentTaskStatus = taskStatus(taskState, reCopy);
   const openModId = state.status === "open" ? state.modId : null;
 
   useModalFocusTrap({
@@ -182,7 +201,7 @@ export function ReinstallPlanPreviewPanel({
   }
 
   const preview = state.previewState.status === "ready" ? state.previewState.preview : null;
-  const installWarning = cleanupPendingMessage(state.installStatus);
+  const installWarning = cleanupPendingMessage(state.installStatus, dialog);
   const previewDisabled =
     state.catalogStatus !== "ready" ||
     !canPreviewReinstall(state.installStatus, state.selectedCandidateRevisionId, taskState);
@@ -212,11 +231,11 @@ export function ReinstallPlanPreviewPanel({
               <RotateCcw size={18} />
             </span>
             <div>
-              <h2 id={titleId}>重装 MOD</h2>
+              <h2 id={titleId}>{dialog.title}</h2>
               <p>{state.modName}</p>
             </div>
           </div>
-          <button type="button" className="reinstall-dialog__close" onClick={onClose} disabled={taskActive} aria-label="关闭">
+          <button type="button" className="reinstall-dialog__close" onClick={onClose} disabled={taskActive} aria-label={dialog.closeAria}>
             <X size={18} />
           </button>
         </header>
@@ -224,10 +243,13 @@ export function ReinstallPlanPreviewPanel({
         <div className="reinstall-dialog__body">
           <section className="reinstall-dialog__candidate" aria-labelledby={`${titleId}-candidate`}>
             <div>
-              <h3 id={`${titleId}-candidate`}>候选版本</h3>
+              <h3 id={`${titleId}-candidate`}>{dialog.candidateTitle}</h3>
               {state.revisions ? (
                 <p>
-                  来源版本 {state.revisions.originRevisionId} · 展示版本 {state.revisions.displayRevisionId}
+                  {dialog.revisionOrigin(
+                    state.revisions.originRevisionId,
+                    state.revisions.displayRevisionId,
+                  )}
                 </p>
               ) : null}
             </div>
@@ -236,7 +258,7 @@ export function ReinstallPlanPreviewPanel({
                 value={state.selectedCandidateRevisionId}
                 onChange={(event) => onCandidateChange(event.target.value)}
                 disabled={state.catalogStatus !== "ready" || taskActive}
-                aria-label="候选版本"
+                aria-label={dialog.candidateAria}
               >
                 {state.revisions?.revisions.map((revision) => (
                   <option key={revision.revisionId} value={revision.revisionId}>
@@ -246,7 +268,7 @@ export function ReinstallPlanPreviewPanel({
               </select>
               <button type="button" className="reinstall-dialog__button is-secondary" onClick={onPreview} disabled={previewDisabled}>
                 <RefreshCw size={15} aria-hidden="true" />
-                生成预览
+                {dialog.generatePreview}
               </button>
             </div>
           </section>
@@ -254,7 +276,7 @@ export function ReinstallPlanPreviewPanel({
           {state.catalogStatus === "loading" ? (
             <div className="reinstall-dialog__loading" role="status">
               <LoaderCircle size={17} aria-hidden="true" />
-              正在读取版本列表
+              {dialog.loadingCatalog}
             </div>
           ) : null}
           {state.catalogMessage ? (
@@ -266,7 +288,7 @@ export function ReinstallPlanPreviewPanel({
           {state.previewState.status === "loading" ? (
             <div className="reinstall-dialog__loading" role="status">
               <LoaderCircle size={17} aria-hidden="true" />
-              正在生成安全预览
+              {dialog.loadingPreview}
             </div>
           ) : null}
           {state.previewState.status === "error" ? (
@@ -287,13 +309,13 @@ export function ReinstallPlanPreviewPanel({
           {listenerStatus === "loading" ? (
             <div className="reinstall-dialog__loading" role="status">
               <LoaderCircle size={17} aria-hidden="true" />
-              正在连接任务状态
+              {dialog.listenerConnecting}
             </div>
           ) : null}
           {listenerStatus === "failed" ? (
             <div className="reinstall-dialog__listener-error" role="alert">
-              <span>任务状态连接不可用，暂不能提交重装。</span>
-              <button type="button" onClick={onRetryListener}>重试连接</button>
+              <span>{dialog.listenerFailed}</span>
+              <button type="button" onClick={onRetryListener}>{dialog.retryListener}</button>
             </div>
           ) : null}
 
@@ -307,11 +329,11 @@ export function ReinstallPlanPreviewPanel({
 
         <footer className="reinstall-dialog__footer">
           <button type="button" className="reinstall-dialog__button is-secondary" onClick={onClose} disabled={taskActive}>
-            关闭
+            {dialog.close}
           </button>
           <button type="button" className="reinstall-dialog__button is-primary" onClick={onConfirm} disabled={!canConfirm}>
             <RotateCcw size={15} aria-hidden="true" />
-            确认重装
+            {dialog.confirm}
           </button>
         </footer>
       </div>
