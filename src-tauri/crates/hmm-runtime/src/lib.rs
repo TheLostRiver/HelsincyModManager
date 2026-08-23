@@ -45,8 +45,8 @@ pub use install_automation::{
     UninstallPlanSnapshot,
 };
 pub use lifecycle_automation::{
-    LifecycleTaskCancellationHandle, LifecycleTaskOutcome, CliLifecycleAutomation,
-    CliLifecycleAutomationError,
+    CliLifecycleAutomation, CliLifecycleAutomationError, LifecycleTaskCancellationHandle,
+    LifecycleTaskOutcome,
 };
 pub use sandbox_write::{
     SandboxWriteAdmission, SandboxWriteCapability, SandboxWriteCapabilityError, SandboxWriteRoots,

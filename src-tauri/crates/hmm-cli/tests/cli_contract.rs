@@ -3837,7 +3837,10 @@ fn production_lifecycle_write_commands_fail_closed_before_any_data_access() {
     let expired_token = "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     let commands: [(&str, &[&str]); 4] = [
         ("install.apply", &["install", "apply", "--mod", "mod-a"]),
-        ("install.uninstall", &["install", "uninstall", "--mod", "mod-a"]),
+        (
+            "install.uninstall",
+            &["install", "uninstall", "--mod", "mod-a"],
+        ),
         (
             "install.reinstall",
             &[
@@ -3870,7 +3873,11 @@ fn production_lifecycle_write_commands_fail_closed_before_any_data_access() {
         expired_args.extend_from_slice(args);
         expired_args.extend_from_slice(&["--plan-token", expired_token, "--commit", "--yes"]);
         let output = hmm(&expired_args);
-        assert_eq!(output.status.code(), Some(3), "{command} expired token exit");
+        assert_eq!(
+            output.status.code(),
+            Some(3),
+            "{command} expired token exit"
+        );
         assert_eq!(stderr_text(&output), "", "{command} expired token stderr");
         let value: Value =
             serde_json::from_str(&stdout_text(&output)).expect("expired token envelope");
@@ -3882,7 +3889,11 @@ fn production_lifecycle_write_commands_fail_closed_before_any_data_access() {
         invalid_args.extend_from_slice(args);
         invalid_args.extend_from_slice(&["--plan-token", "not-a-token", "--commit", "--yes"]);
         let invalid = hmm(&invalid_args);
-        assert_eq!(invalid.status.code(), Some(3), "{command} invalid token exit");
+        assert_eq!(
+            invalid.status.code(),
+            Some(3),
+            "{command} invalid token exit"
+        );
         let invalid_value: Value =
             serde_json::from_str(&stdout_text(&invalid)).expect("invalid token envelope");
         assert_eq!(invalid_value["command"], command);
@@ -3892,7 +3903,11 @@ fn production_lifecycle_write_commands_fail_closed_before_any_data_access() {
         missing_args.extend_from_slice(args);
         missing_args.extend_from_slice(&["--commit", "--yes"]);
         let missing = hmm(&missing_args);
-        assert_eq!(missing.status.code(), Some(2), "{command} missing token exit");
+        assert_eq!(
+            missing.status.code(),
+            Some(2),
+            "{command} missing token exit"
+        );
         let missing_value: Value =
             serde_json::from_str(&stdout_text(&missing)).expect("missing token envelope");
         assert_eq!(missing_value["command"], command);
