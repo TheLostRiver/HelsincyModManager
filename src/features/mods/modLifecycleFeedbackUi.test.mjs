@@ -106,7 +106,7 @@ test("query refresh blocks already-open uninstall and reinstall write confirmati
 
   assert.match(
     page,
-    /const uninstallBlockerMessage = useMemo\(\(\) => \{[\s\S]*?if \(libraryQueryBusy\) \{\s*return MOD_LIBRARY_QUERY_BUSY_MESSAGE;/,
+    /const uninstallBlockerMessage = useMemo\(\(\) => \{[\s\S]*?if \(libraryQueryBusy\) \{\s*return copy\.page\.queryBusy;/,
   );
   assert.match(
     page,

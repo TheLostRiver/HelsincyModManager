@@ -15,10 +15,9 @@ import type { LucideProps } from "lucide-react";
 import { ExternalImportAction } from "./external-import/ExternalImportAction";
 import { ModImportAction } from "./ModImportAction";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
-import {
-  getCompactActionDisabledReason,
-  MOD_LIBRARY_QUERY_BUSY_MESSAGE,
-} from "./compactActionAvailability";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { getCompactActionDisabledReason } from "./compactActionAvailability";
+import { modLibraryCopy } from "./modLibraryCopy";
 import { compactActions } from "./modsLibraryData";
 import { MAX_MOD_SELECTION_COUNT, type ModSelectionMode } from "./modSelection";
 
@@ -72,33 +71,47 @@ export function CompactActionPanel({
   onImportCompleted,
   onAction,
 }: CompactActionPanelProps) {
+  const { locale } = useI18n();
+  const compact = resolveCopy(modLibraryCopy, locale).compact;
+  // mock 数据里的 action.label 不再用于渲染：按钮文本一律从 compact.buttons 取。
+  const buttonText: Record<string, string> = {
+    add: compact.buttons.add,
+    "add-revision": compact.buttons.addRevision,
+    "select-all": compact.buttons.selectAll,
+    invert: compact.buttons.invert,
+    refresh: compact.buttons.refresh,
+    "preview-plan": compact.buttons.previewPlan,
+    install: compact.buttons.install,
+    reinstall: compact.buttons.reinstall,
+    uninstall: compact.buttons.uninstall,
+  };
   const batchSelectionActive = selectionMode === "batch";
   const addAction = compactActions.find((a) => a.id === "add");
   const addRevisionAction = compactActions.find((a) => a.id === "add-revision");
   const revisionImportDisabledReason =
     libraryQueryBusy
-      ? MOD_LIBRARY_QUERY_BUSY_MESSAGE
+      ? compact.queryBusy
       : batchSelectionActive
-        ? "退出批量选择后可导入新版本"
+        ? compact.exitBatchToImportRevision
       : selectedCount !== 1 || !selectedModId
-      ? "请先选择一个 MOD"
+      ? compact.selectOneFirst
       : installTaskActive
-        ? "请等待当前安装任务完成"
+        ? compact.waitInstallTask
         : undefined;
   const selectionSummary = batchSelectionActive
-    ? `已选 ${selectedCount} / ${MAX_MOD_SELECTION_COUNT}，本页已选 ${selectedPageCount} / ${pageCount} 项`
+    ? compact.selectedSummary(selectedCount, MAX_MOD_SELECTION_COUNT, selectedPageCount, pageCount)
     : selectedCount === 1
-      ? "已选择 1 项"
-      : "尚未选择 Mod";
+      ? compact.selectedOne
+      : compact.noneSelected;
   const lifecycleLabel = (actionId: string, fallback: string) => {
     if (!batchSelectionActive) {
       return fallback;
     }
     const labels: Record<string, string> = {
-      "preview-plan": "预览批量计划",
-      install: "批量安装",
-      reinstall: "批量重装",
-      uninstall: "批量卸载",
+      "preview-plan": compact.batchActionLabels.previewPlan,
+      install: compact.batchActionLabels.install,
+      reinstall: compact.batchActionLabels.reinstall,
+      uninstall: compact.batchActionLabels.uninstall,
     };
     return labels[actionId] ?? fallback;
   };
@@ -119,19 +132,19 @@ export function CompactActionPanel({
   return (
     <aside
       className="compact-panel"
-      aria-label="快捷操作"
+      aria-label={compact.title}
       data-tour-id="mods.actions"
       data-selection-mode={selectionMode}
     >
       <header className="compact-panel__header">
-        <h3 className="compact-panel__title">快捷操作</h3>
-        <span className="compact-panel__selected-pill">已选 {selectedCount}</span>
+        <h3 className="compact-panel__title">{compact.title}</h3>
+        <span className="compact-panel__selected-pill">{compact.selectedPill(selectedCount)}</span>
       </header>
 
       <div className="compact-panel__stack">
         {addAction ? (
           <ModImportAction
-            label={addAction.label}
+            label={buttonText.add}
             onImported={onImportCompleted}
             tourId="mods.import-action"
           />
@@ -139,7 +152,7 @@ export function CompactActionPanel({
         <ExternalImportAction onImported={onImportCompleted} />
         {addRevisionAction ? (
           <ModImportAction
-            label={addRevisionAction.label}
+            label={buttonText["add-revision"]}
             mode="revision"
             modId={selectedModId}
             disabledReason={revisionImportDisabledReason}
@@ -162,7 +175,7 @@ export function CompactActionPanel({
                     canInstallSelection,
                     canReinstallSelection,
                     canUninstallSelection,
-                  });
+                  }, compact);
               return (
                 <ModLibraryControlTooltip key={action.id} content={disabledReason}>
                   {(descriptionId) => (
@@ -183,7 +196,7 @@ export function CompactActionPanel({
                     >
                       <span className="compact-action__left">
                         <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
-                        <span className="compact-action__label">{action.label}</span>
+                        <span className="compact-action__label">{buttonText[action.id] ?? action.label}</span>
                       </span>
                       <span className="compact-action__dot" aria-hidden="true" />
                     </button>
@@ -208,7 +221,7 @@ export function CompactActionPanel({
                 canInstallSelection,
                 canReinstallSelection,
                 canUninstallSelection,
-              }),
+              }, compact),
             );
             return (
               <ModLibraryControlTooltip key={action.id} content={disabledReason}>
@@ -231,7 +244,7 @@ export function CompactActionPanel({
                     <span className="compact-action__left">
                       <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
                       <span className="compact-action__label">
-                        {lifecycleLabel(action.id, action.label)}
+                        {lifecycleLabel(action.id, buttonText[action.id] ?? action.label)}
                       </span>
                     </span>
                     <span className="compact-action__dot" aria-hidden="true" />
@@ -261,7 +274,7 @@ export function CompactActionPanel({
               <span className="compact-action__left">
                 <ListChecks size={15} strokeWidth={2.4} aria-hidden="true" />
                 <span className="compact-action__label">
-                  {batchSelectionActive ? "退出批量选择" : "批量选择"}
+                  {batchSelectionActive ? compact.exitBatch : compact.enterBatch}
                 </span>
               </span>
             </button>
@@ -272,14 +285,14 @@ export function CompactActionPanel({
           <ModLibraryControlTooltip
             content={
               selectionInteractionDisabledReason
-              ?? (selectedCount === 0 ? "当前没有已选 Mod" : undefined)
+              ?? (selectedCount === 0 ? compact.noSelectedMods : undefined)
             }
           >
             {(descriptionId) => (
               <button
                 type="button"
                 className="compact-action is-neutral is-icon-only"
-                aria-label="清空选择"
+                aria-label={compact.clearSelectionAria}
                 aria-disabled={
                   selectionInteractionDisabledReason || selectedCount === 0 ? true : undefined
                 }
@@ -303,11 +316,11 @@ export function CompactActionPanel({
         <span className="compact-panel__selection-status" role="status" aria-live="polite" aria-atomic="true">
           {batchSelectionActive ? (
             <>
-              <strong>已选 {selectedCount} / {MAX_MOD_SELECTION_COUNT}</strong>
-              <span>本页已选 {selectedPageCount} / {pageCount} 项</span>
+              <strong>{compact.footerBatchSelected(selectedCount, MAX_MOD_SELECTION_COUNT)}</strong>
+              <span>{compact.footerBatchPage(selectedPageCount, pageCount)}</span>
             </>
           ) : (
-            <span>本页已选 {selectedPageCount} / 当前页 {pageCount} 项</span>
+            <span>{compact.footerSinglePage(selectedPageCount, pageCount)}</span>
           )}
         </span>
         {selectionNotice ? (

@@ -22,6 +22,8 @@ import {
   getModLibraryTotalPages,
   type ModLibraryPageSize,
 } from "./modLibraryPaginationModel";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modLibraryCopy, type ModLibraryCopy } from "./modLibraryCopy";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import "./ModLibraryPagination.css";
 
@@ -42,13 +44,17 @@ function clampPage(page: number, totalPages: number) {
   return Math.min(Math.max(1, Math.floor(page)), totalPages);
 }
 
-function getRangeAnnouncement(start: number, end: number, matchingTotal: number, busy: boolean) {
+function getRangeAnnouncement(
+  start: number,
+  end: number,
+  matchingTotal: number,
+  busy: boolean,
+  pagination: ModLibraryCopy["pagination"],
+) {
   const range =
-    matchingTotal === 0
-      ? "当前没有匹配的 Mod"
-      : `显示第 ${start} 至 ${end} 项，共 ${matchingTotal} 项`;
+    matchingTotal === 0 ? pagination.emptyRange : pagination.range(start, end, matchingTotal);
 
-  return busy ? `正在更新结果。${range}` : range;
+  return busy ? pagination.busyRange(range) : range;
 }
 
 export function ModLibraryPagination({
@@ -59,11 +65,13 @@ export function ModLibraryPagination({
   onPageChange,
   onPageSizeChange,
 }: ModLibraryPaginationProps) {
+  const { locale } = useI18n();
+  const pagination = resolveCopy(modLibraryCopy, locale).pagination;
   const totalPages = getModLibraryTotalPages(matchingTotal, pageSize);
   const currentPage = clampPage(page, totalPages);
   const pageSlots = getModLibraryPageSlots(currentPage, totalPages);
   const range = getModLibraryItemRange(currentPage, pageSize, matchingTotal);
-  const rangeAnnouncement = getRangeAnnouncement(range.start, range.end, matchingTotal, busy);
+  const rangeAnnouncement = getRangeAnnouncement(range.start, range.end, matchingTotal, busy, pagination);
   const pageSizeListboxId = useId();
   const pageSizeRootRef = useRef<HTMLDivElement | null>(null);
   const pageSizeTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -197,7 +205,7 @@ export function ModLibraryPagination({
   const nextDisabled = busy || currentPage === 0 || currentPage >= totalPages;
 
   return (
-    <footer className="mod-library-pagination" aria-label="Mod 库分页工具栏">
+    <footer className="mod-library-pagination" aria-label={pagination.toolbarAria}>
       <div className="mod-library-pagination__layout">
         <div
           className="mod-library-pagination__page-size"
@@ -208,7 +216,7 @@ export function ModLibraryPagination({
             }
           }}
         >
-          <span className="mod-library-pagination__segment-label">每页</span>
+          <span className="mod-library-pagination__segment-label">{pagination.perPage}</span>
           {/*
            * 触发器与浮层单独包一层定位锚点：浮层原先靠外层容器加 left: 22px 硬偏移
            * 才勉强对齐触发器，"每页"两字的宽度一变就会错位。
@@ -218,7 +226,7 @@ export function ModLibraryPagination({
             ref={pageSizeTriggerRef}
             type="button"
             className={`mod-library-pagination__page-size-trigger${pageSizeMenuOpen && !busy ? " is-open" : ""}`}
-            aria-label={`每页显示 ${pageSize} 项`}
+            aria-label={pagination.perPageSizeAria(pageSize)}
             aria-haspopup="listbox"
             aria-expanded={pageSizeMenuOpen && !busy}
             aria-controls={pageSizeListboxId}
@@ -237,7 +245,7 @@ export function ModLibraryPagination({
               }
             }}
           >
-            <span>{pageSize} 项</span>
+            <span>{pagination.items(pageSize)}</span>
             <ChevronDown size={14} strokeWidth={2.25} aria-hidden="true" />
           </button>
 
@@ -246,7 +254,7 @@ export function ModLibraryPagination({
               className="mod-library-pagination__page-size-listbox"
               id={pageSizeListboxId}
               role="listbox"
-              aria-label="每页显示数量"
+              aria-label={pagination.perPageCountAria}
             >
               {MOD_LIBRARY_PAGE_SIZES.map((option, optionIndex) => {
                 const selected = option === pageSize;
@@ -265,7 +273,7 @@ export function ModLibraryPagination({
                     onKeyDown={(event) => handlePageSizeOptionKeyDown(event, optionIndex)}
                     onClick={() => commitPageSize(option)}
                   >
-                    <span>{option} 项</span>
+                    <span>{pagination.items(option)}</span>
                     <Check size={14} strokeWidth={2.5} aria-hidden="true" />
                   </button>
                 );
@@ -277,15 +285,15 @@ export function ModLibraryPagination({
 
         <nav
           className="mod-library-pagination__navigation"
-          aria-label="Mod 库页码"
+          aria-label={pagination.pageNavAria}
           aria-busy={busy}
         >
-          <ModLibraryControlTooltip content="第一页" describeControl={false}>
+          <ModLibraryControlTooltip content={pagination.firstPage} describeControl={false}>
             {() => (
               <button
                 type="button"
                 className="mod-library-pagination__icon-button"
-                aria-label="前往第一页"
+                aria-label={pagination.gotoFirst}
                 aria-disabled={previousDisabled || undefined}
                 onClick={() => requestPage(1)}
               >
@@ -293,12 +301,12 @@ export function ModLibraryPagination({
               </button>
             )}
           </ModLibraryControlTooltip>
-          <ModLibraryControlTooltip content="上一页" describeControl={false}>
+          <ModLibraryControlTooltip content={pagination.prevPage} describeControl={false}>
             {() => (
               <button
                 type="button"
                 className="mod-library-pagination__icon-button"
-                aria-label="前往上一页"
+                aria-label={pagination.gotoPrev}
                 aria-disabled={previousDisabled || undefined}
                 onClick={() => requestPage(currentPage - 1)}
               >
@@ -307,7 +315,7 @@ export function ModLibraryPagination({
             )}
           </ModLibraryControlTooltip>
 
-          <div className="mod-library-pagination__page-list" aria-label="可选页码">
+          <div className="mod-library-pagination__page-list" aria-label={pagination.pageListAria}>
             {pageSlots.map((slot, index) =>
               slot === "ellipsis" ? (
                 (() => {
@@ -333,14 +341,14 @@ export function ModLibraryPagination({
                   return (
                     <ModLibraryControlTooltip
                       key={`ellipsis-${index}`}
-                      content={`跳至第 ${target} 页`}
+                      content={pagination.jumpTo(target)}
                       describeControl={false}
                     >
                       {() => (
                         <button
                           type="button"
                           className="mod-library-pagination__ellipsis is-interactive"
-                          aria-label={`跳至第 ${target} 页`}
+                          aria-label={pagination.jumpTo(target)}
                           aria-disabled={busy || undefined}
                           onClick={() => requestPage(target)}
                         >
@@ -355,7 +363,7 @@ export function ModLibraryPagination({
                   key={slot}
                   type="button"
                   className="mod-library-pagination__page-button"
-                  aria-label={`第 ${slot} 页`}
+                  aria-label={pagination.pageAria(slot)}
                   aria-current={slot === currentPage ? "page" : undefined}
                   aria-disabled={busy || undefined}
                   onClick={() => requestPage(slot)}
@@ -366,12 +374,12 @@ export function ModLibraryPagination({
             )}
           </div>
 
-          <ModLibraryControlTooltip content="下一页" describeControl={false}>
+          <ModLibraryControlTooltip content={pagination.nextPage} describeControl={false}>
             {() => (
               <button
                 type="button"
                 className="mod-library-pagination__icon-button"
-                aria-label="前往下一页"
+                aria-label={pagination.gotoNext}
                 aria-disabled={nextDisabled || undefined}
                 onClick={() => requestPage(currentPage + 1)}
               >
@@ -379,12 +387,12 @@ export function ModLibraryPagination({
               </button>
             )}
           </ModLibraryControlTooltip>
-          <ModLibraryControlTooltip content="最后一页" describeControl={false}>
+          <ModLibraryControlTooltip content={pagination.lastPage} describeControl={false}>
             {() => (
               <button
                 type="button"
                 className="mod-library-pagination__icon-button"
-                aria-label="前往最后一页"
+                aria-label={pagination.gotoLast}
                 aria-disabled={nextDisabled || undefined}
                 onClick={() => requestPage(totalPages)}
               >
@@ -399,11 +407,11 @@ export function ModLibraryPagination({
             <span className="mod-library-pagination__busy" aria-hidden="true">
               <span className="mod-library-pagination__busy-indicator" />
               {/* 文字单独成元素，窄容器下用 display:none 隐藏，不再靠 font-size:0 抹掉。 */}
-              <span className="mod-library-pagination__busy-label">更新中</span>
+              <span className="mod-library-pagination__busy-label">{pagination.busyLabel}</span>
             </span>
           ) : null}
           <span className="mod-library-pagination__range-compact" aria-hidden="true">
-            {matchingTotal === 0 ? "0 项" : `${range.start}–${range.end} / ${matchingTotal}`}
+            {matchingTotal === 0 ? pagination.compactEmpty : pagination.compactRange(range.start, range.end, matchingTotal)}
           </span>
           <span className="mod-library-pagination__range-live" aria-live="polite" aria-atomic="true">
             {rangeAnnouncement}

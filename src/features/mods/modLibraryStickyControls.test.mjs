@@ -84,7 +84,7 @@ test("query refresh fails closed for stale page interactions and clears landed-p
   // Cross-page selection: the library-page effect no longer clears selections; refresh and
   // query/filter changes own that responsibility (refreshModLibrary + resetPageInteraction).
   assert.match(page, /useEffect\(\(\) => \{\s*setContextMenuState\(null\);\s*\}, \[libraryPage\]\);/);
-  assert.match(page, /const refreshModLibrary = useCallback\(async \(\) => \{[\s\S]*?dispatchSelection\(\{ type: "reset-context", reason: "Mod 库已刷新" \}\);/);
+  assert.match(page, /const refreshModLibrary = useCallback\(async \(\) => \{[\s\S]*?dispatchSelection\(\{ type: "reset-context", reason: "library-refreshed" \}\);/);
   assert.ok((panel.match(/<ModLibraryControlTooltip/g) ?? []).length >= 3);
   assert.ok((panel.match(/aria-describedby=\{descriptionId\}/g) ?? []).length >= 3);
   assert.doesNotMatch(panel, /aria-label=\{disabledReason/);
@@ -92,7 +92,7 @@ test("query refresh fails closed for stale page interactions and clears landed-p
   assert.match(page, /<ModPosterCard[\s\S]*?interactionDisabled=\{selectionInteractionLocked\}/);
   assert.match(
     panel,
-    /const revisionImportDisabledReason =\s*libraryQueryBusy\s*\? MOD_LIBRARY_QUERY_BUSY_MESSAGE/,
+    /const revisionImportDisabledReason =\s*libraryQueryBusy\s*\? compact\.queryBusy/,
   );
 });
 
@@ -101,7 +101,7 @@ test("automatic filter reconciliation resets page interaction only when the filt
 
   assert.match(page, /const normalizedFilter = normalizeLibraryFilter\(activeFilter, filterChips\);/);
   assert.match(page, /if \(normalizedFilter === activeFilter\) \{\s*return;/);
-  assert.match(page, /if \(!isSameLibraryFilter\(activeFilter, normalizedFilter\)\) \{[\s\S]*?resetLibraryPage\(\);[\s\S]*?resetPageInteraction\("筛选条件已变化"\);/);
+  assert.match(page, /if \(!isSameLibraryFilter\(activeFilter, normalizedFilter\)\) \{[\s\S]*?resetLibraryPage\(\);[\s\S]*?resetPageInteraction\("filters-changed"\);/);
   assert.match(page, /setActiveFilter\(normalizedFilter\);/);
 });
 

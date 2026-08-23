@@ -137,21 +137,23 @@ export type ModLibraryQueryErrorCode =
   | "mod_library_unavailable"
   | "mod_library_status_unavailable";
 
-const modLibraryQueryErrorMessages: Readonly<Record<ModLibraryQueryErrorCode, string>> = {
-  game_id_invalid: "游戏标识无效",
-  profile_id_empty: "当前配置无效",
-  mod_library_filter_invalid: "筛选条件无效",
-  mod_library_sort_invalid: "排序方式无效",
-  mod_library_page_invalid: "页码无效",
-  mod_library_page_size_unsupported: "每页数量不受支持",
-  mod_library_search_too_long: "搜索内容过长",
-  mod_library_category_not_found: "所选分类已不存在",
-  mod_library_profile_context_required: "请先选择游戏配置",
-  mod_library_unavailable: "Mod 库暂时不可用",
-  mod_library_status_unavailable: "安装状态暂时不可用",
-};
+// I18N-02 起本模块不再携带任何语言文案：错误只归一化为稳定 code，
+// 文本由页面按当前界面语言从 modLibraryCopy.page.queryErrors 取。
+const modLibraryQueryErrorCodes: ReadonlySet<string> = new Set([
+  "game_id_invalid",
+  "profile_id_empty",
+  "mod_library_filter_invalid",
+  "mod_library_sort_invalid",
+  "mod_library_page_invalid",
+  "mod_library_page_size_unsupported",
+  "mod_library_search_too_long",
+  "mod_library_category_not_found",
+  "mod_library_profile_context_required",
+  "mod_library_unavailable",
+  "mod_library_status_unavailable",
+]);
 
-export const UNKNOWN_MOD_LIBRARY_QUERY_ERROR_MESSAGE = "Mod 列表加载失败，请稍后重试";
+export type NormalizedModLibraryQueryErrorCode = ModLibraryQueryErrorCode | "unknown";
 
 function getModLibraryQueryErrorCode(error: unknown): string | null {
   if (typeof error === "string") {
@@ -165,12 +167,15 @@ function getModLibraryQueryErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-export function getModLibraryQueryErrorMessage(error: unknown): string {
+export function normalizeModLibraryQueryErrorCode(
+  error: unknown,
+): NormalizedModLibraryQueryErrorCode {
   const code = getModLibraryQueryErrorCode(error);
 
-  return code !== null && code in modLibraryQueryErrorMessages
-    ? modLibraryQueryErrorMessages[code as ModLibraryQueryErrorCode]
-    : UNKNOWN_MOD_LIBRARY_QUERY_ERROR_MESSAGE;
+  // 未知 code 一律归一化为 "unknown"，绝不透传后端原文（可能含路径等敏感内容）。
+  return code !== null && modLibraryQueryErrorCodes.has(code)
+    ? (code as ModLibraryQueryErrorCode)
+    : "unknown";
 }
 
 export type LatestRequestSequenceGate = {

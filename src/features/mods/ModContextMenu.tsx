@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modLibraryCopy } from "./modLibraryCopy";
 import "./ModContextMenu.css";
 
 export type ModContextMenuProps = {
@@ -56,14 +58,17 @@ export function ModContextMenu({
   x,
   y,
   modId,
-  lifecycleAction = {
-    actionId: null,
-    label: "安装 / 卸载 Mod",
-    disabledReason: "当前 Mod 状态不可用",
-  },
+  lifecycleAction,
   onClose,
   onAction,
 }: ModContextMenuProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).contextMenu;
+  const resolvedLifecycleAction = lifecycleAction ?? {
+    actionId: null,
+    label: copy.installOrUninstall,
+    disabledReason: copy.statusUnavailable,
+  };
   const menuRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -131,26 +136,26 @@ export function ModContextMenu({
     onClose();
   };
 
-  const lifecycleDisabled = lifecycleAction.actionId === null || lifecycleAction.disabledReason !== undefined;
+  const lifecycleDisabled = resolvedLifecycleAction.actionId === null || resolvedLifecycleAction.disabledReason !== undefined;
 
   return createPortal(
     <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
       <button
         type="button"
-        className={`mod-context-menu__item${lifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
+        className={`mod-context-menu__item${resolvedLifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
         aria-disabled={lifecycleDisabled || undefined}
         disabled={lifecycleDisabled}
-        title={lifecycleAction.disabledReason}
+        title={resolvedLifecycleAction.disabledReason}
         onClick={() => {
-          if (lifecycleAction.actionId !== null && !lifecycleDisabled) {
-            handleItemClick(lifecycleAction.actionId);
+          if (resolvedLifecycleAction.actionId !== null && !lifecycleDisabled) {
+            handleItemClick(resolvedLifecycleAction.actionId);
           }
         }}
       >
         <IconPower />
         <span className="mod-context-menu__item-copy">
-          <span>{lifecycleAction.label}</span>
-          {lifecycleAction.disabledReason ? <small>{lifecycleAction.disabledReason}</small> : null}
+          <span>{resolvedLifecycleAction.label}</span>
+          {resolvedLifecycleAction.disabledReason ? <small>{resolvedLifecycleAction.disabledReason}</small> : null}
         </span>
       </button>
       <div className="mod-context-menu__divider" />
@@ -158,26 +163,26 @@ export function ModContextMenu({
         className="mod-context-menu__item"
         onClick={() => handleItemClick("info-settings")}
       >
-        <IconSettings /> MOD 信息设置
+        <IconSettings /> {copy.infoSettings}
       </div>
       <div
         className="mod-context-menu__item"
         onClick={() => handleItemClick("edit-files")}
       >
-        <IconEdit /> MOD 文件修改
+        <IconEdit /> {copy.fileModify}
       </div>
       <div className="mod-context-menu__divider" />
       <div
         className="mod-context-menu__item"
         onClick={() => handleItemClick("open-nexus")}
       >
-        <IconLink /> 跳到 NexusMods
+        <IconLink /> {copy.jumpToNexus}
       </div>
       <div
         className="mod-context-menu__item"
         onClick={() => handleItemClick("open-folder")}
       >
-        <IconFolder /> 打开 MOD 文件夹
+        <IconFolder /> {copy.openFolder}
       </div>
     </div>,
     document.body

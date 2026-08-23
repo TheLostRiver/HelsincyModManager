@@ -5,6 +5,8 @@ import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
 import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
 import type { ModCardSelectionIntent, ModSelectionMode } from "./modSelection";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modLibraryCopy, type ModLibraryCopy } from "./modLibraryCopy";
 import "./ModPosterCard.css";
 
 type ModPosterCardProps = {
@@ -19,17 +21,9 @@ type ModPosterCardProps = {
   showCategoryLabels?: boolean;
 };
 
-const statusLabel: Record<ModLibraryItem["status"], string> = {
-  not_installed: "未安装",
-  installed: "已安装",
-  disabled: "已禁用",
-  conflict: "存在冲突",
-  committed_cleanup_pending: "重装待收尾",
-  cleanup_pending: "恢复待清理",
-  rollback_required: "需要回滚",
-  repair_required: "需要修复",
-  unknown: "状态未知",
-};
+function statusLabelMap(card: ModLibraryCopy["card"]): Record<ModLibraryItem["status"], string> {
+  return card.status;
+}
 
 const techStatusLabel: Record<ModLibraryItem["status"], string> = {
   not_installed: "READY",
@@ -55,23 +49,24 @@ const techValidityLabel: Record<ModLibraryItem["status"], string> = {
   unknown: "UNKNOWN",
 };
 
-function statusLabelForItem(item: ModLibraryItem) {
+function statusLabelForItem(item: ModLibraryItem, card: ModLibraryCopy["card"]) {
+  const statusText = statusLabelMap(card)[item.status];
   const summary = item.installSummary;
   if (item.status === "installed" && summary && summary.managedFileCount > 0) {
-    return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+    return card.statusWithFiles(statusText, summary.managedFileCount);
   }
 
   if (isUnsafeInstallStatus(item.status) && summary) {
     if (summary.issueCount && summary.issueCount > 0) {
-      return `${statusLabel[item.status]} · ${summary.issueCount} 项`;
+      return card.statusWithIssues(statusText, summary.issueCount);
     }
 
     if (summary.managedFileCount > 0) {
-      return `${statusLabel[item.status]} · ${summary.managedFileCount} 文件`;
+      return card.statusWithFiles(statusText, summary.managedFileCount);
     }
   }
 
-  return statusLabel[item.status];
+  return statusText;
 }
 
 export function ModPosterCard({
@@ -85,6 +80,8 @@ export function ModPosterCard({
   index = 0,
   showCategoryLabels = true,
 }: ModPosterCardProps) {
+  const { locale } = useI18n();
+  const card = resolveCopy(modLibraryCopy, locale).card;
   const isTech = viewMode === "tech";
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
@@ -104,7 +101,7 @@ export function ModPosterCard({
   const categoryLabels = visibleCategoryLabelsForCard(item.categoryLabels, categoryLabelLimit);
   const categorySummary =
     showCategoryLabels && item.categoryLabels.length > 0
-      ? `，分类：${item.categoryLabels.map((label) => label.name).join("、")}`
+      ? card.categorySummary(item.categoryLabels.map((label) => label.name))
       : "";
   const categoryStrip =
     categoryLabels.visible.length > 0 ? (
@@ -189,9 +186,9 @@ export function ModPosterCard({
       aria-checked={batchSelectionActive ? selected : undefined}
       aria-disabled={interactionDisabled || undefined}
       aria-label={
-        batchSelectionActive
-          ? `${selected ? "取消选择" : "选择"} ${item.name}${categorySummary}`
-          : `选择 ${item.name}${categorySummary}`
+        batchSelectionActive && selected
+          ? card.deselectAria(item.name, categorySummary)
+          : card.selectAria(item.name, categorySummary)
       }
       data-status={item.status}
       data-selection-mode={selectionMode}
@@ -229,7 +226,7 @@ export function ModPosterCard({
           {/* 状态徽标：Classic, Grid, List 通用 */}
           <span className={`mod-card__status-pill is-${item.status}`}>
             <Check size={13} strokeWidth={2.6} aria-hidden="true" />
-            <span className="mod-card__status-label">{statusLabelForItem(item)}</span>
+            <span className="mod-card__status-label">{statusLabelForItem(item, card)}</span>
           </span>
 
           {/* 经典视图专属的选中边框 */}
@@ -272,8 +269,8 @@ export function ModPosterCard({
             {categoryStrip}
           </div>
           <div className="mod-card__footer-list">
-            <span>版本: {versionLabel}</span>
-            <span>大小: {item.sizeLabel}</span>
+            <span>{card.versionLabel}{versionLabel}</span>
+            <span>{card.sizeLabel}{item.sizeLabel}</span>
           </div>
         </div>
       )}
