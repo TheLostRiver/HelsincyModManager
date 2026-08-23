@@ -20,7 +20,7 @@ use hmm_runtime::{
     ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError, ReadOnlyInstallRecoveryAction,
     ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
     SandboxBatchAutomationError, SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
-    SandboxBatchPlanRequest, SandboxLifecycleAutomation, SandboxLifecycleAutomationError,
+    SandboxBatchPlanRequest, CliLifecycleAutomation, CliLifecycleAutomationError,
     TaskProgressEvent, TaskProgressObserver, UninstallPlanSnapshot,
 };
 use serde::Serialize;
@@ -625,7 +625,7 @@ struct BatchPlanItemSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SandboxLifecycleOperation {
+enum CliLifecycleOperation {
     Install,
     Uninstall,
     Reinstall,
@@ -1541,7 +1541,7 @@ fn run_install_apply<W: Write + Send, E: Write>(
         Ok(cancellation) => cancellation,
         Err(exit_code) => return exit_code,
     };
-    let automation = match SandboxLifecycleAutomation::prepare_install(
+    let automation = match CliLifecycleAutomation::prepare_install(
         environment,
         &options.game,
         &options.profile,
@@ -1558,7 +1558,7 @@ fn run_install_apply<W: Write + Send, E: Write>(
         format,
         INSTALL_APPLY_COMMAND,
         &automation,
-        SandboxLifecycleOperation::Install,
+        CliLifecycleOperation::Install,
         cancellation,
         stdout,
         stderr,
@@ -1635,7 +1635,7 @@ fn run_install_uninstall<W: Write + Send, E: Write>(
             Ok(cancellation) => cancellation,
             Err(exit_code) => return exit_code,
         };
-    let automation = match SandboxLifecycleAutomation::prepare_uninstall(
+    let automation = match CliLifecycleAutomation::prepare_uninstall(
         environment,
         &options.game,
         &options.profile,
@@ -1652,7 +1652,7 @@ fn run_install_uninstall<W: Write + Send, E: Write>(
         format,
         INSTALL_UNINSTALL_COMMAND,
         &automation,
-        SandboxLifecycleOperation::Uninstall,
+        CliLifecycleOperation::Uninstall,
         cancellation,
         stdout,
         stderr,
@@ -1739,7 +1739,7 @@ fn run_install_recovery_apply<W: Write + Send, E: Write>(
             Ok(cancellation) => cancellation,
             Err(exit_code) => return exit_code,
         };
-    let automation = match SandboxLifecycleAutomation::prepare_recovery(
+    let automation = match CliLifecycleAutomation::prepare_recovery(
         environment,
         &options.game,
         &options.profile,
@@ -1763,7 +1763,7 @@ fn run_install_recovery_apply<W: Write + Send, E: Write>(
         format,
         INSTALL_RECOVERY_APPLY_COMMAND,
         &automation,
-        SandboxLifecycleOperation::Recovery,
+        CliLifecycleOperation::Recovery,
         cancellation,
         stdout,
         stderr,
@@ -1844,7 +1844,7 @@ fn run_install_reinstall<W: Write + Send, E: Write>(
             Ok(cancellation) => cancellation,
             Err(exit_code) => return exit_code,
         };
-    let automation = match SandboxLifecycleAutomation::prepare_reinstall(
+    let automation = match CliLifecycleAutomation::prepare_reinstall(
         environment,
         &options.game,
         &options.profile,
@@ -1862,7 +1862,7 @@ fn run_install_reinstall<W: Write + Send, E: Write>(
         format,
         INSTALL_REINSTALL_COMMAND,
         &automation,
-        SandboxLifecycleOperation::Reinstall,
+        CliLifecycleOperation::Reinstall,
         cancellation,
         stdout,
         stderr,
@@ -1894,8 +1894,8 @@ fn install_cli_cancellation<W: Write, E: Write>(
 fn run_sandbox_lifecycle_operation<W: Write + Send, E: Write>(
     format: OutputFormat,
     command: &'static str,
-    automation: &SandboxLifecycleAutomation,
-    operation: SandboxLifecycleOperation,
+    automation: &CliLifecycleAutomation,
+    operation: CliLifecycleOperation,
     cancellation: Arc<CliCancellationCoordinator>,
     stdout: &mut W,
     stderr: &mut E,
@@ -1928,7 +1928,7 @@ fn run_sandbox_lifecycle_operation<W: Write + Send, E: Write>(
         }
         return match result {
             Ok(_) => CliExitCode::Success.get(),
-            Err(SandboxLifecycleAutomationError::TaskFailed { .. }) => {
+            Err(CliLifecycleAutomationError::TaskFailed { .. }) => {
                 CliExitCode::ControlledFailure.get()
             }
             Err(error) => write_lifecycle_error(format, command, error, stdout, stderr),
@@ -1969,15 +1969,15 @@ fn run_sandbox_lifecycle_operation<W: Write + Send, E: Write>(
 }
 
 fn run_lifecycle_with_observer<O: TaskProgressObserver + ?Sized>(
-    automation: &SandboxLifecycleAutomation,
-    operation: SandboxLifecycleOperation,
+    automation: &CliLifecycleAutomation,
+    operation: CliLifecycleOperation,
     observer: &O,
-) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
     match operation {
-        SandboxLifecycleOperation::Install => automation.run_install_with_observer(observer),
-        SandboxLifecycleOperation::Uninstall => automation.run_uninstall_with_observer(observer),
-        SandboxLifecycleOperation::Reinstall => automation.run_reinstall_with_observer(observer),
-        SandboxLifecycleOperation::Recovery => automation.run_recovery_with_observer(observer),
+        CliLifecycleOperation::Install => automation.run_install_with_observer(observer),
+        CliLifecycleOperation::Uninstall => automation.run_uninstall_with_observer(observer),
+        CliLifecycleOperation::Reinstall => automation.run_reinstall_with_observer(observer),
+        CliLifecycleOperation::Recovery => automation.run_recovery_with_observer(observer),
     }
 }
 
@@ -2244,35 +2244,34 @@ fn write_install_error<W: Write, E: Write>(
 fn write_lifecycle_error<W: Write, E: Write>(
     format: OutputFormat,
     command: &'static str,
-    error: SandboxLifecycleAutomationError,
+    error: CliLifecycleAutomationError,
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
     let (category, exit_code, retryable) = match &error {
-        SandboxLifecycleAutomationError::ProductionForbidden
-        | SandboxLifecycleAutomationError::WriteRejected => (
+        CliLifecycleAutomationError::WriteRejected => (
             CliErrorCategory::DataSafetyRisk,
             CliExitCode::Rejected,
             false,
         ),
-        SandboxLifecycleAutomationError::PlanBlocked
-        | SandboxLifecycleAutomationError::PlanTokenExpired
-        | SandboxLifecycleAutomationError::PlanTokenInvalid
-        | SandboxLifecycleAutomationError::RecoveryBlocked
-        | SandboxLifecycleAutomationError::ReinstallBlocked
-        | SandboxLifecycleAutomationError::UninstallBlocked => (
+        CliLifecycleAutomationError::PlanBlocked
+        | CliLifecycleAutomationError::PlanTokenExpired
+        | CliLifecycleAutomationError::PlanTokenInvalid
+        | CliLifecycleAutomationError::RecoveryBlocked
+        | CliLifecycleAutomationError::ReinstallBlocked
+        | CliLifecycleAutomationError::UninstallBlocked => (
             CliErrorCategory::UserActionRequired,
             CliExitCode::Rejected,
             false,
         ),
-        SandboxLifecycleAutomationError::PlanUnavailable
-        | SandboxLifecycleAutomationError::RuntimeUnavailable
-        | SandboxLifecycleAutomationError::TaskUnavailable => (
+        CliLifecycleAutomationError::PlanUnavailable
+        | CliLifecycleAutomationError::RuntimeUnavailable
+        | CliLifecycleAutomationError::TaskUnavailable => (
             CliErrorCategory::Recoverable,
             CliExitCode::RuntimeUnavailable,
             true,
         ),
-        SandboxLifecycleAutomationError::TaskFailed { .. } => (
+        CliLifecycleAutomationError::TaskFailed { .. } => (
             CliErrorCategory::DataSafetyRisk,
             CliExitCode::ControlledFailure,
             false,
@@ -2956,7 +2955,7 @@ mod tests {
         let exit_code = write_lifecycle_error(
             OutputFormat::Json,
             INSTALL_REINSTALL_COMMAND,
-            SandboxLifecycleAutomationError::TaskFailed {
+            CliLifecycleAutomationError::TaskFailed {
                 task_id: "install-opaque-task".to_owned(),
                 code: "install_reinstall_task_failed",
             },
