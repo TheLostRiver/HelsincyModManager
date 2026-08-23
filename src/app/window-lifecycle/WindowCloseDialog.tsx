@@ -1,5 +1,7 @@
 import { Check, LoaderCircle, Minimize2, Power, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { appShellCopy, type AppShellCopy } from "../appShellCopy";
 import type { AppExitBlockReason, SaveBackupExitGuardReason } from "./windowLifecycleApi";
 import type { WindowClosePreference } from "./windowClosePreference";
 import "./WindowCloseDialog.css";
@@ -22,22 +24,6 @@ type DialogPhase = "closed" | "opening" | "open" | "settled" | "closing";
 const EXECUTION_FEEDBACK_DELAY_MS = 360;
 const DIALOG_TRANSITION_MS = 200;
 const REDUCED_MOTION_TRANSITION_MS = 140;
-const UNSAFE_EXIT_REASON_MESSAGES: Record<SaveBackupExitGuardReason, string> = {
-  background_starting:
-    "后台任务已注册，但尚未完成首次运行验证。Windows 仍会在约 1 分钟后尝试运行；若失败，应用退出后无法立即提醒你。",
-  background_not_enabled: "后台保护尚未启用。完全退出后，自动备份不会继续按计划检查。",
-  registration_failed: "后台任务注册或校验失败。完全退出后，自动备份可能不会按计划运行。",
-  worker_unhealthy: "后台任务最近没有按预期运行。完全退出后，自动备份可能失去保护。",
-  permission_required: "当前账户权限不足，后台任务无法完成注册或校验。",
-  unsupported_platform: "当前平台不支持退出后的后台自动备份保护。",
-  status_unavailable: "暂时无法确认后台保护状态。为避免静默失去保护，建议先留在托盘。",
-};
-const BLOCKED_EXIT_REASON_MESSAGES: Record<AppExitBlockReason, string> = {
-  save_restore_in_progress:
-    "存档恢复正在进行。为保护当前存档和自动创建的恢复前备份，此时不能完全退出应用程序。",
-  save_restore_status_unavailable:
-    "暂时无法确认存档恢复任务状态。为避免中断存档写入，此时不能完全退出应用程序。",
-};
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
   "input:not([disabled])",
@@ -54,6 +40,8 @@ function getFocusableDialogElements(container: HTMLElement): HTMLElement[] {
 }
 
 export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: WindowCloseDialogProps) {
+  const { locale } = useI18n();
+  const copy: AppShellCopy["windowClose"] = resolveCopy(appShellCopy, locale).windowClose;
   const [renderedMode, setRenderedMode] = useState<WindowCloseDialogMode | null>(mode);
   const [phase, setPhase] = useState<DialogPhase>(mode ? "opening" : "closed");
   const [remember, setRemember] = useState(false);
@@ -129,7 +117,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
     async (action: "tray" | "exit") => {
       if (!renderedMode || phase === "closing") return;
       setExecuting(action);
-      setSuccessText(action === "tray" ? "已收起至系统托盘" : "正在退出应用");
+      setSuccessText(action === "tray" ? copy.successTray : copy.successExit);
       try {
         await new Promise((resolve) => window.setTimeout(resolve, EXECUTION_FEEDBACK_DELAY_MS));
         await onConfirm(action, renderedMode.kind === "normal" ? remember : false);
@@ -142,7 +130,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
         setSuccessText(null);
       }
     },
-    [onConfirm, phase, remember, renderedMode],
+    [copy.successExit, copy.successTray, onConfirm, phase, remember, renderedMode],
   );
 
   useEffect(() => {
@@ -239,7 +227,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
           type="button"
           onClick={requestCancel}
           disabled={interactionsDisabled}
-          aria-label="取消关闭"
+          aria-label={copy.cancelCloseAria}
         >
           <X size={15} strokeWidth={2.2} />
         </button>
@@ -247,17 +235,17 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
         <header className="window-close-dialog__header">
           <h2 id="window-close-title">
             {renderedMode.kind === "unsafe"
-              ? "后台保护尚未就绪"
+              ? copy.unsafeTitle
               : renderedMode.kind === "blocked"
-                ? "存档恢复正在保护中"
-                : "准备退出 Helsincy？"}
+                ? copy.blockedTitle
+                : copy.normalTitle}
           </h2>
           <p id="window-close-description">
             {renderedMode.kind === "unsafe"
-              ? UNSAFE_EXIT_REASON_MESSAGES[renderedMode.reason]
+              ? copy.unsafeReasons[renderedMode.reason]
               : renderedMode.kind === "blocked"
-                ? BLOCKED_EXIT_REASON_MESSAGES[renderedMode.reason]
-              : "请选择关闭主窗口时的操作。你也可以在设置里随时改回每次询问。"}
+                ? copy.blockedReasons[renderedMode.reason]
+              : copy.normalDescription}
           </p>
         </header>
 
@@ -277,13 +265,13 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
               <Minimize2 size={24} strokeWidth={2.15} />
             </span>
             <span className="window-close-option__copy">
-              <strong>{renderedMode.kind === "unsafe" ? "留在托盘" : "收起至系统托盘"}</strong>
+              <strong>{renderedMode.kind === "unsafe" ? copy.trayStay : copy.trayCollapse}</strong>
               <span>
                 {renderedMode.kind === "unsafe"
-                  ? "保留客户端运行，让自动备份继续在本次会话内检查。"
+                  ? copy.trayUnsafeHint
                   : renderedMode.kind === "blocked"
-                    ? "让存档恢复在后台继续完成；完成后可正常完全退出。"
-                  : "应用将在后台持续运行，自动备份仍会在客户端运行期间检查。"}
+                    ? copy.trayBlockedHint
+                  : copy.trayNormalHint}
               </span>
             </span>
             {executing === "tray" ? <LoaderCircle className="window-close-option__spinner" size={22} /> : null}
@@ -301,11 +289,11 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
                 <Power size={24} strokeWidth={2.15} />
               </span>
               <span className="window-close-option__copy">
-                <strong>{renderedMode.kind === "unsafe" ? "仍然退出" : "完全退出应用程序"}</strong>
+                <strong>{renderedMode.kind === "unsafe" ? copy.exitStill : copy.exitFull}</strong>
                 <span>
                   {renderedMode.kind === "unsafe"
-                    ? "忽略本次后台保护警告并完全退出。此确认只对本次有效。"
-                    : "关闭主客户端。若后台保护尚未就绪，退出前会再次向你确认。"}
+                    ? copy.exitUnsafeHint
+                    : copy.exitNormalHint}
                 </span>
               </span>
               {executing === "exit" ? (
@@ -327,7 +315,7 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
               <span className="window-close-dialog__checkbox" aria-hidden="true">
                 <Check size={12} strokeWidth={2.6} />
               </span>
-              <span>记住我的选择，下次直接执行</span>
+              <span>{copy.remember}</span>
             </label>
           ) : null}
 
@@ -338,10 +326,10 @@ export function WindowCloseDialog({ mode, errorMessage, onCancel, onConfirm }: W
             disabled={interactionsDisabled}
           >
             {renderedMode.kind === "unsafe"
-              ? "取消退出"
+              ? copy.cancelUnsafe
               : renderedMode.kind === "blocked"
-                ? "返回应用"
-                : "暂不退出"}
+                ? copy.cancelBlocked
+                : copy.cancelNormal}
           </button>
         </footer>
 
