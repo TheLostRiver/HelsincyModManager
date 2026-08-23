@@ -18,16 +18,18 @@ export type ExternalImportTaskState =
   | { status: "cancelled"; taskId: string; phase: string }
   | { status: "failed"; taskId: string | null; phase: string; errorCode: string };
 
-const importPhaseLabels: Readonly<Record<string, string>> = {
-  "external_import.import.queued": "等待批量导入",
-  "external_import.import.materializing": "正在重新校验并物化候选",
-  "external_import.import.preparing": "正在分析内部导入包",
-  "external_import.import.persisting": "正在保存 Mod 目录事实",
-  "external_import.import.completed": "批量导入完成",
-  "external_import.import.failed": "批量导入失败",
-  "external_import.import.cancelled": "批量导入已取消",
-  "mod_import.cancelled": "正在安全取消导入",
-};
+import type { ExternalImportCopy } from "./externalImportCopy";
+
+const importPhases: ReadonlySet<string> = new Set([
+  "external_import.import.queued",
+  "external_import.import.materializing",
+  "external_import.import.preparing",
+  "external_import.import.persisting",
+  "external_import.import.completed",
+  "external_import.import.failed",
+  "external_import.import.cancelled",
+  "mod_import.cancelled",
+]);
 
 const stableImportErrorCodes = new Set([
   "external_import_source_unavailable",
@@ -47,8 +49,8 @@ const stableImportErrorCodes = new Set([
   "selection_closed",
 ]);
 
-export function getExternalImportPhaseLabel(phase: string) {
-  return importPhaseLabels[phase] ?? "导入状态不可识别";
+export function getExternalImportPhaseLabel(phase: string, progress: ExternalImportCopy["progress"]) {
+  return progress.phases[phase] ?? progress.unrecognized;
 }
 
 export function isExternalImportTaskTerminal(state: ExternalImportTaskState) {
@@ -94,7 +96,7 @@ export function nextExternalImportTaskStateFromProgress(
   ) {
     return current;
   }
-  if (!Object.hasOwn(importPhaseLabels, event.phase) || !hasSafeAggregateProgress(event)) {
+  if (!importPhases.has(event.phase) || !hasSafeAggregateProgress(event)) {
     return failedState(event.taskId, "external_import.import.unrecognized");
   }
 

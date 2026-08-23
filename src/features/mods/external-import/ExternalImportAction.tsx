@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import { listen } from "@tauri-apps/api/event";
 import { CircleAlert, FolderInput, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -59,6 +61,8 @@ type ExternalImportActionProps = {
 };
 
 export function ExternalImportAction({ onImported }: ExternalImportActionProps) {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
   const chooseSourceButtonRef = useRef<HTMLButtonElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -169,8 +173,8 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
       displayedTaskNoticeIdRef.current = scanState.taskId;
       showTaskNotice({
         taskId: scanState.taskId,
-        title: "正在扫描第三方来源",
-        message: getExternalImportScanPhaseLabel(scanState.phase),
+        title: extCopy.action.scanningToastTitle,
+        message: getExternalImportScanPhaseLabel(scanState.phase, extCopy.scan),
         tone: "progress",
       });
       return;
@@ -180,7 +184,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
       dismissTaskNotice(previousTaskId);
       displayedTaskNoticeIdRef.current = null;
     }
-  }, [dismissTaskNotice, scanState, showTaskNotice]);
+  }, [dismissTaskNotice, extCopy, scanState, showTaskNotice]);
 
   useEffect(() => () => {
     const taskId = displayedTaskNoticeIdRef.current;
@@ -204,8 +208,8 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
       pushToast({
         eventKey: `external-import.failed.${noticeKey}`,
         taskId: scanState.taskId ?? undefined,
-        title: "第三方来源扫描失败",
-        message: getExternalImportScanErrorMessage(scanState.errorCode),
+        title: extCopy.action.scanFailedToastTitle,
+        message: getExternalImportScanErrorMessage(scanState.errorCode, extCopy.scan),
         tone: "danger",
       });
       return;
@@ -214,11 +218,11 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
     pushToast({
       eventKey: `external-import.cancelled.${noticeKey}`,
       taskId: scanState.taskId,
-      title: "第三方来源扫描已取消",
-      message: "未创建可导入选择。",
+      title: extCopy.action.scanCancelledToastTitle,
+      message: extCopy.action.scanCancelledToastMessage,
       tone: "neutral",
     });
-  }, [pushToast, scanState]);
+  }, [extCopy, pushToast, scanState]);
 
   const launchScan = useCallback(
     async (selectedSource: ExternalImportSourceDto) => {
@@ -330,14 +334,17 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
       pushToast({
         eventKey: `external-import.cancel-failed.${scanState.taskId}`,
         taskId: scanState.taskId,
-        title: "无法取消扫描",
-        message: getExternalImportScanErrorMessage(errorCodeFrom(error, "external_import_task_unavailable")),
+        title: extCopy.action.cancelScanFailedTitle,
+        message: getExternalImportScanErrorMessage(
+            errorCodeFrom(error, "external_import_task_unavailable"),
+            extCopy.scan,
+          ),
         tone: "warning",
       });
     } finally {
       setCancelPending(false);
     }
-  }, [cancelPending, pushToast, scanState]);
+  }, [cancelPending, extCopy, pushToast, scanState]);
 
   function retryListener() {
     if (listenerStatus !== "failed" || isScanActive(scanStateRef.current)) {
@@ -357,11 +364,11 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
 
   const scanStatusText =
     sourcePickerActive
-      ? "正在选择来源"
+      ? extCopy.action.choosingSource
       : scanState.status === "starting"
-        ? "正在创建扫描任务"
+        ? extCopy.action.creatingScanTask
         : scanState.status === "running"
-          ? getExternalImportScanPhaseLabel(scanState.phase)
+          ? getExternalImportScanPhaseLabel(scanState.phase, extCopy.scan)
           : null;
   const sourceButtonDisabled =
     listenerStatus !== "ready" ||
@@ -375,19 +382,19 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
         type="button"
         className="compact-action is-neutral external-import-action__trigger"
         disabled={listenerStatus === "loading"}
-        aria-label="迁移第三方 Mod"
+        aria-label={extCopy.action.trigger}
         onClick={openDialog}
       >
         <span className="compact-action__left">
           <FolderInput size={14} strokeWidth={2.4} aria-hidden="true" />
-          <span className="compact-action__label">迁移第三方 Mod</span>
+          <span className="compact-action__label">{extCopy.action.trigger}</span>
         </span>
       </button>
 
       <Dialog
         open={dialogOpen}
-        title="第三方 Mod 迁移"
-        description={source?.displayLabel ?? "只读扫描与候选预览"}
+        title={extCopy.action.dialogTitle}
+        description={source?.displayLabel ?? extCopy.action.dialogFallbackDescription}
         icon={<FolderInput size={20} />}
         busy={
           sourcePickerActive ||
@@ -406,13 +413,13 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
                 onClick={() => void requestCancel()}
               >
                 {cancelPending ? <LoaderCircle className="external-import__spinner" size={15} /> : <XCircle size={15} />}
-                {cancelPending ? "正在取消" : "取消扫描"}
+                {cancelPending ? extCopy.action.cancelling : extCopy.action.cancelScan}
               </button>
             ) : null}
             {listenerStatus === "failed" ? (
               <button type="button" className="external-import__button is-secondary" onClick={retryListener}>
                 <RefreshCcw size={15} />
-                重试状态监听
+                {extCopy.action.retryListener}
               </button>
             ) : null}
             <button
@@ -423,28 +430,28 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
               onClick={() => void chooseSource()}
             >
               {sourcePickerActive ? <LoaderCircle className="external-import__spinner" size={15} /> : <FolderInput size={15} />}
-              选择来源
+              {extCopy.action.chooseSource}
             </button>
           </>
         }
       >
         <div className="external-import">
           <div className="external-import__source-row">
-            <span className="external-import__eyebrow">来源</span>
-            <strong>{source?.displayLabel ?? "尚未选择"}</strong>
+            <span className="external-import__eyebrow">{extCopy.action.sourceEyebrow}</span>
+            <strong>{source?.displayLabel ?? extCopy.action.sourceNotChosen}</strong>
           </div>
 
           {listenerStatus === "loading" ? (
             <div className="external-import__state" role="status" aria-live="polite">
               <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-              <span>正在连接扫描状态</span>
+              <span>{extCopy.action.connectingScanStatus}</span>
             </div>
           ) : null}
 
           {listenerStatus === "failed" ? (
             <div className="external-import__state is-error" role="alert">
               <CircleAlert size={18} aria-hidden="true" />
-              <span>{getExternalImportScanErrorMessage("external_import_listener_unavailable")}</span>
+              <span>{getExternalImportScanErrorMessage("external_import_listener_unavailable", extCopy.scan)}</span>
             </div>
           ) : null}
 
@@ -458,14 +465,14 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
           {scanState.status === "failed" ? (
             <div className="external-import__state is-error" role="alert">
               <CircleAlert size={18} aria-hidden="true" />
-              <span>{getExternalImportScanErrorMessage(scanState.errorCode)}</span>
+              <span>{getExternalImportScanErrorMessage(scanState.errorCode, extCopy.scan)}</span>
             </div>
           ) : null}
 
           {scanState.status === "cancelled" ? (
             <div className="external-import__state is-muted" role="status" aria-live="polite">
               <XCircle size={18} aria-hidden="true" />
-              <span>扫描已取消</span>
+              <span>{extCopy.action.scanCancelled}</span>
             </div>
           ) : null}
 

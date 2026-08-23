@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFeedback } from "../../../shared/feedback";
@@ -58,6 +60,8 @@ function isImportActiveState(state: ExternalImportTaskState) {
 export function useExternalImportTaskProgress(
   batchId: string | null,
 ): ExternalImportTaskProgressWorkflow {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
   const [importState, setImportState] = useState<ExternalImportTaskState>({
     status: "idle",
@@ -169,12 +173,12 @@ export function useExternalImportTaskProgress(
         importState.status === "running" &&
         importState.current !== null &&
         importState.total !== null
-          ? `（${importState.current} / ${importState.total}）`
+          ? extCopy.workflow.importingProgress(String(importState.current), String(importState.total))
           : "";
       showTaskNotice({
         taskId: importState.taskId,
-        title: "正在批量导入 Mod",
-        message: `${getExternalImportPhaseLabel(importState.phase)}${progress}`,
+        title: extCopy.workflow.importingTitle,
+        message: `${getExternalImportPhaseLabel(importState.phase, extCopy.progress)}${progress}`,
         tone: "progress",
       });
       return;
@@ -184,7 +188,7 @@ export function useExternalImportTaskProgress(
       dismissTaskNotice(previousTaskId);
       displayedTaskNoticeIdRef.current = null;
     }
-  }, [dismissTaskNotice, importState, showTaskNotice]);
+  }, [dismissTaskNotice, extCopy, importState, showTaskNotice]);
 
   useEffect(
     () => () => {
@@ -213,8 +217,8 @@ export function useExternalImportTaskProgress(
       pushToast({
         eventKey: `external-import.import.completed.${noticeKey}`,
         taskId: importState.taskId,
-        title: "批量导入已完成",
-        message: "正在读取服务端确认的结果明细。",
+        title: extCopy.workflow.importCompletedTitle,
+        message: extCopy.workflow.importCompletedMessage,
         tone: "success",
       });
       return;
@@ -223,8 +227,8 @@ export function useExternalImportTaskProgress(
       pushToast({
         eventKey: `external-import.import.cancelled.${noticeKey}`,
         taskId: importState.taskId,
-        title: "批量导入已取消",
-        message: "正在读取已保留的权威结果。",
+        title: extCopy.workflow.importCancelledTitle,
+        message: extCopy.workflow.importCancelledMessage,
         tone: "neutral",
       });
       return;
@@ -232,11 +236,11 @@ export function useExternalImportTaskProgress(
     pushToast({
       eventKey: `external-import.import.failed.${noticeKey}`,
       taskId: importState.taskId ?? undefined,
-      title: "批量导入未完成",
-      message: getExternalImportSelectionErrorMessage(importState.errorCode),
+      title: extCopy.workflow.importIncompleteTitle,
+      message: getExternalImportSelectionErrorMessage(importState.errorCode, extCopy.selection),
       tone: "danger",
     });
-  }, [importState, pushToast]);
+  }, [extCopy, importState, pushToast]);
 
   const launchImport = useCallback(
     async (
@@ -335,9 +339,10 @@ export function useExternalImportTaskProgress(
       pushToast({
         eventKey: `external-import.import.cancel-failed.${current.taskId}`,
         taskId: current.taskId,
-        title: "无法取消批量导入",
+        title: extCopy.workflow.cancelImportFailedTitle,
         message: getExternalImportSelectionErrorMessage(
           errorCodeFrom(error, "external_import_task_unavailable"),
+          extCopy.selection,
         ),
         tone: "warning",
       });
@@ -347,7 +352,7 @@ export function useExternalImportTaskProgress(
         setCancelPending(false);
       }
     }
-  }, [pushToast]);
+  }, [extCopy, pushToast]);
 
   const cancelImport = useCallback(() => {
     void cancelImportRequest();

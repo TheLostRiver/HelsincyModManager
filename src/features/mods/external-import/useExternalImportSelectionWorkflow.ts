@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listCategories, type CategoryItem } from "../../categories/categoryApi";
 import {
@@ -109,6 +111,8 @@ export function useExternalImportSelectionWorkflow(
   batchId: string | null,
   onImported: () => Promise<void> | void,
 ): ExternalImportSelectionWorkflow {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const {
     importState,
     listenerStatus,
@@ -260,7 +264,9 @@ export function useExternalImportSelectionWorkflow(
           return false;
         }
 
-        const candidates = page.candidates.map(toExternalImportPreviewCandidateViewModel);
+        const candidates = page.candidates.map((item) =>
+        toExternalImportPreviewCandidateViewModel(item, extCopy.preview),
+      );
         setTrackedSelection(page.selection);
         reconcileDecisionDrafts(candidates, options.resetDrafts);
         setTrackedPreviewState(
@@ -287,12 +293,13 @@ export function useExternalImportSelectionWorkflow(
           status: "failed",
           message: getExternalImportSelectionErrorMessage(
             errorCodeFrom(error, "external_import_preview_invalid"),
+            extCopy.selection,
           ),
         });
         return false;
       }
     },
-    [reconcileDecisionDrafts, setTrackedPreviewState, setTrackedSelection],
+    [extCopy, reconcileDecisionDrafts, setTrackedPreviewState, setTrackedSelection],
   );
 
   const initializeSelection = useCallback(
@@ -326,11 +333,12 @@ export function useExternalImportSelectionWorkflow(
           status: "failed",
           message: getExternalImportSelectionErrorMessage(
             errorCodeFrom(error, "external_import_selection_invalid"),
+            extCopy.selection,
           ),
         });
       }
     },
-    [loadFirstPage, setTrackedPreviewState, setTrackedSelection],
+    [extCopy, loadFirstPage, setTrackedPreviewState, setTrackedSelection],
   );
 
   const loadCategoryOptions = useCallback(
@@ -365,11 +373,12 @@ export function useExternalImportSelectionWorkflow(
           options: [],
           message: getExternalImportSelectionErrorMessage(
             "external_import_category_unavailable",
+            extCopy.selection,
           ),
         });
       }
     },
-    [setTrackedCategoryState],
+    [extCopy, setTrackedCategoryState],
   );
 
   useEffect(() => {
@@ -485,7 +494,7 @@ export function useExternalImportSelectionWorkflow(
               )))
         ) {
           setSelectionError(
-            getExternalImportSelectionErrorMessage("selection_candidate_invalid"),
+            getExternalImportSelectionErrorMessage("selection_candidate_invalid", extCopy.selection),
           );
           return;
         }
@@ -566,7 +575,7 @@ export function useExternalImportSelectionWorkflow(
             setTrackedSelection({ ...latestSelection, status: "expired" });
           }
         }
-        setSelectionError(getExternalImportSelectionErrorMessage(code));
+        setSelectionError(getExternalImportSelectionErrorMessage(code, extCopy.selection));
       } finally {
         if (
           isCurrentSelectionWorkflow(
@@ -580,6 +589,7 @@ export function useExternalImportSelectionWorkflow(
       }
     },
     [
+      extCopy,
       isCurrentSelectionWorkflow,
       reloadAuthoritativeFirstPage,
       setTrackedDecisionDrafts,
@@ -694,7 +704,7 @@ export function useExternalImportSelectionWorkflow(
           setTrackedSelection({ ...latestSelection, status: "expired" });
         }
       }
-      setSelectionError(getExternalImportSelectionErrorMessage(code));
+      setSelectionError(getExternalImportSelectionErrorMessage(code, extCopy.selection));
     } finally {
       if (
         isCurrentSelectionWorkflow(
@@ -707,6 +717,7 @@ export function useExternalImportSelectionWorkflow(
       }
     }
   }, [
+    extCopy,
     isCurrentSelectionWorkflow,
     reloadAuthoritativeFirstPage,
     setTrackedPendingAction,
@@ -723,7 +734,7 @@ export function useExternalImportSelectionWorkflow(
     ) {
       setTrackedSelection({ ...currentSelection, status: "expired" });
       setSelectionError(
-        getExternalImportSelectionErrorMessage("selection_expired"),
+        getExternalImportSelectionErrorMessage("selection_expired", extCopy.selection),
       );
       return;
     }
@@ -764,12 +775,13 @@ export function useExternalImportSelectionWorkflow(
         setTrackedSelection({ ...currentSelection, status: "sealed" });
       } else if (launchResult.status === "failed") {
         setSelectionError(
-          getExternalImportSelectionErrorMessage(launchResult.errorCode),
+          getExternalImportSelectionErrorMessage(launchResult.errorCode, extCopy.selection),
         );
       } else if (launchResult.status === "ignored") {
         setSelectionError(
           getExternalImportSelectionErrorMessage(
             "external_import_task_unavailable",
+            extCopy.selection,
           ),
         );
       }
@@ -784,7 +796,7 @@ export function useExternalImportSelectionWorkflow(
         return;
       }
       const code = errorCodeFrom(error, "external_import_task_unavailable");
-      setSelectionError(getExternalImportSelectionErrorMessage(code));
+      setSelectionError(getExternalImportSelectionErrorMessage(code, extCopy.selection));
     } finally {
       if (
         isCurrentSelectionWorkflow(
@@ -797,6 +809,7 @@ export function useExternalImportSelectionWorkflow(
       }
     }
   }, [
+    extCopy,
     isCurrentSelectionWorkflow,
     setTrackedPendingAction,
     setTrackedSelection,
@@ -848,10 +861,13 @@ export function useExternalImportSelectionWorkflow(
         return;
       }
 
-      const incoming = page.candidates.map(toExternalImportPreviewCandidateViewModel);
+      const incoming = page.candidates.map((item) =>
+        toExternalImportPreviewCandidateViewModel(item, extCopy.preview),
+      );
       const candidates = appendExternalImportPreviewCandidates(
         currentPreview.candidates,
         page.candidates,
+        extCopy.preview,
       );
       setTrackedSelection(page.selection);
       reconcileDecisionDrafts(incoming, false);
@@ -875,10 +891,12 @@ export function useExternalImportSelectionWorkflow(
         loadingMore: false,
         loadMoreError: getExternalImportSelectionErrorMessage(
           errorCodeFrom(error, "external_import_preview_invalid"),
+          extCopy.selection,
         ),
       });
     }
   }, [
+    extCopy,
     reconcileDecisionDrafts,
     isImportActive,
     setTrackedPreviewState,

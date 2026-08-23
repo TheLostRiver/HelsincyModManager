@@ -63,7 +63,7 @@ test("external import action composes selection, result, and retry without a fro
   assert.match(selectionWorkflow, /listCategories/);
   assert.match(selectionWorkflow, /useExternalImportTaskProgress\(batchId\)/);
   assert.doesNotMatch(selectionWorkflow, /listen<TaskProgressEventDto>/);
-  assert.match(progressState, /Object\.hasOwn\(importPhaseLabels,\s*event\.phase\)/);
+  assert.match(progressState, /importPhases\.has\(event\.phase\)/);
   assert.match(progressState, /event\.phase === "mod_import\.cancelled"/);
   assert.match(progressState, /external_import\.import\./);
   assert.match(selectionWorkflow, /const runLoadMore = useCallback/);
@@ -110,7 +110,10 @@ test("external import action composes selection, result, and retry without a fro
     selectionWorkflow,
     /launchResult\.status === "ignored"[\s\S]{0,180}external_import_task_unavailable/,
   );
-  assert.match(resultPanel, /重新读取结果|载入更多结果|重试可恢复项/);
+  assert.match(
+    resultPanel,
+    /resultPanel\.reloadResults|resultPanel\.loadMoreResults|resultPanel\.retryRecoverable/,
+  );
   assert.doesNotMatch(
     `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,
     /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i,

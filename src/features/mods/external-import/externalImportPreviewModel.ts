@@ -27,25 +27,23 @@ export type ExternalImportPreviewCandidateViewModel = {
   selectionDecision: ExternalImportPreviewCandidateDto["selectionDecision"];
 };
 
-const previewStatusPresentation: Readonly<
-  Record<string, Pick<ExternalImportPreviewCandidateViewModel, "statusLabel" | "statusTone">>
+import type { ExternalImportCopy } from "./externalImportCopy";
+
+const previewStatusTones: Readonly<
+  Record<string, ExternalImportPreviewCandidateViewModel["statusTone"]>
 > = {
-  ready: { statusLabel: "可导入", statusTone: "ready" },
-  already_imported: { statusLabel: "已存在", statusTone: "warning" },
-  duplicate_in_batch: { statusLabel: "批次重复", statusTone: "warning" },
-  name_collision: { statusLabel: "名称冲突", statusTone: "warning" },
-  structure_invalid: { statusLabel: "结构不可用", statusTone: "danger" },
-  metadata_invalid: { statusLabel: "元数据不可用", statusTone: "warning" },
-  unsupported_entry: { statusLabel: "不支持的条目", statusTone: "danger" },
-  resource_limit_exceeded: { statusLabel: "超出资源限制", statusTone: "danger" },
-  source_unreadable: { statusLabel: "来源不可读取", statusTone: "danger" },
+  ready: "ready",
+  already_imported: "warning",
+  duplicate_in_batch: "warning",
+  name_collision: "warning",
+  structure_invalid: "danger",
+  metadata_invalid: "warning",
+  unsupported_entry: "danger",
+  resource_limit_exceeded: "danger",
+  source_unreadable: "danger",
 };
 
-const conflictLabels: Readonly<Record<string, string | null>> = {
-  none: null,
-  content_duplicate: "内容重复",
-  name_collision: "同名冲突",
-};
+
 
 function isCandidateShape(value: unknown): value is ExternalImportPreviewCandidateDto {
   if (!isPlainRecord(value) || !isExternalImportOpaqueId(value.candidateId) || !isPlainRecord(value.metadata)) {
@@ -143,11 +141,10 @@ function formatByteCount(value: number) {
 
 export function toExternalImportPreviewCandidateViewModel(
   candidate: ExternalImportPreviewCandidateDto,
+  preview: ExternalImportCopy["preview"],
 ): ExternalImportPreviewCandidateViewModel {
-  const presentation = previewStatusPresentation[candidate.previewStatus] ?? {
-    statusLabel: "需要重新扫描",
-    statusTone: "danger" as const,
-  };
+  const statusLabel = preview.status[candidate.previewStatus] ?? preview.rescan;
+  const statusTone = previewStatusTones[candidate.previewStatus] ?? ("danger" as const);
   const metadata = [
     safeDisplayText(candidate.metadata.author),
     safeDisplayText(candidate.metadata.version),
@@ -156,13 +153,16 @@ export function toExternalImportPreviewCandidateViewModel(
 
   return {
     candidateId: candidate.candidateId,
-    title: safeDisplayText(candidate.metadata.displayName, "未命名候选") ?? "未命名候选",
+    title: safeDisplayText(candidate.metadata.displayName, preview.unnamed) ?? preview.unnamed,
     metadata,
-    fileCount: `${formatInteger(candidate.fileCount)} 个文件`,
+    fileCount: preview.fileCount(formatInteger(candidate.fileCount)),
     totalBytes: formatByteCount(candidate.totalBytes),
-    statusLabel: presentation.statusLabel,
-    statusTone: presentation.statusTone,
-    conflictLabel: conflictLabels[candidate.conflictKind] ?? "需要复核",
+    statusLabel,
+    statusTone,
+    conflictLabel:
+      candidate.conflictKind === "none"
+        ? null
+        : preview.conflicts[candidate.conflictKind] ?? preview.needsReview,
     previewStatus: candidate.previewStatus,
     selected: candidate.selected,
     selectionDecision: candidate.selectionDecision,
@@ -172,6 +172,7 @@ export function toExternalImportPreviewCandidateViewModel(
 export function appendExternalImportPreviewCandidates(
   existing: ExternalImportPreviewCandidateViewModel[],
   incoming: ExternalImportPreviewCandidateDto[],
+  preview: ExternalImportCopy["preview"],
 ) {
   const seenCandidateIds = new Set(existing.map((candidate) => candidate.candidateId));
   const next = [...existing];
@@ -181,7 +182,7 @@ export function appendExternalImportPreviewCandidates(
       continue;
     }
     seenCandidateIds.add(candidate.candidateId);
-    next.push(toExternalImportPreviewCandidateViewModel(candidate));
+    next.push(toExternalImportPreviewCandidateViewModel(candidate, preview));
   }
 
   return next;

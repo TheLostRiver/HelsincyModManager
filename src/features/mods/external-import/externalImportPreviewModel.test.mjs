@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
+import { externalImportCopy } from "./externalImportCopy.ts";
 import {
   appendExternalImportPreviewCandidates,
   isExternalImportPreviewPageForBatch,
   toExternalImportPreviewCandidateViewModel,
 } from "./externalImportPreviewModel.ts";
+
+const zhPreview = externalImportCopy.zh_cn.preview;
 
 function candidate(overrides = {}) {
   return {
@@ -148,13 +151,16 @@ test("selection-aware preview requires the exact selection and consistent candid
 });
 
 test("candidate view model is text-only and unknown statuses fail closed", () => {
-  const known = toExternalImportPreviewCandidateViewModel(candidate());
+  const known = toExternalImportPreviewCandidateViewModel(candidate(), zhPreview);
   assert.equal(known.title, "人工候选");
   assert.equal(known.fileCount, "12 个文件");
   assert.equal(known.totalBytes, "2 KB");
   assert.equal(known.statusLabel, "可导入");
 
-  const unknown = toExternalImportPreviewCandidateViewModel(candidate({ previewStatus: "future_status" }));
+  const unknown = toExternalImportPreviewCandidateViewModel(
+    candidate({ previewStatus: "future_status" }),
+    zhPreview,
+  );
   assert.equal(unknown.statusLabel, "需要重新扫描");
   assert.equal(unknown.statusTone, "danger");
 });
@@ -189,11 +195,11 @@ test("preview validation rejects unsafe metadata, imprecise counts, and oversize
 });
 
 test("preview pagination deduplicates candidate ids before presentation", () => {
-  const existing = [toExternalImportPreviewCandidateViewModel(candidate())];
+  const existing = [toExternalImportPreviewCandidateViewModel(candidate(), zhPreview)];
   const merged = appendExternalImportPreviewCandidates(existing, [
     candidate(),
     candidate({ candidateId: "candidate-b", metadata: { ...candidate().metadata, displayName: "第二项" } }),
-  ]);
+  ], zhPreview);
 
   assert.equal(merged.length, 2);
   assert.deepEqual(merged.map((item) => item.candidateId), ["candidate-a", "candidate-b"]);

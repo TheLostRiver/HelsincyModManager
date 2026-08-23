@@ -1,3 +1,5 @@
+import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { externalImportCopy } from "./externalImportCopy";
 import {
   CheckCircle2,
   CircleAlert,
@@ -23,6 +25,8 @@ function formatCount(value: number) {
 export function ExternalImportResultPanel({
   workflow,
 }: ExternalImportResultPanelProps) {
+  const { locale } = useI18n();
+  const extCopy = resolveCopy(externalImportCopy, locale);
   const headingId = useId();
   const state = workflow.state;
   if (state.status === "idle") {
@@ -33,11 +37,11 @@ export function ExternalImportResultPanel({
     return (
       <section className="external-import__results" aria-labelledby={headingId}>
         <h3 id={headingId} className="external-import__visually-hidden">
-          批量导入结果
+          {extCopy.resultPanel.title}
         </h3>
         <div className="external-import__state" role="status" aria-live="polite">
           <LoaderCircle className="external-import__spinner" size={18} aria-hidden="true" />
-          <span>正在读取服务端确认的结果明细</span>
+          <span>{extCopy.resultPanel.readingDetails}</span>
         </div>
       </section>
     );
@@ -47,7 +51,7 @@ export function ExternalImportResultPanel({
     return (
       <section className="external-import__results" aria-labelledby={headingId}>
         <h3 id={headingId} className="external-import__visually-hidden">
-          批量导入结果
+          {extCopy.resultPanel.title}
         </h3>
         <div className="external-import__inline-action is-error" role="alert">
           <span>{state.message}</span>
@@ -57,23 +61,23 @@ export function ExternalImportResultPanel({
             onClick={workflow.retryResultQuery}
           >
             <RefreshCcw size={15} aria-hidden="true" />
-            重新读取结果
+            {extCopy.resultPanel.reloadResults}
           </button>
         </div>
       </section>
     );
   }
 
-  const batchStatus = getExternalImportBatchStatusLabel(state.batchStatus);
+  const batchStatus = getExternalImportBatchStatusLabel(state.batchStatus, extCopy.result);
   return (
     <section className="external-import__results" aria-labelledby={headingId}>
       <header className="external-import__preview-header">
         <div>
-          <span className="external-import__eyebrow">导入结果</span>
+          <span className="external-import__eyebrow">{extCopy.resultPanel.resultEyebrow}</span>
           <h3 id={headingId}>
             {state.status === "ready"
-              ? `已载入 ${formatCount(state.results.length)} / ${formatCount(state.totalCount)} 项`
-              : "当前批次没有结果项"}
+              ? extCopy.resultPanel.loadedCount(formatCount(state.results.length), formatCount(state.totalCount))
+              : extCopy.resultPanel.emptyBatch}
           </h3>
         </div>
         <span
@@ -92,34 +96,34 @@ export function ExternalImportResultPanel({
       {workflow.resultStale ? (
         <div className="external-import__state is-muted" role="status" aria-live="polite">
           <RotateCw className="external-import__spinner" size={18} aria-hidden="true" />
-          <span>正在重试可恢复项；下方是上一次权威结果，任务结束后会自动刷新。</span>
+          <span>{extCopy.resultPanel.retryingHint}</span>
         </div>
       ) : null}
 
       {state.status === "empty" ? (
         <div className="external-import__empty" role="status" aria-live="polite">
           <FileSearch size={24} aria-hidden="true" />
-          <strong>没有结果明细</strong>
-          <span>批次状态已由后端确认，没有可分页的候选结果。</span>
+          <strong>{extCopy.resultPanel.noDetailsTitle}</strong>
+          <span>{extCopy.resultPanel.noDetailsBody}</span>
         </div>
       ) : (
         <>
-          <div className="external-import__result-summary" aria-label="当前已载入结果汇总">
-            <span>已导入 {formatCount(workflow.summary.imported)}</span>
-            <span>已存在 {formatCount(workflow.summary.alreadyImported)}</span>
-            <span>已跳过 {formatCount(workflow.summary.skipped)}</span>
-            <span>已阻断 {formatCount(workflow.summary.blocked)}</span>
-            <span>失败 {formatCount(workflow.summary.failed)}</span>
-            <span>取消 {formatCount(workflow.summary.cancelled)}</span>
+          <div className="external-import__result-summary" aria-label={extCopy.resultPanel.summaryAria}>
+            <span>{extCopy.resultPanel.imported(formatCount(workflow.summary.imported))}</span>
+            <span>{extCopy.resultPanel.alreadyImported(formatCount(workflow.summary.alreadyImported))}</span>
+            <span>{extCopy.resultPanel.skipped(formatCount(workflow.summary.skipped))}</span>
+            <span>{extCopy.resultPanel.blocked(formatCount(workflow.summary.blocked))}</span>
+            <span>{extCopy.resultPanel.failed(formatCount(workflow.summary.failed))}</span>
+            <span>{extCopy.resultPanel.cancelled(formatCount(workflow.summary.cancelled))}</span>
           </div>
 
           <ul className="external-import__result-list">
             {state.results.map((result) => (
               <li key={result.candidateId} className="external-import__result-item">
                 <div className="external-import__result-main">
-                  <strong>候选结果</strong>
+                  <strong>{extCopy.resultPanel.candidateResult}</strong>
                   <code>{result.candidateId}</code>
-                  {result.importedModId ? <span>Mod ID：{result.importedModId}</span> : null}
+                  {result.importedModId ? <span>{extCopy.resultPanel.modId(result.importedModId)}</span> : null}
                 </div>
                 <div className="external-import__candidate-statuses">
                   <span
@@ -128,7 +132,7 @@ export function ExternalImportResultPanel({
                     {result.statusLabel}
                   </span>
                   {result.retryable ? (
-                    <span className="external-import__badge is-warning">可重试</span>
+                    <span className="external-import__badge is-warning">{extCopy.resultPanel.retryableBadge}</span>
                   ) : null}
                 </div>
                 {result.reasonLabel ? (
@@ -169,7 +173,7 @@ export function ExternalImportResultPanel({
             ) : (
               <FileSearch size={15} aria-hidden="true" />
             )}
-            {state.loadingMore ? "正在载入" : "载入更多结果"}
+            {state.loadingMore ? extCopy.resultPanel.loadingMore : extCopy.resultPanel.loadMoreResults}
           </button>
         ) : null}
         {workflow.retryAvailable ? (
@@ -188,7 +192,7 @@ export function ExternalImportResultPanel({
             ) : (
               <CheckCircle2 size={15} aria-hidden="true" />
             )}
-            {workflow.retryPending ? "正在创建重试任务" : "重试可恢复项"}
+            {workflow.retryPending ? extCopy.resultPanel.creatingRetryTask : extCopy.resultPanel.retryRecoverable}
           </button>
         ) : null}
       </div>

@@ -20,7 +20,10 @@ test("result workflow queries terminal tasks with request and batch identity gat
   assert.match(source, /const batchChanged = observedBatchId !== batchId/);
   assert.match(source, /if \(batchChanged\) \{[\s\S]{0,160}resultRequestRef\.current \+= 1/);
   assert.match(source, /state:\s*visibleState/);
-  assert.match(source, /page\.results\.map\(toExternalImportResultViewModel\)/);
+  assert.match(
+    source,
+    /page\.results\.map\(\(item\) => toExternalImportResultViewModel\(item, extCopy\.result\)\)/,
+  );
   assert.match(source, /appendExternalImportResults/);
   assert.match(
     source,
