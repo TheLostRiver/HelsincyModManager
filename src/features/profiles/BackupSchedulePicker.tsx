@@ -1,31 +1,25 @@
 import { CalendarDays, ChevronDown, ChevronUp, Clock3, PauseCircle, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { backupPolicyCopy, type BackupPolicyCopy, type WeekdayIndex } from "./backupPolicyCopy";
 import type { ProfileBackupScheduleDto } from "./profileSaveSettingsTypes";
-import { defaultSchedule } from "./profileViewModel";
+import { defaultSchedule, weekdayDisplayOrder } from "./profileViewModel";
 
 const hours = Array.from({ length: 24 }, (_, index) => index);
 const minutes = Array.from({ length: 60 }, (_, index) => index);
-const weekdays = [
-  { value: 1, label: "星期一" },
-  { value: 2, label: "星期二" },
-  { value: 3, label: "星期三" },
-  { value: 4, label: "星期四" },
-  { value: 5, label: "星期五" },
-  { value: 6, label: "星期六" },
-  { value: 0, label: "星期日" },
-];
-const weekdayOrder = new Map(weekdays.map((day, index) => [day.value, index]));
+const weekdayValues: WeekdayIndex[] = [1, 2, 3, 4, 5, 6, 0];
 
-function formatWeeklyDaysAbbr(days: number[]) {
-  if (!days || days.length === 0) return "周日";
-  const map: Record<number, string> = { 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 0: "日" };
+function formatWeeklyDaysAbbr(days: number[], picker: BackupPolicyCopy["picker"]) {
+  if (!days || days.length === 0) return picker.weeklyAbbrEmpty;
   const sorted = [...days].sort((a, b) => {
-    const oa = weekdayOrder.get(a) ?? 0;
-    const ob = weekdayOrder.get(b) ?? 0;
+    const oa = weekdayDisplayOrder.get(a) ?? 0;
+    const ob = weekdayDisplayOrder.get(b) ?? 0;
     return oa - ob;
   });
-  return "周" + sorted.map((day) => map[day] || "").join(",");
+  return picker.weeklyAbbr(
+    sorted.map((day) => picker.weekdayAbbr[day as WeekdayIndex] ?? "").join(picker.abbrJoin),
+  );
 }
 
 function formatTime(hour: number | null | undefined, minute: number | null | undefined) {
@@ -56,6 +50,8 @@ type BackupSchedulePickerProps = {
 };
 
 export function BackupSchedulePicker({ schedule, onChange, disabled = false }: BackupSchedulePickerProps) {
+  const { locale } = useI18n();
+  const picker = resolveCopy(backupPolicyCopy, locale).picker;
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const usesTime = schedule.cadence !== "manual" && !disabled;
@@ -92,7 +88,7 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
     const nextDays = schedule.weekdays.includes(day)
       ? schedule.weekdays.filter((value) => value !== day)
       : [...schedule.weekdays, day].sort(
-          (a, b) => (weekdayOrder.get(a) ?? 0) - (weekdayOrder.get(b) ?? 0),
+          (a, b) => (weekdayDisplayOrder.get(a) ?? 0) - (weekdayDisplayOrder.get(b) ?? 0),
         );
     onChange({ ...schedule, weekdays: nextDays.length > 0 ? nextDays : [day] });
   };
@@ -110,7 +106,7 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
           }}
         >
           <PauseCircle size={14} />
-          <span>手动</span>
+          <span>{picker.manualChip}</span>
         </button>
 
         <button
@@ -128,7 +124,7 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
           }}
         >
           <Clock3 size={14} />
-          <span>每日备份</span>
+          <span>{picker.dailyChip}</span>
           <span className="schedule-chip-sub">{dailyChipTime}</span>
         </button>
 
@@ -147,27 +143,28 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
           }}
         >
           <CalendarDays size={14} />
-          <span>每周备份</span>
+          <span>{picker.weeklyChip}</span>
           <span className="schedule-chip-sub">
-            {formatWeeklyDaysAbbr(schedule.weekdays)} {weeklyChipTime}
+            {formatWeeklyDaysAbbr(schedule.weekdays, picker)} {weeklyChipTime}
           </span>
         </button>
       </div>
       {open && usesTime ? (
-        <div className="backup-schedule-popover" role="dialog" aria-label="自动备份时间">
+        <div className="backup-schedule-popover" role="dialog" aria-label={picker.timeDialogAria}>
           {schedule.cadence === "weekly" ? (
-            <div className="backup-weekday-row" role="group" aria-label="每周日期">
-              {weekdays.map((day) => (
+            <div className="backup-weekday-row" role="group" aria-label={picker.weekdayGroupAria}>
+              {weekdayValues.map((day) => (
                 <button
-                  key={day.value}
+                  key={day}
                   type="button"
-                  className={schedule.weekdays.includes(day.value) ? "is-selected" : ""}
-                  aria-pressed={schedule.weekdays.includes(day.value)}
+                  className={schedule.weekdays.includes(day) ? "is-selected" : ""}
+                  aria-pressed={schedule.weekdays.includes(day)}
+                  aria-label={picker.weekdayAbbr[day]}
                   disabled={disabled}
-                  onClick={() => toggleWeekday(day.value)}
+                  onClick={() => toggleWeekday(day)}
                 >
-                  <Star size={12} fill={schedule.weekdays.includes(day.value) ? "currentColor" : "none"} />
-                  <span>{day.label.slice(-1)}</span>
+                  <Star size={12} fill={schedule.weekdays.includes(day) ? "currentColor" : "none"} />
+                  <span>{picker.weekdayAbbr[day]}</span>
                 </button>
               ))}
             </div>
@@ -177,7 +174,9 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
             <ScrollPicker
               values={hours}
               value={schedule.hour ?? 3}
-              suffix="时"
+              suffix={picker.hourUnit}
+              decreaseLabel={picker.decreaseAria(picker.hourUnit)}
+              increaseLabel={picker.increaseAria(picker.hourUnit)}
               disabled={disabled}
               onChange={(hour) => updateTime(hour, schedule.minute ?? 0)}
             />
@@ -187,7 +186,9 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
             <ScrollPicker
               values={minutes}
               value={schedule.minute ?? 0}
-              suffix="分"
+              suffix={picker.minuteUnit}
+              decreaseLabel={picker.decreaseAria(picker.minuteUnit)}
+              increaseLabel={picker.increaseAria(picker.minuteUnit)}
               disabled={disabled}
               onChange={(minute) => updateTime(schedule.hour ?? 3, minute)}
             />
@@ -198,7 +199,7 @@ export function BackupSchedulePicker({ schedule, onChange, disabled = false }: B
             className="backup-schedule-popover__done"
             onClick={() => setOpen(false)}
           >
-            确定
+            {picker.done}
           </button>
         </div>
       ) : null}
@@ -210,12 +211,16 @@ function ScrollPicker({
   values,
   value,
   suffix,
+  decreaseLabel,
+  increaseLabel,
   disabled,
   onChange,
 }: {
   values: number[];
   value: number;
   suffix: string;
+  decreaseLabel: string;
+  increaseLabel: string;
   disabled: boolean;
   onChange: (value: number) => void;
 }) {
@@ -314,7 +319,7 @@ function ScrollPicker({
         className="scroll-picker-arrow is-up"
         onClick={() => updateByIndex(selectedIndex - 1)}
         disabled={disabled}
-        aria-label={`减少${suffix}`}
+        aria-label={decreaseLabel}
       >
         <ChevronUp size={15} />
       </button>
@@ -364,7 +369,7 @@ function ScrollPicker({
         className="scroll-picker-arrow is-down"
         onClick={() => updateByIndex(selectedIndex + 1)}
         disabled={disabled}
-        aria-label={`增加${suffix}`}
+        aria-label={increaseLabel}
       >
         <ChevronDown size={15} />
       </button>

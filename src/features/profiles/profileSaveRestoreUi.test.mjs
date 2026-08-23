@@ -19,7 +19,10 @@ test("save restore dialog waits for its listener and keeps terminal state visibl
   assert.doesNotMatch(dialog, /setState\(\(current\)[\s\S]*?pushToast/);
   assert.doesNotMatch(page, /onCompleted=\{\(\) => \{[\s\S]*?setRestoreBackup\(null\)/);
   assert.match(dialog, /taskState\.status === "recovery_required"/);
-  assert.match(dialog, /请保留当前现场并联系支持/);
+  assert.match(dialog, /copy\.dialog\.recoveryRequiredSuffix/);
+  // zh 值 pin 移到 copy 模块：语义不变，文本经字典取。
+  const restoreCopy = readSource("src/features/profiles/saveRestoreCopy.ts");
+  assert.match(restoreCopy, /recoveryRequiredSuffix: "请保留当前现场并联系支持，暂不要继续恢复。"/);
   assert.doesNotMatch(dialog, /恢复中心处理/);
   assert.match(dialog, /cancelProfileSaveRestoreTask/);
   assert.match(dialog, /taskState\.warningCodes\.map/);
@@ -38,10 +41,15 @@ test("save restore dialog uses backup game identity and preview remains closable
 test("backup history exposes live restore and labels pre-restore protection points", () => {
   const page = readSource("src/features/profiles/ProfilePage.tsx");
 
-  assert.match(page, /aria-label=\{`恢复存档：\$\{row\.name\}`\}/);
+  assert.match(page, /aria-label=\{copy\.history\.restoreAria\(row\.name\)\}/);
   assert.doesNotMatch(page, /功能即将开放/);
-  assert.match(page, /trigger === "pre_restore"\) return "恢复前安全备份"/);
-  assert.match(page, /恢复暂不可用：\{restoreBlockedReason\}/);
-  assert.match(page, /if \(dirty\) return "请先保存存档设置"/);
+  assert.match(page, /copy\.trigger\[backup\.trigger\]/);
+  assert.match(page, /copy\.history\.restoreBlocked\(restoreBlockedReason\)/);
+  assert.match(page, /if \(dirty\) return reasons\.saveSettingsFirst;/);
+  const pageCopySource = readSource("src/features/profiles/profilePageCopy.ts");
+  assert.match(pageCopySource, /restoreAria: \(name: string\) => `恢复存档：\$\{name\}`/);
+  assert.match(pageCopySource, /pre_restore: "恢复前安全备份"/);
+  assert.match(pageCopySource, /restoreBlocked: \(reason: string\) => `恢复暂不可用：\$\{reason\}`/);
+  assert.match(pageCopySource, /saveSettingsFirst: "请先保存存档设置"/);
   assert.match(page, /disabled=\{row\.backup\.status !== "completed" \|\| restoreBlockedReason !== null\}/);
 });

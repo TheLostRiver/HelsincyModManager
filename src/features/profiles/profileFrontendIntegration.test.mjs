@@ -121,12 +121,16 @@ test("profile create and edit forms use a floating dialog instead of inline list
   assert.match(listSource, /className="profile-floating-form"/);
   assert.match(listSource, /role="dialog"/);
   assert.match(listSource, /aria-modal="true"/);
-  assert.match(listSource, /aria-label=\{showCreateForm \? "新建配置档" : "编辑配置档"\}/);
+  assert.match(listSource, /aria-label=\{showCreateForm \? copy\.createTitle : copy\.editTitle\}/);
+  const listCopySource = readSource("src/features/profiles/profileListCopy.ts");
+  assert.match(listCopySource, /createTitle: "新建配置档"/);
+  assert.match(listCopySource, /editTitle: "编辑配置档"/);
   assert.match(listSource, /profile-floating-form__header/);
   assert.match(listSource, /<textarea[\s\S]*?rows=\{4\}/);
   assert.match(listSource, /document\.addEventListener\("mousedown", handlePointerDown\)/);
   assert.match(listSource, /event\.key === "Escape"/);
-  assert.match(listSource, /当前配置档不能删除/);
+  assert.match(listSource, /copy\.cannotDeleteActive/);
+  assert.match(listCopySource, /cannotDeleteActive: "当前配置档不能删除"/);
   assert.doesNotMatch(listSource, /editingId === profile\.id\s*\?/);
   assert.doesNotMatch(listSource, /className="profile-list-item is-editing"/);
   assert.match(css, /\.profile-list-panel__floating-root\s*\{[\s\S]*?position:\s*relative/);
@@ -157,7 +161,7 @@ test("save directory picker catches dialog and validation failures consistently"
 
   assert.match(chooseDirectoryBlock, /setBusyKind\(kind\);[\s\S]*?try\s*\{/);
   assert.match(chooseDirectoryBlock, /const selected = await open\(\{ directory: true, multiple: false \}\);/);
-  assert.match(chooseDirectoryBlock, /catch \(err\) \{[\s\S]*setError\(getPanelErrorMessage\(err\)\)/);
+  assert.match(chooseDirectoryBlock, /catch \(err\) \{[\s\S]*setError\(getPanelErrorMessage\(err, copy\.panel\.errorFallback\)\)/);
   assert.match(chooseDirectoryBlock, /finally \{[\s\S]*setBusyKind\(null\)/);
 });
 
@@ -173,8 +177,10 @@ test("auto backup controls stay interactive when persistence is unavailable", ()
   assert.match(pageSource, /const visibleSettings = draftSettings/);
   assert.doesNotMatch(backupPanelBlock, /disabled=\{!settingsEditable\}/);
   assert.match(pageSource, /schedule:\s*draftSettings\.schedule/);
-  assert.match(pickerSource, /label:\s*"星期一"/);
-  assert.match(pickerSource, /label:\s*"星期日"/);
+  assert.match(pickerSource, /picker\.weekdayAbbr\[day\]/);
+  const policyCopySource = readSource("src/features/profiles/backupPolicyCopy.ts");
+  assert.match(policyCopySource, /1: "星期一"/);
+  assert.match(policyCopySource, /0: "星期日"/);
   assert.match(pickerSource, /Array\.from\(\{\s*length:\s*60\s*\}/);
   assert.match(pickerSource, /function wrapIndex/);
   assert.match(pickerSource, /\(\(index % length\) \+ length\) % length/);
@@ -185,9 +191,10 @@ test("auto backup controls stay interactive when persistence is unavailable", ()
   assert.match(pickerSource, /addEventListener\("wheel",\s*handleWheel,\s*\{\s*passive:\s*false\s*\}\)/);
   assert.doesNotMatch(pickerSource, /onWheel=\{handleWheel\}/);
   assert.match(pickerSource, /onPointerMove=\{handlePointerMove\}/);
-  assert.match(pickerSource, /weekdayOrder/);
+  assert.match(pickerSource, /weekdayDisplayOrder/);
   assert.match(viewModelSource, /weekdays:\s*\[1\]/);
-  assert.match(viewModelSource, /\[0,\s*"星期日"\]/);
+  assert.match(viewModelSource, /weekdayDisplayOrder/);
+  assert.match(viewModelSource, /\[0,\s*6\]/);
   assert.match(css, /perspective:\s*420px/);
   assert.match(css, /transform-style:\s*preserve-3d/);
 });
@@ -242,7 +249,9 @@ test("profile save UI follows the redesigned structure without inline styling", 
   assert.doesNotMatch(saveManagerCss, /profile-policy-flags|profile-policy-flag|profile-policy-switch/);
   assert.match(pageSource, /className="profile-backup-list"/);
   assert.match(pageSource, /className="profile-backup-item"/);
-  assert.match(pageSource, /恢复存档/);
+  assert.match(pageSource, /\{copy\.history\.restore\}/);
+  const pageCopySource = readSource("src/features/profiles/profilePageCopy.ts");
+  assert.match(pageCopySource, /restore: "恢复存档"/);
   assert.doesNotMatch(pageSource, /即将开放/);
   assert.match(saveManagerCss, /\.profile-backup-list/);
   assert.match(saveManagerCss, /\.profile-backup-item/);
@@ -308,10 +317,14 @@ test("backup history keeps the restore entry visible without horizontal scrollin
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const saveManagerCss = readSource("src/features/profiles/ProfileSaveManager.css");
 
-  assert.match(pageSource, /role="list" aria-label="备份历史"/);
+  assert.match(pageSource, /role="list" aria-label=\{copy\.history\.listAria\}/);
+  assert.match(
+    readSource("src/features/profiles/profilePageCopy.ts"),
+    /listAria: "备份历史"/,
+  );
   assert.match(pageSource, /role="listitem"/);
   assert.match(pageSource, /<ArchiveRestore size=\{15\}/);
-  assert.match(pageSource, /aria-label=\{`恢复存档：\$\{row\.name\}`\}/);
+  assert.match(pageSource, /aria-label=\{copy\.history\.restoreAria\(row\.name\)\}/);
   assert.match(saveManagerCss, /\.profile-backup-list\s*\{[\s\S]*?container-type:\s*inline-size/);
   assert.match(saveManagerCss, /\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(saveManagerCss, /@container \(min-width:\s*380px\)[\s\S]*?\.profile-backup-item\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
@@ -337,19 +350,21 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(apiSource, /check_auto_save_backup/);
   assert.match(typesSource, /ProfileAutoSaveBackupCheckDto/);
   assert.match(pageSource, /checkProfileAutoSaveBackup/);
-  assert.match(pageSource, /仅在客户端运行时/);
+  assert.match(pageSource, /getBackgroundProtectionCopy\(settings\.schedule\.cadence, backgroundState, copy\.background, locale\)/);
+  const bgCopySource = readSource("src/features/profiles/profilePageCopy.ts");
+  assert.match(bgCopySource, /unsupportedHint: "自动备份仅在客户端运行时执行"/);
   assert.match(pageSource, /getSaveBackupBackgroundStatus/);
-  assert.match(pageSource, /仅客户端运行期保护/);
-  assert.match(pageSource, /未启用后台保护/);
+  assert.match(bgCopySource, /trayOnlyLabel: "仅客户端运行期保护"/);
+  assert.match(bgCopySource, /notEnabledLabel: "未启用后台保护"/);
   assert.match(apiSource, /get_save_backup_background_status/);
   assert.match(typesSource, /SaveBackupBackgroundStatusDto/);
   assert.doesNotMatch(typesSource, /leaseOwner|leaseExpiresAt|workerInstanceId/);
   assert.match(pageSource, /startedTask/);
   assert.match(typesSource, /pendingReason: SaveBackupPendingReason \| null/);
-  assert.match(pageSource, /游戏运行中，自动备份已延后/);
-  assert.match(pageSource, /暂时无法确认游戏状态，备份已延后/);
+  assert.match(bgCopySource, /deferredGameRunning: "游戏运行中，自动备份已延后"/);
+  assert.match(bgCopySource, /deferredGameUnknown: "暂时无法确认游戏状态，备份已延后"/);
   assert.match(pageSource, /AutoSaveBackupRuntimePanel/);
-  assert.match(pageSource, /getAutoBackupCheckBlockedReason\(saveBackupTaskState\)/);
+  assert.match(pageSource, /getAutoBackupCheckBlockedReason\(saveBackupTaskState, pageCopy\.blockedReasons\)/);
   assert.match(pageSource, /disabledReason=\{autoBackupCheckBlockedReason\}/);
   assert.match(pageSource, /const disabled = checking \|\| disabledReason !== null/);
   assert.match(pageSource, /setSaveBackupTaskState/);
@@ -372,22 +387,25 @@ test("profile background status supports starting without an enable toggle", () 
 
   assert.match(typesSource, /"starting"/);
   assert.match(pageSource, /case "starting"/);
-  assert.match(pageSource, /正在验证后台保护/);
-  assert.match(pageSource, /退出后受保护/);
-  assert.match(pageSource, /等待后台验证/);
-  assert.match(pageSource, /未启用自动备份/);
+  const bgPinSource = readSource("src/features/profiles/profilePageCopy.ts");
+  assert.match(bgPinSource, /startingLabel: "正在验证后台保护"/);
+  assert.match(bgPinSource, /badgeProtected: "退出后受保护"/);
+  assert.match(bgPinSource, /badgeStarting: "等待后台验证"/);
+  assert.match(bgPinSource, /badgeManual: "未启用自动备份"/);
   assert.match(pageSource, /navigate\("\/settings"\)/);
-  assert.match(pageSource, /前往设置处理/);
+  assert.match(pageSource, /copy\.autoBackup\.goToSettings/);
+  assert.match(bgPinSource, /goToSettings: "前往设置处理"/);
   assert.match(pageSource, /getBackgroundProtectionBadge/);
   assert.match(pageCss, /\.profile-background-settings-link/);
   assert.match(
     pageCss,
     /\.profile-auto-backup-card \.profile-auto-backup-protection__copy (?:strong|span)[\s\S]*?white-space:\s*normal/,
   );
-  assert.match(badgeHelper, /cadence === "manual"[\s\S]*?未启用自动备份/);
-  assert.match(badgeHelper, /status === "protected"[\s\S]*?退出后受保护/);
-  assert.match(badgeHelper, /status === "starting"[\s\S]*?等待后台验证/);
-  assert.match(badgeHelper, /client-only[\s\S]*?仅客户端运行时/);
+  assert.match(badgeHelper, /cadence === "manual"[\s\S]*?copy\.badgeManual/);
+  assert.match(badgeHelper, /status === "protected"[\s\S]*?copy\.badgeProtected/);
+  assert.match(badgeHelper, /status === "starting"[\s\S]*?copy\.badgeStarting/);
+  assert.match(badgeHelper, /client-only[\s\S]*?copy\.badgeClientOnly/);
+  assert.match(bgPinSource, /badgeClientOnly: "仅客户端运行时"/);
   assert.match(settingsNavigationHelper, /registration_failed/);
   assert.match(settingsNavigationHelper, /worker_unhealthy/);
   assert.match(settingsNavigationHelper, /permission_required/);
@@ -401,7 +419,8 @@ test("plain browser preview renders the redesigned profiles console instead of t
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const directorySource = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
 
-  assert.match(pageSource, /PREVIEW_PROFILES/);
+  const previewDataSource = readSource("src/features/profiles/profilesPreviewData.ts");
+  assert.match(previewDataSource, /PREVIEW_PROFILES/);
   assert.match(pageSource, /function isPlainBrowserRuntime/);
   assert.match(pageSource, /!"__TAURI_INTERNALS__" in window|!\("__TAURI_INTERNALS__" in window\)/);
   assert.match(pageSource, /createPreviewProfiles\(\)/);
@@ -410,7 +429,8 @@ test("plain browser preview renders the redesigned profiles console instead of t
   assert.match(pageSource, /setSettingsState\(\{\s*status:\s*"ready",\s*settings\s*\}\)/);
   assert.match(directorySource, /previewMode\?:\s*boolean/);
   assert.match(directorySource, /if \(previewMode\)/);
-  assert.match(directorySource, /Steam\/userdata\/<steam-id>\/582010\/remote/);
+  assert.match(directorySource, /createPreviewDirectorySelection\(kind\)/);
+  assert.match(previewDataSource, /Steam\/userdata\/<steam-id>\/582010\/remote/);
 });
 
 test("profile save discovery uses shared toast feedback and candidate confirmation UI", () => {
@@ -425,12 +445,19 @@ test("profile save discovery uses shared toast feedback and candidate confirmati
   assert.match(app, /ProfileSaveDirectoryDiscoveryProvider/);
   assert.match(main, /ProfileSaveDirectoryDiscovery\.css/);
   assert.match(page, /ProfileSaveDirectoryCandidateList/);
-  assert.match(panel, /自动检测/);
+  assert.match(panel, /copy\.panel\.autoDetect/);
+  assert.match(
+    readSource("src/features/profiles/saveDirectoryCopy.ts"),
+    /autoDetect: "自动检测"/,
+  );
   assert.match(provider, /useFeedback/);
   assert.match(provider, /pushToast\(\{/);
   assert.match(provider, /eventKey:\s*`profile\.save-directory\.\$\{notice\.profileId\}/);
-  assert.match(provider, /label:\s*"查看候选"/);
-  assert.match(provider, /label:\s*"重新检测"/);
+  assert.match(provider, /label: copy\.noticeActions\.reviewCandidates/);
+  assert.match(provider, /label: copy\.noticeActions\.retryDetection/);
+  const dirCopySource = readSource("src/features/profiles/saveDirectoryCopy.ts");
+  assert.match(dirCopySource, /reviewCandidates: "查看候选"/);
+  assert.match(dirCopySource, /retryDetection: "重新检测"/);
   assert.match(candidates, /accountName/);
   assert.match(candidates, /avatarUrl/);
   assert.match(candidates, /recommended/);

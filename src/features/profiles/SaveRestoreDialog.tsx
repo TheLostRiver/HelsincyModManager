@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle, ArchiveRestore, CheckCircle2, Loader2, ShieldCheck, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { SaveBackupSummaryDto } from "./profileSaveBackupTypes";
 import {
@@ -24,12 +25,13 @@ import {
   type ProfileSaveRestoreTaskState,
 } from "./profileSaveRestoreTaskState";
 import type { SaveRestorePreviewDto } from "./profileSaveRestoreTypes";
+import { saveRestoreCopy, type SaveRestoreCodeCopy } from "./saveRestoreCopy";
 
 type RestorePreviewState =
   | { status: "idle" }
   | { status: "previewing" }
   | { status: "ready"; preview: SaveRestorePreviewDto }
-  | { status: "error"; message: string };
+  | { status: "error"; errorCode: string | null };
 
 type ListenerStatus = "preparing" | "ready" | "error";
 
@@ -47,6 +49,8 @@ export function SaveRestoreDialog({
   onCompleted: () => void;
 }) {
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(saveRestoreCopy, locale);
   const [previewState, setPreviewState] = useState<RestorePreviewState>({ status: "idle" });
   const [taskState, setTaskState] = useState<ProfileSaveRestoreTaskState>({ status: "idle" });
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus>(previewMode ? "ready" : "preparing");
@@ -99,7 +103,7 @@ export function SaveRestoreDialog({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setPreviewState({ status: "error", message: getProfileSaveRestoreErrorMessage(error) });
+          setPreviewState({ status: "error", errorCode: getProfileSaveRestoreErrorCode(error) });
         }
       });
     return () => {
@@ -147,10 +151,10 @@ export function SaveRestoreDialog({
         eventKey: `profile.save-restore.completed.${taskState.taskId}`,
         taskId: taskState.taskId,
         tone: taskState.evidenceDegraded || taskState.warningCodes.length > 0 ? "warning" : "success",
-        title: taskState.evidenceDegraded ? "存档已恢复，证据需检查" : "存档恢复完成",
+        title: taskState.evidenceDegraded ? copy.toasts.completedEvidenceTitle : copy.toasts.completedTitle,
         message: taskState.warningCodes.length > 0
-          ? getProfileSaveRestoreWarningMessage(taskState.warningCodes[0])
-          : "目标存档已通过校验并完成替换。",
+          ? getProfileSaveRestoreWarningMessage(taskState.warningCodes[0], copy.warnings)
+          : copy.toasts.completedMessage,
       });
       onCompletedRef.current();
       return;
@@ -162,8 +166,8 @@ export function SaveRestoreDialog({
         eventKey: `profile.save-restore.recovery-required.${taskState.taskId}`,
         taskId: taskState.taskId,
         tone: "danger",
-        title: "存档恢复需要人工处理",
-        message: taskState.message,
+        title: copy.toasts.recoveryRequiredTitle,
+        message: getProfileSaveRestoreErrorMessage(taskState.errorCode, copy.errors),
       });
       return;
     }
@@ -175,10 +179,10 @@ export function SaveRestoreDialog({
         eventKey: `profile.save-restore.failed.${taskState.taskId ?? "unstarted"}`,
         taskId: taskState.taskId ?? undefined,
         tone: "danger",
-        title: "存档恢复失败",
+        title: copy.toasts.failedTitle,
         message: warning
-          ? `${taskState.message} ${getProfileSaveRestoreWarningMessage(warning)}`
-          : taskState.message,
+          ? `${getProfileSaveRestoreErrorMessage(taskState.errorCode, copy.errors)} ${getProfileSaveRestoreWarningMessage(warning, copy.warnings)}`
+          : getProfileSaveRestoreErrorMessage(taskState.errorCode, copy.errors),
       });
       return;
     }
@@ -189,11 +193,11 @@ export function SaveRestoreDialog({
         eventKey: `profile.save-restore.cancelled.${taskState.taskId}`,
         taskId: taskState.taskId,
         tone: "neutral",
-        title: "已取消存档恢复",
-        message: "未进入提交阶段的恢复工作已停止。",
+        title: copy.toasts.cancelledTitle,
+        message: copy.toasts.cancelledMessage,
       });
     }
-  }, [pushToast, taskState]);
+  }, [copy, pushToast, taskState]);
 
   if (!backup || !profileId) return null;
   const preview = previewState.status === "ready" ? previewState.preview : null;
@@ -248,7 +252,6 @@ export function SaveRestoreDialog({
         status: "failed",
         taskId: null,
         errorCode: getProfileSaveRestoreErrorCode(error),
-        message: getProfileSaveRestoreErrorMessage(error),
         warningCodes: [],
       });
     }
@@ -281,8 +284,8 @@ export function SaveRestoreDialog({
         eventKey: `profile.save-restore.cancel-rejected.${current.taskId}`,
         taskId: current.taskId,
         tone: "warning",
-        title: "当前阶段无法取消",
-        message: getCancelErrorMessage(error),
+        title: copy.toasts.cancelRejectedTitle,
+        message: getCancelErrorMessage(error, copy.cancelErrors),
       });
       setTaskState((latest) => latest.status === "cancelling"
         ? { status: "running", taskId: latest.taskId, phase: latest.phase }
@@ -294,8 +297,8 @@ export function SaveRestoreDialog({
     <Dialog
       open
       role="alertdialog"
-      title="恢复存档"
-      description="恢复会替换当前配置档的存档内容，请核对备份点与保护策略。"
+      title={copy.dialog.title}
+      description={copy.dialog.description}
       icon={<ArchiveRestore size={18} />}
       busy={taskBusy}
       onClose={onClose}
@@ -305,39 +308,39 @@ export function SaveRestoreDialog({
         {previewState.status === "previewing" ? (
           <div className="profile-restore-status">
             <Loader2 className="profile-spinner" />
-            <span>正在校验归档与目标存档...</span>
+            <span>{copy.dialog.previewing}</span>
           </div>
         ) : null}
         {listenerStatus === "preparing" && previewState.status === "ready" ? (
           <div className="profile-restore-status">
             <Loader2 className="profile-spinner" />
-            <span>正在建立恢复进度通道...</span>
+            <span>{copy.dialog.preparingChannel}</span>
           </div>
         ) : null}
         {listenerStatus === "error" ? (
           <div className="profile-restore-status is-error" role="alert">
             <AlertTriangle />
-            <span>无法订阅恢复进度，恢复尚未启动。请关闭面板后重试。</span>
+            <span>{copy.dialog.listenerFailed}</span>
           </div>
         ) : null}
         {previewState.status === "error" ? (
           <div className="profile-restore-status is-error" role="alert">
             <AlertTriangle />
-            <span>{previewState.message}</span>
+            <span>{getProfileSaveRestoreErrorMessage(previewState.errorCode, copy.errors)}</span>
           </div>
         ) : null}
         {preview ? (
           <>
             <dl className="profile-restore-facts">
-              <div><dt>备份点</dt><dd>{preview.backup.notes?.trim() || preview.backup.fileName}</dd></div>
-              <div><dt>文件</dt><dd>{preview.fileCount} 个</dd></div>
-              <div><dt>解压大小</dt><dd>{formatBytes(preview.totalUncompressedBytes)}</dd></div>
+              <div><dt>{copy.dialog.factBackupPoint}</dt><dd>{preview.backup.notes?.trim() || preview.backup.fileName}</dd></div>
+              <div><dt>{copy.dialog.factFiles}</dt><dd>{copy.dialog.factFileCount(preview.fileCount)}</dd></div>
+              <div><dt>{copy.dialog.factUncompressedSize}</dt><dd>{formatBytes(preview.totalUncompressedBytes)}</dd></div>
             </dl>
             <div className={`profile-restore-protection ${preview.preRestoreBackupEnabled ? "is-enabled" : "is-disabled"}`}>
               {preview.preRestoreBackupEnabled ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}
               <div>
-                <strong>{preview.preRestoreBackupEnabled ? "恢复前安全备份已开启" : "恢复前安全备份已关闭"}</strong>
-                <span>{preview.preRestoreBackupEnabled ? "提交前会先创建独立保护点，失败时停止恢复。" : "本次恢复没有自动保护点，风险更高。"}</span>
+                <strong>{preview.preRestoreBackupEnabled ? copy.dialog.protectionOnTitle : copy.dialog.protectionOffTitle}</strong>
+                <span>{preview.preRestoreBackupEnabled ? copy.dialog.protectionOnHint : copy.dialog.protectionOffHint}</span>
               </div>
             </div>
             {preview.requiresAdditionalConfirmation ? (
@@ -347,18 +350,18 @@ export function SaveRestoreDialog({
                   checked={confirmedWithoutPreRestore}
                   onChange={(event) => setConfirmedWithoutPreRestore(event.target.checked)}
                 />
-                <span>我理解当前未启用恢复前安全备份，并确认继续。</span>
+                <span>{copy.dialog.highRiskConfirmLabel}</span>
               </label>
             ) : null}
           </>
         ) : null}
         {taskState.status === "starting" ? (
-          <RestoreStatus icon={<Loader2 className="profile-spinner" />} label="正在启动恢复任务" />
+          <RestoreStatus icon={<Loader2 className="profile-spinner" />} label={copy.dialog.startingTask} />
         ) : null}
         {taskState.status === "running" || taskState.status === "cancelling" ? (
           <RestoreStatus
             icon={<Loader2 className="profile-spinner" />}
-            label={taskState.status === "cancelling" ? "正在取消恢复任务" : getProfileSaveRestorePhaseLabel(taskState.phase)}
+            label={taskState.status === "cancelling" ? copy.dialog.cancellingTask : getProfileSaveRestorePhaseLabel(taskState.phase, copy.phases)}
           />
         ) : null}
         {taskState.status === "completed" ? (
@@ -366,14 +369,14 @@ export function SaveRestoreDialog({
             <RestoreStatus
               tone="success"
               icon={<CheckCircle2 />}
-              label="恢复完成，当前存档已经过提交后校验。"
+              label={copy.dialog.completedInline}
             />
             {taskState.warningCodes.map((code) => (
               <RestoreStatus
                 key={code}
                 tone="warning"
                 icon={<AlertTriangle />}
-                label={getProfileSaveRestoreWarningMessage(code)}
+                label={getProfileSaveRestoreWarningMessage(code, copy.warnings)}
               />
             ))}
           </>
@@ -382,26 +385,26 @@ export function SaveRestoreDialog({
           <div className="profile-restore-status is-danger" role="alert">
             <AlertTriangle />
             <div>
-              <strong>恢复需要人工收敛</strong>
-              <span>{taskState.message} 请保留当前现场并联系支持，暂不要继续恢复。</span>
+              <strong>{copy.dialog.recoveryRequiredTitle}</strong>
+              <span>{getProfileSaveRestoreErrorMessage(taskState.errorCode, copy.errors)} {copy.dialog.recoveryRequiredSuffix}</span>
             </div>
           </div>
         ) : null}
         {taskState.status === "failed" ? (
           <>
-            <RestoreStatus tone="error" icon={<AlertTriangle />} label={taskState.message} alert />
+            <RestoreStatus tone="error" icon={<AlertTriangle />} label={getProfileSaveRestoreErrorMessage(taskState.errorCode, copy.errors)} alert />
             {taskState.warningCodes.map((code) => (
               <RestoreStatus
                 key={code}
                 tone="warning"
                 icon={<AlertTriangle />}
-                label={getProfileSaveRestoreWarningMessage(code)}
+                label={getProfileSaveRestoreWarningMessage(code, copy.warnings)}
               />
             ))}
           </>
         ) : null}
         {taskState.status === "cancelled" ? (
-          <RestoreStatus icon={<XCircle />} label="恢复任务已取消，未继续进入玩家文件提交。" />
+          <RestoreStatus icon={<XCircle />} label={copy.dialog.cancelledInline} />
         ) : null}
       </div>
     </Dialog>
@@ -412,7 +415,7 @@ export function SaveRestoreDialog({
       || taskState.status === "failed"
       || taskState.status === "recovery_required"
       || taskState.status === "cancelled") {
-      return <button type="button" className="profile-action-button is-primary" onClick={onClose}>完成</button>;
+      return <button type="button" className="profile-action-button is-primary" onClick={onClose}>{copy.dialog.footerDone}</button>;
     }
 
     if (taskState.status === "running" || taskState.status === "cancelling" || taskState.status === "starting") {
@@ -426,19 +429,19 @@ export function SaveRestoreDialog({
         >
           {taskState.status === "cancelling" ? <Loader2 className="profile-spinner" size={15} /> : <XCircle size={15} />}
           {taskState.status === "cancelling"
-            ? "正在取消"
+            ? copy.dialog.footerCancelling
             : taskState.status === "starting"
-              ? "正在启动"
+              ? copy.dialog.footerStarting
               : taskState.phase === "save_restore.committing"
-                ? "正在提交"
-                : "取消恢复"}
+                ? copy.dialog.footerCommitting
+                : copy.dialog.footerCancelRestore}
         </button>
       );
     }
 
     return (
       <>
-        <button type="button" className="profile-action-button" onClick={onClose}>取消</button>
+        <button type="button" className="profile-action-button" onClick={onClose}>{copy.dialog.footerCancel}</button>
         <button
           type="button"
           className="profile-action-button is-primary"
@@ -446,7 +449,7 @@ export function SaveRestoreDialog({
           onClick={() => void startRestore()}
         >
           <ArchiveRestore size={15} />
-          确认恢复
+          {copy.dialog.footerConfirm}
         </button>
       </>
     );
@@ -485,11 +488,9 @@ function createPreview(backup: SaveBackupSummaryDto): SaveRestorePreviewDto {
   };
 }
 
-function getCancelErrorMessage(error: unknown) {
+function getCancelErrorMessage(error: unknown, cancelErrors: SaveRestoreCodeCopy) {
   const code = getProfileSaveRestoreErrorCode(error);
-  if (code === "task_cannot_be_cancelled") return "恢复已进入提交阶段，必须先完成提交或回滚收尾。";
-  if (code === "task_not_found") return "恢复任务已结束或不再可取消。";
-  return "取消请求未被接受，恢复任务仍按当前状态继续。";
+  return code ? cancelErrors.byCode[code] ?? cancelErrors.fallback : cancelErrors.fallback;
 }
 
 function formatBytes(value: number) {

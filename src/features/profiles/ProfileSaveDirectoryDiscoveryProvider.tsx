@@ -6,16 +6,30 @@ import {
 } from "./profileSaveDirectoryDiscoveryApi";
 import type { SaveDirectoryDiscoveryDto } from "./profileSaveDirectoryDiscoveryTypes";
 import { useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useActiveProfile } from "./ActiveProfileProvider";
+import { saveDirectoryCopy } from "./saveDirectoryCopy";
 
 type DiscoveryReason = "startup" | "manual";
+
+// notice 只存语义 kind 与参数，文本在 toast 组装时经 saveDirectoryCopy 取
+// （语义/文本分离，语言切换不影响已入队的通知语义）。
+export type ProfileSaveDirectoryNoticeKind =
+  | "preview_manual_only"
+  | "detect_failed"
+  | "confirm_failed"
+  | "auto_saved_startup"
+  | "auto_saved_manual"
+  | "confirmation_required"
+  | "not_found"
+  | "scan_failed"
+  | "existing_invalid"
+  | "reconfirm_required";
 
 export type ProfileSaveDirectoryNotice = {
   id: string;
   tone: "success" | "attention" | "warning";
-  title: string;
-  message: string;
-  detail: string;
+  kind: ProfileSaveDirectoryNoticeKind;
   action: "candidates" | "retry" | null;
   gameId: string;
   profileId: string;
@@ -52,6 +66,8 @@ export function ProfileSaveDirectoryDiscoveryProvider({
 }: ProfileSaveDirectoryDiscoveryProviderProps) {
   const { activeProfile } = useActiveProfile();
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(saveDirectoryCopy, locale);
   const checkedProfileIdsRef = useRef<Set<string>>(new Set());
   const discoveryRequestSeqRef = useRef(0);
   const activeDiscoveryRequestRef = useRef<DiscoveryRequestSnapshot | null>(null);
@@ -69,9 +85,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
           setNotice({
             id: `preview-${input.profileId}`,
             tone: "attention",
-            title: "自动检测仅在桌面端可用",
-            message: "当前预览环境不会访问本地 Steam 存档目录。",
-            detail: "可以继续使用手动选择入口调整界面状态。",
+            kind: "preview_manual_only",
             action: null,
             gameId: input.gameId,
             profileId: input.profileId,
@@ -103,9 +117,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
         setNotice({
           id: `failed-${input.profileId}-${Date.now()}`,
           tone: "warning",
-          title: "存档目录检测失败",
-          message: "没有完成本次自动检测。",
-          detail: "可以稍后重试，或继续手动选择存档目录。",
+          kind: "detect_failed",
           action: "retry",
           gameId: input.gameId,
           profileId: input.profileId,
@@ -148,9 +160,7 @@ export function ProfileSaveDirectoryDiscoveryProvider({
         setNotice({
           id: `confirm-failed-${latestDiscovery.discoveryId}-${Date.now()}`,
           tone: "warning",
-          title: "候选确认失败",
-          message: "所选 Steam 存档目录未能通过重新验证。",
-          detail: "请重新检测，或使用手动选择入口。",
+          kind: "confirm_failed",
           action: "retry",
           gameId: latestDiscovery.gameId,
           profileId: latestDiscovery.profileId,
@@ -190,20 +200,21 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   useEffect(() => {
     if (!notice) return;
 
+    const noticeCopy = copy.notices[notice.kind];
     const action = notice.action === "candidates"
-      ? { label: "查看候选", onSelect: reviewCandidates }
+      ? { label: copy.noticeActions.reviewCandidates, onSelect: reviewCandidates }
       : notice.action === "retry"
-        ? { label: "重新检测", onSelect: () => void retryNotice() }
+        ? { label: copy.noticeActions.retryDetection, onSelect: () => void retryNotice() }
         : undefined;
     pushToast({
       eventKey: `profile.save-directory.${notice.profileId}.${notice.action ?? notice.tone}`,
-      title: notice.title,
-      message: `${notice.message} ${notice.detail}`,
+      title: noticeCopy.title,
+      message: `${noticeCopy.message} ${noticeCopy.detail}`,
       tone: notice.tone === "attention" ? "neutral" : notice.tone,
       action,
     });
     setNotice(null);
-  }, [notice, pushToast, retryNotice, reviewCandidates]);
+  }, [copy, notice, pushToast, retryNotice, reviewCandidates]);
 
   const value = useMemo<ProfileSaveDirectoryDiscoveryContextValue>(
     () => ({
@@ -266,9 +277,7 @@ function noticeForDiscovery(
     return {
       ...base,
       tone: "success",
-      title: "已自动关联存档目录",
-      message: reason === "startup" ? "启动自检已完成，当前配置档可直接备份。" : "存档目录已写入当前配置档。",
-      detail: "备份前仍会再次验证目录状态。",
+      kind: reason === "startup" ? "auto_saved_startup" : "auto_saved_manual",
       action: null,
     };
   }
@@ -277,9 +286,7 @@ function noticeForDiscovery(
     return {
       ...base,
       tone: "attention",
-      title: "发现多个 Steam 存档账户",
-      message: "请选择要绑定到当前配置档的账户。",
-      detail: "已按最近修改时间推荐候选，但仍需要你确认。",
+      kind: "confirmation_required",
       action: "candidates",
     };
   }
@@ -288,9 +295,7 @@ function noticeForDiscovery(
     return {
       ...base,
       tone: "warning",
-      title: "未发现可用存档目录",
-      message: "没有发现可用的 MHW:I Steam 存档目录。",
-      detail: "可以重新检测，或继续使用手动选择入口。",
+      kind: "not_found",
       action: "retry",
     };
   }
@@ -299,9 +304,7 @@ function noticeForDiscovery(
     return {
       ...base,
       tone: "warning",
-      title: "存档目录检测失败",
-      message: "检测过程中遇到系统或读取问题。",
-      detail: "可以稍后重试；如果 Steam 或游戏正在更新，请等待完成后再检测。",
+      kind: "scan_failed",
       action: "retry",
     };
   }
@@ -309,9 +312,7 @@ function noticeForDiscovery(
   return {
     ...base,
     tone: "warning",
-    title: "当前存档目录需要重新确认",
-    message: discovery.outcome === "existing_invalid" ? "已保存的存档目录未能通过结构校验。" : "当前存档目录需要重新确认。",
-    detail: "可以重新检测，或使用手动选择入口重新绑定。",
+    kind: discovery.outcome === "existing_invalid" ? "existing_invalid" : "reconfirm_required",
     action: "retry",
   };
 }
