@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
+import { replacementTargetSearchValues, resolveReplacementTargetNames } from "./replacementTargetNames";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
@@ -306,7 +307,7 @@ export function ReplacementTargetPanel({
       return targets;
     }
     return targets.filter((target) =>
-      [target.displayName, target.secondaryName, target.internalId, ...target.aliases]
+      [...replacementTargetSearchValues(target.displayNames), target.internalId, ...target.aliases]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(keyword)),
     );
@@ -610,8 +611,10 @@ export function ReplacementTargetPanel({
                     }
                   />
                   <span className="replacement-panel__target-name">
-                    <strong>{target.displayName}</strong>
-                    {target.secondaryName ? <small>{target.secondaryName}</small> : null}
+                    <strong>{resolveReplacementTargetNames(target.displayNames, locale).displayName}</strong>
+                    {resolveReplacementTargetNames(target.displayNames, locale).secondaryName ? (
+                      <small>{resolveReplacementTargetNames(target.displayNames, locale).secondaryName}</small>
+                    ) : null}
                     {currentInstalled ? (
                       <span className="replacement-panel__target-status">
                         <CheckCircle2 size={13} aria-hidden="true" />
