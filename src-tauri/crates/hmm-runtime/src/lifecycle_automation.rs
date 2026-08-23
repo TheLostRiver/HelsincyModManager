@@ -2176,6 +2176,44 @@ mod tests {
     }
 
     #[test]
+    fn production_recovery_rollback_runs_with_a_production_token_in_a_test_root() {
+        let data_root = tempfile::tempdir().expect("production app data root");
+        let game_dir = tempfile::tempdir().expect("game root parent");
+        let game_root = game_dir.path().join("mhw");
+        write_production_style_fixture(data_root.path(), &game_root);
+        let original_target = write_rollback_recovery_fixture(data_root.path(), &game_root);
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
+        );
+
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .recovery_preview(
+                "mhw",
+                "default",
+                "mod-recovery",
+                ReadOnlyInstallRecoveryAction::RollbackInstall,
+            )
+            .expect("recovery preview");
+        assert_eq!(preview.availability, "available");
+        let token = preview.plan_token.expect("production recovery token");
+
+        CliLifecycleAutomation::prepare_recovery(
+            &environment,
+            "mhw",
+            "default",
+            "mod-recovery",
+            ReadOnlyInstallRecoveryAction::RollbackInstall,
+            &token,
+        )
+        .expect("prepare production recovery")
+        .run_recovery()
+        .expect("production recovery succeeds");
+
+        assert!(!original_target.exists());
+    }
+
+    #[test]
     fn production_install_rejects_game_root_config_drift_before_any_game_write() {
         let data_root = tempfile::tempdir().expect("production app data root");
         let game_dir = tempfile::tempdir().expect("game root parent");
