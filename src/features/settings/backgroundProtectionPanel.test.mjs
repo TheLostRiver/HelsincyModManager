@@ -27,25 +27,34 @@ test("background protection panel exposes accessible guarded controls", () => {
   assert.match(source, /retainedPanelState\.control !== cachedControl/);
   assert.match(source, /getBackgroundProtectionControlStatus\(\{ force: true \}\)/);
   assert.match(source, /background-protection-panel__switch-control/);
-  assert.match(source, /正在启用后台保护/);
-  assert.match(source, /后台保护已启用/);
+  // I18N-01 起文案收敛到 backgroundProtectionCopy：中文钉在 zh_cn 字典，面板只能经 copy 键渲染。
+  const panelCopyModule = readProjectFile("src/features/settings/backgroundProtectionCopy.ts");
+  assert.match(panelCopyModule, /正在启用后台保护/);
+  assert.match(panelCopyModule, /后台保护已启用/);
+  assert.match(source, /bpCopy\.panel\.busyEnable/);
+  assert.match(source, /bpCopy\.toast\.enabledTitle/);
   assert.match(source, /BackgroundProtectionAutoVerificationScheduler/);
   assert.match(source, /automaticRefreshRef/);
   assert.match(source, /performance\.now\(\)/);
   assert.match(source, /formatBackgroundProtectionDuration/);
   assert.match(source, /hasBackgroundProtectionConverged/);
-  assert.match(source, /系统状态已自动重新同步/);
+  assert.match(panelCopyModule, /系统状态已自动重新同步/);
+  assert.match(source, /completed\.reconciled/);
   assert.match(source, /preserveBackgroundProtectionStateAfterRefreshFailure/);
   assert.match(source, /latestKnownPanelState/);
-  assert.match(source, /本次检查未完成，当前仍显示最近一次成功确认的状态/);
-  assert.match(source, /HMM 正在自动复查/);
+  assert.match(panelCopyModule, /本次检查未完成，当前仍显示最近一次成功确认的状态/);
+  assert.match(source, /bpCopy\.panel\.refreshWarning/);
+  assert.match(panelCopyModule, /HMM 正在自动复查/);
+  assert.match(source, /bpCopy\.panel\.startingHintAuto/);
   assert.doesNotMatch(source, /<label className="setting-row background-protection-panel__toggle">/);
   assert.match(source, /getBackgroundProtectionControlStatus\(/);
   assert.match(source, /enableBackgroundProtection/);
   assert.match(source, /disableBackgroundProtection/);
-  assert.match(source, /重试启用/);
-  assert.match(source, /重试停用/);
-  assert.match(source, /停用保护/);
+  assert.match(panelCopyModule, /重试启用/);
+  assert.match(panelCopyModule, /重试停用/);
+  assert.match(panelCopyModule, /停用保护/);
+  assert.match(source, /bpCopy\.panel\.retryEnable/);
+  assert.match(source, /bpCopy\.panel\.stopProtection/);
   assert.match(source, /const switchChecked = unsupported/);
   assert.match(source, /checked=\{switchChecked\}/);
   assert.match(source, /changeProtection\(state\.control\.desiredEnabled\)/);
@@ -69,16 +78,21 @@ test("background protection status helper maps every stable status", async () =>
   ];
 
   for (const [status, label, tone, action] of cases) {
-    const copy = module.getBackgroundProtectionCopy(status);
+    const copy = module.getBackgroundProtectionCopy(status, "zh_cn");
     assert.equal(copy.label, label);
     assert.equal(copy.tone, tone);
     assert.equal(copy.action, action);
+    // 语义（tone/action）必须与语言无关：en 取词只换文本不换语义。
+    const enCopy = module.getBackgroundProtectionCopy(status, "en");
+    assert.equal(enCopy.tone, tone);
+    assert.equal(enCopy.action, action);
+    assert.notEqual(enCopy.label, label);
     assert.equal(typeof copy.description, "string");
     assert.notEqual(copy.description.length, 0);
   }
 
-  assert.doesNotMatch(module.getBackgroundProtectionCopy("starting").description, /已保护/);
-  assert.deepEqual(module.getBackgroundProtectionCopy("future_status"), {
+  assert.doesNotMatch(module.getBackgroundProtectionCopy("starting", "zh_cn").description, /已保护/);
+  assert.deepEqual(module.getBackgroundProtectionCopy("future_status", "zh_cn"), {
     label: "状态不可用",
     description: "无法识别后台保护状态，请重新检查。",
     tone: "danger",
@@ -100,12 +114,21 @@ test("background protection errors map to fixed local copy", async () => {
   );
   assert.equal(module.getBackgroundProtectionErrorCode(new Error("C:/Users/Alice/save")), "unknown");
 
-  const known = module.getBackgroundProtectionErrorMessage("save_backup_background_permission_required");
+  const known = module.getBackgroundProtectionErrorMessage(
+    "save_backup_background_permission_required",
+    "zh_cn",
+  );
   assert.equal(known, "系统拒绝更新后台任务，请检查当前账户权限后重试。");
 
-  const unknown = module.getBackgroundProtectionErrorMessage("C:/Users/Alice/save");
-  assert.equal(unknown, "后台保护操作未完成，请重新检查状态后重试。");
-  assert.doesNotMatch(unknown, /C:\/Users|Alice|save/);
+  // 脱敏语义与语言无关：任何 locale 下未知 code 都不得把 code 内容拼进消息。
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const unknown = module.getBackgroundProtectionErrorMessage("C:/Users/Alice/save", locale);
+    assert.doesNotMatch(unknown, /C:\/Users|Alice|save/);
+  }
+  assert.equal(
+    module.getBackgroundProtectionErrorMessage("C:/Users/Alice/save", "zh_cn"),
+    "后台保护操作未完成，请重新检查状态后重试。",
+  );
 });
 
 test("background protection operation helpers keep convergence and timing explicit", async () => {
@@ -163,9 +186,11 @@ test("background protection operation helpers keep convergence and timing explic
     ),
     true,
   );
-  assert.equal(module.formatBackgroundProtectionDuration(0), "不足 0.1 秒");
-  assert.equal(module.formatBackgroundProtectionDuration(Number.NaN), "不足 0.1 秒");
-  assert.equal(module.formatBackgroundProtectionDuration(1_234), "1.2 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(0, "zh_cn"), "不足 0.1 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(Number.NaN, "zh_cn"), "不足 0.1 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(1_234, "zh_cn"), "1.2 秒");
+  assert.equal(module.formatBackgroundProtectionDuration(1_234, "en"), "1.2 s");
+  assert.equal(module.formatBackgroundProtectionDuration(1_234, "ja"), "1.2 秒");
 });
 
 test("settings hosts the persisted panel outside session preview state", () => {
@@ -173,15 +198,20 @@ test("settings hosts the persisted panel outside session preview state", () => {
   const css = readProjectFile(SETTINGS_CSS_PATH);
 
   assert.match(page, /import \{ BackgroundProtectionPanel \} from "\.\/BackgroundProtectionPanel"/);
+  // I18N-01 起设置页文案收敛到 settingsPageCopy："哪些设置会正式保存"的声明钉在 zh_cn 字典，
+  // 页面只允许经 copy.hero.description 渲染，不得回退为硬编码字面量。
+  const copyModule = readProjectFile("src/features/settings/settingsPageCopy.ts");
   assert.match(
-    page,
+    copyModule,
     /后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。/,
   );
+  assert.match(page, /\{copy\.hero\.description\}/);
   assert.doesNotMatch(page, /当前真正后台守护尚未落地/);
+  assert.doesNotMatch(copyModule, /当前真正后台守护尚未落地/);
 
-  const backupSectionIndex = page.indexOf('title="存档备份"');
+  const backupSectionIndex = page.indexOf("title={copy.saveBackup.title}");
   const panelIndex = page.indexOf("<BackgroundProtectionPanel />");
-  const previewReminderIndex = page.indexOf('title="安装前提醒备份"');
+  const previewReminderIndex = page.indexOf("title={copy.saveBackup.backupReminder.title}");
   assert.ok(backupSectionIndex >= 0);
   assert.ok(panelIndex > backupSectionIndex);
   assert.ok(previewReminderIndex > panelIndex);

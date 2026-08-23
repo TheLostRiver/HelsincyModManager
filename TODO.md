@@ -685,4 +685,5 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | LOG-01 Task/Audit retention | P2 | completed | |
 | LOG-02 日志总空间上限 | P2 | completed | |
 | LOG-03 Debug Log | P2 | 已完成 | 默认关闭、持久化开关、受控 writer/reader、7 天 retention、诊断/export 和安全负测 |
-| I18N-00 界面三语本地化设计 | P2 | design-in-review | 设计见 [界面中英日本地化设计](docs/I18N_DESIGN.md)：UI 文案 zh_cn/en/ja、设置页语言切换持久化、catalog 名称 locale 对齐（I18N-08 需契约演进）；含扩展性前提（更多语言 fallback 链、多游戏 per-game 名称 locale 能力声明）；切片 I18N-01~08，与 Sandbox Gate 复验、CLI-3B 并行，不进入当前发版判断 |
+| I18N-00 界面三语本地化设计 | P2 | design-complete | 设计见 [界面中英日本地化设计](docs/I18N_DESIGN.md)（PR #241，2026-08-23 拍板：方案 A typed 字典 + locale 模型）：UI 文案 zh_cn/en/ja、设置页语言切换持久化、catalog 名称 locale 对齐（I18N-08 需契约演进）；含扩展性前提（更多语言 fallback 链、多游戏 per-game 名称 locale 能力声明）；切片 I18N-01~08，与 Sandbox Gate 复验、CLI-3B 并行，不进入当前发版判断 |
+| I18N-01 i18n 基建 + 试点三语 | P2 | in-review | shared/i18n（locales 单一来源、fallback 链、I18nProvider、localStorage 版本化持久化）、设置页「界面偏好」语言切换（跟随系统置顶、自称名、切换后按新语言 toast）、Settings/About 两页全量三语；内嵌面板（后台保护/Debug Log/前置环境）文案随 I18N-04~06 迁移 |

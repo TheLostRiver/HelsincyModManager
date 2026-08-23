@@ -34,6 +34,11 @@ import {
   type BackgroundProtectionPanelState,
 } from "./backgroundProtectionPanelState";
 import { useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import {
+  backgroundProtectionCopy,
+  type BackgroundProtectionCopyDict,
+} from "./backgroundProtectionCopy";
 
 type BusyAction = "refresh" | "enable" | "disable" | null;
 type ActiveBusyAction = Exclude<BusyAction, null>;
@@ -152,10 +157,12 @@ export function BackgroundProtectionPanel() {
     return () => window.clearInterval(timer);
   }, [busyAction]);
 
+  const { locale } = useI18n();
+  const bpCopy = resolveCopy(backgroundProtectionCopy, locale);
   const busy = busyAction !== null;
   const control = state.status === "ready" ? state.control : null;
   const status = control?.status;
-  const copy = control ? getBackgroundProtectionCopy(control.status) : null;
+  const copy = control ? getBackgroundProtectionCopy(control.status, locale) : null;
   const unsupported = status === "unsupported_platform";
   const showStartingHint = status === "starting";
   const visibleErrorCode =
@@ -166,7 +173,7 @@ export function BackgroundProtectionPanel() {
         : null;
   const refreshWarningCode = state.status === "ready" ? state.refreshWarningCode : null;
   const visibleErrorMessage = visibleErrorCode
-    ? getBackgroundProtectionErrorMessage(visibleErrorCode)
+    ? getBackgroundProtectionErrorMessage(visibleErrorCode, locale)
     : null;
   const switchChecked = unsupported
     ? false
@@ -239,7 +246,7 @@ export function BackgroundProtectionPanel() {
         ) {
           cancelStartingAutoRefresh();
         }
-        const refreshedCopy = getBackgroundProtectionCopy(nextControl.status);
+        const refreshedCopy = getBackgroundProtectionCopy(nextControl.status, locale);
         if (source === "manual" || nextControl.status !== "starting") {
           pushToast({
             eventKey:
@@ -247,8 +254,11 @@ export function BackgroundProtectionPanel() {
                 ? "background-protection-auto-refreshed"
                 : "background-protection-refreshed",
             title:
-              source === "automatic" ? "后台保护自动验证已完成" : "后台保护状态已更新",
-            message: `${refreshedCopy.description}，本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
+              source === "automatic" ? bpCopy.toast.autoRefreshedTitle : bpCopy.toast.refreshedTitle,
+            message: bpCopy.toast.refreshedMessage(
+              refreshedCopy.description,
+              formatBackgroundProtectionDuration(performance.now() - operation.startedAt, locale),
+            ),
             tone: refreshedCopy.tone === "danger" ? "warning" : refreshedCopy.tone,
           });
         }
@@ -264,12 +274,21 @@ export function BackgroundProtectionPanel() {
         );
         retainedPanelState = nextState;
         setState(nextState);
+        const failureDuration = formatBackgroundProtectionDuration(
+          performance.now() - operation.startedAt,
+          locale,
+        );
         pushToast({
           eventKey: "background-protection-refresh-failed",
-          title: "后台保护状态检查失败",
+          title: bpCopy.toast.refreshFailedTitle,
           message: preservedAuthoritativeState
-            ? `${source === "automatic" ? "自动复查未完成，后续复查仍会继续" : "本次检查未完成，仍显示最近一次成功确认的状态；可稍后重试"}。耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`
-            : `${getBackgroundProtectionErrorMessage(errorCode)} 本次检查耗时 ${formatBackgroundProtectionDuration(performance.now() - operation.startedAt)}。`,
+            ? source === "automatic"
+              ? bpCopy.toast.refreshFailedPreservedAuto(failureDuration)
+              : bpCopy.toast.refreshFailedPreservedManual(failureDuration)
+            : bpCopy.toast.refreshFailedMessage(
+                getBackgroundProtectionErrorMessage(errorCode, locale),
+                failureDuration,
+              ),
           tone: preservedAuthoritativeState ? "warning" : "danger",
         });
       }
@@ -302,16 +321,20 @@ export function BackgroundProtectionPanel() {
         outcome = "success";
         if (desiredEnabled) armStartingAutoRefresh(nextControl);
         else cancelStartingAutoRefresh();
+        const changeDuration = formatBackgroundProtectionDuration(
+          performance.now() - operationToken.startedAt,
+          locale,
+        );
         pushToast({
           eventKey: desiredEnabled
             ? "background-protection-enabled"
             : "background-protection-disabled",
-          title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
+          title: desiredEnabled ? bpCopy.toast.enabledTitle : bpCopy.toast.disabledTitle,
           message: desiredEnabled
             ? nextControl.status === "protected"
-              ? `系统任务与最近一次后台运行均已验证。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
-              : `系统任务已更新，HMM 将立即自动复查并等待首次后台运行验证；无需再次点击检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`
-            : `退出 HMM 后不再由系统任务检查自动备份。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
+              ? bpCopy.toast.enabledProtectedMessage(changeDuration)
+              : bpCopy.toast.enabledStartingMessage(changeDuration)
+            : bpCopy.toast.disabledMessage(changeDuration),
           tone: desiredEnabled ? "success" : "neutral",
         });
       }
@@ -335,8 +358,13 @@ export function BackgroundProtectionPanel() {
               else cancelStartingAutoRefresh();
               pushToast({
                 eventKey: "background-protection-change-reconciled",
-                title: desiredEnabled ? "后台保护已启用" : "后台保护已关闭",
-                message: `操作确认曾短暂中断，但系统状态已自动重新读取，无需再次检查。耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
+                title: desiredEnabled ? bpCopy.toast.enabledTitle : bpCopy.toast.disabledTitle,
+                message: bpCopy.toast.reconciledMessage(
+                  formatBackgroundProtectionDuration(
+                    performance.now() - operationToken.startedAt,
+                    locale,
+                  ),
+                ),
                 tone: "warning",
               });
             }
@@ -358,8 +386,14 @@ export function BackgroundProtectionPanel() {
         ) {
           pushToast({
             eventKey: "background-protection-change-failed",
-            title: desiredEnabled ? "后台保护启用失败" : "后台保护关闭失败",
-            message: `${getBackgroundProtectionErrorMessage(actionErrorCode)} 耗时 ${formatBackgroundProtectionDuration(performance.now() - operationToken.startedAt)}。`,
+            title: desiredEnabled ? bpCopy.toast.enableFailedTitle : bpCopy.toast.disableFailedTitle,
+            message: bpCopy.toast.changeFailedMessage(
+              getBackgroundProtectionErrorMessage(actionErrorCode, locale),
+              formatBackgroundProtectionDuration(
+                performance.now() - operationToken.startedAt,
+                locale,
+              ),
+            ),
             tone: "danger",
           });
         }
@@ -371,8 +405,8 @@ export function BackgroundProtectionPanel() {
 
   const summary =
     state.status === "ready"
-      ? getBackgroundProtectionCopy(state.control.status)
-      : summaryForTransientState(state.status);
+      ? getBackgroundProtectionCopy(state.control.status, locale)
+      : summaryForTransientState(state.status, bpCopy.panel);
   const operationVisible = busy || lastOperation !== null;
 
   return (
@@ -405,26 +439,32 @@ export function BackgroundProtectionPanel() {
           ) : (
             <RefreshCw size={14} aria-hidden="true" />
           )}
-          {busyAction === "refresh" ? "检查中" : "重新检查"}
+          {busyAction === "refresh" ? bpCopy.panel.checking : bpCopy.panel.recheck}
         </button>
       </div>
 
       <div className="setting-row background-protection-panel__toggle">
         <span className="setting-row__copy">
-          <strong>退出后继续保护自动备份</strong>
+          <strong>{bpCopy.panel.toggleTitle}</strong>
           <span id="background-protection-toggle-description">
-            由系统后台任务定期唤醒现有备份流程，不改变每个 Profile 的备份计划。
+            {bpCopy.panel.toggleDescription}
           </span>
         </span>
         <label
           className={`background-protection-panel__switch-control${switchDisabled ? " is-disabled" : ""}`}
-          title={switchDisabled ? undefined : switchChecked ? "关闭后台保护" : "开启后台保护"}
+          title={
+            switchDisabled
+              ? undefined
+              : switchChecked
+                ? bpCopy.panel.switchTitleDisable
+                : bpCopy.panel.switchTitleEnable
+          }
         >
           <input
             type="checkbox"
             checked={switchChecked}
             disabled={switchDisabled}
-            aria-label="退出后继续保护自动备份"
+            aria-label={bpCopy.panel.toggleTitle}
             aria-describedby="background-protection-toggle-description background-protection-operation-status"
             onChange={(event) => void changeProtection(event.currentTarget.checked)}
           />
@@ -443,13 +483,13 @@ export function BackgroundProtectionPanel() {
             <LoaderCircle className="background-protection-spinner" size={15} aria-hidden="true" />
             <span>
               {busyAction === "refresh"
-                ? "正在检查系统任务状态，请稍候…"
+                ? bpCopy.panel.busyRefresh
                 : busyAction === "enable"
-                  ? "正在启用后台保护，请勿关闭 HMM…"
-                  : "正在关闭后台保护，请勿关闭 HMM…"}
+                  ? bpCopy.panel.busyEnable
+                  : bpCopy.panel.busyDisable}
             </span>
             <span className="background-protection-panel__timer" aria-hidden="true">
-              {formatBackgroundProtectionDuration(operationElapsedMs)}
+              {formatBackgroundProtectionDuration(operationElapsedMs, locale)}
             </span>
           </>
         ) : lastOperation ? (
@@ -459,13 +499,15 @@ export function BackgroundProtectionPanel() {
             ) : (
               <CheckCircle2 size={15} aria-hidden="true" />
             )}
-            <span>{completedOperationLabel(lastOperation)}</span>
+            <span>{completedOperationLabel(lastOperation, bpCopy.panel.completed)}</span>
             <span className="background-protection-panel__timer">
-              耗时 {formatBackgroundProtectionDuration(lastOperation.elapsedMs)}
+              {bpCopy.panel.elapsed(
+                formatBackgroundProtectionDuration(lastOperation.elapsedMs, locale),
+              )}
             </span>
           </>
         ) : (
-          <span>操作就绪</span>
+          <span>{bpCopy.panel.operationReady}</span>
         )}
       </div>
 
@@ -473,9 +515,7 @@ export function BackgroundProtectionPanel() {
         <div className="background-protection-panel__message">
           {showStartingHint ? (
             <p className="background-protection-panel__hint">
-              {autoVerificationActive
-                ? "HMM 正在自动复查；首次后台运行完成后会自动更新为已保护，无需重复点击。在此之前完全退出仍可能失去即时提醒。"
-                : "后台任务正在等待首次运行验证；需要立即确认时可重新检查，在此之前完全退出仍可能失去即时提醒。"}
+              {autoVerificationActive ? bpCopy.panel.startingHintAuto : bpCopy.panel.startingHintManual}
             </p>
           ) : null}
 
@@ -489,9 +529,7 @@ export function BackgroundProtectionPanel() {
           {refreshWarningCode ? (
             <div className="background-protection-panel__warning" role="status">
               <CircleAlert size={16} aria-hidden="true" />
-              <span>
-                本次检查未完成，当前仍显示最近一次成功确认的状态；可稍后重新检查，正在验证时的自动复查不受影响。
-              </span>
+              <span>{bpCopy.panel.refreshWarning}</span>
             </div>
           ) : null}
         </div>
@@ -511,11 +549,11 @@ export function BackgroundProtectionPanel() {
               )}
               {busyAction === (state.control.desiredEnabled ? "enable" : "disable")
                 ? state.control.desiredEnabled
-                  ? "正在启用"
-                  : "正在停用"
+                  ? bpCopy.panel.enabling
+                  : bpCopy.panel.disabling
                 : state.control.desiredEnabled
-                  ? "重试启用"
-                  : "重试停用"}
+                  ? bpCopy.panel.retryEnable
+                  : bpCopy.panel.retryDisable}
             </button>
             {state.control.desiredEnabled ? (
               <button
@@ -529,7 +567,7 @@ export function BackgroundProtectionPanel() {
                 ) : (
                   <Power size={14} aria-hidden="true" />
                 )}
-                {busyAction === "disable" ? "正在停用" : "停用保护"}
+                {busyAction === "disable" ? bpCopy.panel.disabling : bpCopy.panel.stopProtection}
               </button>
             ) : null}
           </div>
@@ -539,36 +577,34 @@ export function BackgroundProtectionPanel() {
   );
 }
 
-function completedOperationLabel(operation: CompletedOperation): string {
-  if (operation.outcome === "reconciled") return "系统状态已自动重新同步";
+function completedOperationLabel(
+  operation: CompletedOperation,
+  completed: BackgroundProtectionCopyDict["panel"]["completed"],
+): string {
+  if (operation.outcome === "reconciled") return completed.reconciled;
   if (operation.outcome === "failed") {
     return operation.action === "refresh"
-      ? "后台保护检查未完成"
+      ? completed.refreshFailed
       : operation.action === "enable"
-        ? "后台保护启用未完成"
-        : "后台保护关闭未完成";
+        ? completed.enableFailed
+        : completed.disableFailed;
   }
   return operation.action === "refresh"
-    ? "后台保护检查完成"
+    ? completed.refreshDone
     : operation.action === "enable"
-      ? "后台保护启用完成"
-      : "后台保护关闭完成";
+      ? completed.enableDone
+      : completed.disableDone;
 }
 
-function summaryForTransientState(status: "loading" | "error") {
+function summaryForTransientState(
+  status: "loading" | "error",
+  panel: BackgroundProtectionCopyDict["panel"],
+) {
   if (status === "loading") {
-    return {
-      label: "正在读取状态",
-      description: "正在核对后台保护设置与最近运行状态。",
-      tone: "neutral" as const,
-    };
+    return { ...panel.loading, tone: "neutral" as const };
   }
 
-  return {
-    label: "状态不可用",
-    description: "暂时无法确认退出客户端后的后台保护状态。",
-    tone: "danger" as const,
-  };
+  return { ...panel.unavailable, tone: "danger" as const };
 }
 
 function statusIcon(tone: BackgroundProtectionTone, spinning: boolean): ReactNode {

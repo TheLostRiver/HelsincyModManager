@@ -8,29 +8,33 @@ import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
 import { FeedbackProvider } from "./shared/feedback";
+import { I18nProvider } from "./shared/i18n";
 
 export function App() {
   return (
-    <FeedbackProvider>
-      <ColorSchemeProvider>
-        <SidebarModeProvider>
-          <AppRouteProvider>
-            <TourProvider>
-              {/* 游戏目录状态要在 AppShell 之上：顶部状态栏和各页面必须读同一份，
-                  否则在工作台配置完目录，顶栏仍显示未配置。 */}
-              <GameSetupProvider>
-                <ActiveProfileProvider>
-                  <ProfileSaveDirectoryDiscoveryProvider>
-                    <AppShell>
-                      <RouterOutlet />
-                    </AppShell>
-                  </ProfileSaveDirectoryDiscoveryProvider>
-                </ActiveProfileProvider>
-              </GameSetupProvider>
-            </TourProvider>
-          </AppRouteProvider>
-        </SidebarModeProvider>
-      </ColorSchemeProvider>
-    </FeedbackProvider>
+    // I18nProvider 在最外层：feedback/toast 等共享层未来也要取词。
+    <I18nProvider>
+      <FeedbackProvider>
+        <ColorSchemeProvider>
+          <SidebarModeProvider>
+            <AppRouteProvider>
+              <TourProvider>
+                {/* 游戏目录状态要在 AppShell 之上：顶部状态栏和各页面必须读同一份，
+                    否则在工作台配置完目录，顶栏仍显示未配置。 */}
+                <GameSetupProvider>
+                  <ActiveProfileProvider>
+                    <ProfileSaveDirectoryDiscoveryProvider>
+                      <AppShell>
+                        <RouterOutlet />
+                      </AppShell>
+                    </ProfileSaveDirectoryDiscoveryProvider>
+                  </ActiveProfileProvider>
+                </GameSetupProvider>
+              </TourProvider>
+            </AppRouteProvider>
+          </SidebarModeProvider>
+        </ColorSchemeProvider>
+      </FeedbackProvider>
+    </I18nProvider>
   );
 }
