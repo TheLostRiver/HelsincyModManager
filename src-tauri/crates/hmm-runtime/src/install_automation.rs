@@ -1,5 +1,5 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
-use crate::{production_app_data_dir, RuntimeEnvironment};
+use crate::RuntimeEnvironment;
 use hmm_app::{
     is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
     BatchReinstallPlanFactsProvider, BatchUninstallPlanFactsProvider,
@@ -497,7 +497,8 @@ impl ReadOnlyInstallAutomation {
                 (data_dir.to_path_buf(), Some(data_dir.join("fixtures")))
             } else {
                 (
-                    production_app_data_dir()
+                    environment
+                        .resolved_production_app_data_dir()
                         .ok_or(ReadOnlyInstallAutomationError::AppDataUnavailable)?,
                     None,
                 )
