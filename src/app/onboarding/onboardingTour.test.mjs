@@ -38,7 +38,7 @@ test("task tour remains an independent route-driven overlay", () => {
 
   assert.match(appSource, /<AppRouteProvider>[\s\S]*?<TourProvider>[\s\S]*?<AppShell>/);
   assert.match(providerSource, /currentRoute\.id !== "dashboard"/);
-  assert.match(providerSource, /buildOnboardingTour\(currentRoute\.id\)/);
+  assert.match(providerSource, /buildOnboardingTour\(currentRoute\.id, tourCopy\)/);
   assert.match(providerSource, /shouldAutoStartTour\(firstRunTour, storage\)/);
   assert.match(providerSource, /activatedTargetStepIdRef\.current !== activeStep\.id/);
   assert.match(providerSource, /activeStep\.advance\.expectedRouteId !== currentRoute\.id/);
@@ -58,8 +58,11 @@ test("task tour remains an independent route-driven overlay", () => {
   assert.ok(statusActionsIndex < launcherIndex);
   assert.ok(launcherIndex < profileStatusIndex);
   assert.ok(profileStatusIndex < windowToolsIndex);
-  assert.match(headerSource, /aria-label="打开新手引导"/);
-  assert.match(headerSource, /<span>新手引导<\/span>/);
+  assert.match(headerSource, /aria-label=\{copy\.tourAria\}/);
+  assert.match(headerSource, /<span>\{copy\.tourLabel\}<\/span>/);
+  const shellCopySource = readFileSync("src/app/appShellCopy.ts", "utf8");
+  assert.match(shellCopySource, /tourAria: "打开新手引导"/);
+  assert.match(shellCopySource, /tourLabel: "新手引导"/);
   assert.match(headerSource, /onClick=\{startTour\}/);
   assert.match(overlaySource, /function InteractionBlockers/);
   assert.match(overlaySource, /interaction !== "target-only"/);
@@ -129,7 +132,11 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.deepEqual(rotateRoutesFrom("recovery"), ["recovery"]);
   assert.deepEqual(rotateRoutesFrom("categories"), ["categories"]);
 
-  const manualTour = buildOnboardingTour("profiles");
+  const { onboardingTourCopy } = await importTypeScriptModule(
+    "src/app/onboarding/onboardingTourCopy.ts",
+  );
+  const zhTourCopy = onboardingTourCopy.zh_cn;
+  const manualTour = buildOnboardingTour("profiles", zhTourCopy);
   assert.equal(manualTour.id, "hmm.first-run");
   assert.equal(manualTour.contentVersion, 5);
   assert.equal(manualTour.steps[0].id, "profiles-list");
@@ -162,7 +169,7 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.equal(manualTour.steps.at(-1).id, "mods-lifecycle");
   assert.deepEqual(manualTour.steps.at(-1).advance, { kind: "terminal" });
 
-  const automaticTour = buildOnboardingTour("dashboard", { includeWelcome: true });
+  const automaticTour = buildOnboardingTour("dashboard", zhTourCopy, { includeWelcome: true });
   assert.equal(automaticTour.steps[0].id, "welcome");
   assert.equal(automaticTour.steps[1].id, "dashboard-steam-scan");
   assert.equal(automaticTour.steps.length, 18);
@@ -181,7 +188,7 @@ test("core onboarding stays concise while optional pages build local tours", asy
     ],
   );
 
-  const recoveryTour = buildOnboardingTour("recovery");
+  const recoveryTour = buildOnboardingTour("recovery", zhTourCopy);
   assert.equal(recoveryTour.id, "hmm.page-tour.recovery");
   assert.equal(recoveryTour.contentVersion, 1);
   assert.equal(recoveryTour.steps.length, 4);
@@ -189,7 +196,7 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.equal(recoveryTour.steps.at(-1).id, "recovery-mods");
   assert.equal(recoveryTour.steps.some((step) => step.advance.kind === "route-change"), false);
 
-  const categoriesTour = buildOnboardingTour("categories");
+  const categoriesTour = buildOnboardingTour("categories", zhTourCopy);
   assert.equal(categoriesTour.id, "hmm.page-tour.categories");
   assert.deepEqual(categoriesTour.steps.map((step) => step.id), [
     "page-categories",
@@ -312,9 +319,13 @@ test("tour positioning and stacking contracts avoid WebView and safety-overlay r
   assert.doesNotMatch(overlaySource, /const isDocked = !targetState\.rect/);
   assert.match(overlaySource, /const animation = panel\.animate\(/);
   assert.match(overlaySource, /TOUR_PANEL_RELOCATION_MS/);
-  assert.match(overlaySource, /当前页面没有可高亮的对应区域/);
-  assert.match(overlaySource, />重新定位</);
-  assert.match(overlaySource, /"跳过此项"/);
+  assert.match(overlaySource, /copy\.targetUnavailableTitle/);
+  assert.match(overlaySource, /copy\.relocate/);
+  assert.match(overlaySource, /copy\.skipStep/);
+  const tourOverlayCopySource = readFileSync("src/shared/onboarding/tourOverlayCopy.ts", "utf8");
+  assert.match(tourOverlayCopySource, /targetUnavailableTitle: "当前页面没有可高亮的对应区域"/);
+  assert.match(tourOverlayCopySource, /relocate: "重新定位"/);
+  assert.match(tourOverlayCopySource, /skipStep: "跳过此项"/);
   assert.match(overlaySource, /className=\{`tour-panel__stage is-\$\{stepDirection\}`\}/);
   assert.match(forwardStepKeyframes, /transform:/);
   assert.match(tourCss, /tour-panel-step-forward 360ms[^;]+both;/);

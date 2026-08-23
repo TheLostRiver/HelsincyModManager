@@ -17,7 +17,7 @@ test("window close hook keeps one Tauri listener while reading latest callbacks"
   assert.match(source, /useRef/);
   assert.match(source, /callbacksRef\.current\s*=\s*\{ onShowDialog, onError \}/);
   assert.match(source, /callbacksRef\.current\.onShowDialog\(\{ kind: "normal" \}\)/);
-  assert.match(source, /callbacksRef\.current\.onError\(getWindowLifecycleErrorMessage\(error\)\)/);
+  assert.match(source, /callbacksRef\.current\.onError\(getWindowLifecycleErrorMessage\(error, lifecycleCopyRef\.current\)\)/);
   assert.match(source, /useEffect\(\(\) => \{[\s\S]*?\}, \[\]\);/);
 });
 
@@ -88,16 +88,23 @@ test("normal, unsafe, and restore-blocked dialogs default focus to tray", () => 
 
   assert.match(source, /renderedMode\.kind === "unsafe"/);
   assert.match(source, /renderedMode\.kind === "normal" \? "dialog" : "alertdialog"/);
-  assert.match(source, /BLOCKED_EXIT_REASON_MESSAGES/);
-  assert.match(source, /save_restore_in_progress/);
+  assert.match(source, /copy\.blockedReasons\[renderedMode\.reason\]/);
+  // zh 值 pin 移到 appShellCopy。
+  assert.match(
+    readProjectFile("src/app/appShellCopy.ts"),
+    /save_restore_in_progress:/,
+  );
+  assert.match(readProjectFile("src/app/appShellCopy.ts"), /save_restore_in_progress:/);
   assert.match(source, /renderedMode\.kind !== "blocked" \? \(/);
-  assert.match(source, /返回应用/);
+  assert.match(source, /copy\.cancelBlocked/);
+  assert.match(readProjectFile("src/app/appShellCopy.ts"), /cancelBlocked: "返回应用"/);
   assert.match(source, /trayButtonRef/);
   assert.match(source, /setTimeout\(\(\) => trayButtonRef\.current\?\.focus\(\), 0\)/);
   assert.match(source, /renderedMode\.kind === "normal"[\s\S]*?window-close-dialog__remember/);
   assert.match(source, /renderedMode\.kind === "normal" \? remember : false/);
-  assert.match(source, /仍然退出/);
-  assert.match(source, /约 1 分钟/);
+  assert.match(source, /copy\.exitStill/);
+  assert.match(readProjectFile("src/app/appShellCopy.ts"), /exitStill: "仍然退出"/);
+  assert.match(readProjectFile("src/app/appShellCopy.ts"), /约 1 分钟/);
   assert.match(source, /activeElement instanceof HTMLButtonElement/);
   assert.match(source, /activeElement\.dataset\.closeAction/);
   assert.match(source, /void execute\(focusedAction\)/);

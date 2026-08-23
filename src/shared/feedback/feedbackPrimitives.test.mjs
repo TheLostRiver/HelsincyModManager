@@ -62,7 +62,7 @@ test("modal surface exposes dialog semantics, close policy, and shared focus beh
   assert.match(modal, /aria-labelledby=\{titleId\}/);
   assert.match(modal, /closeOnEscape:\s*closeOnEscape\s*&&\s*canClose/);
   assert.match(modal, /event\.target\s*===\s*event\.currentTarget\s*&&\s*closeOnBackdrop\s*&&\s*canClose/);
-  assert.match(modal, /aria-label=\{closeLabel\}/);
+  assert.match(modal, /aria-label=\{resolvedCloseLabel\}/);
   assert.match(modal, /active:\s*phase\s*!==\s*"closed"/);
   assert.match(modal, /closeOnEscape:\s*closeOnEscape\s*&&\s*canClose\s*&&\s*phase\s*!==\s*"closing"/);
 

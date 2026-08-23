@@ -30,10 +30,11 @@ test("category page owns a dense single-column management layout with a workflow
   assert.match(source, /className="category-toolbar"/);
   assert.match(source, /className="category-search"/);
   assert.match(source, /<CategorySortMenu/);
-  assert.match(source, /aria-label="搜索分类"/);
+  assert.match(source, /aria-label=\{copy\.page\.searchAria\}/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /searchAria: "搜索分类"/);
   assert.match(source, /className="category-state-card is-error"/);
   assert.match(source, /className="category-state-card is-empty"/);
-  assert.match(source, /没有匹配的分类/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /searchEmptyTitle: "没有匹配的分类"/);
   assert.doesNotMatch(source, /useSidebarMode|sidebarMode/);
   assert.doesNotMatch(source, /category-preview-panel|category-page__summary-grid/);
   assert.doesNotMatch(source, /<select/);
@@ -62,8 +63,8 @@ test("category ordering uses drag handles and keyboard move buttons instead of n
   assert.match(list, /onDragStart/);
   assert.match(list, /onDragOver/);
   assert.match(list, /onDrop/);
-  assert.match(list, /aria-label=\{`上移 \$\{category.name\}`\}/);
-  assert.match(list, /aria-label=\{`下移 \$\{category.name\}`\}/);
+  assert.match(list, /aria-label=\{copy\.list\.moveUpAria\(category\.name\)\}/);
+  assert.match(list, /aria-label=\{copy\.list\.moveDownAria\(category\.name\)\}/);
   assert.doesNotMatch(list, /type="number"/);
   assert.doesNotMatch(page, /type="number"/);
   assert.match(page, /buildSortOrderUpdates/);
@@ -99,9 +100,9 @@ test("category page ships search, sort views and batch operations", () => {
   assert.match(getRuleBody(css, ".category-sort-menu__option"), /border-radius:\s*6px;/);
   assert.doesNotMatch(sortMenu, /<select/);
   assert.match(page, /aria-pressed=\{batchMode\}/);
-  assert.match(page, /aria-label="全选当前列表"/);
-  assert.match(page, /批量删除/);
-  assert.match(page, /应用颜色/);
+  assert.match(page, /aria-label=\{copy\.batch\.selectAllAria\}/);
+  assert.match(page, /copy\.batch\.batchDelete/);
+  assert.match(page, /copy\.batch\.applyColor/);
   assert.match(getRuleBody(css, ".category-batch-bar"), /animation:\s*category-batch-bar-enter/);
   assert.match(css, /@keyframes\s+category-batch-bar-enter/);
   assert.match(
@@ -119,12 +120,12 @@ test("category workspace exposes scoped mode tabs and a compact metric strip", (
   const css = readProjectFile("src/features/categories/CategoryPage.css");
 
   assert.match(page, /className="category-mode-tabs"/);
-  assert.match(page, /aria-label="分类标签管理范围"/);
+  assert.match(page, /aria-label=\{copy\.page\.modeTabsAria\}/);
   assert.match(page, /aria-current="page"/);
   assert.match(page, /aria-disabled="true"/);
   assert.match(page, /className="category-summary-strip"/);
   assert.match(page, /metrics\.coloredCategoryCount/);
-  assert.match(page, /已设置颜色/);
+  assert.match(page, /copy\.page\.summaryColored/);
   assert.match(list, /className="category-row__order"/);
   assert.match(list, /className="category-row__meta"/);
   assert.match(getRuleBody(css, ".category-mode-tabs"), /display:\s*inline-flex;/);
@@ -145,7 +146,7 @@ test("category create workflow opens in an accessible floating glass panel", () 
   assert.match(page, /aria-labelledby="category-create-title"/);
   assert.match(page, /id="category-create-title"/);
   assert.match(page, /id="category-create-distortion"/);
-  assert.match(page, /关闭新建分类/);
+  assert.match(page, /copy\.page\.createCloseAria/);
   assert.match(page, /key === "Escape"/);
   assert.doesNotMatch(
     page,
@@ -199,12 +200,20 @@ test("category row editing and mutations keep accessible feedback", () => {
   assert.match(workflow, /export function isCategoryCommandError/);
   assert.match(list, /className="category-inline-error" role="alert"/);
   assert.match(page, /className="category-inline-error" role="alert"/);
-  assert.match(page, /创建分类失败，请稍后重试。/);
-  assert.match(list, /保存分类失败，请稍后重试。/);
-  assert.match(list, /删除分类失败，请稍后重试。/);
-  assert.match(page, /保存分类顺序失败，请稍后重试。/);
-  assert.match(page, /已存在同名分类/);
-  assert.match(list, /已存在同名分类/);
+  assert.match(page, /copy\.form\.createFailed/);
+  assert.match(list, /copy\.list\.saveFailed/);
+  assert.match(list, /copy\.list\.deleteFailed/);
+  assert.match(page, /copy\.page\.orderSaveFailed/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /createFailed: "创建分类失败，请稍后重试。"/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /saveFailed: "保存分类失败，请稍后重试。"/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /deleteFailed: "删除分类失败，请稍后重试。"/);
+  assert.match(readProjectFile("src/features/categories/categoryCopy.ts"), /orderSaveFailed: "保存分类顺序失败，请稍后重试。"/);
+  assert.match(page, /copy\.form\.duplicateName\(duplicate\.name\)/);
+  assert.match(list, /copy\.form\.duplicateName\(duplicate\.name\)/);
+  assert.match(
+    readProjectFile("src/features/categories/categoryCopy.ts"),
+    /已存在同名分类「\$\{name\}」，请换一个名称。/,
+  );
   assert.match(getRuleBody(css, ".category-inline-error"), /grid-column:\s*1\s*\/\s*-1;/);
   assert.match(css, /\.category-delete-confirm\s*{[\s\S]*?flex-wrap:\s*wrap;/);
   assert.match(

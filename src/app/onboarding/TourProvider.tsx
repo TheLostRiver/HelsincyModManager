@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useAppRoute } from "../routing/useAppRoute";
 import { TourOverlay } from "../../shared/onboarding/TourOverlay";
 import { saveTourOutcome, shouldAutoStartTour } from "../../shared/onboarding/tourStorage";
 import type { TourDefinition, TourOutcome } from "../../shared/onboarding/tourTypes";
 import { buildOnboardingTour } from "./firstRunTour";
+import { onboardingTourCopy } from "./onboardingTourCopy";
 import { TourContext } from "./TourContext";
 
 type TourProviderProps = {
@@ -11,6 +13,11 @@ type TourProviderProps = {
 };
 
 export function TourProvider({ children }: TourProviderProps) {
+  const { locale } = useI18n();
+  const tourCopy = resolveCopy(onboardingTourCopy, locale);
+  // 自动启动 effect 经 ref 取词：copy 进依赖链会让语言切换重跑自动启动检查。
+  const tourCopyRef = useRef(tourCopy);
+  tourCopyRef.current = tourCopy;
   const { currentRoute } = useAppRoute();
   const autoStartCheckedRef = useRef(false);
   const activatedTargetStepIdRef = useRef<string | null>(null);
@@ -21,7 +28,7 @@ export function TourProvider({ children }: TourProviderProps) {
   useEffect(() => {
     if (autoStartCheckedRef.current || currentRoute.id !== "dashboard") return undefined;
 
-    const firstRunTour = buildOnboardingTour(currentRoute.id, { includeWelcome: true });
+    const firstRunTour = buildOnboardingTour(currentRoute.id, tourCopyRef.current, { includeWelcome: true });
     const storage = getLocalStorage();
     if (!shouldAutoStartTour(firstRunTour, storage)) {
       autoStartCheckedRef.current = true;
@@ -62,8 +69,8 @@ export function TourProvider({ children }: TourProviderProps) {
     autoStartCheckedRef.current = true;
     activatedTargetStepIdRef.current = null;
     setStepIndex(0);
-    setActiveTour(buildOnboardingTour(currentRoute.id));
-  }, [currentRoute.id]);
+    setActiveTour(buildOnboardingTour(currentRoute.id, tourCopy));
+  }, [currentRoute.id, tourCopy]);
 
   const finishTour = useCallback((outcome: TourOutcome) => {
     if (activeTour) saveTourOutcome(activeTour, outcome, getLocalStorage());
