@@ -10,6 +10,10 @@ import {
   isProfileSaveRestoreProgressEvent,
   nextProfileSaveRestoreTaskStateFromProgress,
 } from "./profileSaveRestoreTaskState.ts";
+import { saveRestoreCopy } from "./saveRestoreCopy.ts";
+
+// 功能测试固定使用 zh_cn 字典，断言中文值不回归。
+const zhCopy = saveRestoreCopy.zh_cn;
 
 function event({
   taskId = "save-restore-a",
@@ -71,17 +75,23 @@ test("completed, failed, recovery-required, and cancelled events remain distinct
       status: "recovery_required",
       taskId: "save-restore-a",
       errorCode: "save_restore_recovery_required",
-      message: "恢复未能安全收敛，已保留恢复证据。",
     },
   );
-
+  // 语义/文本分离后 state 只存 errorCode，文本在渲染时取词。
   assert.equal(
-    nextProfileSaveRestoreTaskStateFromProgress(running, event({
-      status: "failed",
-      phase: "save_restore.failed",
-      error: "not a stable code with spaces",
-      message: "raw backend text",
-    })).message,
+    getProfileSaveRestoreErrorMessage("save_restore_recovery_required", zhCopy.errors),
+    "恢复未能安全收敛，已保留恢复证据。",
+  );
+
+  const unstableFailed = nextProfileSaveRestoreTaskStateFromProgress(running, event({
+    status: "failed",
+    phase: "save_restore.failed",
+    error: "not a stable code with spaces",
+    message: "raw backend text",
+  }));
+  assert.equal(unstableFailed.errorCode, null);
+  assert.equal(
+    getProfileSaveRestoreErrorMessage(unstableFailed.errorCode, zhCopy.errors),
     "存档恢复失败，当前存档未被视为成功恢复。",
   );
 
@@ -96,9 +106,12 @@ test("completed, failed, recovery-required, and cancelled events remain distinct
       status: "failed",
       taskId: "save-restore-a",
       errorCode: "save_restore_rolled_back",
-      message: "恢复未完成，已自动恢复到操作前存档。",
       warningCodes: ["save_restore_recovery_cleanup_failed"],
     },
+  );
+  assert.equal(
+    getProfileSaveRestoreErrorMessage("save_restore_rolled_back", zhCopy.errors),
+    "恢复未完成，已自动恢复到操作前存档。",
   );
 
   assert.deepEqual(
@@ -150,9 +163,12 @@ test("attaching a task replays early terminal events and commit cannot be cancel
     }),
     false,
   );
-  assert.equal(getProfileSaveRestoreErrorMessage({ code: "save_restore_game_running" }), "游戏仍在运行，请完全退出游戏后重试。");
   assert.equal(
-    getProfileSaveRestoreWarningMessage("save_restore_unknown_warning"),
+    getProfileSaveRestoreErrorMessage({ code: "save_restore_game_running" }, zhCopy.errors),
+    "游戏仍在运行，请完全退出游戏后重试。",
+  );
+  assert.equal(
+    getProfileSaveRestoreWarningMessage("save_restore_unknown_warning", zhCopy.warnings),
     "恢复收尾证据需要检查，请保留现场并联系支持。",
   );
 });
@@ -169,14 +185,12 @@ test("terminal states absorb late running events for the same task", () => {
       status: "failed",
       taskId: "save-restore-a",
       errorCode: "save_restore_commit_failed",
-      message: "存档恢复失败，当前存档未被视为成功恢复。",
       warningCodes: [],
     },
     {
       status: "recovery_required",
       taskId: "save-restore-a",
       errorCode: "save_restore_recovery_required",
-      message: "恢复未能安全收敛，已保留恢复证据。",
     },
     { status: "cancelled", taskId: "save-restore-a" },
   ];
@@ -204,7 +218,10 @@ test("recovery-required overrides an optimistic cancelled event", () => {
       status: "recovery_required",
       taskId: "save-restore-a",
       errorCode: "save_restore_transaction_unavailable",
-      message: "无法持久化恢复事务，恢复已安全停止。",
     },
+  );
+  assert.equal(
+    getProfileSaveRestoreErrorMessage("save_restore_transaction_unavailable", zhCopy.errors),
+    "无法持久化恢复事务，恢复已安全停止。",
   );
 });

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { recoveryCenterCopy } from "./recoveryCenterCopy.ts";
 import { deriveRecoveryCenterViewModel } from "./recoveryCenterViewModel.ts";
+
+// 功能测试固定使用 zh_cn 字典，断言中文值不回归。
+const derive = (summaries) => deriveRecoveryCenterViewModel(summaries, recoveryCenterCopy.zh_cn);
 
 const baseSummary = {
   profileId: "default",
@@ -12,7 +16,7 @@ const baseSummary = {
 };
 
 test("derives profile recovery center overview without path fields", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "healthy-mod",
@@ -88,7 +92,7 @@ test("derives profile recovery center overview without path fields", () => {
 });
 
 test("derives read-only rich repair summary for unsafe recovery states", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "changed-mod",
@@ -136,7 +140,7 @@ test("derives read-only rich repair summary for unsafe recovery states", () => {
 });
 
 test("derives read-only rollback-required summary ahead of repair and unknown states", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "changed-mod",
@@ -185,7 +189,7 @@ test("derives read-only rollback-required summary ahead of repair and unknown st
 });
 
 test("derives safe manual handling decisions for recovery attention states", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "changed-mod",
@@ -242,7 +246,7 @@ test("derives safe manual handling decisions for recovery attention states", () 
 });
 
 test("derives attention labels and safe guidance for cleanup-pending states", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "committed-mod",
@@ -288,7 +292,7 @@ test("derives attention labels and safe guidance for cleanup-pending states", ()
 });
 
 test("derives empty recovery center state for a profile without managed installs", () => {
-  const viewModel = deriveRecoveryCenterViewModel([]);
+  const viewModel = derive([]);
 
   assert.equal(viewModel.overview.status, "empty");
   assert.deepEqual(viewModel.overview.repairSummary, {
@@ -325,7 +329,7 @@ test("derives empty recovery center state for a profile without managed installs
 });
 
 test("derives available controlled_recovery action when rollback_required mods exist", () => {
-  const viewModel = deriveRecoveryCenterViewModel([
+  const viewModel = derive([
     {
       ...baseSummary,
       modId: "rollback-mod",
