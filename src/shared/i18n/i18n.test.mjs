@@ -69,6 +69,9 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
   for (const relativePath of [
     "src/features/settings/settingsPageCopy.ts",
     "src/features/about/aboutPageCopy.ts",
+    "src/features/settings/backgroundProtectionCopy.ts",
+    "src/features/settings/debugLogSettingsCopy.ts",
+    "src/features/game-setup/gamePrerequisiteCopy.ts",
   ]) {
     const source = readSource(relativePath);
     for (const locale of ["zh_cn", "en", "ja"]) {
@@ -86,10 +89,16 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
   }
 });
 
-test("试点页去注释后不再包含硬编码中文文案", () => {
+test("试点页与设置页内嵌面板去注释后不再包含硬编码中文文案", () => {
   for (const relativePath of [
     "src/features/settings/SettingsPage.tsx",
     "src/features/about/AboutPage.tsx",
+    "src/features/settings/BackgroundProtectionPanel.tsx",
+    "src/features/settings/backgroundProtectionTypes.ts",
+    "src/features/settings/DebugLogSettingsPanel.tsx",
+    "src/features/settings/debugLogSettingsTypes.ts",
+    "src/features/game-setup/GamePrerequisitePanel.tsx",
+    "src/features/game-setup/gamePrerequisiteViewModel.ts",
   ]) {
     const source = stripComments(readSource(relativePath));
     const hanMatches = source.match(/[一-鿿][^\n]{0,40}/gu) ?? [];

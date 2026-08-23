@@ -1,6 +1,8 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { getDebugLogSettings, setDebugLogSettings } from "./debugLogSettingsApi";
+import { debugLogSettingsCopy } from "./debugLogSettingsCopy";
 import {
   getDebugLogErrorCode,
   getDebugLogErrorMessage,
@@ -8,6 +10,8 @@ import {
 } from "./debugLogSettingsTypes";
 
 export function DebugLogSettingsPanel() {
+  const { locale } = useI18n();
+  const copy = resolveCopy(debugLogSettingsCopy, locale);
   const [state, setState] = useState<DebugLogSettingsState>({ status: "loading" });
   const [saving, setSaving] = useState(false);
   const mountedRef = useRef(false);
@@ -52,7 +56,7 @@ export function DebugLogSettingsPanel() {
     return (
       <div className="debug-log-settings-panel" role="status" aria-busy="true">
         <LoaderCircle className="debug-log-settings-panel__spinner" size={16} aria-hidden="true" />
-        <span>正在读取调试日志设置…</span>
+        <span>{copy.loading}</span>
       </div>
     );
   }
@@ -61,22 +65,22 @@ export function DebugLogSettingsPanel() {
     return (
       <div className="settings-callout debug-log-settings-panel__error" role="alert">
         <AlertTriangle size={16} strokeWidth={2.1} />
-        <span>{getDebugLogErrorMessage(state.errorCode)}</span>
+        <span>{getDebugLogErrorMessage(state.errorCode, locale)}</span>
         <button type="button" onClick={load}>
           <RefreshCw size={14} aria-hidden="true" />
-          重新检查
+          {copy.recheck}
         </button>
       </div>
     );
   }
 
-  const errorMessage = state.errorCode ? getDebugLogErrorMessage(state.errorCode) : null;
+  const errorMessage = state.errorCode ? getDebugLogErrorMessage(state.errorCode, locale) : null;
   return (
     <div className="debug-log-settings-panel" aria-busy={saving}>
       <label className="setting-row debug-log-settings-panel__toggle">
         <span className="setting-row__copy">
-          <strong>启用调试日志</strong>
-          <span>仅在开启后写入受控的 Debug 事件；不会记录原始路径、错误正文、Manifest、Hash 或 Mod 内容。</span>
+          <strong>{copy.toggleTitle}</strong>
+          <span>{copy.toggleDescription}</span>
         </span>
         <input
           type="checkbox"
@@ -88,7 +92,7 @@ export function DebugLogSettingsPanel() {
         <span className="setting-switch" aria-hidden="true" />
       </label>
       <span id="debug-log-settings-description" className="debug-log-settings-panel__status" role="status" aria-live="polite">
-        {saving ? "正在保存…" : state.settings.enabled ? "已启用" : "已关闭"}
+        {saving ? copy.saving : state.settings.enabled ? copy.enabled : copy.disabled}
       </span>
       {errorMessage ? (
         <div className="settings-callout debug-log-settings-panel__error" role="alert">

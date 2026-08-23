@@ -1,3 +1,7 @@
+// 直连 locales 而不是 shared/i18n barrel，保证可被 node --test 直接 import（无 JSX 链）。
+import { resolveCopy, type Locale } from "../../shared/i18n/locales";
+import { debugLogSettingsCopy } from "./debugLogSettingsCopy";
+
 export type DebugLogSettingsDto = {
   enabled: boolean;
 };
@@ -16,14 +20,15 @@ export function getDebugLogErrorCode(error: unknown): string {
   return typeof code === "string" && code.trim() ? code : "unknown";
 }
 
-export function getDebugLogErrorMessage(code: string): string {
+export function getDebugLogErrorMessage(code: string, locale: Locale): string {
+  const errors = resolveCopy(debugLogSettingsCopy, locale).errors;
   switch (code) {
     case "configuration_database_unavailable":
     case "app_settings_unavailable":
-      return "调试日志设置暂时不可用，请稍后重试。";
+      return errors.unavailableRetry;
     case "app_settings_save_failed":
-      return "调试日志设置保存失败，当前运行状态未改变。";
+      return errors.saveFailed;
     default:
-      return "调试日志设置暂时不可用，请重新检查。";
+      return errors.unavailableRecheck;
   }
 }
