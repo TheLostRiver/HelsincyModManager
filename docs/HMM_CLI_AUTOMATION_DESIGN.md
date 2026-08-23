@@ -1,6 +1,7 @@
 # HMM CLI 与自动化测试设计
 
-> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C 与 CLI-4 Slice B/C 已实现
+> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C、CLI-4 Slice B/C 与
+> CLI-3B（四条单项 lifecycle 的 Production command-level 开放）已实现
 >
 > 日期：2026-08-02
 >
@@ -102,7 +103,7 @@ CLI-0B 及后续的 `HmmRuntimeBuilder` 目标上至少支持以下受控模式�
 
 | 模式 | 数据位置 | 允许能力 |
 | --- | --- | --- |
-| `Production` | 操作系统解析的 HMM app data | 初期只读；写入受跨进程 admission 门禁 |
+| `Production` | 操作系统解析的 HMM app data | 只读命令 + CLI-3B 逐项认证的单项 lifecycle 写入（token/双确认/跨进程 admission/锁内重验） |
 | `Sandbox` | 调用方显式提供的临时根 | fixture 读写和故障注入 |
 | `Test` | 测试进程创建的临时根和 fake ports | Rust 单元/集成测试 |
 
@@ -277,7 +278,8 @@ hmm
 | CLI-2 后续切片 | `mod import`、`external-import apply` | 仅 Sandbox | 使用人工 archive/source fixture；不自动归入单项 lifecycle task |
 | CLI-2B/2C | `install apply/uninstall/reinstall/recovery apply` | 仅 Sandbox | 验证完整安全链路和失败恢复 |
 | CLI-2 后续切片 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根；需各自独立安全评审 |
-| CLI-3 | CLI-2 写命令 | Production | 仅在对应跨进程 admission 和写侧重验完成后开放 |
+| CLI-3B（已实现） | `install apply/uninstall/reinstall/recovery apply` | Production | production token + `--commit --yes` + 跨进程 admission + 锁内 token/事实/游戏根重验 |
+| CLI-3 后续 | `install batch`（Production）、`backup background enable/disable` 等 | Production | batch 前置 per-installation secret；其余按 command 独立评审后开放 |
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
 | CLI-4（Slice B/C） | `install batch --operation install\|uninstall\|reinstall` | Sandbox；Production 受 CLI-3 门禁 | 三种 operation 共用 plan/apply/result/retry 与 batch service |
 
@@ -346,7 +348,8 @@ hmm install recovery preview --game mhw --profile <profile-id> --mod <mod-id> \
   --action rollback-install|reconcile-reinstall
 ```
 
-CLI-2C 当前只在 Sandbox 开放：
+CLI-2C 在 Sandbox 落地、CLI-3B 起对 Production 开放同一形态（Production 使用 production
+环境签发的 token，不接受 `--data-dir`）：
 
 ```text
 hmm install apply --game mhw --profile <profile-id> --mod <mod-id> \
@@ -360,8 +363,9 @@ hmm install recovery apply --game mhw --profile <profile-id> --mod <mod-id> \
 ```
 
 省略任一确认参数时，四条命令只返回同源 preview。只有 ready/available preview 签发 5 分钟
-`hmm-lifecycle-plan-v1` opaque token；token 不包含路径、manifest、backup/recovery ref 或内部
-reinstall token。uninstall/recovery token 额外绑定 repository 读取出的完整结构化
+`hmm-lifecycle-plan-v1` opaque token；CLI-3B 起 Sandbox 与 Production preview 各自签发，
+环境标签参与 token digest，跨环境重放一律 `plan_token_invalid`。token 不包含路径、manifest、
+backup/recovery ref 或内部 reinstall token。uninstall/recovery token 额外绑定 repository 读取出的完整结构化
 manifest/install-recovery/reinstall-recovery 状态摘要，因此内容变化即使聚合计数相同也会使旧 token
 失效。
 
@@ -478,15 +482,20 @@ CLI 自身不得新增“打印原始错误”“显示内部路径”“dump ma
 编译运行，不能用 Windows 结果替代。2026-08-16 disposable Windows synthetic gate 进一步覆盖
 GUI/CLI/worker 的安装、存档和后台注册竞争、释放后写入以及最终 task/evidence 清理，CLI-3A 已认证。
 
-### 继续保留的 Production 硬门禁
+### CLI-3B 后仍然保留的 Production 硬门禁
 
-CLI-3A 只建立共享互斥基础，不改变 parser command tree，也不自动授权 Production 写入：
+CLI-3A 建立共享互斥基础；CLI-3B（2026-08-24）按 command 复核后开放了四条单项 lifecycle
+命令的 Production 写入。以下硬门禁不变：
 
-- Production 模式继续只开放既有只读命令。
-- 现有 CLI 写命令继续只能使用显式 Sandbox app data 和人工 fixture。
-- 不允许隐藏环境变量、debug flag 或未文档化参数开启 production write。
-- CLI-3B 必须按 command 复核 capability、token、Audit、锁内事实和 disposable Windows 验收，再逐项
-  解除门禁；GUI 测试、单进程锁测试或仅取得跨进程 guard 都不是授权证据。
+- Production 继续禁止 `--data-dir`，数据根仅由操作系统解析；不允许隐藏环境变量、debug flag
+  或未文档化参数改变数据根或开启额外写命令。
+- 已开放的四条命令各自要求 production token（环境标签参与 digest，与 sandbox token 互不通用）、
+  显式 `--commit --yes`、`game-profile-write` 跨进程 admission，以及锁内 token/事实/游戏根
+  一致性重验；游戏根只能来自已保存配置，锁内重载与锁外记录不一致或已消失时 fail closed。
+- `install batch` 的 Production 开放前置 per-installation secret，仍在 automation 边界拒绝；
+  `backup create/restore/background enable|disable` 与 `diagnostics export` 仍在 parser 边界
+  不可达。后续每个 command 仍须独立复核 capability、token、Audit、锁内事实和 disposable
+  Windows 验收，GUI 测试、单进程锁测试或仅取得跨进程 guard 都不是授权证据。
 
 ## 批量安装/卸载/真正重装
 
@@ -895,11 +904,20 @@ CLI-3A 已完成并认证（2026-08-16）：
   abandoned owner、释放后 worker backup 增长与 background registration 双向 mutation。
 - Production parser/runtime 写门禁没有改变。
 
-CLI-3B 现为 `ready`，但仍须按 command 开放 Production 写入：
+CLI-3B（2026-08-24 实现）按 command 复核后开放了 `install apply`、`install uninstall`、
+`install reinstall`、`install recovery apply` 四条 Production 写命令：
 
-- 逐项复核 capability、preview/token、Audit、锁内事实和机器输出契约。
-- 在 disposable Windows 环境验证 GUI/CLI/worker 竞争以及后台保护注册链路。
-- 每个 command 独立解除门禁；不得因为 CLI-3A 基础设施存在而批量开放。
+- preview 在两种环境分别签发 token，环境标签参与 digest，跨环境重放一律失效；prepare 前置
+  纯语法 token 预检，过期/非法 token 在触达任何数据根之前 fail closed。
+- lifecycle automation 双环境化：Sandbox 走 marker/containment capability；Production 的根事实
+  是 prepare 阶段从已保存配置读取的游戏根，锁内重载配置并要求与锁外记录一致且仍存在，
+  配置漂移 fail closed。Audit/Task Log、跨进程 admission 与既有安全链路完全复用。
+- `runtime status` 契约演进：Production `writeCommandPolicy=production_command_level`、
+  `productionWritesAllowed=true`；Sandbox 报告不变。
+- 未逐项认证的写命令不随本切片开放：`install batch`（前置 per-installation secret）、
+  `backup create`、`diagnostics export`、`backup background enable/disable`。
+- disposable Windows 环境的 GUI/CLI/worker 竞争与真机安装态验收按独立 gate 记录，
+  不并入普通 CI 结果。
 
 完成定义：
 

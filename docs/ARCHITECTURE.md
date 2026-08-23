@@ -142,12 +142,15 @@ root、VDF library、discovery candidate、install/backup state roots 和日志�
 canonical containment。Production 与 Sandbox 的所有只读命令都不创建 marker，也不签发写
 capability。
 
-CLI-2C 另外只在 Sandbox 开放 `hmm install apply|uninstall|reinstall` 与
-`hmm install recovery apply`。未携带完整 `--commit --yes` 时命令仍为 preview；提交时必须消费
-5 分钟 opaque lifecycle token。`SandboxLifecycleAutomation` 在构造写侧 runtime 前验证 token，
-runner 取得共享 game/profile 写锁后，再由 configured committer/admission 重建计划或
-manifest/recovery facts、重验 token 和 capability，之后才进入既有写入事务。Production 在 CLI
-policy 和 runtime composition 两层固定拒绝。
+CLI-2C 落地、CLI-3B（2026-08-24）扩展到 Production 的 `hmm install apply|uninstall|reinstall`
+与 `hmm install recovery apply` 使用同一确认协议：未携带完整 `--commit --yes` 时命令仍为
+preview；提交时必须消费 5 分钟 opaque lifecycle token，token 的环境标签参与 digest，
+production 与 sandbox token 互不通用。`CliLifecycleAutomation` 在构造写侧 runtime 前验证
+token（前置纯语法预检，过期/非法 token 不触达任何数据根），runner 取得共享 game/profile
+写锁后，再由 configured committer/admission 重建计划或 manifest/recovery facts、重验 token 与
+根事实：Sandbox 重验 marker/containment capability；Production 锁内重载已保存配置的游戏根并
+要求与锁外记录一致且仍存在，配置漂移 fail closed。Production 数据根仅由操作系统解析，
+`--data-dir` 禁令不变。
 
 CLI-4 Slice B/C 在 Sandbox 增加 `hmm install batch plan|apply|result|retry`，并通过批次级 operation
 统一支持 install、uninstall 和 reinstall。批量 plan 使用
@@ -238,10 +241,12 @@ restore 保持 `save -> game -> 进程内 game/profile mutex`，其他 lifecycle
 backup、retention、restore transaction、target containment 与 owned Scheduled Task read-back 都必须在
 guard 内继续重验。平台对象名只包含稳定 digest，不包含路径、用户名、SID、Steam ID 或 profile 明文。
 
-CLI-3A 不改变 parser command tree。Production 写命令仍保持不可达，后续只能在 CLI-3B 按 command
-完成 capability、token、Audit、锁内重验和 disposable Windows 验收后逐项开放。Sandbox 单项 lifecycle
-命令继续复用完整 application service、InstallPlan、backup、manifest、rollback/recovery、Audit Log 和
-写锁；其他写命令仍需按各自安全边界逐项开放。
+CLI-3A 不改变 parser command tree。CLI-3B 按 command 复核 capability、token、Audit 与锁内重验
+后开放了四条单项 lifecycle 命令的 Production 写入（disposable Windows 真机 gate 另行记录）；
+单项 lifecycle 命令在两种环境都复用完整 application service、InstallPlan、backup、manifest、
+rollback/recovery、Audit Log 和写锁。`install batch` 的 Production 开放前置 per-installation
+secret；backup、diagnostics export、background registration 等其他写命令仍需按各自安全边界
+逐项开放。
 
 `hmm-games-rise/`、`hmm-games-wilds/` 和 `hmm-games-common/` 是规划边界，不要求在 MVP 阶段立即创建。只有当对应游戏适配或共享工具真实落地时，才新增 crate，避免空目录和空抽象。
 

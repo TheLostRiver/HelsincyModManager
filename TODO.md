@@ -70,8 +70,10 @@ CLI-3B Production command-level admission 已开工（`in-progress`，2026-08-24
    合并；T13-00 至 T13-08 已按独立批量领域设计完成，Gate C 于 2026-08-05 认证。CAT-01 数据治理、
    WR-01 武器设计、WR-02A 纯解析、WR-03A binary transformer、WR-03B staging/manifest 与 WR-04
    受控 Tauri/UI/Gate D 随后完成，Gate D 于 2026-08-06 认证；LOG-01、LOG-02、LOG-03 与 SAVE-02 至
-   SAVE-05 均已完成并认证；CLI-3A 跨进程 admission 已于 2026-08-16 认证，下一步进入 CLI-3B
-   Production command-level admission，仍不能把 T17 import-only 编排当成批量安装实现。
+   SAVE-05 均已完成并认证；CLI-3A 跨进程 admission 已于 2026-08-16 认证，CLI-3B Production
+   command-level admission 已于 2026-08-24 开工（四条单项 lifecycle 逐 command 开放；batch
+   Production 前置 per-installation secret，属后续切片），仍不能把 T17 import-only 编排当成
+   批量安装实现。
 
 ---
 
