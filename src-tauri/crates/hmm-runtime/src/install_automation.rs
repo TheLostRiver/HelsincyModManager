@@ -598,6 +598,18 @@ impl ReadOnlyInstallAutomation {
         self.plan_for_profile(game_id, "default", mod_id)
     }
 
+    /// Token 环境与数据根同源：显式 sandbox 根 → Sandbox，OS 解析 app data → Production。
+    /// 两种 token 互不通用，preview 签发与写侧校验共用这一推导。
+    pub(crate) fn token_environment(
+        &self,
+    ) -> crate::lifecycle_automation::LifecycleTokenEnvironment {
+        if self.sandbox_fixture_root.is_some() {
+            crate::lifecycle_automation::LifecycleTokenEnvironment::Sandbox
+        } else {
+            crate::lifecycle_automation::LifecycleTokenEnvironment::Production
+        }
+    }
+
     pub fn plan_for_profile(
         &self,
         game_id: &str,
@@ -606,20 +618,19 @@ impl ReadOnlyInstallAutomation {
     ) -> Result<InstallPlanSnapshot, ReadOnlyInstallAutomationError> {
         let (game_id, profile_id, mod_id, plan, prerequisite_decision) =
             self.build_install_plan(game_id, profile_id, mod_id)?;
-        let issued_token = (self.sandbox_fixture_root.is_some()
-            && !plan.has_blocking_conflicts()
-            && !prerequisite_decision.is_blocked())
-        .then(|| {
-            crate::lifecycle_automation::issue_install_plan_token(
-                &game_id,
-                &profile_id,
-                &mod_id,
-                &plan,
-                &prerequisite_decision,
-            )
-        })
-        .transpose()
-        .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+        let issued_token = (!plan.has_blocking_conflicts() && !prerequisite_decision.is_blocked())
+            .then(|| {
+                crate::lifecycle_automation::issue_install_plan_token(
+                    self.token_environment(),
+                    &game_id,
+                    &profile_id,
+                    &mod_id,
+                    &plan,
+                    &prerequisite_decision,
+                )
+            })
+            .transpose()
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
         let actions = plan
             .actions
             .iter()
@@ -780,9 +791,10 @@ impl ReadOnlyInstallAutomation {
         let (game_id, profile_id, mod_id, candidate_revision_id, preview) =
             self.build_reinstall_facts(game_id, profile_id, mod_id, candidate_revision_id)?;
         let available = preview.status == ReinstallPreviewStatus::Ready;
-        let issued_token = (available && self.sandbox_fixture_root.is_some())
+        let issued_token = available
             .then(|| {
                 crate::lifecycle_automation::issue_reinstall_plan_token(
+                    self.token_environment(),
                     &game_id,
                     &profile_id,
                     &mod_id,
@@ -970,9 +982,10 @@ impl ReadOnlyInstallAutomation {
         let (game_id, profile_id, mod_id, summary, state_binding) =
             self.build_uninstall_facts(game_id, profile_id, mod_id)?;
         let available = summary.status == InstallRecoveryStatus::Completed;
-        let issued_token = (available && self.sandbox_fixture_root.is_some())
+        let issued_token = available
             .then(|| {
                 crate::lifecycle_automation::issue_uninstall_plan_token(
+                    self.token_environment(),
                     &game_id,
                     &profile_id,
                     &mod_id,
@@ -1153,9 +1166,10 @@ impl ReadOnlyInstallAutomation {
         let (game_id, profile_id, mod_id, preview, state_binding) =
             self.build_recovery_preview_facts(game_id, profile_id, mod_id, action)?;
         let available = preview.availability == InstallRecoveryActionAvailability::Available;
-        let issued_token = (available && self.sandbox_fixture_root.is_some())
+        let issued_token = available
             .then(|| {
                 crate::lifecycle_automation::issue_recovery_plan_token(
+                    self.token_environment(),
                     &game_id,
                     &profile_id,
                     &mod_id,
