@@ -1,17 +1,20 @@
 import { Check, Paintbrush } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { categoryCopy, type CategoryColorKey } from "./categoryCopy";
 
 const DEFAULT_PICKER_COLOR = "#3B82F6";
 
-export const CATEGORY_COLOR_OPTIONS = [
-  { label: "蓝色", value: "#2563EB" },
-  { label: "青色", value: "#0891B2" },
-  { label: "绿色", value: "#16A34A" },
-  { label: "琥珀", value: "#D97706" },
-  { label: "红色", value: "#DC2626" },
-  { label: "粉色", value: "#DB2777" },
-  { label: "紫色", value: "#7C3AED" },
-  { label: "灰色", value: "#64748B" },
+// 色值为语义数据；展示名经 categoryCopy.colors.labels 取。
+export const CATEGORY_COLOR_OPTIONS: ReadonlyArray<{ labelKey: CategoryColorKey; value: string }> = [
+  { labelKey: "blue", value: "#2563EB" },
+  { labelKey: "cyan", value: "#0891B2" },
+  { labelKey: "green", value: "#16A34A" },
+  { labelKey: "amber", value: "#D97706" },
+  { labelKey: "red", value: "#DC2626" },
+  { labelKey: "pink", value: "#DB2777" },
+  { labelKey: "purple", value: "#7C3AED" },
+  { labelKey: "gray", value: "#64748B" },
 ];
 
 export function isValidColor(value: string): boolean {
@@ -36,6 +39,8 @@ export function CategoryColorPicker({
   triggerLabel,
   align = "start",
 }: CategoryColorPickerProps) {
+  const { locale } = useI18n();
+  const colorsCopy = resolveCopy(categoryCopy, locale).colors;
   const [open, setOpen] = useState(false);
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -91,14 +96,15 @@ export function CategoryColorPicker({
           style={{ background: selectedColor || undefined }}
           aria-hidden="true"
         />
-        <span>{selectedColor ? selectedColor.toUpperCase() : "默认颜色"}</span>
+        <span>{selectedColor ? selectedColor.toUpperCase() : colorsCopy.defaultColor}</span>
       </button>
 
       {open && (
-        <div className="category-color-popover" id={popoverId} role="dialog" aria-label="选择分类颜色">
-          <div className="category-color-palette" aria-label="常用颜色">
+        <div className="category-color-popover" id={popoverId} role="dialog" aria-label={colorsCopy.popoverAria}>
+          <div className="category-color-palette" aria-label={colorsCopy.paletteAria}>
             {CATEGORY_COLOR_OPTIONS.map((option) => {
               const isSelected = selectedColor.toLowerCase() === option.value.toLowerCase();
+              const optionLabel = colorsCopy.labels[option.labelKey];
 
               return (
                 <button
@@ -106,9 +112,9 @@ export function CategoryColorPicker({
                   className={`category-color-swatch-button ${isSelected ? "is-selected" : ""}`}
                   key={option.value}
                   onClick={() => selectColor(option.value)}
-                  aria-label={`选择${option.label}`}
+                  aria-label={colorsCopy.pickAria(optionLabel)}
                   aria-pressed={isSelected}
-                  title={option.label}
+                  title={optionLabel}
                 >
                   <span
                     className="category-swatch"
@@ -123,17 +129,17 @@ export function CategoryColorPicker({
           <label className="category-custom-color">
             <span>
               <Paintbrush size={13} strokeWidth={2.2} aria-hidden="true" />
-              自定义
+              {colorsCopy.custom}
             </span>
             <input
               type="color"
               value={nativePickerColor}
               onChange={(event) => onChange(event.target.value)}
-              aria-label="自定义颜色"
+              aria-label={colorsCopy.customAria}
             />
           </label>
           <button type="button" className="category-color-clear" onClick={() => selectColor("")}>
-            恢复默认颜色
+            {colorsCopy.clear}
           </button>
         </div>
       )}

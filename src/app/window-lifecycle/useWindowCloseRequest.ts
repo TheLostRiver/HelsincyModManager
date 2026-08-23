@@ -1,4 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { appShellCopy } from "../appShellCopy";
 import { useEffect, useRef } from "react";
 import type { WindowCloseDialogMode } from "./WindowCloseDialog";
 import {
@@ -36,6 +38,11 @@ export async function requestOrdinaryExit(beforeExit?: BeforeExit): Promise<Exit
 }
 
 export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseRequestOptions) {
+  const { locale } = useI18n();
+  // 监听器经 ref 取词，避免语言切换重建窗口关闭事件订阅。
+  const lifecycleCopy = resolveCopy(appShellCopy, locale).windowLifecycle;
+  const lifecycleCopyRef = useRef(lifecycleCopy);
+  lifecycleCopyRef.current = lifecycleCopy;
   const callbacksRef = useRef({ onShowDialog, onError });
   callbacksRef.current = { onShowDialog, onError };
 
@@ -53,7 +60,7 @@ export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseR
       if (action === "hide_to_tray") {
         void hideMainWindowToTray().catch((error: unknown) => {
           callbacksRef.current.onShowDialog({ kind: "normal" });
-          callbacksRef.current.onError(getWindowLifecycleErrorMessage(error));
+          callbacksRef.current.onError(getWindowLifecycleErrorMessage(error, lifecycleCopyRef.current));
         });
         return;
       }
@@ -64,7 +71,7 @@ export function useWindowCloseRequest({ onShowDialog, onError }: UseWindowCloseR
         })
         .catch((error: unknown) => {
           callbacksRef.current.onShowDialog({ kind: "normal" });
-          callbacksRef.current.onError(getWindowLifecycleErrorMessage(error));
+          callbacksRef.current.onError(getWindowLifecycleErrorMessage(error, lifecycleCopyRef.current));
         });
     })
       .then((dispose) => {

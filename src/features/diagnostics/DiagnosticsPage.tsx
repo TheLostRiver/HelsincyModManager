@@ -1,7 +1,9 @@
 import { AlertTriangle, Clipboard, Download, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { exportSupportDiagnostics, getDiagnosticsPageSnapshot } from "./diagnosticsApi";
+import { diagnosticsCopy, type DiagnosticsCopy } from "./diagnosticsCopy";
 import { createLatestRequestController, createSingleFlightController, runDeferred } from "./diagnosticsPageLogic";
 import type { DiagnosticsPageSnapshot } from "./diagnosticsTypes";
 import "./DiagnosticsPage.css";
@@ -10,6 +12,8 @@ type PageState = { status: "loading" } | { status: "failed" } | { status: "ready
 
 export function DiagnosticsPage() {
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(diagnosticsCopy, locale);
   const [state, setState] = useState<PageState>({ status: "loading" });
   const [confirming, setConfirming] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -32,37 +36,49 @@ export function DiagnosticsPage() {
 
   const copyStableValue = useCallback((value: string) => {
     void runDeferred(() => navigator.clipboard.writeText(value))
-      .then(() => pushToast({ eventKey: `diagnostics.copied.${value}`, title: "已复制诊断标识", message: value, tone: "success" }))
-      .catch(() => pushToast({ eventKey: "diagnostics.copy.failed", title: "复制失败", message: "无法写入剪贴板，请手动记录稳定诊断标识。", tone: "danger" }));
-  }, [pushToast]);
+      .then(() => pushToast({ eventKey: `diagnostics.copied.${value}`, title: copy.toasts.copiedTitle, message: value, tone: "success" }))
+      .catch(() => pushToast({ eventKey: "diagnostics.copy.failed", title: copy.toasts.copyFailedTitle, message: copy.toasts.copyFailedMessage, tone: "danger" }));
+  }, [copy, pushToast]);
 
   const confirmExport = useCallback(() => {
     const exportPromise = exportControllerRef.current.run(exportSupportDiagnostics);
     if (!exportPromise) return;
     setExporting(true);
     void exportPromise.then((result) => {
-      pushToast({ eventKey: `diagnostics.exported.${result.exportId}`, title: "诊断包已导出", message: `${result.fileName}，${formatBytes(result.sizeBytes)}；App 日志 ${result.appLogLineCount} 行，Debug 日志 ${result.debugLogLineCount} 行，任务日志 ${result.taskLogLineCount} 行，审计事件 ${result.auditEventCount} 条。`, tone: "success" });
+      pushToast({
+        eventKey: `diagnostics.exported.${result.exportId}`,
+        title: copy.toasts.exportedTitle,
+        message: copy.toasts.exportedMessage({
+          fileName: result.fileName,
+          size: formatBytes(result.sizeBytes),
+          appLogLineCount: result.appLogLineCount,
+          debugLogLineCount: result.debugLogLineCount,
+          taskLogLineCount: result.taskLogLineCount,
+          auditEventCount: result.auditEventCount,
+        }),
+        tone: "success",
+      });
       setConfirming(false);
-    }).catch(() => pushToast({ eventKey: "diagnostics.export.failed", title: "诊断导出失败", message: "未生成诊断包，请稍后重试。", tone: "danger" }))
+    }).catch(() => pushToast({ eventKey: "diagnostics.export.failed", title: copy.toasts.exportFailedTitle, message: copy.toasts.exportFailedMessage, tone: "danger" }))
       .finally(() => setExporting(false));
-  }, [pushToast]);
+  }, [copy, pushToast]);
 
   return (
     <section className="diagnostics-page" aria-labelledby="diagnostics-title">
       <header className="diagnostics-page__hero" data-tour-id="diagnostics.actions">
         <div>
-          <span>只读支持工具</span>
-          <h2 id="diagnostics-title">日志与诊断</h2>
-          <p>这里只显示后端已校验和脱敏的信息，不展示本地路径或原始错误。</p>
+          <span>{copy.page.eyebrow}</span>
+          <h2 id="diagnostics-title">{copy.page.title}</h2>
+          <p>{copy.page.subtitle}</p>
         </div>
         <div className="diagnostics-page__actions">
           <button type="button" onClick={load}>
             <RefreshCw size={16} aria-hidden="true" />
-            刷新
+            {copy.page.refresh}
           </button>
           <button type="button" className="is-primary" onClick={() => setConfirming(true)}>
             <Download size={16} aria-hidden="true" />
-            导出诊断包
+            {copy.page.exportBundle}
           </button>
         </div>
       </header>
@@ -72,7 +88,7 @@ export function DiagnosticsPage() {
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <RefreshCw size={20} />
           </span>
-          <p>正在读取安全诊断摘要…</p>
+          <p>{copy.page.loading}</p>
         </div>
       )}
 
@@ -89,24 +105,24 @@ export function DiagnosticsPage() {
           <span className="diagnostics-page__state-icon" aria-hidden="true">
             <AlertTriangle size={22} />
           </span>
-          <h3>诊断摘要不可用</h3>
-          <p>读取失败未暴露原始错误；可重试或直接使用受控导出。</p>
+          <h3>{copy.page.failedTitle}</h3>
+          <p>{copy.page.failedHint}</p>
           {/* 文案承诺了"可重试"，重试入口就应当在同一处，而不是让用户回到页头去找。 */}
           <button type="button" onClick={load}>
             <RefreshCw size={16} aria-hidden="true" />
-            重试读取
+            {copy.page.retry}
           </button>
         </div>
       )}
 
       {state.status === "ready" && (
-        <DiagnosticsContent snapshot={state.snapshot} onCopy={copyStableValue} />
+        <DiagnosticsContent copy={copy} snapshot={state.snapshot} onCopy={copyStableValue} />
       )}
 
       <Dialog
         open={confirming}
-        title="确认导出诊断包"
-        description="导出包将包含平台摘要、已脱敏 App/Task 日志、已校验审计事件和健康聚合，不包含完整路径与原始错误。"
+        title={copy.dialog.title}
+        description={copy.dialog.description}
         busy={exporting}
         initialFocusRef={cancelExportRef}
         onClose={() => setConfirming(false)}
@@ -119,7 +135,7 @@ export function DiagnosticsPage() {
               onClick={() => setConfirming(false)}
               disabled={exporting}
             >
-              取消
+              {copy.dialog.cancel}
             </button>
             <button
               type="button"
@@ -128,7 +144,7 @@ export function DiagnosticsPage() {
               disabled={exporting}
             >
               <Download size={16} aria-hidden="true" />
-              {exporting ? "导出中…" : "确认导出"}
+              {exporting ? copy.dialog.exporting : copy.dialog.confirm}
             </button>
           </>
         }
@@ -138,9 +154,11 @@ export function DiagnosticsPage() {
 }
 
 function DiagnosticsContent({
+  copy,
   snapshot,
   onCopy,
 }: {
+  copy: DiagnosticsCopy;
   snapshot: DiagnosticsPageSnapshot;
   onCopy: (value: string) => void;
 }) {
@@ -148,21 +166,23 @@ function DiagnosticsContent({
     <>
       <section
         className="diagnostics-page__health"
-        aria-label="诊断健康摘要"
+        aria-label={copy.content.healthAria}
         data-tour-id="diagnostics.health"
       >
-        <HealthCard label="平台" status={snapshot.platformStatus} />
-        <HealthCard label="App Log" status={snapshot.appLogStatus} />
-        <HealthCard label="Debug Log" status={combinedStatus(snapshot.debugLogStatus, snapshot.evidenceHealth.debugLogStatus)} />
+        <HealthCard copy={copy} label={copy.content.platformLabel} status={snapshot.platformStatus} />
+        <HealthCard copy={copy} label="App Log" status={snapshot.appLogStatus} />
+        <HealthCard copy={copy} label="Debug Log" status={combinedStatus(snapshot.debugLogStatus, snapshot.evidenceHealth.debugLogStatus)} />
         <HealthCard
+          copy={copy}
           label="Task Log"
           status={combinedStatus(snapshot.taskLogStatus, snapshot.evidenceHealth.taskLogStatus)}
         />
         <HealthCard
+          copy={copy}
           label="Audit Log"
           status={combinedStatus(snapshot.auditLogStatus, snapshot.evidenceHealth.auditLogStatus)}
         />
-        <HealthCard label="日志空间" status={snapshot.evidenceHealth.logStorageStatus} />
+        <HealthCard copy={copy} label={copy.content.logStorageLabel} status={snapshot.evidenceHealth.logStorageStatus} />
       </section>
 
       {snapshot.platformSummary && (
@@ -179,17 +199,17 @@ function DiagnosticsContent({
       )}
 
       <section className="diagnostics-page__columns" data-tour-id="diagnostics.logs">
-        <LogPanel title="App Log" status={snapshot.appLogStatus} lines={snapshot.appLogLines} />
-        <LogPanel title="Debug Log" status={snapshot.debugLogStatus} lines={snapshot.debugLogLines} />
-        <LogPanel title="Task Log" status={snapshot.taskLogStatus} lines={snapshot.taskLogLines} />
+        <LogPanel copy={copy} title="App Log" status={snapshot.appLogStatus} lines={snapshot.appLogLines} />
+        <LogPanel copy={copy} title="Debug Log" status={snapshot.debugLogStatus} lines={snapshot.debugLogLines} />
+        <LogPanel copy={copy} title="Task Log" status={snapshot.taskLogStatus} lines={snapshot.taskLogLines} />
       </section>
 
       <section className="diagnostics-page__panel">
         <h3>
-          最近审计事件 <small>{snapshot.auditLogStatus}</small>
+          {copy.content.auditTitle} <small>{snapshot.auditLogStatus}</small>
         </h3>
         {snapshot.auditEvents.length === 0 ? (
-          <p className="is-empty">没有可显示的已校验事件。</p>
+          <p className="is-empty">{copy.content.auditEmpty}</p>
         ) : (
           snapshot.auditEvents.map((event, index) => (
             <article
@@ -208,7 +228,7 @@ function DiagnosticsContent({
                     type="button"
                     key={value}
                     onClick={() => onCopy(value)}
-                    title="复制稳定标识"
+                    title={copy.content.copyStableIdTitle}
                   >
                     <Clipboard size={14} aria-hidden="true" />
                     {value}
@@ -223,12 +243,12 @@ function DiagnosticsContent({
   );
 }
 
-function HealthCard({ label, status }: { label: string; status: string }) {
+function HealthCard({ copy, label, status }: { copy: DiagnosticsCopy; label: string; status: string }) {
   const ok = status === "ok";
   return (
     <article className={`diagnostics-page__health-card ${ok ? "is-ok" : "is-warning"}`}>
       <span>{label}</span>
-      <strong>{ok ? "正常" : status}</strong>
+      <strong>{ok ? copy.content.healthOk : status}</strong>
     </article>
   );
 }
@@ -238,10 +258,12 @@ function combinedStatus(readStatus: string, writeStatus: string) {
 }
 
 function LogPanel({
+  copy,
   title,
   status,
   lines,
 }: {
+  copy: DiagnosticsCopy;
   title: string;
   status: string;
   lines: { source: string; line: string }[];
@@ -252,7 +274,7 @@ function LogPanel({
         {title} <small>{status}</small>
       </h3>
       {lines.length === 0 ? (
-        <p className="is-empty">没有可显示的安全日志。</p>
+        <p className="is-empty">{copy.content.logEmpty}</p>
       ) : (
         <div className="diagnostics-page__log">
           {lines.map((item, index) => (

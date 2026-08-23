@@ -16,7 +16,8 @@ test("about page is an enabled route with fixed project links", () => {
   assert.equal(existsSync("src/features/about/AboutPage.css"), true);
   assert.match(routeTypes, /"about"/);
   assert.match(routes, /id:\s*"about"[\s\S]*?path:\s*"\/about"[\s\S]*?element:\s*AboutPage/);
-  assert.match(nav, /id:\s*"about"[\s\S]*?label:\s*"关于"[\s\S]*?placement:\s*"utility"/);
+  assert.match(nav, /id:\s*"about"[\s\S]*?placement:\s*"utility"/);
+  assert.match(read("src/app/appShellCopy.ts"), /about: "关于"/);
   assert.match(page, /getVersion\(\)/);
   assert.match(page, /packageMetadata\.version/);
   assert.match(page, /openUrl\(ABOUT_LINK_HREFS\[linkId\]\)/);

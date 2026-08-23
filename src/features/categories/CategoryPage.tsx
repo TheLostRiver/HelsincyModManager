@@ -11,7 +11,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { createCategory, updateCategory, deleteCategory, type CategoryItem } from "./categoryApi";
+import { categoryCopy, type CategoryCopy } from "./categoryCopy";
 import { CategoryColorPicker } from "./CategoryColorPicker";
 import { CategoryList } from "./CategoryList";
 import { CategorySortMenu, type CategorySortOption } from "./CategorySortMenu";
@@ -35,13 +37,14 @@ import { useCategoryList } from "./useCategoryList";
 
 const emptyCategoryItems: CategoryItem[] = [];
 
-const SORT_MODE_OPTIONS: CategorySortOption[] = [
-  { value: "custom", label: "自定义排序" },
-  { value: "name", label: "按名称" },
-  { value: "modCount", label: "按关联数" },
-];
-
 export function CategoryPage() {
+  const { locale } = useI18n();
+  const copy = resolveCopy(categoryCopy, locale);
+  const sortModeOptions: CategorySortOption[] = [
+    { value: "custom", label: copy.sort.modes.custom },
+    { value: "name", label: copy.sort.modes.name },
+    { value: "modCount", label: copy.sort.modes.modCount },
+  ];
   const { state, refresh } = useCategoryList();
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<CategorySortMode>("custom");
@@ -145,9 +148,9 @@ export function CategoryPage() {
         for (const update of buildSortOrderUpdates(next)) {
           await updateCategory({ categoryId: update.categoryId, sortOrder: update.sortOrder });
         }
-        setStatusMessage("分类顺序已保存。");
+        setStatusMessage(copy.page.orderSaved);
       } catch (err: unknown) {
-        setPageError(getCategoryMutationErrorMessage(err, "保存分类顺序失败，请稍后重试。"));
+        setPageError(getCategoryMutationErrorMessage(err, copy.page.orderSaveFailed));
       } finally {
         setSavingOrder(false);
         refresh();
@@ -175,21 +178,21 @@ export function CategoryPage() {
 
       setBatchBusy(false);
       if (failedCount > 0) {
-        setPageError(`${label}有 ${failedCount} 个分类处理失败，列表已刷新。`);
+        setPageError(copy.batch.batchFailed(label, failedCount));
       } else {
-        setStatusMessage(`${label}完成。`);
+        setStatusMessage(copy.batch.batchCompleted(label));
       }
       refresh();
     })();
   };
 
   const handleBatchDelete = () => {
-    runBatch("批量删除", (categoryId) => deleteCategory(categoryId));
+    runBatch(copy.batch.batchDeleteLabel, (categoryId) => deleteCategory(categoryId));
     setSelectedIds(new Set());
   };
 
   const handleBatchColor = (color: string) => {
-    runBatch("批量改色", (categoryId) =>
+    runBatch(copy.batch.batchColorLabel, (categoryId) =>
       updateCategory({ categoryId, color: color === "" ? null : color }),
     );
   };
@@ -217,22 +220,22 @@ export function CategoryPage() {
         <div className="category-page__title-block">
           <span className="category-page__eyebrow">
             <Tags size={15} strokeWidth={2.2} aria-hidden="true" />
-            分类 / 标签
+            {copy.page.eyebrow}
           </span>
-          <h1 id="category-title">分类管理</h1>
+          <h1 id="category-title">{copy.page.title}</h1>
           <p className="category-page__metrics">
             {state.status === "ready"
-              ? `${metrics.total} 个分类 · 关联 ${metrics.linkedModCount} 个 Mod · ${metrics.emptyCategoryCount} 个空分类`
+              ? copy.page.metricsReady(metrics.total, metrics.linkedModCount, metrics.emptyCategoryCount)
               : state.status === "loading"
-                ? "正在读取分类数据…"
-                : "分类数据暂时不可用"}
+                ? copy.page.metricsLoading
+                : copy.page.metricsUnavailable}
           </p>
-          <div className="category-mode-tabs" role="tablist" aria-label="分类标签管理范围">
+          <div className="category-mode-tabs" role="tablist" aria-label={copy.page.modeTabsAria}>
             <button type="button" className="is-active" role="tab" aria-selected="true" aria-current="page">
-              分类
+              {copy.page.tabCategories}
             </button>
             <button type="button" role="tab" aria-selected="false" aria-disabled="true" disabled>
-              标签
+              {copy.page.tabTags}
             </button>
           </div>
         </div>
@@ -246,7 +249,7 @@ export function CategoryPage() {
           {showCreateForm
             ? <X size={15} strokeWidth={2.2} aria-hidden="true" />
             : <Plus size={15} strokeWidth={2.2} aria-hidden="true" />}
-          {showCreateForm ? "取消新建" : "新建分类"}
+          {showCreateForm ? copy.page.createCancel : copy.page.createOpen}
         </button>
       </header>
 
@@ -273,7 +276,7 @@ export function CategoryPage() {
           <button
             type="button"
             className="category-create-scrim"
-            aria-label="关闭新建分类"
+            aria-label={copy.page.createCloseAria}
             tabIndex={-1}
             onClick={closeCreateForm}
           />
@@ -284,21 +287,22 @@ export function CategoryPage() {
             aria-labelledby="category-create-title"
           >
             <div className="category-create-panel__header">
-              <h2 id="category-create-title">新建分类</h2>
+              <h2 id="category-create-title">{copy.page.createDialogTitle}</h2>
               <button
                 type="button"
                 className="category-create-panel__close"
-                aria-label="关闭新建分类"
+                aria-label={copy.page.createCloseAria}
                 onClick={closeCreateForm}
               >
                 <X size={15} strokeWidth={2.2} aria-hidden="true" />
               </button>
             </div>
             <CreateCategoryForm
+              copy={copy}
               allCategories={categories}
               onCreated={() => {
                 setShowCreateForm(false);
-                setStatusMessage("分类已创建。");
+                setStatusMessage(copy.page.created);
                 refresh();
               }}
               onCancel={closeCreateForm}
@@ -308,21 +312,21 @@ export function CategoryPage() {
       )}
 
       <div className="category-main-card" data-tour-id="categories.manage">
-        <div className="category-summary-strip" aria-label="分类概览">
+        <div className="category-summary-strip" aria-label={copy.page.summaryAria}>
           <div className="category-summary-stat">
-            <span>总分类</span>
+            <span>{copy.page.summaryTotal}</span>
             <strong>{metricValue(metrics.total)}</strong>
           </div>
           <div className="category-summary-stat">
-            <span>关联 Mod</span>
+            <span>{copy.page.summaryLinked}</span>
             <strong>{metricValue(metrics.linkedModCount)}</strong>
           </div>
           <div className="category-summary-stat">
-            <span>空分类</span>
+            <span>{copy.page.summaryEmpty}</span>
             <strong>{metricValue(metrics.emptyCategoryCount)}</strong>
           </div>
           <div className="category-summary-stat">
-            <span>已设置颜色</span>
+            <span>{copy.page.summaryColored}</span>
             <strong>{metricValue(metrics.coloredCategoryCount)}</strong>
           </div>
         </div>
@@ -332,15 +336,15 @@ export function CategoryPage() {
             <Search size={15} strokeWidth={2.2} aria-hidden="true" />
             <input
               type="search"
-              placeholder="搜索分类名称…"
+              placeholder={copy.page.searchPlaceholder}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              aria-label="搜索分类"
+              aria-label={copy.page.searchAria}
             />
           </div>
           <CategorySortMenu
             value={sortMode}
-            options={SORT_MODE_OPTIONS}
+            options={sortModeOptions}
             onChange={setSortMode}
           />
           <button
@@ -351,12 +355,13 @@ export function CategoryPage() {
             disabled={state.status !== "ready" || categories.length === 0}
           >
             <ListChecks size={15} strokeWidth={2.2} aria-hidden="true" />
-            批量管理
+            {copy.page.batchToggle}
           </button>
         </div>
 
         {batchMode && state.status === "ready" && (
           <BatchActionBar
+            copy={copy}
             summary={batchSummary}
             busy={batchBusy}
             allSelected={allVisibleSelected}
@@ -381,18 +386,18 @@ export function CategoryPage() {
         {state.status === "loading" && (
           <div className="category-state-card" role="status">
             <Loader2 size={18} className="category-spinner" aria-hidden="true" />
-            <strong>正在读取分类</strong>
-            <span>请稍候</span>
+            <strong>{copy.page.loadingTitle}</strong>
+            <span>{copy.page.loadingHint}</span>
           </div>
         )}
 
         {state.status === "error" && (
           <div className="category-state-card is-error" role="alert">
             <AlertTriangle size={20} aria-hidden="true" />
-            <strong>无法加载分类列表</strong>
-            <span>分类数据暂时不可用。</span>
+            <strong>{copy.page.errorTitle}</strong>
+            <span>{copy.page.errorHint}</span>
             <button type="button" className="category-action-button is-primary" onClick={refresh}>
-              重试
+              {copy.page.retry}
             </button>
           </div>
         )}
@@ -400,11 +405,11 @@ export function CategoryPage() {
         {isEmpty && (
           <div className="category-state-card is-empty" role="status">
             <Tags size={22} strokeWidth={1.8} aria-hidden="true" />
-            <strong>还没有分类</strong>
-            <span>新建后可在 Mod 库和详情面板中使用。</span>
+            <strong>{copy.page.emptyTitle}</strong>
+            <span>{copy.page.emptyHint}</span>
             <button type="button" className="category-action-button is-primary" onClick={openCreateForm}>
               <Plus size={14} strokeWidth={2.2} aria-hidden="true" />
-              新建分类
+              {copy.page.emptyCreate}
             </button>
           </div>
         )}
@@ -412,16 +417,17 @@ export function CategoryPage() {
         {isSearchEmpty && (
           <div className="category-state-card is-empty" role="status">
             <SearchX size={22} strokeWidth={1.8} aria-hidden="true" />
-            <strong>没有匹配的分类</strong>
-            <span>换个关键词，或清除搜索查看全部分类。</span>
+            <strong>{copy.page.searchEmptyTitle}</strong>
+            <span>{copy.page.searchEmptyHint}</span>
             <button type="button" className="category-action-button" onClick={() => setQuery("")}>
-              清除搜索
+              {copy.page.clearSearch}
             </button>
           </div>
         )}
 
         {visibleCategories.length > 0 && (
           <CategoryList
+            copy={copy}
             categories={visibleCategories}
             allCategories={categories}
             reorderEnabled={reorderEnabled}
@@ -441,7 +447,7 @@ export function CategoryPage() {
             onCancelEdit={() => setEditingId(null)}
             onSaved={() => {
               setEditingId(null);
-              setStatusMessage("分类已保存。");
+              setStatusMessage(copy.page.saved);
               refresh();
             }}
             onStartDelete={(categoryId) => {
@@ -452,7 +458,7 @@ export function CategoryPage() {
             onCancelDelete={() => setDeletingId(null)}
             onDeleted={() => {
               setDeletingId(null);
-              setStatusMessage("分类已删除。");
+              setStatusMessage(copy.page.deleted);
               refresh();
             }}
             onReorder={(fromIndex, insertIndex) =>
@@ -466,7 +472,7 @@ export function CategoryPage() {
 
         {savingOrder && (
           <p className="category-live-status category-visually-hidden" role="status">
-            正在保存顺序…
+            {copy.page.savingOrder}
           </p>
         )}
       </div>
@@ -475,12 +481,13 @@ export function CategoryPage() {
 }
 
 type CreateCategoryFormProps = {
+  copy: CategoryCopy;
   allCategories: CategoryItem[];
   onCreated: () => void;
   onCancel: () => void;
 };
 
-function CreateCategoryForm({ allCategories, onCreated, onCancel }: CreateCategoryFormProps) {
+function CreateCategoryForm({ copy, allCategories, onCreated, onCancel }: CreateCategoryFormProps) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -503,7 +510,7 @@ function CreateCategoryForm({ allCategories, onCreated, onCancel }: CreateCatego
           sortOrder: nextAppendSortOrder(allCategories),
         });
       } catch (err: unknown) {
-        setError(getCategoryMutationErrorMessage(err, "创建分类失败，请稍后重试。"));
+        setError(getCategoryMutationErrorMessage(err, copy.form.createFailed));
         setSubmitting(false);
         return;
       }
@@ -513,32 +520,32 @@ function CreateCategoryForm({ allCategories, onCreated, onCancel }: CreateCatego
   };
 
   return (
-    <form id="category-create-form" className="category-create-form" onSubmit={handleSubmit} aria-label="新建分类">
+    <form id="category-create-form" className="category-create-form" onSubmit={handleSubmit} aria-label={copy.form.formAria}>
       <label className="category-form-field is-grow">
-        <span>名称</span>
+        <span>{copy.form.nameField}</span>
         <input
           type="text"
-          placeholder="例如：外观"
+          placeholder={copy.form.namePlaceholder}
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
         />
       </label>
       <div className="category-form-field">
-        <span>颜色</span>
-        <CategoryColorPicker value={color} onChange={setColor} triggerLabel="新分类颜色" />
+        <span>{copy.form.colorField}</span>
+        <CategoryColorPicker value={color} onChange={setColor} triggerLabel={copy.form.newColorAria} />
       </div>
       <div className="category-form-actions">
         <button type="submit" className="category-action-button is-primary" disabled={!canSubmit}>
-          {submitting ? "创建中…" : "创建"}
+          {submitting ? copy.form.creating : copy.form.create}
         </button>
         <button type="button" className="category-action-button" onClick={onCancel}>
-          取消
+          {copy.form.cancel}
         </button>
       </div>
       {duplicate && (
         <p className="category-inline-error" role="alert">
-          已存在同名分类「{duplicate.name}」，请换一个名称。
+          {copy.form.duplicateName(duplicate.name)}
         </p>
       )}
       {error && (
@@ -551,6 +558,7 @@ function CreateCategoryForm({ allCategories, onCreated, onCancel }: CreateCatego
 }
 
 type BatchActionBarProps = {
+  copy: CategoryCopy;
   summary: { count: number; linkedModCount: number };
   busy: boolean;
   allSelected: boolean;
@@ -562,6 +570,7 @@ type BatchActionBarProps = {
 };
 
 function BatchActionBar({
+  copy,
   summary,
   busy,
   allSelected,
@@ -577,25 +586,25 @@ function BatchActionBar({
   const hasSelection = summary.count > 0;
 
   return (
-    <div className="category-batch-bar" role="group" aria-label="批量操作">
+    <div className="category-batch-bar" role="group" aria-label={copy.batch.barAria}>
       <label className="category-batch-bar__select-all">
         <input
           type="checkbox"
           checked={allSelected}
           onChange={onToggleSelectAll}
           disabled={!hasVisible || busy}
-          aria-label="全选当前列表"
+          aria-label={copy.batch.selectAllAria}
         />
-        全选
+        {copy.batch.selectAll}
       </label>
       <span className="category-batch-bar__summary" aria-live="polite">
         {hasSelection
-          ? `已选 ${summary.count} 个分类 · 关联 ${summary.linkedModCount} 个 Mod`
-          : "勾选分类后可批量操作"}
+          ? copy.batch.selectionSummary(summary.count, summary.linkedModCount)
+          : copy.batch.selectionHint}
       </span>
       <div className="category-batch-bar__actions">
         <div className="category-batch-bar__color">
-          <CategoryColorPicker value={color} onChange={setColor} triggerLabel="批量目标颜色" />
+          <CategoryColorPicker value={color} onChange={setColor} triggerLabel={copy.batch.targetColorAria} />
           <button
             type="button"
             className="category-action-button"
@@ -603,7 +612,7 @@ function BatchActionBar({
             onClick={() => onBatchColor(color.trim())}
           >
             <Palette size={14} strokeWidth={2.2} aria-hidden="true" />
-            应用颜色
+            {copy.batch.applyColor}
           </button>
         </div>
         <button
@@ -613,10 +622,10 @@ function BatchActionBar({
           onClick={() => setConfirmingDelete(true)}
         >
           <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" />
-          批量删除
+          {copy.batch.batchDelete}
         </button>
         <button type="button" className="category-action-button" onClick={onExit} disabled={busy}>
-          退出批量
+          {copy.batch.exitBatch}
         </button>
       </div>
 
@@ -624,8 +633,8 @@ function BatchActionBar({
         <div className={`category-delete-confirm ${summary.linkedModCount > 0 ? "is-danger" : ""}`}>
           <p>
             {summary.linkedModCount > 0
-              ? `确定删除已选的 ${summary.count} 个分类？共 ${summary.linkedModCount} 个 Mod 关联将被移除，Mod 本体不受影响。`
-              : `确定删除已选的 ${summary.count} 个分类？`}
+              ? copy.batch.confirmDeleteLinked(summary.count, summary.linkedModCount)
+              : copy.batch.confirmDelete(summary.count)}
           </p>
           <div className="category-delete-confirm__actions">
             <button
@@ -637,19 +646,19 @@ function BatchActionBar({
                 onBatchDelete();
               }}
             >
-              {busy ? "删除中…" : "删除"}
+              {busy ? copy.batch.deleting : copy.batch.delete}
             </button>
             <button
               type="button"
               className="category-action-button"
               onClick={() => setConfirmingDelete(false)}
             >
-              取消
+              {copy.batch.cancel}
             </button>
           </div>
         </div>
       )}
-      {busy && <p className="category-batch-bar__busy">正在处理批量操作…</p>}
+      {busy && <p className="category-batch-bar__busy">{copy.batch.busy}</p>}
     </div>
   );
 }

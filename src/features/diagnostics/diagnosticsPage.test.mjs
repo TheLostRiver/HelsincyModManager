@@ -22,7 +22,8 @@ test("diagnostics page exposes stable states, controlled export confirmation and
   const page = read("src/features/diagnostics/DiagnosticsPage.tsx");
   assert.match(page, /status:\s*"loading"/);
   assert.match(page, /status:\s*"failed"/);
-  assert.match(page, /确认导出诊断包/);
+  assert.match(page, /title=\{copy\.dialog\.title\}/);
+  assert.match(read("src/features/diagnostics/diagnosticsCopy.ts"), /title: "确认导出诊断包"/);
   assert.match(page, /diagnostics-page__dialog-action is-secondary/);
   assert.match(page, /diagnostics-page__dialog-action is-primary/);
   assert.match(page, /busy=\{exporting\}/);
@@ -54,7 +55,7 @@ test("diagnostics page exposes stable states, controlled export confirmation and
   assert.match(page, /fields\.error_code/);
   assert.match(page, /fields\.task_id/);
   assert.match(page, /combinedStatus\(snapshot\.taskLogStatus/);
-  assert.match(page, /label="日志空间" status=\{snapshot\.evidenceHealth\.logStorageStatus\}/);
+  assert.match(page, /label=\{copy\.content\.logStorageLabel\} status=\{snapshot\.evidenceHealth\.logStorageStatus\}/);
   assert.match(page, /diagnostics\.copy\.failed/);
   assert.match(page, /result\.appLogLineCount/);
   assert.match(page, /result\.debugLogLineCount/);

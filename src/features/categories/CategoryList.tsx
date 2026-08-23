@@ -9,12 +9,14 @@ import {
 import { useState, type DragEvent, type FormEvent } from "react";
 import { deleteCategory, updateCategory, type CategoryItem } from "./categoryApi";
 import { CategoryColorPicker } from "./CategoryColorPicker";
+import type { CategoryCopy } from "./categoryCopy";
 import {
   findDuplicateCategoryName,
   getCategoryMutationErrorMessage,
 } from "./categoryWorkflow";
 
 type CategoryListProps = {
+  copy: CategoryCopy;
   categories: CategoryItem[];
   allCategories: CategoryItem[];
   reorderEnabled: boolean;
@@ -35,6 +37,7 @@ type CategoryListProps = {
 };
 
 export function CategoryList({
+  copy,
   categories,
   allCategories,
   reorderEnabled,
@@ -87,17 +90,18 @@ export function CategoryList({
   };
 
   return (
-    <div className="category-list" role="list" aria-label="分类列表">
+    <div className="category-list" role="list" aria-label={copy.list.listAria}>
       <div className="category-list__header" aria-hidden="true">
-        <span className="category-list__header-lead">分类</span>
-        <span>关联 Mod</span>
-        <span className="category-list__header-actions">操作</span>
+        <span className="category-list__header-lead">{copy.list.headerLead}</span>
+        <span>{copy.list.headerLinked}</span>
+        <span className="category-list__header-actions">{copy.list.headerActions}</span>
       </div>
       {categories.map((category, index) => {
         if (editingId === category.id) {
           return (
             <CategoryEditRow
               key={category.id}
+              copy={copy}
               category={category}
               allCategories={allCategories}
               onCancel={onCancelEdit}
@@ -112,6 +116,7 @@ export function CategoryList({
         return (
           <CategoryRow
             key={category.id}
+            copy={copy}
             category={category}
             index={index}
             total={categories.length}
@@ -141,6 +146,7 @@ export function CategoryList({
 }
 
 type CategoryRowProps = {
+  copy: CategoryCopy;
   category: CategoryItem;
   index: number;
   total: number;
@@ -165,6 +171,7 @@ type CategoryRowProps = {
 };
 
 function CategoryRow({
+  copy,
   category,
   index,
   total,
@@ -214,12 +221,12 @@ function CategoryRow({
             className="category-row__checkbox"
             checked={selected}
             onChange={onToggleSelect}
-            aria-label={`选择 ${category.name}`}
+            aria-label={copy.list.selectRowAria(category.name)}
           />
         ) : (
           <span
             className={`category-row__grip ${reorderEnabled ? "" : "is-disabled"}`}
-            title={reorderEnabled ? "拖拽调整顺序" : "在“自定义排序”视图且未搜索时可拖拽排序"}
+            title={reorderEnabled ? copy.list.dragHint : copy.list.dragDisabledHint}
             aria-hidden="true"
           >
             <GripVertical size={15} strokeWidth={2} />
@@ -236,14 +243,14 @@ function CategoryRow({
         <div className="category-row__name-block">
           <strong>{category.name}</strong>
           <span className="category-row__meta">
-            <span>{category.color ? category.color.toUpperCase() : "默认颜色"}</span>
-            <span>顺序 {String(index + 1).padStart(2, "0")}</span>
+            <span>{category.color ? category.color.toUpperCase() : copy.list.defaultColor}</span>
+            <span>{copy.list.orderLabel(String(index + 1).padStart(2, "0"))}</span>
           </span>
         </div>
       </div>
       <span className={`category-row__count ${category.modCount === 0 ? "is-empty" : ""}`}>
         <Link2 size={13} strokeWidth={2} aria-hidden="true" />
-        {category.modCount === 0 ? "空分类" : `${category.modCount} 个 Mod`}
+        {category.modCount === 0 ? copy.list.emptyCount : copy.list.linkedCount(category.modCount)}
       </span>
       {!batchMode && (
         <div className="category-row__actions">
@@ -252,8 +259,8 @@ function CategoryRow({
             className="category-icon-button"
             onClick={() => onMove(-1)}
             disabled={!reorderEnabled || savingOrder || index === 0}
-            aria-label={`上移 ${category.name}`}
-            title={reorderEnabled ? "上移" : "在“自定义排序”视图且未搜索时可调整顺序"}
+            aria-label={copy.list.moveUpAria(category.name)}
+            title={reorderEnabled ? copy.list.moveUp : copy.list.moveDisabledHint}
           >
             <ChevronUp size={15} strokeWidth={2.2} />
           </button>
@@ -262,8 +269,8 @@ function CategoryRow({
             className="category-icon-button"
             onClick={() => onMove(1)}
             disabled={!reorderEnabled || savingOrder || index === total - 1}
-            aria-label={`下移 ${category.name}`}
-            title={reorderEnabled ? "下移" : "在“自定义排序”视图且未搜索时可调整顺序"}
+            aria-label={copy.list.moveDownAria(category.name)}
+            title={reorderEnabled ? copy.list.moveDown : copy.list.moveDisabledHint}
           >
             <ChevronDown size={15} strokeWidth={2.2} />
           </button>
@@ -271,8 +278,8 @@ function CategoryRow({
             type="button"
             className="category-icon-button"
             onClick={onStartEdit}
-            aria-label={`编辑 ${category.name}`}
-            title="编辑"
+            aria-label={copy.list.editAria(category.name)}
+            title={copy.list.edit}
           >
             <Pencil size={15} strokeWidth={2} />
           </button>
@@ -280,8 +287,8 @@ function CategoryRow({
             type="button"
             className="category-icon-button is-danger"
             onClick={onStartDelete}
-            aria-label={`删除 ${category.name}`}
-            title="删除"
+            aria-label={copy.list.deleteAria(category.name)}
+            title={copy.list.delete}
           >
             <Trash2 size={15} strokeWidth={2} />
           </button>
@@ -289,20 +296,21 @@ function CategoryRow({
       )}
 
       {isDeleting && !batchMode && (
-        <CategoryDeleteConfirm category={category} onCancel={onCancelDelete} onDeleted={onDeleted} />
+        <CategoryDeleteConfirm copy={copy} category={category} onCancel={onCancelDelete} onDeleted={onDeleted} />
       )}
     </div>
   );
 }
 
 type CategoryEditRowProps = {
+  copy: CategoryCopy;
   category: CategoryItem;
   allCategories: CategoryItem[];
   onCancel: () => void;
   onSaved: () => void;
 };
 
-function CategoryEditRow({ category, allCategories, onCancel, onSaved }: CategoryEditRowProps) {
+function CategoryEditRow({ copy, category, allCategories, onCancel, onSaved }: CategoryEditRowProps) {
   const [name, setName] = useState(category.name);
   const [color, setColor] = useState(category.color ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -330,7 +338,7 @@ function CategoryEditRow({ category, allCategories, onCancel, onSaved }: Categor
             : undefined,
         });
       } catch (err: unknown) {
-        setError(getCategoryMutationErrorMessage(err, "保存分类失败，请稍后重试。"));
+        setError(getCategoryMutationErrorMessage(err, copy.list.saveFailed));
         setSubmitting(false);
         return;
       }
@@ -344,10 +352,10 @@ function CategoryEditRow({ category, allCategories, onCancel, onSaved }: Categor
       className="category-row is-editing"
       role="listitem"
       onSubmit={handleSave}
-      aria-label={`编辑 ${category.name}`}
+      aria-label={copy.list.editFormAria(category.name)}
     >
       <label className="category-edit-field category-edit-field--name">
-        <span>名称</span>
+        <span>{copy.list.nameField}</span>
         <input
           type="text"
           value={name}
@@ -356,25 +364,25 @@ function CategoryEditRow({ category, allCategories, onCancel, onSaved }: Categor
         />
       </label>
       <div className="category-edit-field category-edit-field--color">
-        <span>颜色</span>
+        <span>{copy.list.colorField}</span>
         <CategoryColorPicker
           value={color}
           onChange={setColor}
-          triggerLabel={`编辑 ${category.name} 的颜色`}
+          triggerLabel={copy.list.editColorAria(category.name)}
           align="end"
         />
       </div>
       <div className="category-row__edit-actions">
         <button type="submit" className="category-action-button is-primary" disabled={!canSave}>
-          {submitting ? "保存中…" : "保存"}
+          {submitting ? copy.list.saving : copy.list.save}
         </button>
         <button type="button" className="category-action-button" onClick={onCancel}>
-          取消
+          {copy.list.cancel}
         </button>
       </div>
       {duplicate && (
         <p className="category-inline-error" role="alert">
-          已存在同名分类「{duplicate.name}」，请换一个名称。
+          {copy.form.duplicateName(duplicate.name)}
         </p>
       )}
       {error && (
@@ -387,12 +395,13 @@ function CategoryEditRow({ category, allCategories, onCancel, onSaved }: Categor
 }
 
 type CategoryDeleteConfirmProps = {
+  copy: CategoryCopy;
   category: CategoryItem;
   onCancel: () => void;
   onDeleted: () => void;
 };
 
-function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDeleteConfirmProps) {
+function CategoryDeleteConfirm({ copy, category, onCancel, onDeleted }: CategoryDeleteConfirmProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -403,7 +412,7 @@ function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDelete
       try {
         await deleteCategory(category.id);
       } catch (err: unknown) {
-        setError(getCategoryMutationErrorMessage(err, "删除分类失败，请稍后重试。"));
+        setError(getCategoryMutationErrorMessage(err, copy.list.deleteFailed));
         setSubmitting(false);
         return;
       }
@@ -416,8 +425,8 @@ function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDelete
     <div className={`category-delete-confirm ${category.modCount > 0 ? "is-danger" : ""}`}>
       <p>
         {category.modCount > 0
-          ? `确定删除「${category.name}」？有 ${category.modCount} 个 Mod 关联将被移除，Mod 本体不受影响。`
-          : `确定删除「${category.name}」？`}
+          ? copy.list.confirmDeleteLinked(category.name, category.modCount)
+          : copy.list.confirmDelete(category.name)}
       </p>
       <div className="category-delete-confirm__actions">
         <button
@@ -426,10 +435,10 @@ function CategoryDeleteConfirm({ category, onCancel, onDeleted }: CategoryDelete
           onClick={handleConfirm}
           disabled={submitting}
         >
-          {submitting ? "删除中…" : "删除"}
+          {submitting ? copy.list.deleting : copy.list.delete}
         </button>
         <button type="button" className="category-action-button" onClick={onCancel}>
-          取消
+          {copy.list.cancel}
         </button>
       </div>
       {error && (

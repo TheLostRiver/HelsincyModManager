@@ -1,4 +1,6 @@
 import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { resolveCopy, useI18n } from "../i18n";
+import { feedbackCopy } from "./feedbackCopy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FeedbackToastItem } from "./feedbackToastState";
 
@@ -10,6 +12,8 @@ import type { FeedbackToastItem } from "./feedbackToastState";
 const TOAST_EXIT_DURATION_MS = 160;
 
 export function FeedbackToast({ toast, onDismiss }: { toast: FeedbackToastItem; onDismiss: (id: string) => void }) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(feedbackCopy, locale);
   const [paused, setPaused] = useState(false);
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
@@ -70,11 +74,11 @@ export function FeedbackToast({ toast, onDismiss }: { toast: FeedbackToastItem; 
       <div className="feedback-toast__copy">
         <strong>{toast.title}</strong>
         <p>{toast.message}</p>
-        {toast.occurrences > 1 ? <small>已合并 {toast.occurrences} 次相同通知</small> : null}
+        {toast.occurrences > 1 ? <small>{copy.toastMerged(toast.occurrences)}</small> : null}
       </div>
       <div className="feedback-toast__actions">
         {toast.action ? <button type="button" onClick={() => { toast.action?.onSelect(); requestDismiss(); }}>{toast.action.label}</button> : null}
-        <button type="button" onClick={requestDismiss} aria-label="关闭通知" title="关闭通知">
+        <button type="button" onClick={requestDismiss} aria-label={copy.toastDismissAria} title={copy.toastDismissAria}>
           <X size={16} aria-hidden="true" />
         </button>
       </div>

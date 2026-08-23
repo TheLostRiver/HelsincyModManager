@@ -51,24 +51,26 @@ test("resolves stored preferences to close actions", () => {
   assert.equal(resolveWindowCloseAction("exit"), "exit_app");
 });
 
-test("maps only stable Tauri command error codes to local messages", () => {
+test("maps only stable Tauri command error codes to local messages", async () => {
+  const { appShellCopy } = await import("../appShellCopy.ts");
+  const zhLifecycle = appShellCopy.zh_cn.windowLifecycle;
   assert.equal(
-    getWindowLifecycleErrorMessage({ code: "window_hide_failed", message: "C:/Users/Alice/save" }),
+    getWindowLifecycleErrorMessage({ code: "window_hide_failed", message: "C:/Users/Alice/save" }, zhLifecycle),
     "窗口隐藏失败，请重试。",
   );
   assert.equal(
-    getWindowLifecycleErrorMessage({ code: "exit_confirmation_required", message: "raw backend message" }),
+    getWindowLifecycleErrorMessage({ code: "exit_confirmation_required", message: "raw backend message" }, zhLifecycle),
     "退出前需要确认后台保护状态。",
   );
   assert.equal(
-    getWindowLifecycleErrorMessage({ code: "exit_authorization_unavailable", message: "raw backend message" }),
+    getWindowLifecycleErrorMessage({ code: "exit_authorization_unavailable", message: "raw backend message" }, zhLifecycle),
     "退出确认状态不可用，请暂时留在托盘或重启应用后再试。",
   );
-  assert.equal(getWindowLifecycleErrorMessage(new Error("C:/Users/Alice/save")), "窗口关闭操作失败");
-  assert.equal(getWindowLifecycleErrorMessage("raw backend message"), "窗口关闭操作失败");
-  assert.equal(getWindowLifecycleErrorMessage({ code: "missing_message" }), "窗口关闭操作失败");
-  assert.equal(getWindowLifecycleErrorMessage({ code: "toString" }), "窗口关闭操作失败");
-  assert.equal(getWindowLifecycleErrorMessage({ code: "constructor" }), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage(new Error("C:/Users/Alice/save"), zhLifecycle), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage("raw backend message", zhLifecycle), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage({ code: "missing_message" }, zhLifecycle), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage({ code: "toString" }, zhLifecycle), "窗口关闭操作失败");
+  assert.equal(getWindowLifecycleErrorMessage({ code: "constructor" }, zhLifecycle), "窗口关闭操作失败");
 });
 
 test("extracts stable error codes without reading backend messages", () => {
