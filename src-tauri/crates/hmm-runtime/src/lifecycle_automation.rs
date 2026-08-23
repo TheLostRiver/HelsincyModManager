@@ -202,9 +202,7 @@ struct LifecycleEnvironmentContext {
 }
 
 impl LifecycleEnvironmentContext {
-    fn resolve(
-        environment: &RuntimeEnvironment,
-    ) -> Result<Self, CliLifecycleAutomationError> {
+    fn resolve(environment: &RuntimeEnvironment) -> Result<Self, CliLifecycleAutomationError> {
         match environment.sandbox_data_dir() {
             Some(root) => Ok(Self {
                 app_data_dir: root.to_path_buf(),
@@ -299,8 +297,7 @@ impl LifecycleRootAdmission {
                 sandbox_root,
             } => admit_sandbox_write_roots(capability, sandbox_root, game_instance.root_dir),
             Self::Production { expected_game_root } => {
-                if &game_instance.root_dir != expected_game_root
-                    || !game_instance.root_dir.is_dir()
+                if &game_instance.root_dir != expected_game_root || !game_instance.root_dir.is_dir()
                 {
                     return Err(InstallWriteAdmissionError::SafetyRejected);
                 }
@@ -316,7 +313,10 @@ fn admit_sandbox_write_roots(
     game_root: PathBuf,
 ) -> Result<(), InstallWriteAdmissionError> {
     capability
-        .admit_roots(SandboxWriteRoots::new(sandbox_root.to_path_buf(), game_root))
+        .admit_roots(SandboxWriteRoots::new(
+            sandbox_root.to_path_buf(),
+            game_root,
+        ))
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
         .revalidate()
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
@@ -2088,7 +2088,9 @@ mod tests {
             &token,
         )
         .expect("prepare production install");
-        let outcome = automation.run_install().expect("production install succeeds");
+        let outcome = automation
+            .run_install()
+            .expect("production install succeeds");
 
         assert!(outcome.task_id.starts_with("install-"));
         assert_eq!(
@@ -2133,9 +2135,8 @@ mod tests {
         let root = tempfile::tempdir().expect("shared root");
         write_install_fixture(root.path());
         let sandbox = RuntimeEnvironment::sandbox(root.path().to_path_buf()).expect("sandbox");
-        let production = RuntimeEnvironment::production_with_app_data_root_for_tests(
-            root.path().to_path_buf(),
-        );
+        let production =
+            RuntimeEnvironment::production_with_app_data_root_for_tests(root.path().to_path_buf());
 
         let sandbox_token = ReadOnlyInstallAutomation::from_environment(&sandbox)
             .expect("sandbox automation")

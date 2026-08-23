@@ -11,16 +11,16 @@ use hmm_core::{
 };
 use hmm_runtime::{
     BackupBackgroundStatusSnapshot, BackupListSnapshot,
-    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, DiagnosticsSnapshot,
-    GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot, GameValidationSnapshot,
-    InstallPlanSnapshot, InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot,
-    InstallStatusSnapshot, LifecycleTaskOutcome, ReadOnlyBackupAutomation,
-    ReadOnlyBackupAutomationError, ReadOnlyDiagnosticsAutomation,
-    ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation, ReadOnlyGameAutomationError,
-    ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError, ReadOnlyInstallRecoveryAction,
-    ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
-    SandboxBatchAutomationError, SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation,
-    SandboxBatchPlanRequest, CliLifecycleAutomation, CliLifecycleAutomationError,
+    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, CliLifecycleAutomation,
+    CliLifecycleAutomationError, DiagnosticsSnapshot, GamePrerequisiteSnapshot, GameScanSnapshot,
+    GameStatusSnapshot, GameValidationSnapshot, InstallPlanSnapshot,
+    InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot, InstallStatusSnapshot,
+    LifecycleTaskOutcome, ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
+    ReadOnlyDiagnosticsAutomation, ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation,
+    ReadOnlyGameAutomationError, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
+    ReadOnlyInstallRecoveryAction, ReinstallPlanSnapshot, RuntimeEnvironment,
+    RuntimeEnvironmentError, RuntimeEnvironmentKind, SandboxBatchAutomationError,
+    SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation, SandboxBatchPlanRequest,
     TaskProgressEvent, TaskProgressObserver, UninstallPlanSnapshot,
 };
 use serde::Serialize;
