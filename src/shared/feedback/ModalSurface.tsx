@@ -1,4 +1,6 @@
 import { X } from "lucide-react";
+import { resolveCopy, useI18n } from "../i18n";
+import { feedbackCopy } from "./feedbackCopy";
 import {
   useCallback,
   useEffect,
@@ -44,13 +46,15 @@ export function ModalSurface({
   children,
   footer,
   onClose,
-  closeLabel = "关闭",
+  closeLabel,
   closeOnEscape = true,
   closeOnBackdrop = true,
   busy = false,
   initialFocusRef,
   role = "dialog",
 }: ModalSurfaceProps) {
+  const { locale } = useI18n();
+  const resolvedCloseLabel = closeLabel ?? resolveCopy(feedbackCopy, locale).modalCloseLabel;
   const panelRef = useRef<HTMLElement | null>(null);
   const phaseRef = useRef<ModalPhase>(open ? "opening" : "closed");
   const openingFrameRef = useRef<number | null>(null);
@@ -188,8 +192,8 @@ export function ModalSurface({
             <button
               type="button"
               className="feedback-modal__close"
-              aria-label={closeLabel}
-              title={closeLabel}
+              aria-label={resolvedCloseLabel}
+              title={resolvedCloseLabel}
               disabled={!canClose || phase === "closing"}
               onClick={onClose}
             >

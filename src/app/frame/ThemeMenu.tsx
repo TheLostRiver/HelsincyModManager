@@ -1,19 +1,26 @@
 import { Check, ChevronDown, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { settingsPageCopy } from "../../features/settings/settingsPageCopy";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { appShellCopy } from "../appShellCopy";
 import type { ColorSchemePreference } from "../appearance/colorSchemeTypes";
 import { useColorScheme } from "../appearance/useColorScheme";
 
-const themeOptions: {
+// 选项文案与设置页「界面偏好 -> 主题模式」共用同一张表，避免双表漂移。
+const themeOptionMeta: {
   preference: ColorSchemePreference;
-  label: string;
+  labelKey: "light" | "dark" | "system";
   icon: "sun" | "moon" | "system";
 }[] = [
-  { preference: "light", label: "浅色模式", icon: "sun" },
-  { preference: "dark", label: "深色模式", icon: "moon" },
-  { preference: "system", label: "跟随系统", icon: "system" },
+  { preference: "light", labelKey: "light", icon: "sun" },
+  { preference: "dark", labelKey: "dark", icon: "moon" },
+  { preference: "system", labelKey: "system", icon: "system" },
 ];
 
 export function ThemeMenu() {
+  const { locale } = useI18n();
+  const menuCopy = resolveCopy(appShellCopy, locale).themeMenu;
+  const themeLabels = resolveCopy(settingsPageCopy, locale).appearance.theme;
   const { effective, preference, setPreference } = useColorScheme();
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -66,7 +73,7 @@ export function ThemeMenu() {
       <button
         type="button"
         className="theme-menu__trigger"
-        aria-label="选择主题模式"
+        aria-label={menuCopy.triggerAria}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((current) => !current)}
@@ -79,7 +86,7 @@ export function ThemeMenu() {
          * 纯图标 + 箭头的可发现性太弱（Gate D 记录的已知缺陷）。宽屏补一个文字标签，
          * 窄屏由 CSS 收回纯图标形态；主入口在设置页 -> 界面偏好 -> 主题模式。
          */}
-        <span className="theme-menu__trigger-label">主题</span>
+        <span className="theme-menu__trigger-label">{menuCopy.triggerLabel}</span>
         <ChevronDown
           size={14}
           className="theme-menu__chevron"
@@ -90,8 +97,8 @@ export function ThemeMenu() {
       </button>
 
       {isOpen ? (
-        <div className="theme-menu__panel" role="menu" aria-label="主题模式">
-          {themeOptions.map((option) => {
+        <div className="theme-menu__panel" role="menu" aria-label={menuCopy.menuAria}>
+          {themeOptionMeta.map((option) => {
             const isSelected = preference === option.preference;
 
             return (
@@ -105,7 +112,7 @@ export function ThemeMenu() {
                 onClick={() => handleSelect(option.preference)}
               >
                 <ThemeOptionIcon icon={option.icon} />
-                <span className="theme-menu__label">{option.label}</span>
+                <span className="theme-menu__label">{themeLabels[option.labelKey]}</span>
                 {isSelected ? (
                   <Check
                     size={14}

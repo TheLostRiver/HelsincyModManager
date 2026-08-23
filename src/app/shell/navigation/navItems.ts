@@ -13,27 +13,27 @@ import {
   User,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import type { NavItemId } from "../../appShellCopy";
 
+// 导航项只保留语义（id/图标/路由/布局位）；label 与禁用原因经 appShellCopy.nav 取。
 export type NavItem = {
-  id: string;
-  label: string;
+  id: NavItemId;
   icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   route: string;
-  disabledReason?: string;
   placement?: "primary" | "utility";
 };
 
 export const navItems: NavItem[] = [
-  { id: "dashboard", label: "工作台", icon: LayoutDashboard, route: "/" },
-  { id: "mods", label: "Mod 管理", icon: Puzzle, route: "/mods" },
-  { id: "recovery", label: "恢复中心", icon: ShieldAlert, route: "/recovery" },
-  { id: "categories", label: "分类 / 标签", icon: Tags, route: "/categories", disabledReason: "导入 Mod 后启用" },
-  { id: "profiles", label: "存档备份", icon: User, route: "/profiles" },
-  { id: "replacements", label: "替换目标", icon: Crosshair, route: "/replacements", disabledReason: "替换目标 catalog 接入后启用" },
-  { id: "backups", label: "备份整理", icon: Archive, route: "/backups" },
-  { id: "games", label: "游戏管理", icon: Gamepad2, route: "/games", disabledReason: "游戏管理页面尚未接入" },
-  { id: "tasks", label: "任务队列", icon: ListChecks, route: "/tasks", disabledReason: "任务队列页面尚未接入" },
-  { id: "diagnostics", label: "日志 / 诊断", icon: FileSearch, route: "/diagnostics" },
-  { id: "settings", label: "设置", icon: Settings, route: "/settings" },
-  { id: "about", label: "关于", icon: Info, route: "/about", placement: "utility" },
+  { id: "dashboard", icon: LayoutDashboard, route: "/" },
+  { id: "mods", icon: Puzzle, route: "/mods" },
+  { id: "recovery", icon: ShieldAlert, route: "/recovery" },
+  { id: "categories", icon: Tags, route: "/categories" },
+  { id: "profiles", icon: User, route: "/profiles" },
+  { id: "replacements", icon: Crosshair, route: "/replacements" },
+  { id: "backups", icon: Archive, route: "/backups" },
+  { id: "games", icon: Gamepad2, route: "/games" },
+  { id: "tasks", icon: ListChecks, route: "/tasks" },
+  { id: "diagnostics", icon: FileSearch, route: "/diagnostics" },
+  { id: "settings", icon: Settings, route: "/settings" },
+  { id: "about", icon: Info, route: "/about", placement: "utility" },
 ];

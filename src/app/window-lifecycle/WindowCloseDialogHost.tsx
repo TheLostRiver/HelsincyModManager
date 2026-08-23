@@ -1,4 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { appShellCopy } from "../appShellCopy";
 import { WindowCloseDialog, type WindowCloseDialogMode } from "./WindowCloseDialog";
 import { exitApplication, hideMainWindowToTray } from "./windowLifecycleApi";
 import { getWindowLifecycleErrorMessage } from "./windowLifecycleError";
@@ -9,11 +11,14 @@ import {
 } from "./windowClosePreference";
 import { requestOrdinaryExit, useWindowCloseRequest } from "./useWindowCloseRequest";
 
-const WINDOW_CLOSE_PREFERENCE_SAVE_ERROR = "关闭行为偏好保存失败，请检查应用存储权限后重试。";
-
 class WindowClosePreferenceSaveError extends Error {}
 
 export function WindowCloseDialogHost() {
+  const { locale } = useI18n();
+  const lifecycleCopy = resolveCopy(appShellCopy, locale).windowLifecycle;
+  // 关闭请求回调链经 ref 取词，避免语言切换重建窗口关闭监听。
+  const lifecycleCopyRef = useRef(lifecycleCopy);
+  lifecycleCopyRef.current = lifecycleCopy;
   const [mode, setMode] = useState<WindowCloseDialogMode | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -77,15 +82,15 @@ export function WindowCloseDialogHost() {
       });
       if (confirmation) {
         const restoreFailed = !restorePreviousPreference();
-        setErrorMessage(restoreFailed ? WINDOW_CLOSE_PREFERENCE_SAVE_ERROR : null);
+        setErrorMessage(restoreFailed ? lifecycleCopyRef.current.preferenceSaveError : null);
         setMode(confirmation);
       }
     } catch (error) {
       const restoreFailed = !restorePreviousPreference();
       setErrorMessage(
         restoreFailed || error instanceof WindowClosePreferenceSaveError
-          ? WINDOW_CLOSE_PREFERENCE_SAVE_ERROR
-          : getWindowLifecycleErrorMessage(error),
+          ? lifecycleCopyRef.current.preferenceSaveError
+          : getWindowLifecycleErrorMessage(error, lifecycleCopyRef.current),
       );
       throw error;
     }
