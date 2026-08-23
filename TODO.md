@@ -7,8 +7,8 @@
 developer seed 退役，武器重定向对 Production 开放），WR-05 整体仍 `in-progress`；
 `game_terminology` 许可签核已于 2026-08-23 完成（docs/GAME_TERMINOLOGY_SIGNOFF.md），
 发版前置仅剩全量 catalog Sandbox Gate 复验。此前：T13/Gate C、WR-04/Gate D、
-SAVE-02~05 与 CLI-3A 跨进程 admission（2026-08-16）均 `certified`，LOG-01~03 已完成，下一
-`ready` 单元为 CLI-3B Production command-level admission
+SAVE-02~05 与 CLI-3A 跨进程 admission（2026-08-16）均 `certified`，LOG-01~03 已完成，
+CLI-3B Production command-level admission 已开工（`in-progress`，2026-08-24）
 
 ---
 
@@ -642,7 +642,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> completed: LOG-01 Task/Audit retention
   -> completed: LOG-02 日志总空间上限
   -> completed: LOG-03 Debug Log（默认关闭、持久化开关、7 日 retention、诊断/export、runtime 重启和 no-follow 负测）
-  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）、CLI-3A 跨进程 admission（2026-08-16）；ready: CLI-3B Production command-level admission
+  -> certified: SAVE-02（2026-08-07）、SAVE-03（2026-08-14）、SAVE-04（2026-08-15）、SAVE-05（2026-08-16）、CLI-3A 跨进程 admission（2026-08-16）；in-progress: CLI-3B Production command-level admission（2026-08-24 开工）
   -> Windows 存档后台发布加固、后续日志治理和 Production CLI admission
 ```
 
