@@ -44,9 +44,11 @@ test("startup game setup failures surface in-page instead of an auto-opened moda
    * 模态独有的诊断细节不得随组件一起丢失：它区分「扫到候选但校验未通过」与
    * 「根本没扫到 Steam 目录」，两者该做的事完全不同。改为交给设置状态面板常驻展示。
    */
-  assert.match(dashboard, /startupDetail=\{gameSetup\.startupNotice\?\.detail \?\? null\}/);
+  assert.match(dashboard, /startupNotice=\{gameSetup\.startupNotice\}/);
   const panel = readSource("src/features/dashboard/SetupStatusPanel.tsx");
-  assert.match(panel, /startupDetail: string \| null/);
+  assert.match(panel, /startupNotice: GameSetupStartupNotice \| null/);
+  // notice 只带语义 kind，detail 文本由面板按当前 locale 取。
+  assert.match(panel, /deriveStartupDetail\(startupNotice, setupErrors\)/);
   assert.match(panel, /startupDetail \? <p className="state-detail">\{startupDetail\}<\/p> : null/);
 
   // 推导逻辑保留在 hook 中，只是不再驱动模态。

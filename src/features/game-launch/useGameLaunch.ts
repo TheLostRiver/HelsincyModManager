@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { launchGame } from "./gameLaunchApi";
+import type { GameLaunchCopy } from "./gameLaunchCopy";
 import type {
   GameLaunchCommandErrorDto,
   GameLaunchErrorCode,
@@ -17,11 +18,14 @@ const GAME_LAUNCH_ERROR_CODES = [
   "unknown",
 ] as const satisfies readonly GameLaunchErrorCode[];
 
+// state 只存语义 outcome/errorCode，展示文本在渲染时经 gameLaunchCopy 取。
+export type GameLaunchOutcome = "sent" | "failed";
+
 type GameLaunchState = {
   isLaunchingGame: boolean;
   receipt: GameLaunchReceiptDto | null;
   errorCode: GameLaunchErrorCode | null;
-  message: string | null;
+  outcome: GameLaunchOutcome | null;
 };
 
 export function useGameLaunch(gameId: GameId) {
@@ -29,7 +33,7 @@ export function useGameLaunch(gameId: GameId) {
     isLaunchingGame: false,
     receipt: null,
     errorCode: null,
-    message: null,
+    outcome: null,
   });
 
   const requestLaunchGame = useCallback(async () => {
@@ -37,7 +41,7 @@ export function useGameLaunch(gameId: GameId) {
       ...current,
       isLaunchingGame: true,
       errorCode: null,
-      message: null,
+      outcome: null,
     }));
 
     try {
@@ -46,7 +50,7 @@ export function useGameLaunch(gameId: GameId) {
         isLaunchingGame: false,
         receipt,
         errorCode: null,
-        message: "启动请求已发送。",
+        outcome: "sent",
       });
       return receipt;
     } catch (error) {
@@ -55,7 +59,7 @@ export function useGameLaunch(gameId: GameId) {
         ...current,
         isLaunchingGame: false,
         errorCode: mapped.code,
-        message: messageForGameLaunchError(mapped.code),
+        outcome: "failed",
       }));
       return null;
     }
@@ -65,9 +69,23 @@ export function useGameLaunch(gameId: GameId) {
     isLaunchingGame: state.isLaunchingGame,
     gameLaunchReceipt: state.receipt,
     gameLaunchErrorCode: state.errorCode,
-    gameLaunchMessage: state.message,
+    gameLaunchOutcome: state.outcome,
     launchGame: requestLaunchGame,
   };
+}
+
+export function messageForGameLaunchOutcome(
+  outcome: GameLaunchOutcome | null,
+  errorCode: GameLaunchErrorCode | null,
+  copy: GameLaunchCopy,
+): string | null {
+  if (outcome === "sent") {
+    return copy.requestSent;
+  }
+  if (outcome === "failed") {
+    return copy.errors[errorCode ?? "unknown"];
+  }
+  return null;
 }
 
 function mapGameLaunchError(error: unknown): GameLaunchCommandErrorDto {
@@ -77,27 +95,8 @@ function mapGameLaunchError(error: unknown): GameLaunchCommandErrorDto {
 
   return {
     code: "unknown",
-    message: "启动游戏失败，请稍后重试。",
+    message: "",
   };
-}
-
-function messageForGameLaunchError(code: GameLaunchErrorCode): string {
-  switch (code) {
-    case "unsupported_game":
-      return "当前版本暂不支持启动该游戏。";
-    case "game_not_configured":
-      return "请先配置游戏目录，再启动游戏。";
-    case "storage_corrupted":
-      return "游戏配置文件已损坏，无法读取启动配置。";
-    case "storage_failed":
-      return "游戏配置读取失败，请检查应用数据目录权限。";
-    case "launcher_unavailable":
-      return "系统未能打开游戏启动器。";
-    case "launch_failed":
-      return "启动请求发送失败，请稍后重试。";
-    case "unknown":
-      return "启动游戏失败，请稍后重试。";
-  }
 }
 
 function isGameLaunchCommandErrorDto(value: unknown): value is GameLaunchCommandErrorDto {

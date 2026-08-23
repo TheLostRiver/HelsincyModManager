@@ -19,7 +19,7 @@ export function useGamePrerequisites(gameId: GameId) {
       setState({
         status: "rules_unavailable",
         errorCode: mapped.code,
-        message: mapped.message,
+        message: mapped.backendMessage,
       });
     }
   }, [gameId]);

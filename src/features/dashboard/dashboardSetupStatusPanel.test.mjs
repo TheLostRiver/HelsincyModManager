@@ -19,6 +19,11 @@ test("dashboard setup rail advances the highlighted step from game setup status"
   const { resolveActiveSetupStepIndex, resolveSetupSteps } = await importTypeScriptModule(
     "src/features/dashboard/setupStatusSteps.ts",
   );
+  const { dashboardCopy } = await importTypeScriptModule(
+    "src/features/dashboard/dashboardCopy.ts",
+  );
+  // 功能测试固定使用 zh_cn 字典，断言中文步骤标题不回归。
+  const zhSteps = dashboardCopy.zh_cn.steps;
 
   const cases = [
     [{ kind: "not_configured", gameId: "mhw" }, 0, "扫描 Steam 游戏库"],
@@ -43,7 +48,7 @@ test("dashboard setup rail advances the highlighted step from game setup status"
   for (const [status, expectedIndex, expectedTitle] of cases) {
     assert.equal(resolveActiveSetupStepIndex(status), expectedIndex);
 
-    const steps = resolveSetupSteps(status);
+    const steps = resolveSetupSteps(status, zhSteps);
     assert.equal(steps.length, 4);
     assert.equal(steps[expectedIndex].title, expectedTitle);
     assert.deepEqual(

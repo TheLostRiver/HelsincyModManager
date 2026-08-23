@@ -1,3 +1,4 @@
+import type { GameSetupCopy } from "./gameSetupCopy";
 import type {
   CommandErrorDto,
   GameCandidateScanDto,
@@ -7,6 +8,13 @@ import type {
   GameSetupStatus,
   GameSetupStatusDto,
 } from "./gameSetupTypes";
+
+// mapCommandError 的归一化结果：code 为稳定语义码，backendMessage 只保留
+// 后端真实透传文本；合成的 unknown 不再携带本地化字符串。
+export type MappedCommandError = {
+  code: GameSetupErrorCode;
+  backendMessage: string | null;
+};
 
 const GAME_SETUP_ERROR_CODES = [
   "unsupported_game",
@@ -37,7 +45,7 @@ export function mapStatusDto(dto: GameSetupStatusDto): GameSetupStatus {
       kind: "invalid",
       gameId,
       errorCode: dto.errorCode ?? "unknown",
-      message: dto.message ?? messageForError(dto.errorCode ?? "unknown"),
+      backendMessage: dto.message ?? null,
     };
   }
 
@@ -52,38 +60,19 @@ export function mapCandidateScanDto(dto: GameCandidateScanDto): GameDirectoryCan
   }));
 }
 
-export function mapCommandError(error: unknown): CommandErrorDto {
+export function mapCommandError(error: unknown): MappedCommandError {
   if (isCommandErrorDto(error)) {
-    return error;
+    return { code: error.code, backendMessage: error.message || null };
   }
 
   return {
     code: "unknown",
-    message: "操作失败，请稍后重试。",
+    backendMessage: null,
   };
 }
 
-export function messageForError(code: GameSetupErrorCode): string {
-  switch (code) {
-    case "unsupported_game":
-      return "当前版本暂不支持该游戏。";
-    case "directory_not_found":
-      return "所选目录不存在。";
-    case "directory_not_absolute":
-      return "请选择完整的游戏安装目录，不能使用相对路径。";
-    case "missing_executable":
-      return "所选目录缺少 MonsterHunterWorld.exe。";
-    case "storage_failed":
-      return "配置保存失败，请检查应用数据目录权限。";
-    case "storage_corrupted":
-      return "配置文件已损坏，请先处理应用数据目录中的 games.json。";
-    case "scan_failed":
-      return "Steam 候选目录扫描失败，请先手动选择游戏目录。";
-    case "scan_not_implemented":
-      return "自动扫描 Steam 尚未启用，请先手动选择目录。";
-    case "unknown":
-      return "操作失败，请稍后重试。";
-  }
+export function messageForError(code: GameSetupErrorCode, errors: GameSetupCopy["errors"]): string {
+  return errors[code];
 }
 
 function normalizeGameId(value: string): GameId {
