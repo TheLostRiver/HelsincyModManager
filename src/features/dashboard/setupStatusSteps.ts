@@ -1,31 +1,14 @@
 import type { GameSetupStatus } from "../game-setup/gameSetupTypes";
+import type { DashboardCopy } from "./dashboardCopy";
 
-export const setupSteps = [
-  {
-    title: "扫描 Steam 游戏库",
-    meta: "检测已安装游戏和可用候选项。",
-  },
-  {
-    title: "验证游戏目录",
-    meta: "确认可执行文件、数据目录和写入权限。",
-  },
-  {
-    title: "创建默认配置档案",
-    meta: "在导入前准备一份干净的基线。",
-  },
-  {
-    title: "开始导入模组",
-    meta: "仅在目录和配置检查通过后启用。",
-  },
-] as const;
+// 设置步骤只保留语义（数量与激活判定）；标题/说明文本来自 dashboardCopy.steps。
 
-export type SetupStep = (typeof setupSteps)[number];
-export type SetupStepItem = SetupStep & { isActive: boolean };
+export type SetupStepItem = { title: string; meta: string; isActive: boolean };
 
-export function resolveSetupSteps(status: GameSetupStatus): SetupStepItem[] {
+export function resolveSetupSteps(status: GameSetupStatus, steps: DashboardCopy["steps"]): SetupStepItem[] {
   const activeStepIndex = resolveActiveSetupStepIndex(status);
 
-  return setupSteps.map((step, index) => ({
+  return steps.map((step, index) => ({
     ...step,
     isActive: index === activeStepIndex,
   }));

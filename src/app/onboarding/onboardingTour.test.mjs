@@ -270,8 +270,11 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(backgroundProtection, /data-tour-id="settings\.background-protection"/);
   assert.match(about, /data-tour-id="about\.release"/);
   assert.match(about, /data-tour-id="about\.links"/);
-  assert.match(statusPanel, />下一步</);
-  assert.match(statusPanel, />设置摘要</);
+  assert.match(statusPanel, /\{panelCopy\.setupPanel\.nextStepTitle\}/);
+  assert.match(statusPanel, /\{panelCopy\.setupPanel\.summaryTitle\}/);
+  const dashboardCopySource = readFileSync("src/features/dashboard/dashboardCopy.ts", "utf8");
+  assert.match(dashboardCopySource, /nextStepTitle: "下一步"/);
+  assert.match(dashboardCopySource, /summaryTitle: "设置摘要"/);
   assert.doesNotMatch(statusPanel, /FirstRunChecklist|first-run-checklist/);
 });
 

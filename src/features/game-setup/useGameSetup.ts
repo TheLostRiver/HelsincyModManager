@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import {
   autoDetectGameDirectory,
   getGameSetupStatus,
   saveGameDirectory,
   scanGameCandidates,
 } from "./gameSetupApi";
+import { gameSetupCopy } from "./gameSetupCopy";
 import type {
   GameAutoDetectionDto,
   GameDirectoryCandidate,
@@ -40,6 +42,12 @@ const STARTUP_DETECTION_TIMEOUT_MS = 10000;
  */
 export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
   const { pushToast } = useFeedback();
+  const { locale } = useI18n();
+  const copy = resolveCopy(gameSetupCopy, locale);
+  // 回调经 ref 取词：启动自检 effect 依赖 runStartupDetection，copy 一旦进入
+  // 依赖链，切换语言就会重跑 Steam 扫描。状态本身只存语义码，文本在渲染时取。
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
   const [state, setState] = useState<GameSetupState>({
     status: { kind: "not_configured", gameId },
     isBusy: false,
@@ -63,7 +71,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         if (mapped.code === "unknown") {
           return {
             ...current,
-            actionMessage: mapped.message,
+            actionMessage: mapped.backendMessage,
           };
         }
 
@@ -73,9 +81,9 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
             kind: "invalid",
             gameId,
             errorCode: mapped.code,
-            message: messageForError(mapped.code),
+            backendMessage: mapped.backendMessage,
           },
-          actionMessage: mapped.message,
+          actionMessage: mapped.backendMessage,
         };
       });
     }
@@ -92,7 +100,6 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       const detection = await withTimeout(
         autoDetectGameDirectory(gameId),
         STARTUP_DETECTION_TIMEOUT_MS,
-        "启动自检超时，请重试或手动选择游戏目录。",
       );
       setState((current) => ({
         ...current,
@@ -103,6 +110,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         startupNotice: setStartupNoticeForDetection(detection),
       }));
     } catch (error) {
+      const timedOut = isTimeoutError(error);
       const mapped = mapCommandError(error);
       setState((current) => ({
         ...current,
@@ -115,13 +123,12 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
                 kind: "invalid",
                 gameId,
                 errorCode: mapped.code,
-                message: messageForError(mapped.code),
+                backendMessage: mapped.backendMessage,
               },
         startupNotice: {
-          title: "需要配置游戏目录",
-          message: messageForError(mapped.code),
-          detail: mapped.message,
           errorCode: mapped.code,
+          detailKind: timedOut ? "startup_timeout" : "command_error",
+          backendDetail: timedOut ? null : mapped.backendMessage,
         },
       }));
     }
@@ -147,19 +154,18 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         });
         pushToast({
           eventKey: `game-setup.directory.saved.${gameId}`,
-          title: "游戏目录已保存",
-          message: "目录校验通过，当前游戏实例已准备就绪。",
+          title: copyRef.current.toasts.directorySavedTitle,
+          message: copyRef.current.toasts.directorySavedMessage,
           tone: "success",
         });
       } catch (error) {
         const mapped = mapCommandError(error);
-        const message = messageForError(mapped.code);
         setState((current) => ({
           status: {
             kind: "invalid",
             gameId,
             errorCode: mapped.code,
-            message,
+            backendMessage: mapped.backendMessage,
           },
           isBusy: false,
           actionMessage: null,
@@ -168,8 +174,8 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         }));
         pushToast({
           eventKey: `game-setup.directory.save-failed.${gameId}.${mapped.code}`,
-          title: "游戏目录保存失败",
-          message,
+          title: copyRef.current.toasts.directorySaveFailedTitle,
+          message: messageForError(mapped.code, copyRef.current.errors),
           tone: "danger",
         });
       }
@@ -184,11 +190,9 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       const detection = await withTimeout(
         autoDetectGameDirectory(gameId),
         STARTUP_DETECTION_TIMEOUT_MS,
-        "自动扫描超时，请重试或手动选择游戏目录。",
       );
 
       if (isDetectionReady(detection)) {
-        const message = messageForReadyDetection(detection);
         setState((current) => ({
           ...current,
           status: mapStatusDto(detection.status),
@@ -199,8 +203,11 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         }));
         pushToast({
           eventKey: `game-setup.scan.ready.${gameId}.${detection.outcome}`,
-          title: "游戏目录扫描完成",
-          message,
+          title: copyRef.current.toasts.scanReadyTitle,
+          message:
+            detection.outcome === "detected_and_saved"
+              ? copyRef.current.toasts.scanDetectedSaved
+              : copyRef.current.toasts.scanAlreadyReady,
           tone: "success",
         });
         return;
@@ -208,7 +215,6 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
 
       const dto = await scanGameCandidates(gameId);
       const candidates = mapCandidateScanDto(dto);
-      const message = candidates.length > 0 ? "已发现 Steam 候选目录。" : "未发现 Steam 候选目录，可手动选择游戏目录。";
       setState((current) => ({
         ...current,
         status: mapStatusDto(detection.status),
@@ -219,13 +225,16 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       }));
       pushToast({
         eventKey: `game-setup.scan.candidates.${gameId}.${candidates.length > 0 ? "found" : "empty"}`,
-        title: candidates.length > 0 ? "发现候选游戏目录" : "未发现候选游戏目录",
-        message,
+        title: candidates.length > 0
+          ? copyRef.current.toasts.candidatesFoundTitle
+          : copyRef.current.toasts.candidatesEmptyTitle,
+        message: candidates.length > 0
+          ? copyRef.current.toasts.candidatesFoundMessage
+          : copyRef.current.toasts.candidatesEmptyMessage,
         tone: candidates.length > 0 ? "success" : "warning",
       });
     } catch (error) {
       const mapped = mapCommandError(error);
-      const message = messageForError(mapped.code);
       setState((current) => ({
         ...current,
         isBusy: false,
@@ -233,8 +242,8 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       }));
       pushToast({
         eventKey: `game-setup.scan.failed.${gameId}.${mapped.code}`,
-        title: "游戏目录扫描失败",
-        message,
+        title: copyRef.current.toasts.scanFailedTitle,
+        message: messageForError(mapped.code, copyRef.current.errors),
         tone: "danger",
       });
     }
@@ -248,7 +257,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
     }));
     pushToast({
       eventKey: `game-setup.action.failed.${gameId}`,
-      title: "游戏目录操作失败",
+      title: copyRef.current.toasts.actionFailedTitle,
       message,
       tone: "danger",
     });
@@ -279,16 +288,14 @@ function setStartupNoticeForDetection(detection: GameAutoDetectionDto): GameSetu
 
   const errorCode =
     detection.errorCode ?? (detection.outcome === "scan_failed" ? "scan_failed" : "directory_not_found");
-  const detail =
-    detection.outcome === "invalid_candidate" && detection.candidateCount > 0
-      ? "Steam 返回了候选目录，但校验未通过。"
-      : "没有找到可直接保存的 Steam 安装目录。";
 
   return {
-    title: "需要配置游戏目录",
-    message: messageForError(errorCode),
-    detail,
     errorCode,
+    detailKind:
+      detection.outcome === "invalid_candidate" && detection.candidateCount > 0
+        ? "invalid_candidate"
+        : "not_found",
+    backendDetail: null,
   };
 }
 
@@ -296,16 +303,19 @@ function isDetectionReady(detection: GameAutoDetectionDto): boolean {
   return detection.outcome === "already_configured" || detection.outcome === "detected_and_saved";
 }
 
-function messageForReadyDetection(detection: GameAutoDetectionDto): string {
-  return detection.outcome === "detected_and_saved" ? "已自动识别并保存 Steam 游戏目录。" : "游戏目录已准备就绪。";
+const TIMEOUT_MARKER = Symbol("gameSetupTimeout");
+
+function isTimeoutError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && TIMEOUT_MARKER in error;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
       reject({
         code: "scan_failed",
-        message: timeoutMessage,
+        message: "",
+        [TIMEOUT_MARKER]: true,
       });
     }, timeoutMs);
 

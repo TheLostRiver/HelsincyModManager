@@ -30,16 +30,21 @@ test("dashboard exposes launch while app header stays status-only", () => {
 
   assert.match(dashboard, /useGameLaunch\("mhw"\)/);
   assert.match(hero, /onLaunchGame/);
-  assert.match(hero, /启动游戏/);
+  assert.match(hero, /heroCopyDict\.hero\.launching : heroCopyDict\.hero\.launchButton/);
+  // zh 值 pin 移到 copy 模块。
+  const heroCopySource = readSource("src/features/dashboard/dashboardCopy.ts");
+  assert.match(heroCopySource, /launchButton: "启动游戏"/);
+  assert.match(heroCopySource, /launching: "正在启动"/);
   assert.match(hero, /className=\{`launch-action-card\$\{isLaunchReady \? "" : " is-disabled"\}`\}/);
   assert.match(hero, /role="group"/);
-  assert.match(hero, /aria-label="游戏启动"/);
+  assert.match(hero, /aria-label=\{heroCopyDict\.hero\.launchGroupAria\}/);
+  assert.match(heroCopySource, /launchGroupAria: "游戏启动"/);
   assert.match(hero, /className="launch-action-button"/);
   assert.match(hero, /const isLaunchReady = status\.kind === "configured"/);
   assert.match(hero, /disabled=\{!isLaunchReady \|\| launchState\.isLaunchingGame\}/);
-  assert.match(hero, /当前配置档可用，游戏目录已通过校验。/);
-  assert.match(hero, /配置游戏目录后即可启动。/);
-  assert.equal(hero.match(/配置游戏目录后即可启动。/g)?.length, 1);
+  assert.match(heroCopySource, /readyDescription: "当前配置档可用，游戏目录已通过校验。"/);
+  assert.match(hero, /copy\.blockedDescription/);
+  assert.equal(heroCopySource.match(/配置游戏目录后即可启动。/g)?.length, 1);
   assert.match(dashboardCss, /\.launch-action-card\s*\{/);
   assert.match(dashboardCss, /\.launch-action-button\s*\{/);
   assert.match(dashboardCss, /\.launch-action-button[\s\S]*?border-radius:\s*var\(--radius-inner\);/);
