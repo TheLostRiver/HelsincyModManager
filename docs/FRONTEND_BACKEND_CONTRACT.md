@@ -814,6 +814,11 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 边界：
 
 - 前端只提交稳定的 game/Mod/profile/target/layer identity，不提交 package/revision/source/binding/path。
+- `list_replacement_targets` 的目标 DTO 自 I18N-08 起以 `displayNames`（locale -> 展示名的完整映射）
+  携带全语言名称，不再按固定 locale 投影单一 `displayName`/`secondaryName`。映射键集即该游戏的
+  名称 locale 能力声明；展示投影与 fallback 链（当前 locale -> fallback 链 -> en -> 任一可用）由前端
+  `resolveReplacementTargetNames` 执行，语言切换不重拉目标列表。检索为跨语言语义：任一语言的
+  展示名与全部 alias 都参与匹配，不随界面语言变化。
 - 分析响应只可附带可选稳定 `installedTargetId`；它是展示和同目标阻断事实，不是路径或 binding DTO。
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。

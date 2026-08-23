@@ -43,8 +43,7 @@ export type ReplacementTarget = {
   id: string;
   gameId: string;
   targetType: string;
-  displayName: string;
-  secondaryName?: string;
+  displayNames: Record<string, string>;
   aliases: string[];
   internalId: string;
 };
