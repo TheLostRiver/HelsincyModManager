@@ -1,5 +1,7 @@
 import { RotateCcw, ShieldCheck } from "lucide-react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import { BackupSchedulePicker } from "./BackupSchedulePicker";
+import { backupPolicyCopy } from "./backupPolicyCopy";
 import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
 import type {
   ProfileBackupRetentionDto,
@@ -33,6 +35,9 @@ export function BackupPolicyPanel({
   onPreRestoreBackupEnabledChange,
   disabled = false,
 }: BackupPolicyPanelProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(backupPolicyCopy, locale).panel;
+
   return (
     <section
       className={`profile-policy-card ${disabled ? "is-disabled" : ""}`}
@@ -41,7 +46,7 @@ export function BackupPolicyPanel({
     >
       <div className="profile-policy-card__header panel-header-row">
         <div>
-          <h2 id="profile-backup-policy-title">自动备份</h2>
+          <h2 id="profile-backup-policy-title">{copy.title}</h2>
           <span>Schedule and retention</span>
         </div>
         <ShieldCheck size={18} aria-hidden="true" />
@@ -52,7 +57,7 @@ export function BackupPolicyPanel({
 
         <div className="profile-retention-grid">
           <label className="profile-field">
-            <span>保留数量</span>
+            <span>{copy.retentionCount}</span>
             <input
               type="number"
               min={0}
@@ -69,7 +74,7 @@ export function BackupPolicyPanel({
             />
           </label>
           <label className="profile-field">
-            <span>保留天数</span>
+            <span>{copy.retentionDays}</span>
             <input
               type="number"
               min={0}
@@ -87,7 +92,7 @@ export function BackupPolicyPanel({
             />
           </label>
           <label className="profile-field">
-            <span>空间上限（MiB）</span>
+            <span>{copy.retentionSpace}</span>
             <input
               type="number"
               min={0}
@@ -108,19 +113,19 @@ export function BackupPolicyPanel({
           </label>
         </div>
         <p id="profile-retention-unlimited-note" className="profile-retention-note">
-          数量、天数和空间上限：0 = 不限制
+          {copy.unlimitedNote}
         </p>
 
         <div className="profile-pre-restore-setting">
           <div>
-            <strong>恢复前安全备份</strong>
-            <span>恢复存档前先创建独立保护点，默认开启。</span>
+            <strong>{copy.preRestoreTitle}</strong>
+            <span>{copy.preRestoreHint}</span>
           </div>
           <input
             type="checkbox"
             checked={settings.preRestoreBackupEnabled}
             disabled={disabled}
-            aria-label="恢复前自动备份"
+            aria-label={copy.preRestoreAria}
             onChange={(event) => onPreRestoreBackupEnabledChange(event.target.checked)}
           />
         </div>
@@ -132,7 +137,7 @@ export function BackupPolicyPanel({
           onClick={() => onRetentionChange({ ...DEFAULT_PROFILE_BACKUP_RETENTION })}
         >
           <RotateCcw size={14} />
-          重置保留策略
+          {copy.resetRetention}
         </button>
       </div>
     </section>

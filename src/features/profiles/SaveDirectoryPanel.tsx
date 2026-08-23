@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Archive, CheckCircle2, FolderOpen, HardDrive, Search } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import {
   validateProfileBackupDirectory,
   validateProfileSaveDirectory,
@@ -10,6 +11,8 @@ import type {
   ProfileSaveSettingsDto,
 } from "./profileSaveSettingsTypes";
 import { formatDirectoryStatus } from "./profileViewModel";
+import { createPreviewDirectorySelection } from "./profilesPreviewData";
+import { saveDirectoryCopy, type SaveDirectoryCopy } from "./saveDirectoryCopy";
 
 type SaveDirectoryPanelProps = {
   gameId: string;
@@ -36,6 +39,8 @@ export function SaveDirectoryPanel({
   autoDetecting = false,
   hasDiscoveryCandidates = false,
 }: SaveDirectoryPanelProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(saveDirectoryCopy, locale);
   const [busyKind, setBusyKind] = useState<"saveDirectory" | "backupDirectory" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,16 +50,7 @@ export function SaveDirectoryPanel({
     setBusyKind(kind);
     try {
       if (previewMode) {
-        const directory =
-          kind === "saveDirectory"
-            ? "Steam/userdata/<steam-id>/582010/remote"
-            : "HelsincyModManager/Backups/MHW";
-        const selection: ProfileDirectorySelectionDto = {
-          mode: "custom",
-          status: "valid",
-          pathLabel: directory,
-          messages: ["预览环境已模拟校验通过"],
-        };
+        const { directory, selection } = createPreviewDirectorySelection(kind);
         onDirectorySelected(kind, directory);
         onSettingsChange({ ...settings, [kind]: selection });
         return;
@@ -71,7 +67,7 @@ export function SaveDirectoryPanel({
       onDirectorySelected(kind, directory);
       onSettingsChange({ ...settings, [kind]: selection });
     } catch (err) {
-      setError(getPanelErrorMessage(err));
+      setError(getPanelErrorMessage(err, copy.panel.errorFallback));
     } finally {
       setBusyKind(null);
     }
@@ -89,17 +85,18 @@ export function SaveDirectoryPanel({
             <HardDrive size={15} />
           </span>
           <div>
-            <h2 id="profile-save-directories-title">存档路径</h2>
-            <span>源目录 / 备份目录</span>
+            <h2 id="profile-save-directories-title">{copy.panel.title}</h2>
+            <span>{copy.panel.subtitle}</span>
           </div>
         </div>
 
         <div className="profile-directory-summary__rows">
           <DirectoryRow
             icon={<FolderOpen size={15} />}
-            label="游戏存档"
+            label={copy.panel.saveRowLabel}
             selection={settings.saveDirectory}
-            actionLabel={busyKind === "saveDirectory" ? "校验中" : "选择"}
+            statusLabels={copy.directoryStatus}
+            actionLabel={busyKind === "saveDirectory" ? copy.panel.validating : copy.panel.choose}
             disabled={disabled || busyKind !== null || autoDetecting}
             extraAction={
               onAutoDetect ? (
@@ -110,7 +107,7 @@ export function SaveDirectoryPanel({
                   onClick={onAutoDetect}
                 >
                   <Search size={13} />
-                  {autoDetecting ? "检测中" : "自动检测"}
+                  {autoDetecting ? copy.panel.detecting : copy.panel.autoDetect}
                 </button>
               ) : null
             }
@@ -118,9 +115,10 @@ export function SaveDirectoryPanel({
           />
           <DirectoryRow
             icon={<Archive size={15} />}
-            label="备份目录"
+            label={copy.panel.backupRowLabel}
             selection={settings.backupDirectory}
-            actionLabel={busyKind === "backupDirectory" ? "校验中" : "选择"}
+            statusLabels={copy.directoryStatus}
+            actionLabel={busyKind === "backupDirectory" ? copy.panel.validating : copy.panel.choose}
             disabled={disabled || busyKind !== null}
             onChoose={() => void chooseDirectory("backupDirectory")}
           />
@@ -141,6 +139,7 @@ function DirectoryRow({
   icon,
   label,
   selection,
+  statusLabels,
   actionLabel,
   disabled,
   extraAction,
@@ -149,12 +148,13 @@ function DirectoryRow({
   icon: ReactNode;
   label: string;
   selection: ProfileDirectorySelectionDto;
+  statusLabels: SaveDirectoryCopy["directoryStatus"];
   actionLabel: string;
   disabled: boolean;
   extraAction?: ReactNode;
   onChoose: () => void;
 }) {
-  const status = formatDirectoryStatus(selection);
+  const status = formatDirectoryStatus(selection, statusLabels);
 
   return (
     <div className={`profile-directory-row is-${status.tone}`}>
@@ -163,8 +163,8 @@ function DirectoryRow({
       </span>
       <div className="profile-directory-row__copy">
         <span>{label}</span>
-        <strong className="profile-directory-row__path" title={status.label || "未选择"}>
-          {status.label || "未选择"}
+        <strong className="profile-directory-row__path" title={status.label || statusLabels.unset}>
+          {status.label || statusLabels.unset}
         </strong>
       </div>
 
@@ -187,12 +187,12 @@ function DirectoryRow({
   );
 }
 
-function getPanelErrorMessage(error: unknown) {
+function getPanelErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = String((error as { message?: unknown }).message ?? "").trim();
     if (message) return message;
   }
   if (error instanceof Error && error.message.trim()) return error.message;
   if (typeof error === "string" && error.trim()) return error;
-  return "目录不可用";
+  return fallback;
 }
