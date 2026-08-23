@@ -83,7 +83,10 @@ test("Recovery Center renders rich repair summary without direct install command
   assert.match(page, /RepairSummaryPanel/);
   assert.match(page, /summary\.blockingReason/);
   assert.match(page, /issue\.guidance/);
-  assert.match(page, /aria-label="恢复处理摘要"/);
+  assert.match(page, /aria-label=\{copy\.page\.repairAria\}/);
+  // zh 值 pin 移到 copy 模块：防止字典改动悄悄改掉既定文案。
+  const recoveryCopySource = readSource("src/features/install-recovery/recoveryCenterCopy.ts");
+  assert.match(recoveryCopySource, /repairAria: "恢复处理摘要"/);
 
   const forbiddenCommands = ["startInstallTask", "startUninstallTask", "restoreInstall", "rollbackInstall", "deleteInstall"];
   for (const token of forbiddenCommands) {
@@ -290,7 +293,11 @@ test("Recovery Center exposes support diagnostics export without path or raw log
   assert.match(page, /useRecoveryDiagnosticsExport/);
   assert.match(page, /DiagnosticExportPanel/);
   assert.match(page, /diagnostics\.state/);
-  assert.match(page, /确认导出诊断包/);
+  assert.match(page, /diagCopy\.confirmTitle/);
+  assert.match(
+    readSource("src/features/install-recovery/recoveryCenterCopy.ts"),
+    /confirmTitle: "确认导出诊断包"/,
+  );
   assert.match(page, /onConfirm/);
   assert.match(page, /onCancel/);
   assert.doesNotMatch(page, /result\.fileName|result\.sizeBytes|result\.appLogLineCount|result\.taskLogLineCount|result\.auditEventCount/);

@@ -124,7 +124,11 @@ test("backup policy maps all zero retention limits to the unbounded form", () =>
   assert.match(panel, /maxCount:\s*clampInteger\(event\.target\.value, 0, MAX_RETENTION_COUNT, 0\)/);
   assert.match(panel, /maxAgeDays:\s*maxAgeDays === 0 \? null : maxAgeDays/);
   assert.match(panel, /maxTotalMiB === 0 \? null : Math\.max\(MIN_RETENTION_TOTAL_MIB, maxTotalMiB\)/);
-  assert.match(panel, /0 = 不限制/);
+  assert.match(panel, /copy\.unlimitedNote/);
+  assert.match(
+    readSource("src/features/profiles/backupPolicyCopy.ts"),
+    /unlimitedNote: "数量、天数和空间上限：0 = 不限制"/,
+  );
   assert.match(panel, /step=\{1\}/);
   assert.match(defaults, /maxCount:\s*0/);
   assert.match(defaults, /maxAgeDays:\s*null/);
