@@ -50,11 +50,16 @@ test("pagination UI exposes labeled Lucide navigation and a complete live range"
   for (const icon of ["ChevronsLeft", "ChevronLeft", "ChevronRight", "ChevronsRight"]) {
     assert.match(source, new RegExp(`<${icon}\\s`));
   }
-  for (const label of ["前往第一页", "前往上一页", "前往下一页", "前往最后一页"]) {
-    assert.match(source, new RegExp(`aria-label="${label}"`));
+  // I18N-02 起分页文案从 pagination copy 取；键在组件里成对出现（tooltip + aria）。
+  const copySource = readPaginationSource("modLibraryCopy.ts");
+  for (const key of ["gotoFirst", "gotoPrev", "gotoNext", "gotoLast"]) {
+    assert.match(source, new RegExp(`aria-label=\\{pagination\\.${key}\\}`));
   }
-  for (const tooltip of ["第一页", "上一页", "下一页", "最后一页"]) {
-    assert.match(source, new RegExp(`content="${tooltip}" describeControl=\\{false\\}`));
+  for (const key of ["firstPage", "prevPage", "nextPage", "lastPage"]) {
+    assert.match(source, new RegExp(`content=\\{pagination\\.${key}\\} describeControl=\\{false\\}`));
+  }
+  for (const label of ["前往第一页", "前往上一页", "前往下一页", "前往最后一页"]) {
+    assert.match(copySource, new RegExp(label));
   }
   assert.match(source, /ModLibraryControlTooltip/);
   assert.doesNotMatch(source, /title="(?:第一页|上一页|下一页|最后一页)"/);

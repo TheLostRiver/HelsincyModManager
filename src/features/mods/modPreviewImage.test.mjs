@@ -72,8 +72,11 @@ test("mod poster card prefers unsafe recovery issue count over managed file coun
   const css = readSource("src/features/mods/ModPosterCard.css");
 
   assert.match(source, /isUnsafeInstallStatus\(item\.status\) && summary/);
-  assert.match(source, /committed_cleanup_pending:\s*"重装待收尾"/);
-  assert.match(source, /cleanup_pending:\s*"恢复待清理"/);
+  // I18N-02 起状态标签在 modLibraryCopy 的 zh_cn 字典；卡片经 card.status 取。
+  const copySource = readSource("src/features/mods/modLibraryCopy.ts");
+  assert.match(copySource, /committed_cleanup_pending: "重装待收尾"/);
+  assert.match(copySource, /cleanup_pending: "恢复待清理"/);
+  assert.match(source, /statusLabelMap\(card\)\[item\.status\]/);
   assert.match(source, /className="mod-card__status-label"/);
   assert.match(source, /summary\.issueCount && summary\.issueCount > 0/);
   assert.match(source, /summary\.managedFileCount > 0/);
@@ -103,12 +106,14 @@ test("mod poster card can hide category labels without affecting card rendering"
   assert.match(source, /showCategoryLabels\?:\s*boolean/);
   assert.match(source, /showCategoryLabels = true/);
   assert.match(source, /const categorySummary/);
-  assert.match(source, /item\.categoryLabels\.map\(\(label\) => label\.name\)\.join\("、"\)/);
+  // I18N-02 起连接符随语言走：join 收进 card.categorySummary，组件只传名称数组。
+  assert.match(source, /card\.categorySummary\(item\.categoryLabels\.map\(\(label\) => label\.name\)\)/);
   assert.match(source, /categoryLabels\.visible\.length > 0/);
   assert.match(source, /data-visible=\{showCategoryLabels \? "true" : "false"\}/);
   assert.match(source, /aria-hidden="true"/);
-  assert.match(source, /batchSelectionActive[\s\S]*?`\$\{selected \? "取消选择" : "选择"\} \$\{item\.name\}\$\{categorySummary\}`/);
-  assert.match(source, /: `选择 \$\{item\.name\}\$\{categorySummary\}`/);
+  // I18N-02 起选中态 aria 文案经 card.selectAria/deselectAria 取词。
+  assert.match(source, /batchSelectionActive && selected[\s\S]*?card\.deselectAria\(item\.name, categorySummary\)[\s\S]*?card\.selectAria\(item\.name, categorySummary\)/);
+  assert.match(source, /card\.selectAria\(item\.name, categorySummary\)/);
 
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?max-height:\s*22px;/);
   assert.match(css, /\.mod-card__categories\s*{[\s\S]*?transition:[\s\S]*?opacity[\s\S]*?max-height[\s\S]*?transform/);

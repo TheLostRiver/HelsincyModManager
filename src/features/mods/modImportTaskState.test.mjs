@@ -43,11 +43,19 @@ function progress(overrides = {}) {
   };
 }
 
-test("mod import phases use registered user-facing labels", () => {
+test("mod import phases use registered user-facing labels", async () => {
+  const { modImportCopy } = await import("./modImportCopy.ts");
   assert.equal(isModImportTaskPhase("mod_import.unpack.started"), true);
   assert.equal(isModImportTaskPhase("mod_import.prepare.completed"), true);
   assert.equal(isModImportTaskPhase("install.queued"), false);
-  assert.equal(getModImportTaskPhaseLabel("mod_import.preview_image.processing"), "正在处理预览图");
+  assert.equal(
+    getModImportTaskPhaseLabel("mod_import.preview_image.processing", modImportCopy.zh_cn.phases),
+    "正在处理预览图",
+  );
+  assert.equal(
+    getModImportTaskPhaseLabel("mod_import.future_phase", modImportCopy.zh_cn.phases),
+    "正在导入",
+  );
 });
 
 test("mod import progress only updates the matching task identity", () => {
@@ -101,13 +109,14 @@ test("mod import terminal events map to stable safe states", () => {
       error: "C:\\Users\\private\\unsafe.zip",
     }),
   );
+  // I18N-02 起失败态只带语义 kind，state 不携带任何文本——后端事件原文（含路径）结构上无处泄漏。
   assert.deepEqual(failed, {
     status: "failed",
     taskId: "task-a",
     phase: "mod_import.unpack.failed",
-    message: "导入失败，请检查压缩包后重试",
+    messageKind: "retry-hint",
   });
-  assert.doesNotMatch(failed.message, /Users|unsafe\.zip/);
+  assert.equal("message" in failed, false);
 });
 
 test("mod import terminal states ignore late progress events", () => {
@@ -126,7 +135,7 @@ test("mod import terminal states ignore late progress events", () => {
       status: "failed",
       taskId: "task-a",
       phase: "mod_import.unpack.failed",
-      message: "导入失败，请检查压缩包后重试",
+      messageKind: "retry-hint",
     },
   ];
 

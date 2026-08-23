@@ -2,6 +2,8 @@ import { Search, Grid, LayoutGrid, List, Tags, TerminalSquare } from "lucide-rea
 import type { CSSProperties } from "react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modLibraryCopy } from "./modLibraryCopy";
 import { isSameLibraryFilter, type LibraryFilterChip, type ModLibraryFilter } from "./modLibraryFilters";
 
 type LibraryToolbarProps = {
@@ -31,8 +33,10 @@ export function LibraryToolbar({
   onToggleCardCategoryLabels,
   onViewModeChange,
 }: LibraryToolbarProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).toolbar;
   const viewModeIndex = Math.max(0, viewModeOrder.indexOf(viewMode));
-  const labelToggleTitle = showCardCategoryLabels ? "隐藏分类标签" : "显示分类标签";
+  const labelToggleTitle = showCardCategoryLabels ? copy.hideLabels : copy.showLabels;
 
   return (
     <div className="library-toolbar" data-tour-id="mods.toolbar">
@@ -42,7 +46,7 @@ export function LibraryToolbar({
           <input
             type="search"
             className="library-search__input"
-            placeholder="搜索 Mod 名称、作者或标签…"
+            placeholder={copy.searchPlaceholder}
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={(event) => {
@@ -51,7 +55,7 @@ export function LibraryToolbar({
                 onQuerySubmit();
               }
             }}
-            aria-label="搜索 Mod"
+            aria-label={copy.searchAria}
           />
         </div>
 
@@ -73,16 +77,16 @@ export function LibraryToolbar({
           <div
             className="library-view-toggles"
             role="group"
-            aria-label="排版视图切换"
+            aria-label={copy.viewSwitchAria}
             style={{ "--view-toggle-index": viewModeIndex } as CSSProperties}
           >
             <span className="library-view-toggle-indicator" aria-hidden="true" />
-            <ModLibraryControlTooltip content="经典简约视图" describeControl={false}>
+            <ModLibraryControlTooltip content={copy.classicView} describeControl={false}>
               {() => (
                 <button
                   type="button"
                   className={`toggle-btn${viewMode === "classic" ? " active" : ""}`}
-                  aria-label="经典简约视图"
+                  aria-label={copy.classicView}
                   aria-pressed={viewMode === "classic"}
                   onClick={() => onViewModeChange("classic")}
                 >
@@ -90,12 +94,12 @@ export function LibraryToolbar({
                 </button>
               )}
             </ModLibraryControlTooltip>
-            <ModLibraryControlTooltip content="增强网格视图" describeControl={false}>
+            <ModLibraryControlTooltip content={copy.gridView} describeControl={false}>
               {() => (
                 <button
                   type="button"
                   className={`toggle-btn${viewMode === "grid" ? " active" : ""}`}
-                  aria-label="增强网格视图"
+                  aria-label={copy.gridView}
                   aria-pressed={viewMode === "grid"}
                   onClick={() => onViewModeChange("grid")}
                 >
@@ -103,12 +107,12 @@ export function LibraryToolbar({
                 </button>
               )}
             </ModLibraryControlTooltip>
-            <ModLibraryControlTooltip content="紧凑列表视图" describeControl={false}>
+            <ModLibraryControlTooltip content={copy.listView} describeControl={false}>
               {() => (
                 <button
                   type="button"
                   className={`toggle-btn${viewMode === "list" ? " active" : ""}`}
-                  aria-label="紧凑列表视图"
+                  aria-label={copy.listView}
                   aria-pressed={viewMode === "list"}
                   onClick={() => onViewModeChange("list")}
                 >
@@ -116,12 +120,12 @@ export function LibraryToolbar({
                 </button>
               )}
             </ModLibraryControlTooltip>
-            <ModLibraryControlTooltip content="机能数据面板视图" describeControl={false}>
+            <ModLibraryControlTooltip content={copy.techView} describeControl={false}>
               {() => (
                 <button
                   type="button"
                   className={`toggle-btn${viewMode === "tech" ? " active" : ""}`}
-                  aria-label="机能数据面板视图"
+                  aria-label={copy.techView}
                   aria-pressed={viewMode === "tech"}
                   onClick={() => onViewModeChange("tech")}
                 >
@@ -134,7 +138,7 @@ export function LibraryToolbar({
       </div>
 
       <div className="library-toolbar__bottom-row">
-        <div className="library-filters" role="group" aria-label="Mod 筛选">
+        <div className="library-filters" role="group" aria-label={copy.filtersAria}>
           {filterChips.map((chip) => {
             const selected = isSameLibraryFilter(chip.filter, activeFilter);
 

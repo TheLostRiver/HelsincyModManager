@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getCompactActionDisabledReason } from "./compactActionAvailability.ts";
+import { modLibraryCopy } from "./modLibraryCopy.ts";
+
+// I18N-02 起该函数按当前界面语言取词；测试固定用 zh_cn 字典钉住产品文案。
+const zhCompact = modLibraryCopy.zh_cn.compact;
 import { compactActions } from "./modsLibraryData.ts";
 
 const readyAction = {
@@ -16,29 +20,29 @@ const readyAction = {
 
 test("compact lifecycle actions explain selection, task, profile, and durable-state blockers in priority order", () => {
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, selectedCount: 0 }),
+    getCompactActionDisabledReason({ ...readyAction, selectedCount: 0 }, zhCompact),
     "请先选择一个 MOD",
   );
   // T13-07: multi-selection no longer blocks lifecycle actions; feasibility falls through
   // to the per-operation canXxxSelection facts (batch preview filters inapplicable items).
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, selectedCount: 2 }),
+    getCompactActionDisabledReason({ ...readyAction, selectedCount: 2 }, zhCompact),
     undefined,
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, selectedCount: 2, canInstallSelection: false }),
+    getCompactActionDisabledReason({ ...readyAction, selectedCount: 2, canInstallSelection: false }, zhCompact),
     "仅未安装且状态安全的 MOD 可安装",
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, installTaskActive: true }),
+    getCompactActionDisabledReason({ ...readyAction, installTaskActive: true }, zhCompact),
     "请等待当前安装任务完成",
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, profileReady: false }),
+    getCompactActionDisabledReason({ ...readyAction, profileReady: false }, zhCompact),
     "选择配置档后可安装",
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, canInstallSelection: false }),
+    getCompactActionDisabledReason({ ...readyAction, canInstallSelection: false }, zhCompact),
     "仅未安装且状态安全的 MOD 可安装",
   );
   assert.equal(getCompactActionDisabledReason(readyAction), undefined);
@@ -54,13 +58,13 @@ test("query refresh blocks page selection and lifecycle actions with product cop
     "uninstall",
   ]) {
     assert.equal(
-      getCompactActionDisabledReason({ ...readyAction, actionId, libraryQueryBusy: true }),
+      getCompactActionDisabledReason({ ...readyAction, actionId, libraryQueryBusy: true }, zhCompact),
       "Mod 列表正在更新，请稍候",
     );
   }
 
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, actionId: "refresh", libraryQueryBusy: true }),
+    getCompactActionDisabledReason({ ...readyAction, actionId: "refresh", libraryQueryBusy: true }, zhCompact),
     undefined,
   );
 });
@@ -71,15 +75,15 @@ test("preview, reinstall, and uninstall expose action-specific fail-closed reaso
       ...readyAction,
       actionId: "preview-plan",
       canInstallSelection: false,
-    }),
+    }, zhCompact),
     "仅未安装且状态安全的 MOD 可预览安装计划",
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, actionId: "reinstall" }),
+    getCompactActionDisabledReason({ ...readyAction, actionId: "reinstall" }, zhCompact),
     "仅已安装且状态安全的 MOD 可重装",
   );
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, actionId: "uninstall" }),
+    getCompactActionDisabledReason({ ...readyAction, actionId: "uninstall" }, zhCompact),
     "仅已安装且状态安全的 MOD 可卸载",
   );
   assert.equal(
@@ -87,7 +91,7 @@ test("preview, reinstall, and uninstall expose action-specific fail-closed reaso
       ...readyAction,
       actionId: "reinstall",
       canReinstallSelection: true,
-    }),
+    }, zhCompact),
     undefined,
   );
 });
@@ -123,14 +127,14 @@ test("no compact action is unconditionally disabled", () => {
       canInstallSelection: true,
       canReinstallSelection: true,
       canUninstallSelection: true,
-    });
+    }, zhCompact);
     assert.equal(reason, undefined, `动作 ${actionId} 在完全就绪状态下仍不可用，属于死按钮`);
   }
 });
 
 test("selection-independent actions stay available", () => {
   assert.equal(
-    getCompactActionDisabledReason({ ...readyAction, actionId: "refresh" }),
+    getCompactActionDisabledReason({ ...readyAction, actionId: "refresh" }, zhCompact),
     undefined,
   );
 });

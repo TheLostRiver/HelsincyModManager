@@ -3,7 +3,8 @@ import type { ModLibraryFilter } from "./modLibraryFilters";
 import {
   consumeOneShotQueryKey,
   createLatestRequestSequenceGate,
-  getModLibraryQueryErrorMessage,
+  normalizeModLibraryQueryErrorCode,
+  type NormalizedModLibraryQueryErrorCode,
   isCommittedModLibraryQueryResponse,
   mapModLibraryFilterToQueryFilter,
   readModLibraryPageSize,
@@ -32,7 +33,7 @@ type ModLibraryQueryExecutionState = {
   record: ModLibraryQueryRecord | null;
   phase: ModLibraryQueryPhase;
   phaseProfileKey: string;
-  errorMessage: string | null;
+  errorCode: NormalizedModLibraryQueryErrorCode | null;
 };
 
 type ModLibraryQueryRequest = {
@@ -87,7 +88,7 @@ export function useModLibraryQuery({
     record: null,
     phase: "idle",
     phaseProfileKey: profileKey,
-    errorMessage: null,
+    errorCode: null,
   });
   const requestGateRef = useRef(createLatestRequestSequenceGate());
   const debounceTimerRef = useRef<number | null>(null);
@@ -162,7 +163,7 @@ export function useModLibraryQuery({
         ...current,
         phase: hasCurrentProfilePage ? "refreshing" : "initial-loading",
         phaseProfileKey: profileKey,
-        errorMessage: null,
+        errorCode: null,
       };
     });
   }, [profileKey, queryInput, queryKey]);
@@ -183,7 +184,7 @@ export function useModLibraryQuery({
           ...current,
           phase: hasCurrentProfilePage ? "refreshing" : "initial-loading",
           phaseProfileKey: request.profileKey,
-          errorMessage: null,
+          errorCode: null,
         };
       });
 
@@ -197,7 +198,7 @@ export function useModLibraryQuery({
           record: { profileKey: request.profileKey, page },
           phase: "idle",
           phaseProfileKey: request.profileKey,
-          errorMessage: null,
+          errorCode: null,
         });
 
         if (page.page !== request.input.page) {
@@ -216,7 +217,7 @@ export function useModLibraryQuery({
           ...current,
           phase: "error",
           phaseProfileKey: request.profileKey,
-          errorMessage: getModLibraryQueryErrorMessage(error),
+          errorCode: normalizeModLibraryQueryErrorCode(error),
         }));
         throw error;
       }
@@ -329,7 +330,7 @@ export function useModLibraryQuery({
   const page = executionState.record?.profileKey === profileKey ? executionState.record.page : null;
   const phaseIsCurrent = executionState.phaseProfileKey === profileKey;
   const phase = phaseIsCurrent ? executionState.phase : "initial-loading";
-  const errorMessage = phaseIsCurrent ? executionState.errorMessage : null;
+  const errorCode = phaseIsCurrent ? executionState.errorCode : null;
   const blockedReason: ModLibraryQueryFilterBlockReason | null =
     filterMapping.kind === "blocked" ? filterMapping.reason : null;
 
@@ -339,7 +340,7 @@ export function useModLibraryQuery({
     submittedSearch,
     initialLoading: blockedReason === null && page === null && phase !== "error",
     refreshing: blockedReason === null && page !== null && phase === "refreshing",
-    errorMessage,
+    errorCode,
     blockedReason,
     setPage,
     setPageSize,

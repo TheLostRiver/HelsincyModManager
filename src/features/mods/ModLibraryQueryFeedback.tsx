@@ -1,6 +1,8 @@
 import { AlertTriangle, PackageOpen, RefreshCw, SearchX, SlidersHorizontal } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { modLibraryCopy } from "./modLibraryCopy";
 import "./ModLibraryQueryFeedback.css";
 
 type ModLibrarySkeletonProps = {
@@ -8,13 +10,15 @@ type ModLibrarySkeletonProps = {
 };
 
 export function ModLibrarySkeleton({ viewMode }: ModLibrarySkeletonProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).queryFeedback;
   const itemCount = viewMode === "classic" || viewMode === "grid" ? 8 : 6;
 
   return (
     <div
       className={`mod-library-skeleton view-${viewMode}`}
       role="status"
-      aria-label="正在加载 Mod 库"
+      aria-label={copy.loadingAria}
     >
       {Array.from({ length: itemCount }, (_, index) => (
         <div className="mod-library-skeleton__item" key={index} aria-hidden="true">
@@ -36,16 +40,18 @@ type ModLibraryInitialErrorProps = {
 };
 
 export function ModLibraryInitialError({ message, onRetry }: ModLibraryInitialErrorProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).queryFeedback;
   return (
     <div className="mod-library-state" role="alert">
       <span className="mod-library-state__icon is-error" aria-hidden="true">
         <AlertTriangle size={22} strokeWidth={2.1} />
       </span>
-      <strong>Mod 库暂时不可用</strong>
+      <strong>{copy.unavailableTitle}</strong>
       <p>{message}</p>
       <button type="button" className="mod-library-state__action" onClick={onRetry}>
         <RefreshCw size={15} aria-hidden="true" />
-        重试
+        {copy.retry}
       </button>
     </div>
   );
@@ -57,15 +63,17 @@ type ModLibraryQueryBlockedStateProps = {
 };
 
 export function ModLibraryQueryBlockedState({ message, onReset }: ModLibraryQueryBlockedStateProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).queryFeedback;
   return (
     <div className="mod-library-state" role="status">
       <span className="mod-library-state__icon" aria-hidden="true">
         <SlidersHorizontal size={22} strokeWidth={2.1} />
       </span>
-      <strong>当前筛选暂不可用</strong>
+      <strong>{copy.filterUnavailableTitle}</strong>
       <p>{message}</p>
       <button type="button" className="mod-library-state__action" onClick={onReset}>
-        查看全部 Mod
+        {copy.viewAllMods}
       </button>
     </div>
   );
@@ -76,14 +84,16 @@ type ModLibraryEmptyStateProps =
   | { kind: "matches"; onReset: () => void };
 
 export function ModLibraryEmptyState(props: ModLibraryEmptyStateProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).queryFeedback;
   if (props.kind === "library") {
     return (
       <div className="mod-library-state" role="status">
         <span className="mod-library-state__icon" aria-hidden="true">
           <PackageOpen size={23} strokeWidth={2} />
         </span>
-        <strong>尚未导入 Mod</strong>
-        <p>Mod 库当前为空。</p>
+        <strong>{copy.emptyTitle}</strong>
+        <p>{copy.emptyBody}</p>
       </div>
     );
   }
@@ -93,11 +103,11 @@ export function ModLibraryEmptyState(props: ModLibraryEmptyStateProps) {
       <span className="mod-library-state__icon" aria-hidden="true">
         <SearchX size={23} strokeWidth={2} />
       </span>
-      <strong>没有匹配的 Mod</strong>
-      <p>当前搜索与筛选条件没有结果。</p>
+      <strong>{copy.noMatchTitle}</strong>
+      <p>{copy.noMatchBody}</p>
       <button type="button" className="mod-library-state__action" onClick={props.onReset}>
         <SlidersHorizontal size={15} aria-hidden="true" />
-        清除条件
+        {copy.clearFilters}
       </button>
     </div>
   );
@@ -110,10 +120,12 @@ type ModLibraryQueryFeedbackProps = {
 };
 
 export function ModLibraryQueryFeedback({ busy, errorMessage, onRetry }: ModLibraryQueryFeedbackProps) {
+  const { locale } = useI18n();
+  const copy = resolveCopy(modLibraryCopy, locale).queryFeedback;
   return (
     <>
       {busy ? (
-        <div className="mod-library-query-progress" role="status" aria-label="正在更新 Mod 列表">
+        <div className="mod-library-query-progress" role="status" aria-label={copy.updatingAria}>
           <span aria-hidden="true" />
         </div>
       ) : null}
@@ -122,9 +134,9 @@ export function ModLibraryQueryFeedback({ busy, errorMessage, onRetry }: ModLibr
         <div className="mod-library-query-error" role="alert">
           <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" />
           <span className="mod-library-query-error__message">{errorMessage}</span>
-          <ModLibraryControlTooltip content="重试 Mod 库查询" describeControl={false}>
+          <ModLibraryControlTooltip content={copy.retryQueryAria} describeControl={false}>
             {() => (
-              <button type="button" onClick={onRetry} aria-label="重试 Mod 库查询">
+              <button type="button" onClick={onRetry} aria-label={copy.retryQueryAria}>
                 <RefreshCw size={15} aria-hidden="true" />
               </button>
             )}

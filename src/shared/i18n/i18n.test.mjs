@@ -72,6 +72,8 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
     "src/features/settings/backgroundProtectionCopy.ts",
     "src/features/settings/debugLogSettingsCopy.ts",
     "src/features/game-setup/gamePrerequisiteCopy.ts",
+    "src/features/mods/modLibraryCopy.ts",
+    "src/features/mods/modImportCopy.ts",
   ]) {
     const source = readSource(relativePath);
     for (const locale of ["zh_cn", "en", "ja"]) {
@@ -99,6 +101,20 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/settings/debugLogSettingsTypes.ts",
     "src/features/game-setup/GamePrerequisitePanel.tsx",
     "src/features/game-setup/gamePrerequisiteViewModel.ts",
+    "src/features/mods/ModLibraryPage.tsx",
+    "src/features/mods/LibraryToolbar.tsx",
+    "src/features/mods/ModLibraryPagination.tsx",
+    "src/features/mods/ModLibraryQueryFeedback.tsx",
+    "src/features/mods/ModPosterCard.tsx",
+    "src/features/mods/ModContextMenu.tsx",
+    "src/features/mods/BackToTopButton.tsx",
+    "src/features/mods/CompactActionPanel.tsx",
+    "src/features/mods/compactActionAvailability.ts",
+    "src/features/mods/ModImportAction.tsx",
+    "src/features/mods/modImportTaskState.ts",
+    "src/features/mods/modLibraryFilters.ts",
+    "src/features/mods/modSelection.ts",
+    "src/features/mods/modLibraryQueryState.ts",
   ]) {
     const source = stripComments(readSource(relativePath));
     const hanMatches = source.match(/[一-鿿][^\n]{0,40}/gu) ?? [];

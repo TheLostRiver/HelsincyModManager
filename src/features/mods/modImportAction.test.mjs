@@ -24,8 +24,12 @@ test("mod import action opens a ZIP picker and starts the controlled task", () =
   assert.ok(handlerCommitIndex > 0);
   assert.ok(handlerCommitIndex < reconnectEffectIndex);
   assert.doesNotMatch(source, /handleImportRef\.current = handleImport;\s*\n\s*const taskActive/);
-  assert.match(source, /mode === "revision" \? "导入新版本" : "导入 Mod"/);
-  assert.match(source, /导入服务暂时不可用，点击后将自动重连并继续/);
+  // I18N-02 起文案钉在 modImportCopy 的 zh_cn 字典，组件只能经 copy 键渲染。
+  const importCopySource = readSource("src/features/mods/modImportCopy.ts");
+  assert.match(source, /mode === "revision" \? copy\.action\.reconnectRevision : copy\.action\.reconnectImport/);
+  assert.match(source, /copy\.status\.listenerFailedHint/);
+  assert.match(importCopySource, /导入服务暂时不可用，点击后将自动重连并继续/);
+  assert.match(importCopySource, /reconnectRevision: "导入新版本"/);
   assert.match(source, /isImportTaskTerminal\(next\)[\s\S]*taskIdRef\.current\s*=\s*null/);
   assert.match(source, /showTaskNotice\(\{/);
   assert.match(source, /taskId:\s*taskState\.taskId/);
@@ -40,7 +44,7 @@ test("the existing add action owns import and refreshes the library on completio
   const pageSource = readSource("src/features/mods/ModLibraryPage.tsx");
   const dataSource = readSource("src/features/mods/modsLibraryData.ts");
 
-  assert.match(panelSource, /<ModImportAction\s+label=\{addAction\.label\}\s+onImported=\{onImportCompleted\}/);
+  assert.match(panelSource, /<ModImportAction\s+label=\{buttonText\.add\}\s+onImported=\{onImportCompleted\}/);
   assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
   assert.match(dataSource, /id: "add", label: "导入 Mod"/);
 });
