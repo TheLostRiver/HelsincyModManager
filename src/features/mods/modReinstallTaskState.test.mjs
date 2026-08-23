@@ -12,6 +12,9 @@ import {
   nextReinstallTaskStateFromProgress,
   refreshReinstallDurableFacts,
 } from "./modReinstallTaskState.ts";
+import { modReinstallCopy } from "./modReinstallCopy.ts";
+
+const zhTask = modReinstallCopy.zh_cn.task;
 
 function progress(overrides = {}) {
   return {
@@ -58,13 +61,16 @@ test("reinstall task phases accept only the registered reinstall namespace", () 
   assert.equal(isReinstallTaskPhase("install.reinstall.completed"), true);
   assert.equal(isReinstallTaskPhase("install.queued"), false);
   assert.equal(isReinstallTaskPhase("install.uninstall.processing"), false);
-  assert.equal(getReinstallTaskPhaseLabel("install.reinstall.commit.processing"), "提交新版本");
+  assert.equal(getReinstallTaskPhaseLabel("install.reinstall.commit.processing", zhTask), "提交新版本");
 });
 
 test("reinstall progress requires matching task id, kind, and phase", () => {
-  assert.equal(nextReinstallTaskStateFromProgress(running, progress({ taskId: "task-b" })), running);
-  assert.equal(nextReinstallTaskStateFromProgress(running, progress({ kind: "mod_import" })), running);
-  assert.equal(nextReinstallTaskStateFromProgress(running, progress({ phase: "install.completed" })), running);
+  assert.equal(nextReinstallTaskStateFromProgress(running, progress({ taskId: "task-b" }), zhTask), running);
+  assert.equal(nextReinstallTaskStateFromProgress(running, progress({ kind: "mod_import" }), zhTask), running);
+  assert.equal(
+    nextReinstallTaskStateFromProgress(running, progress({ phase: "install.completed" }), zhTask),
+    running,
+  );
 });
 
 test("reinstall terminal states are stable and never expose raw backend error text", () => {
@@ -72,6 +78,7 @@ test("reinstall terminal states are stable and never expose raw backend error te
     nextReinstallTaskStateFromProgress(
       running,
       progress({ status: "completed", phase: "install.reinstall.completed" }),
+      zhTask,
     ),
     {
       ...running,
@@ -88,6 +95,7 @@ test("reinstall terminal states are stable and never expose raw backend error te
       error: "install_reinstall_failed:post_commit",
       message: "C:\\Users\\private\\unsafe.zip",
     }),
+    zhTask,
   );
   assert.equal(failed.status, "failed");
   assert.equal(failed.failurePhase, "post_commit");
@@ -98,6 +106,7 @@ test("reinstall terminal states are stable and never expose raw backend error te
     nextReinstallTaskStateFromProgress(
       running,
       progress({ status: "cancelled", phase: "install.reinstall.cancelled" }),
+      zhTask,
     ),
     {
       ...running,
@@ -167,23 +176,29 @@ test("preview is fail-closed for unsafe durable states and active tasks", () => 
 });
 
 test("blocking reasons use stable codes, including null-candidate and stale preview cases", () => {
-  assert.equal(getReinstallBlockingReasonLabel("candidate_not_found"), "候选版本不存在");
-  assert.equal(getReinstallBlockingReasonLabel("preview_stale"), "预览已过期，请重新生成");
+  assert.equal(getReinstallBlockingReasonLabel("candidate_not_found", zhTask), "候选版本不存在");
+  assert.equal(getReinstallBlockingReasonLabel("preview_stale", zhTask), "预览已过期，请重新生成");
 });
 
 test("command errors use the registered stable codes without exposing backend messages", () => {
   const unsafeMessage = "C:\\Users\\private\\unsafe.zip";
   const previewMessages = [
-    getReinstallPreviewErrorMessage({ code: "game_id_invalid", message: unsafeMessage }),
-    getReinstallPreviewErrorMessage({ code: "profile_id_empty", message: unsafeMessage }),
-    getReinstallPreviewErrorMessage({ code: "mod_id_empty", message: unsafeMessage }),
-    getReinstallPreviewErrorMessage({ code: "candidate_revision_id_empty", message: unsafeMessage }),
-    getReinstallPreviewErrorMessage({ code: "layer_name_empty", message: unsafeMessage }),
+    getReinstallPreviewErrorMessage({ code: "game_id_invalid", message: unsafeMessage }, zhTask),
+    getReinstallPreviewErrorMessage({ code: "profile_id_empty", message: unsafeMessage }, zhTask),
+    getReinstallPreviewErrorMessage({ code: "mod_id_empty", message: unsafeMessage }, zhTask),
+    getReinstallPreviewErrorMessage(
+      { code: "candidate_revision_id_empty", message: unsafeMessage },
+      zhTask,
+    ),
+    getReinstallPreviewErrorMessage({ code: "layer_name_empty", message: unsafeMessage }, zhTask),
   ];
-  const expiredTokenMessage = getReinstallStartErrorMessage({
-    code: "plan_token_invalid",
-    message: unsafeMessage,
-  });
+  const expiredTokenMessage = getReinstallStartErrorMessage(
+    {
+      code: "plan_token_invalid",
+      message: unsafeMessage,
+    },
+    zhTask,
+  );
 
   assert.equal(previewMessages[0], "当前游戏不支持重装");
   for (const message of previewMessages.slice(1)) {
@@ -192,7 +207,7 @@ test("command errors use the registered stable codes without exposing backend me
   assert.equal(expiredTokenMessage, "重装预览已失效，请重新生成");
   assert.doesNotMatch([...previewMessages, expiredTokenMessage].join(" "), /Users|unsafe\.zip/);
   assert.equal(
-    getReinstallStartErrorMessage({ code: "reinstall_preview_token_invalid" }),
+    getReinstallStartErrorMessage({ code: "reinstall_preview_token_invalid" }, zhTask),
     "无法启动重装任务，请重新生成预览后重试",
   );
 });

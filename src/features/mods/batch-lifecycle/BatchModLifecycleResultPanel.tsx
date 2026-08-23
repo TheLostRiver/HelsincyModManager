@@ -1,7 +1,9 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { useId, useRef } from "react";
 import { useModalFocusTrap } from "../../../shared/feedback/useModalFocusTrap";
+import { resolveCopy, useI18n } from "../../../shared/i18n";
 import {
+  batchModLifecycleCopy,
   getBatchAttemptStatusLabel,
   getBatchErrorLabel,
   getBatchItemStatusLabel,
@@ -37,6 +39,9 @@ export function BatchModLifecycleResultPanel({
   onLoadMore,
   onClose,
 }: BatchModLifecycleResultPanelProps) {
+  const { locale } = useI18n();
+  const bCopy = resolveCopy(batchModLifecycleCopy, locale);
+  const panelCopy = bCopy.resultPanel;
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   useModalFocusTrap({
@@ -68,11 +73,11 @@ export function BatchModLifecycleResultPanel({
         aria-labelledby={titleId}
       >
         <header className="batch-panel__header">
-          <h2 id={titleId}>{getBatchOperationLabel(operation)}结果</h2>
+          <h2 id={titleId}>{panelCopy.resultTitle(getBatchOperationLabel(operation, bCopy.operations))}</h2>
           <button
             type="button"
             className="batch-panel__close"
-            aria-label="关闭"
+            aria-label={panelCopy.closeAria}
             onClick={onClose}
           >
             <X size={16} aria-hidden="true" />
@@ -82,42 +87,42 @@ export function BatchModLifecycleResultPanel({
         <div className="batch-panel__body">
           <div className={`batch-panel__attempt batch-panel__attempt--${tone}`} role="status">
             <CheckCircle2 size={16} aria-hidden="true" />
-            {getBatchAttemptStatusLabel(result.status)}
-            <span className="batch-panel__attempt-id">批次 {batchId}</span>
+            {getBatchAttemptStatusLabel(result.status, bCopy.attemptStatus)}
+            <span className="batch-panel__attempt-id">{panelCopy.batchIdLabel(batchId)}</span>
           </div>
 
-          <div className="batch-panel__summary-counts" aria-label="批量结果汇总">
-            <span>成功 {summary.succeededCount}</span>
-            <span>失败 {summary.failedCount}</span>
-            <span>被阻止 {summary.blockedCount}</span>
-            <span>跳过 {summary.skippedCount}</span>
-            <span>取消 {summary.cancelledCount}</span>
+          <div className="batch-panel__summary-counts" aria-label={panelCopy.summaryAria}>
+            <span>{panelCopy.succeededCount(summary.succeededCount)}</span>
+            <span>{panelCopy.failedCount(summary.failedCount)}</span>
+            <span>{panelCopy.blockedCount(summary.blockedCount)}</span>
+            <span>{panelCopy.skippedCount(summary.skippedCount)}</span>
+            <span>{panelCopy.cancelledCount(summary.cancelledCount)}</span>
             {summary.recoveryRequiredCount > 0 && (
-              <span>需恢复 {summary.recoveryRequiredCount}</span>
+              <span>{panelCopy.recoveryRequiredCount(summary.recoveryRequiredCount)}</span>
             )}
           </div>
 
           {result.evidenceHealthDegraded && (
             <p className="batch-panel__blocked-note" role="status">
               <AlertTriangle size={14} aria-hidden="true" />
-              部分执行证据健康度下降，请前往恢复中心检查。
+              {panelCopy.evidenceDegraded}
             </p>
           )}
 
-          <ul className="batch-panel__items" aria-label="逐项结果">
+          <ul className="batch-panel__items" aria-label={panelCopy.itemsAria}>
             {result.items.map((item) => (
               <li key={item.itemId} className="batch-panel__item">
                 <span className={`batch-panel__item-status batch-panel__item-status--${item.status}`}>
-                  {getBatchItemStatusLabel(item.status)}
+                  {getBatchItemStatusLabel(item.status, bCopy.itemStatus)}
                 </span>
                 <span className="batch-panel__item-mod">{item.modId}</span>
                 {item.reasonCode !== null && (
                   <span className="batch-panel__item-reason">
-                    {getBatchReasonCodeLabel(item.reasonCode)}
+                    {getBatchReasonCodeLabel(item.reasonCode, bCopy.reasonCodes)}
                   </span>
                 )}
                 {item.retryable && (
-                  <span className="batch-panel__item-retryable">可重试</span>
+                  <span className="batch-panel__item-retryable">{panelCopy.retryableBadge}</span>
                 )}
               </li>
             ))}
@@ -126,17 +131,17 @@ export function BatchModLifecycleResultPanel({
 
         <footer className="batch-panel__footer">
           <button type="button" className="batch-panel__cancel" onClick={onClose}>
-            关闭
+            {panelCopy.close}
           </button>
           {canLoadMore && (
             <button type="button" className="batch-panel__more" onClick={onLoadMore}>
-              加载更多
+              {panelCopy.loadMore}
             </button>
           )}
           {retryAvailableByStatus && (
             <button type="button" className="batch-panel__confirm" onClick={onRetry}>
               <RefreshCw size={16} aria-hidden="true" />
-              重试失败项
+              {panelCopy.retryFailed}
             </button>
           )}
         </footer>
@@ -152,6 +157,8 @@ export function BatchModLifecycleRunningPanel({
   workflowState: BatchModLifecycleWorkflowState;
   onClose: () => void;
 }) {
+  const { locale } = useI18n();
+  const bCopy = resolveCopy(batchModLifecycleCopy, locale);
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const starting = workflowState.status === "starting";
@@ -181,11 +188,11 @@ export function BatchModLifecycleRunningPanel({
         aria-labelledby={titleId}
       >
         <header className="batch-panel__header">
-          <h2 id={titleId}>{getBatchOperationLabel(operation)}</h2>
+          <h2 id={titleId}>{getBatchOperationLabel(operation, bCopy.operations)}</h2>
           <button
             type="button"
             className="batch-panel__close"
-            aria-label="关闭"
+            aria-label={bCopy.previewPanel.closeAria}
             disabled={starting}
             onClick={onClose}
           >
@@ -196,12 +203,12 @@ export function BatchModLifecycleRunningPanel({
           {errorCode !== null ? (
             <div className="batch-panel__error" role="alert">
               <AlertTriangle size={16} aria-hidden="true" />
-              {getBatchErrorLabel(errorCode)}
+              {getBatchErrorLabel(errorCode, bCopy)}
             </div>
           ) : (
             <div className="batch-panel__loading" role="status">
               <LoaderCircle size={18} className="batch-panel__spinner" aria-hidden="true" />
-              正在执行批量{operation === "install" ? "安装" : operation === "uninstall" ? "卸载" : "重装"}…
+              {bCopy.runningPanel.running[operation]}
             </div>
           )}
         </div>

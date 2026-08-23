@@ -1,4 +1,5 @@
 import type { TaskProgressEventDto } from "./modImportTypes";
+import type { ModLifecycleCopy } from "./modLifecycleCopy";
 
 export type ManagedInstallTaskOperation = "install" | "uninstall";
 
@@ -65,29 +66,36 @@ export type ManagedInstallTaskStateUpdate =
   | ManagedInstallTaskState
   | ((current: ManagedInstallTaskState) => ManagedInstallTaskState);
 
-const managedInstallTaskPhaseLabels: Record<ManagedInstallTaskPhase, string> = {
-  "install.queued": "等待安装",
-  "install.plan.building": "生成安装计划",
-  "install.commit.processing": "写入中",
-  "install.completed": "安装完成",
-  "install.failed": "安装失败",
-  "install.cancelled": "已取消",
-  "install.uninstall.queued": "等待卸载",
-  "install.uninstall.processing": "卸载中",
-  "install.uninstall.completed": "卸载完成",
-  "install.uninstall.failed": "卸载失败",
-};
+// 阶段集合只承担语义判断；文本一律经 modLifecycleCopy.installTask 取。
+const managedInstallTaskPhases: ReadonlySet<string> = new Set([
+  "install.queued",
+  "install.plan.building",
+  "install.commit.processing",
+  "install.completed",
+  "install.failed",
+  "install.cancelled",
+  "install.uninstall.queued",
+  "install.uninstall.processing",
+  "install.uninstall.completed",
+  "install.uninstall.failed",
+]);
 
 export function isManagedInstallTaskPhase(phase: string): phase is ManagedInstallTaskPhase {
-  return Object.prototype.hasOwnProperty.call(managedInstallTaskPhaseLabels, phase);
+  return managedInstallTaskPhases.has(phase);
 }
 
-export function getManagedInstallTaskPhaseLabel(phase: ManagedInstallTaskPhase) {
-  return managedInstallTaskPhaseLabels[phase];
+export function getManagedInstallTaskPhaseLabel(
+  phase: ManagedInstallTaskPhase,
+  installTask: ModLifecycleCopy["installTask"],
+) {
+  return installTask.phases[phase];
 }
 
-export function getManagedInstallTaskStartingLabel(operation: ManagedInstallTaskOperation) {
-  return operation === "uninstall" ? "启动卸载任务" : "启动安装任务";
+export function getManagedInstallTaskStartingLabel(
+  operation: ManagedInstallTaskOperation,
+  installTask: ModLifecycleCopy["installTask"],
+) {
+  return operation === "uninstall" ? installTask.startingUninstall : installTask.startingInstall;
 }
 
 function isCompletedPhase(
@@ -104,44 +112,34 @@ export function operationForManagedInstallPhase(phase: ManagedInstallTaskPhase):
   return phase.startsWith("install.uninstall.") ? "uninstall" : "install";
 }
 
-export function defaultManagedInstallTaskErrorMessage(operation: ManagedInstallTaskOperation) {
-  return operation === "uninstall" ? "卸载失败" : "安装失败";
+export function defaultManagedInstallTaskErrorMessage(
+  operation: ManagedInstallTaskOperation,
+  installTask: ModLifecycleCopy["installTask"],
+) {
+  return operation === "uninstall"
+    ? installTask.uninstallFailedDefault
+    : installTask.installFailedDefault;
 }
-
-const installFailureMessages: Record<string, string> = {
-  planning: "无法生成安装计划",
-  lock: "安装任务暂时无法开始",
-  commit: "安装未完成，已重新检查安装状态",
-  complete: "安装收尾未完成，已重新检查安装状态",
-  recovery_pending: "安装被待处理的恢复状态阻断",
-  recovery_unavailable: "安装状态暂时无法确认",
-};
-
-const uninstallFailureMessages: Record<string, string> = {
-  lock: "卸载任务暂时无法开始",
-  uninstall: "卸载未完成，已重新检查安装状态",
-  complete: "卸载收尾未完成，已重新检查安装状态",
-  recovery_pending: "卸载被待处理的恢复状态阻断",
-  recovery_unavailable: "卸载状态暂时无法确认",
-};
 
 export function getManagedInstallTaskFailureMessage(
   operation: ManagedInstallTaskOperation,
   error: string | null | undefined,
+  installTask: ModLifecycleCopy["installTask"],
 ) {
   const prefix = operation === "uninstall" ? "install_uninstall_failed:" : "install_failed:";
   if (!error?.startsWith(prefix)) {
-    return defaultManagedInstallTaskErrorMessage(operation);
+    return defaultManagedInstallTaskErrorMessage(operation, installTask);
   }
 
   const failurePhase = error.slice(prefix.length);
-  const messages = operation === "uninstall" ? uninstallFailureMessages : installFailureMessages;
-  return messages[failurePhase] ?? defaultManagedInstallTaskErrorMessage(operation);
+  const messages = operation === "uninstall" ? installTask.uninstallFailures : installTask.installFailures;
+  return messages[failurePhase] ?? defaultManagedInstallTaskErrorMessage(operation, installTask);
 }
 
 export function nextManagedInstallTaskStateFromProgress(
   current: ManagedInstallTaskState,
   event: TaskProgressEventDto,
+  installTask: ModLifecycleCopy["installTask"],
 ): ManagedInstallTaskState {
   if (event.kind !== "install" || !("taskId" in current) || current.taskId !== event.taskId) {
     return current;
@@ -178,7 +176,7 @@ export function nextManagedInstallTaskStateFromProgress(
       modId: current.modId,
       modName: current.modName,
       phase,
-      message: getManagedInstallTaskFailureMessage(operation, event.error),
+      message: getManagedInstallTaskFailureMessage(operation, event.error, installTask),
     };
   }
 

@@ -10,8 +10,10 @@ import {
 import { FilePenLine, ImageIcon, Info, Save, Tag, Target, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
+import { modDetailDialogCopy } from "./modDetailDialogCopy";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem } from "./modLibraryTypes";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
@@ -64,6 +66,11 @@ export function ModDetailDialog({
   onClose,
   onSaved,
 }: ModDetailDialogProps) {
+  const { locale } = useI18n();
+  const dialogCopy = resolveCopy(modDetailDialogCopy, locale);
+  // 加载副作用经 ref 取词，避免语言切换重新拉取详情。
+  const dialogCopyRef = useRef(dialogCopy);
+  dialogCopyRef.current = dialogCopy;
   const fallbackSnapshotRef = useRef<{ modId: string; item: ModLibraryItem | null | undefined }>({
     modId,
     item: fallbackItem,
@@ -183,9 +190,9 @@ export function ModDetailDialog({
       setLoading(false);
 
       if (detailResult.status === "rejected") {
-        setMessage("详情读取失败，已使用列表中的基础信息。");
+        setMessage(dialogCopyRef.current.messages.detailLoadFailed);
       } else if (!categoriesReady) {
-        setMessage("分类读取失败，本次保存不会改动分类关联。");
+        setMessage(dialogCopyRef.current.messages.categoryLoadFailed);
       }
     }
 
@@ -236,7 +243,7 @@ export function ModDetailDialog({
 
     const nexusModId = parseNexusModId(form.nexusModId);
     if (nexusModId === null) {
-      setMessage("NexusMods ID 只能填写正整数。");
+      setMessage(dialogCopy.messages.nexusIdInvalid);
       return;
     }
 
@@ -265,13 +272,13 @@ export function ModDetailDialog({
           requestClose();
           break;
         case "metadata-failure":
-          setMessage("信息保存失败，请稍后重试。");
+          setMessage(dialogCopy.messages.metadataFailure);
           break;
         case "partial-category-failure":
-          setMessage("信息已保存，但分类关联保存失败，请稍后重试。");
+          setMessage(dialogCopy.messages.partialCategoryFailure);
           break;
         case "refresh-failure":
-          setMessage("保存成功，但列表刷新失败，请稍后手动刷新。");
+          setMessage(dialogCopy.messages.refreshFailure);
           break;
       }
     } finally {
@@ -307,16 +314,16 @@ export function ModDetailDialog({
              * 原实现把通用词当标题、把 Mod 名称当副标题，层级是反的。
              */}
             <div className="mod-detail-dialog__heading">
-              <span className="mod-detail-dialog__eyebrow">Mod 详情</span>
+              <span className="mod-detail-dialog__eyebrow">{dialogCopy.eyebrow}</span>
               <h2 title={displayModName}>{displayModName}</h2>
             </div>
           </div>
-          <button className="mod-detail-dialog__close" type="button" onClick={requestClose} disabled={dialogBusy || exiting} aria-label="关闭">
+          <button className="mod-detail-dialog__close" type="button" onClick={requestClose} disabled={dialogBusy || exiting} aria-label={dialogCopy.closeAria}>
             <X size={18} />
           </button>
         </header>
 
-        <div className="mod-detail-dialog__tabs" role="tablist" aria-label="Mod 详情视图">
+        <div className="mod-detail-dialog__tabs" role="tablist" aria-label={dialogCopy.tablistAria}>
           <button
             type="button"
             role="tab"
@@ -326,7 +333,7 @@ export function ModDetailDialog({
             disabled={dialogBusy}
           >
             <Info size={15} aria-hidden="true" />
-            基本信息
+            {dialogCopy.tabDetails}
           </button>
           <button
             type="button"
@@ -337,30 +344,30 @@ export function ModDetailDialog({
             disabled={dialogBusy}
           >
             <Target size={15} aria-hidden="true" />
-            替换目标
+            {dialogCopy.tabReplacement}
           </button>
         </div>
 
         <div
           className={`mod-detail-dialog__body${activeTab === "replacement" ? " is-replacement" : ""}`}
         >
-          <aside className="mod-detail-dialog__preview" aria-label="Mod 预览图">
+          <aside className="mod-detail-dialog__preview" aria-label={dialogCopy.previewAria}>
             {previewThumbnail ? (
               <img src={previewThumbnail.thumbnailUrl} alt="" />
             ) : (
               <div className="mod-detail-dialog__preview-fallback">
                 <ImageIcon size={34} />
-                <span>暂无预览图</span>
+                <span>{dialogCopy.noPreview}</span>
               </div>
             )}
             <dl className="mod-detail-dialog__summary">
               <div>
-                <dt>Package ID</dt>
+                <dt>{dialogCopy.packageIdLabel}</dt>
                 <dd>{detail?.packageId ?? fallbackSnapshotItem?.id ?? modId}</dd>
               </div>
               <div>
-                <dt>已选分类</dt>
-                <dd>{selectedCategoryNames.length > 0 ? selectedCategoryNames.join(" / ") : "未关联"}</dd>
+                <dt>{dialogCopy.selectedCategoriesLabel}</dt>
+                <dd>{selectedCategoryNames.length > 0 ? selectedCategoryNames.join(" / ") : dialogCopy.noCategoriesSelected}</dd>
               </div>
             </dl>
           </aside>
@@ -371,23 +378,23 @@ export function ModDetailDialog({
             <section className="mod-detail-dialog__section">
               <div className="mod-detail-dialog__section-title">
                 <FilePenLine size={16} aria-hidden="true" />
-                <span>信息编辑</span>
+                <span>{dialogCopy.sectionInfo}</span>
               </div>
               <div className="mod-detail-dialog__form-grid" aria-busy={loading}>
                 <label>
-                  <span>名称</span>
+                  <span>{dialogCopy.fieldName}</span>
                   <input name="displayName" value={form.displayName} onChange={updateField} disabled={loading || saving} />
                 </label>
                 <label>
-                  <span>作者</span>
+                  <span>{dialogCopy.fieldAuthor}</span>
                   <input name="author" value={form.author} onChange={updateField} disabled={loading || saving} />
                 </label>
                 <label>
-                  <span>版本</span>
+                  <span>{dialogCopy.fieldVersion}</span>
                   <input name="version" value={form.version} onChange={updateField} disabled={loading || saving} />
                 </label>
                 <label>
-                  <span>NexusMods ID</span>
+                  <span>{dialogCopy.fieldNexusId}</span>
                   <input
                     name="nexusModId"
                     inputMode="numeric"
@@ -397,7 +404,7 @@ export function ModDetailDialog({
                   />
                 </label>
                 <label className="mod-detail-dialog__wide-field">
-                  <span>备注</span>
+                  <span>{dialogCopy.fieldNotes}</span>
                   <textarea
                     name="description"
                     value={form.description}
@@ -412,7 +419,7 @@ export function ModDetailDialog({
             <section className="mod-detail-dialog__section">
               <div className="mod-detail-dialog__section-title">
                 <Tag size={16} aria-hidden="true" />
-                <span>分类关联</span>
+                <span>{dialogCopy.sectionCategories}</span>
               </div>
               {categories.length > 0 ? (
                 <div className="mod-detail-dialog__category-grid" aria-disabled={categoryLoadState !== "ready"}>
@@ -437,7 +444,7 @@ export function ModDetailDialog({
                   })}
                 </div>
               ) : (
-                <p className="mod-detail-dialog__empty">还没有可关联的分类。</p>
+                <p className="mod-detail-dialog__empty">{dialogCopy.noCategoriesAvailable}</p>
               )}
             </section>
               </>
@@ -463,16 +470,16 @@ export function ModDetailDialog({
           {activeTab === "details" ? (
             <>
               <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
-                取消
+                {dialogCopy.cancel}
               </button>
               <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || dialogBusy}>
                 <Save size={16} aria-hidden="true" />
-                {saving ? "保存中" : "保存"}
+                {saving ? dialogCopy.saving : dialogCopy.save}
               </button>
             </>
           ) : (
             <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
-              关闭
+              {dialogCopy.closeButton}
             </button>
           )}
         </footer>

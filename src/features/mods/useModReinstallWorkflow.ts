@@ -1,11 +1,13 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { getInstallManifestStatus } from "./modInstallPlanApi";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModRevisions } from "./modLibraryApi";
 import type { ModLibraryItem, ModRevisionList } from "./modLibraryTypes";
+import { modReinstallCopy } from "./modReinstallCopy";
 import { previewReinstallPlan, startReinstallTask } from "./modReinstallApi";
 import {
   canConfirmReinstall,
@@ -63,6 +65,11 @@ export function useModReinstallWorkflow({
   writeTaskActive,
   refreshLibrary,
 }: UseModReinstallWorkflowInput) {
+  const { locale } = useI18n();
+  const reCopy = resolveCopy(modReinstallCopy, locale);
+  // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
+  const taskCopyRef = useRef(reCopy.task);
+  taskCopyRef.current = reCopy.task;
   const [dialogState, setDialogState] = useState<ReinstallDialogState>({ status: "closed" });
   const dialogStateRef = useRef<ReinstallDialogState>(dialogState);
   const [taskState, setTaskState] = useState<ReinstallTaskState>({ status: "idle" });
@@ -174,7 +181,11 @@ export function useModReinstallWorkflow({
         return;
       }
 
-      const next = nextReinstallTaskStateFromProgress(taskStateRef.current, event.payload);
+      const next = nextReinstallTaskStateFromProgress(
+        taskStateRef.current,
+        event.payload,
+        taskCopyRef.current,
+      );
       applyProgressStateRef.current(next);
     })
       .then((unlisten) => {
@@ -244,7 +255,7 @@ export function useModReinstallWorkflow({
                 catalogStatus: "ready",
                 revisions,
                 selectedCandidateRevisionId: candidateRevisionId,
-                catalogMessage: candidateRevisionId ? null : "当前 MOD 还没有可用候选版本",
+                catalogMessage: candidateRevisionId ? null : reCopy.workflow.noCandidate,
               }
             : current,
         );
@@ -255,11 +266,11 @@ export function useModReinstallWorkflow({
         }
         setTrackedDialogState((current) =>
           current.status === "open" && current.modId === selectedItem.id
-            ? { ...current, catalogStatus: "error", catalogMessage: "无法读取版本列表" }
+            ? { ...current, catalogStatus: "error", catalogMessage: reCopy.workflow.catalogLoadFailed }
             : current,
         );
       });
-  }, [gameId, profileId, selectedItem, setTrackedDialogState, setTrackedTaskState, writeTaskActive]);
+  }, [gameId, profileId, reCopy, selectedItem, setTrackedDialogState, setTrackedTaskState, writeTaskActive]);
 
   const closeReinstall = useCallback(() => {
     const currentTask = taskStateRef.current;
@@ -334,11 +345,11 @@ export function useModReinstallWorkflow({
         }
         setTrackedDialogState((latest) =>
           latest.status === "open" && latest.modId === current.modId
-            ? { ...latest, previewState: { status: "error", message: getReinstallPreviewErrorMessage(error) } }
+            ? { ...latest, previewState: { status: "error", message: getReinstallPreviewErrorMessage(error, reCopy.task) } }
             : latest,
         );
       });
-  }, [setTrackedDialogState, setTrackedTaskState]);
+  }, [reCopy, setTrackedDialogState, setTrackedTaskState]);
 
   const confirmReinstall = useCallback(() => {
     const current = dialogStateRef.current;
@@ -390,7 +401,7 @@ export function useModReinstallWorkflow({
           setTrackedTaskState({ status: "idle" });
           setTrackedDialogState((latest) =>
             latest.status === "open"
-              ? { ...latest, previewState: { status: "error", message: "重装任务返回了无效状态" } }
+              ? { ...latest, previewState: { status: "error", message: reCopy.workflow.invalidTaskState } }
               : latest,
           );
           return;
@@ -406,7 +417,7 @@ export function useModReinstallWorkflow({
           phase: "install.reinstall.queued",
         };
         if (pendingProgressEvent) {
-          next = nextReinstallTaskStateFromProgress(next, pendingProgressEvent);
+          next = nextReinstallTaskStateFromProgress(next, pendingProgressEvent, reCopy.task);
         }
         applyProgressState(next);
       })
@@ -417,11 +428,11 @@ export function useModReinstallWorkflow({
         setTrackedTaskState({ status: "idle" });
         setTrackedDialogState((latest) =>
           latest.status === "open"
-            ? { ...latest, previewState: { status: "error", message: getReinstallStartErrorMessage(error) } }
+            ? { ...latest, previewState: { status: "error", message: getReinstallStartErrorMessage(error, reCopy.task) } }
             : latest,
         );
       });
-  }, [applyProgressState, listenerStatus, setTrackedDialogState, setTrackedTaskState]);
+  }, [applyProgressState, listenerStatus, reCopy, setTrackedDialogState, setTrackedTaskState]);
 
   const taskActive = taskState.status === "starting" || taskState.status === "running";
   const canConfirm =
