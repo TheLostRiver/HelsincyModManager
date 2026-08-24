@@ -71,8 +71,9 @@ pub use batch_uninstall::{BatchUninstallPlanFactsProvider, UninstallTaskBatchIte
 pub use category::{CategoryService, CategoryWithCount};
 pub use external_import::{
     ExternalImportBatchError, ExternalImportBatchLaunch, ExternalImportBatchService,
-    ExternalImportPreviewCandidate, ExternalImportPreviewPage, ExternalImportResultPage,
-    ExternalImportScanError, ExternalImportScanLaunch, ExternalImportScanService,
+    ExternalImportHistoryEntry, ExternalImportHistoryPage, ExternalImportPreviewCandidate,
+    ExternalImportPreviewPage, ExternalImportResultPage, ExternalImportScanError,
+    ExternalImportScanLaunch, ExternalImportScanService, DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT,
     DEFAULT_EXTERNAL_IMPORT_PREVIEW_LIMIT, DEFAULT_EXTERNAL_IMPORT_RESULT_LIMIT,
     EXTERNAL_IMPORT_BATCH_CANCELLED_PHASE, EXTERNAL_IMPORT_BATCH_COMPLETED_PHASE,
     EXTERNAL_IMPORT_BATCH_FAILED_PHASE, EXTERNAL_IMPORT_BATCH_MATERIALIZING_PHASE,
@@ -80,8 +81,8 @@ pub use external_import::{
     EXTERNAL_IMPORT_BATCH_QUEUED_PHASE, EXTERNAL_IMPORT_SCAN_CANCELLED_PHASE,
     EXTERNAL_IMPORT_SCAN_COMPLETED_PHASE, EXTERNAL_IMPORT_SCAN_DISCOVERING_PHASE,
     EXTERNAL_IMPORT_SCAN_FAILED_PHASE, EXTERNAL_IMPORT_SCAN_FINGERPRINTING_PHASE,
-    EXTERNAL_IMPORT_SCAN_QUEUED_PHASE, MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT,
-    MAX_EXTERNAL_IMPORT_RESULT_LIMIT,
+    EXTERNAL_IMPORT_SCAN_QUEUED_PHASE, MAX_EXTERNAL_IMPORT_HISTORY_LIMIT,
+    MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT, MAX_EXTERNAL_IMPORT_RESULT_LIMIT,
 };
 pub use game_launch::{GameLaunchService, GameLaunchServiceError};
 pub use game_prerequisites::{

@@ -71,6 +71,8 @@ pub(super) fn compose(
     batches
         .recover_interrupted_batches()
         .map_err(|_| "failed to recover interrupted external import batches".to_owned())?;
+    // 保留期清理尽力而为:失败不得阻断启动。恢复(改变批次真实状态)才是必须成功的。
+    let _ = batches.prune_batch_history();
 
     Ok(ExternalImportComposition {
         source_registry,
