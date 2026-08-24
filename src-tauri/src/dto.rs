@@ -975,6 +975,55 @@ pub struct ModDetailDto {
     pub description: Option<String>,
     pub nexus_mod_id: Option<u64>,
     pub preview_image: PreviewImageDto,
+    pub origin: ModOriginDto,
+}
+
+/// 脱敏来源摘要:只出 adapter/batch 的稳定 ID 与导入时间,
+/// `sourceItemKeyHash`/`contentFingerprint` 等私有摘要不得出现。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModOriginDto {
+    pub kind: ModOriginKindDto,
+    pub adapter_id: Option<String>,
+    pub batch_id: Option<String>,
+    pub imported_at_unix_millis: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModOriginKindDto {
+    Imported,
+    ExternalImport,
+    MigratedV1,
+}
+
+impl From<hmm_app::ModOriginSummary> for ModOriginDto {
+    fn from(origin: hmm_app::ModOriginSummary) -> Self {
+        match origin {
+            hmm_app::ModOriginSummary::Imported => Self {
+                kind: ModOriginKindDto::Imported,
+                adapter_id: None,
+                batch_id: None,
+                imported_at_unix_millis: None,
+            },
+            hmm_app::ModOriginSummary::ExternalImport {
+                adapter_id,
+                batch_id,
+                imported_at_unix_millis,
+            } => Self {
+                kind: ModOriginKindDto::ExternalImport,
+                adapter_id: Some(adapter_id),
+                batch_id: Some(batch_id),
+                imported_at_unix_millis: Some(imported_at_unix_millis),
+            },
+            hmm_app::ModOriginSummary::MigratedV1 => Self {
+                kind: ModOriginKindDto::MigratedV1,
+                adapter_id: None,
+                batch_id: None,
+                imported_at_unix_millis: None,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1197,6 +1246,7 @@ impl From<ModDetail> for ModDetailDto {
             description: detail.description,
             nexus_mod_id: detail.nexus_mod_id,
             preview_image: detail.preview_image.into(),
+            origin: detail.origin.into(),
         }
     }
 }

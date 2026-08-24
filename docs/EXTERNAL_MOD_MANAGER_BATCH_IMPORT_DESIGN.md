@@ -73,6 +73,18 @@ selected-root/
 - 序号只作为来源内的候选标识，不作为 HMM `modId`。
 - adapter 不假设 `files/` 中一定存在 `nativePC`；内容语义仍交给现有包分析器和游戏 adapter。
 
+Slice 5 起的兼容超集(不 bump adapter id,契约只放宽不收紧):
+
+- **注册层有效库根解析**:玩家常选狩技盒子安装根而不是 `Mods_582010`。注册时一次性、
+  确定性地解析:所选目录已有直接数字子目录 → 以所选目录为准;没有数字子目录但存在常规的
+  `Mods_582010` 子目录(ASCII 忽略大小写,链接/重解析点不下潜)→ 下潜一层;其余情况
+  (含探测超出有界枚举上限)原样注册。fingerprint 按有效根计算——选安装根与直接选
+  `Mods_582010` 得到同一 identity,scanner/materializer 契约与 `numeric-directory:{name}`
+  候选身份零改动。`582010`(MHW Steam AppId)常量归 adapter 所有。
+- **缺载荷防御**:编号目录只有 `info.xml`、`files/` 确实不存在时(狩技盒子「无操作」安装
+  方式的残留),候选归为专用 `payload_missing`(不可选择),仍解析 `info.xml` 让预览带上
+  mod 名;`files/` 是链接/重解析点/非目录时仍按 `structure_invalid` 拒绝,不得降级。
+
 ### 元数据映射
 
 `info.xml` 只提供不可信的元数据提示。第一版映射如下：

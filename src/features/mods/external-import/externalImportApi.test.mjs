@@ -28,6 +28,8 @@ test("external import API invokes the documented result and retry boundaries", (
   assert.match(source, /invoke<ExternalImportBatchStartedDto>\("retry_external_import_batch"/);
   assert.match(source, /batchId:\s*input\.batchId/);
   assert.match(source, /selectionId:\s*input\.selectionId/);
+  assert.match(source, /invoke<ExternalImportHistoryPageDto>\("list_external_import_batches"/);
+  assert.match(source, /limit:\s*EXTERNAL_IMPORT_HISTORY_PAGE_SIZE/);
   assert.doesNotMatch(source, /candidateIds|results:\s*input|decisions:\s*input/);
   assert.doesNotMatch(source, /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i);
 });
