@@ -374,9 +374,7 @@ impl BatchWriteAdmission {
                 let instance = self
                     .game_config_repository
                     .load_game_instance(&batch.plan.game_id)
-                    .map_err(|_| {
-                        BatchAutomationError::new("batch_write_admission_unavailable")
-                    })?
+                    .map_err(|_| BatchAutomationError::new("batch_write_admission_unavailable"))?
                     .ok_or_else(|| {
                         BatchAutomationError::new("batch_write_admission_unavailable")
                     })?;
@@ -586,10 +584,8 @@ impl BatchLifecycleAutomation {
         environment: &RuntimeEnvironment,
         request: BatchLifecyclePlanRequest,
         preview_token: &str,
-    ) -> Result<
-        (BatchOperation, BatchPlanSealResult, BatchInstallRunResult),
-        BatchAutomationError,
-    > {
+    ) -> Result<(BatchOperation, BatchPlanSealResult, BatchInstallRunResult), BatchAutomationError>
+    {
         precheck_batch_token(preview_token, "preview")?;
         let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
         let operation = request.operation;
@@ -943,9 +939,11 @@ fn build_write_context(
     let context = BatchEnvironmentContext::resolve(environment)?;
     let root_guard = match &context.sandbox_root {
         Some(sandbox_root) => BatchRootGuard::Sandbox {
-            capability: Arc::new(environment.acquire_sandbox_write_capability().map_err(
-                |_| BatchAutomationError::new("batch_write_admission_unavailable"),
-            )?),
+            capability: Arc::new(
+                environment
+                    .acquire_sandbox_write_capability()
+                    .map_err(|_| BatchAutomationError::new("batch_write_admission_unavailable"))?,
+            ),
             sandbox_root: sandbox_root.clone(),
         },
         None => BatchRootGuard::Production,
@@ -1024,9 +1022,7 @@ struct BatchEnvironmentContext {
 }
 
 impl BatchEnvironmentContext {
-    fn resolve(
-        environment: &RuntimeEnvironment,
-    ) -> Result<Self, BatchAutomationError> {
+    fn resolve(environment: &RuntimeEnvironment) -> Result<Self, BatchAutomationError> {
         match environment.sandbox_data_dir() {
             Some(root) => Ok(Self {
                 data_root: root.to_path_buf(),
@@ -1060,10 +1056,7 @@ fn batch_token_codec(
 
 /// 纯语法 token 预检：格式与有效期，不读取任何数据根。放在会触达文件系统的
 /// 入口最前，让明显无效的 token 在 Production 下也不触发真实数据读取。
-fn precheck_batch_token(
-    token: &str,
-    expected_kind: &str,
-) -> Result<(), BatchAutomationError> {
+fn precheck_batch_token(token: &str, expected_kind: &str) -> Result<(), BatchAutomationError> {
     let parts = token.split('.').collect::<Vec<_>>();
     if parts.len() != 5 || parts[0] != "hmm-batch-v2" || parts[1] != expected_kind {
         return Err(BatchAutomationError::new("batch_token_invalid"));
@@ -1417,12 +1410,9 @@ mod tests {
             b"fixture"
         );
 
-        let snapshot_error = BatchLifecycleAutomation::result(
-            &environment,
-            &sealed.batch_id,
-            run.attempt_number,
-        )
-        .expect_err("immutable snapshot path must remain fail-closed while WAL is active");
+        let snapshot_error =
+            BatchLifecycleAutomation::result(&environment, &sealed.batch_id, run.attempt_number)
+                .expect_err("immutable snapshot path must remain fail-closed while WAL is active");
         assert_eq!(snapshot_error.code(), "batch_result_unavailable");
     }
 
@@ -1464,12 +1454,9 @@ mod tests {
             b"fixture"
         );
 
-        let snapshot = BatchLifecycleAutomation::result(
-            &environment,
-            &sealed.batch_id,
-            run.attempt_number,
-        )
-        .expect("attempt result");
+        let snapshot =
+            BatchLifecycleAutomation::result(&environment, &sealed.batch_id, run.attempt_number)
+                .expect("attempt result");
         assert_eq!(snapshot.status, BatchAttemptStatus::Completed);
         assert_eq!(snapshot.task_id.as_deref(), Some(run.task_id.as_str()));
         assert_eq!(snapshot.summary.succeeded_count, 1);
@@ -1553,11 +1540,9 @@ mod tests {
             resolved_source_target.id()
         );
 
-        let switch_preview = BatchLifecycleAutomation::preview_request(
-            &environment,
-            armor_target_switch_request(),
-        )
-        .expect("same-revision target-switch preview");
+        let switch_preview =
+            BatchLifecycleAutomation::preview_request(&environment, armor_target_switch_request())
+                .expect("same-revision target-switch preview");
         assert_eq!(
             switch_preview.plan.status(),
             hmm_core::BatchPlanStatus::Ready
@@ -1659,7 +1644,9 @@ mod tests {
         let preview =
             BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
                 .expect("production preview");
-        let preview_token = preview.preview_token.expect("ready production preview token");
+        let preview_token = preview
+            .preview_token
+            .expect("ready production preview token");
         assert!(data_root
             .path()
             .join("secrets/batch-token-secret-v1")
@@ -1694,9 +1681,8 @@ mod tests {
         let root = tempfile::tempdir().expect("shared root");
         write_install_fixture(root.path());
         let sandbox = RuntimeEnvironment::sandbox(root.path().to_path_buf()).expect("sandbox");
-        let production = RuntimeEnvironment::production_with_app_data_root_for_tests(
-            root.path().to_path_buf(),
-        );
+        let production =
+            RuntimeEnvironment::production_with_app_data_root_for_tests(root.path().to_path_buf());
 
         let sandbox_token =
             BatchLifecycleAutomation::preview_request(&sandbox, batch_install_request())

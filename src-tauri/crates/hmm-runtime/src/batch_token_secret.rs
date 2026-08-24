@@ -64,8 +64,7 @@ fn read_valid_secret(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
 
 fn generate_secret_hex() -> anyhow::Result<String> {
     let mut bytes = [0_u8; SECRET_HEX_LENGTH / 2];
-    getrandom::fill(&mut bytes)
-        .map_err(|error| anyhow::anyhow!("os rng unavailable: {error}"))?;
+    getrandom::fill(&mut bytes).map_err(|error| anyhow::anyhow!("os rng unavailable: {error}"))?;
     let mut hex = String::with_capacity(SECRET_HEX_LENGTH);
     for byte in bytes {
         use std::fmt::Write as _;
