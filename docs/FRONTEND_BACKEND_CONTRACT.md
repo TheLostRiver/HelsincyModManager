@@ -180,6 +180,7 @@ success 与 retry；它仍不计算路径、物化包、安装、启用、获取
 | `start_external_import_batch` | `batchId`、`selectionId`、`expectedRevision` | `{ task: TaskStartedDto, batchId }` |
 | `retry_external_import_batch` | `batchId`、已 sealed 的 `selectionId` | `{ task: TaskStartedDto, batchId }` |
 | `get_external_import_batch_result` | `batchId`、可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportBatchResultPageDto` |
+| `list_external_import_batches` | 可选 `cursor`、可选 `limit` | 脱敏的 `ExternalImportHistoryPageDto`(Slice 5 跨批次导入记录) |
 
 `sourceId`、`batchId` 与 `selectionId` 会先去除两端空白，再按受限字符集校验为 opaque ID；去除后为空、包含路径/URI/内部空白或超长的值整体拒绝。preview cursor 是
 后端解释的十进制 offset token，前端应只复用响应的下一 cursor，省略时从 `0` 开始；`limit` 默认 `50`、最大
@@ -201,8 +202,19 @@ sealed selection 全部整体拒绝，不截断、不部分应用。`select_all_
 “所有 ready 候选”谓词，不接受前端展开的 candidate ID 数组，并继续受 10,000 项和资源预算限制。
 `start_external_import_batch` 只消费 batch/selection/revision 三元组，并通过短 SQLite 事务封存 selection；
 retry 只可重放 sealed snapshot 中仍可重试的项。结果 cursor 与 preview cursor 一样是十进制 offset token，
-默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、状态、稳定 reason code、可选内部 `modId`、
+默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、受限候选显示名 `displayName`(可空,与 preview
+metadata hint 同一净化口径:长度/控制字符受限,不含路径)、状态、稳定 reason code、可选内部 `modId`、
 `retryable`、总数和下一 cursor。
+
+`list_external_import_batches` 是 Slice 5 的跨批次导入记录查询:纯读取、不创建 task、不产生任务事件、
+不提供从历史重试(来源注册是短生命周期,重试必须重新选择来源目录)。cursor 是后端解释的十进制 offset
+token,`limit` 默认 `20`、最大 `50`,不在 `1..=50` 的值整体拒绝。响应按创建时间倒序(同毫秒按 `batchId`
+升序),每个条目只包含 `batchId`、`adapterId`、`scanStatus`、`importStatus`、`createdAtUnixMillis`、
+`candidateCount` 与逐状态结果计数 `counts`(`total/imported/alreadyImported/skipped/blocked/failed/
+cancelled`);不得包含 `sourceFingerprint`、`sourceId`、`selectionId`、`sourceItemKeyHash`、
+`contentFingerprint` 或任何路径。`running` 批次正常列出。历史受保留期约束——已执行过导入的批次按数量
+保留最近 50 个,只扫描未导入的批次保留最近 10 个且不超过 7 天,`running` 永不清理;因此前端不得假设
+`batchId` 长期有效,批次消失必须按正常空态处理。
 
 前端在同一 import task 进入 `completed`、`failed` 或 `cancelled` 后，必须从 cursor `0` 查询结果；progress
 event 的聚合计数不得解释为 partial success。result page 必须按 exact DTO key、同一 batch、稳定终态 status/
@@ -222,6 +234,8 @@ batch/result 事实或伪造导入失败。
 `external_import_result_limit_invalid`、`external_import_selection_unavailable`、
 `external_import_batch_not_startable`、`external_import_catalog_unavailable`、
 `external_import_category_unavailable`、`external_import_result_request_invalid`、
+`external_import_history_cursor_invalid`、`external_import_history_limit_invalid`、
+`external_import_history_request_invalid`、
 `selection_revision_conflict`、`selection_empty`、
 `selection_mutation_empty`、`selection_mutation_limit_exceeded`、`selection_total_limit_exceeded`、
 `selection_resource_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。

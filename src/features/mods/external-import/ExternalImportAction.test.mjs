@@ -114,6 +114,12 @@ test("external import action composes selection, result, and retry without a fro
     resultPanel,
     /resultPanel\.reloadResults|resultPanel\.loadMoreResults|resultPanel\.retryRecoverable/,
   );
+  // 结果行以候选显示名为主标题(缺省走未命名兜底),candidateId 降级为次要 code。
+  assert.match(
+    resultPanel,
+    /<strong>\{result\.displayName \?\? extCopy\.preview\.unnamed\}<\/strong>/,
+  );
+  assert.doesNotMatch(resultPanel, /<strong>\{extCopy\.resultPanel\.candidateResult\}<\/strong>/);
   assert.doesNotMatch(
     `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,
     /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i,

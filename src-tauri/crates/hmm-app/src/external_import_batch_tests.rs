@@ -1,21 +1,26 @@
 use crate::{
     ExternalImportBatchError, ExternalImportBatchService, ImportPreviewImageProcessor,
     ModImportAnalysisService, ModImportPrepareService, TaskManager, TaskStatus,
+    MAX_EXTERNAL_IMPORT_HISTORY_LIMIT,
 };
 use anyhow::{bail, Result};
 use hmm_core::{
     Category, ExternalImportAdapterId, ExternalImportBatch, ExternalImportBatchId,
     ExternalImportBatchImportStatus, ExternalImportCandidate, ExternalImportCandidateId,
     ExternalImportCandidateStatus, ExternalImportConflictKind, ExternalImportItemResult,
-    ExternalImportItemStatus, ExternalImportMetadataHint, ExternalImportReasonCode,
-    ExternalImportResourceUsage, ExternalImportScanStatus, ExternalImportSelection,
-    ExternalImportSelectionDecision, ExternalImportSelectionEntry, ExternalImportSelectionId,
-    ExternalImportSelectionStatus, ExternalImportSource, ExternalImportSourceId, ModId,
-    PreviewImageRejectionReason,
+    ExternalImportItemStatus, ExternalImportItemStatusCounts, ExternalImportMetadataHint,
+    ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportScanStatus,
+    ExternalImportSelection, ExternalImportSelectionDecision, ExternalImportSelectionEntry,
+    ExternalImportSelectionId, ExternalImportSelectionStatus, ExternalImportSource,
+    ExternalImportSourceId, ModId, PreviewImageRejectionReason,
+    EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES, EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
 };
 use hmm_ports::{
-    AppClock, CategoryRepository, ExternalImportBatchRepository, ExternalImportCandidatePage,
-    ExternalImportItemResultPage, ExternalImportMaterializationOutcome,
+    AppClock, CategoryRepository, ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage,
+    ExternalImportBatchRepository, ExternalImportBatchRetentionOutcome,
+    ExternalImportBatchRetentionRequest, ExternalImportCandidatePage,
+    ExternalImportItemResultDetailPage, ExternalImportItemResultPage,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
     ExternalImportMaterializeRequest, ExternalImportMaterializedPackage,
     ExternalImportMaterializer, ExternalImportSealAndStartRequest,
     ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
@@ -1090,6 +1095,231 @@ fn result_page_limits_are_rejected_before_repository_access() {
     );
 }
 
+#[test]
+fn result_page_joins_candidate_display_names_in_scan_order() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let batch = fixture_batch(
+        "batch-result-names",
+        "source-current",
+        ExternalImportBatchImportStatus::CompletedWithErrors,
+    );
+    repository.create_batch(&batch).expect("seed batch");
+    repository
+        .replace_candidates(
+            &batch.batch_id,
+            &[
+                fixture_candidate(&batch, "candidate-a", 1),
+                fixture_candidate(&batch, "candidate-b", 2),
+            ],
+        )
+        .expect("seed candidates");
+    repository.seed_results(
+        &batch.batch_id,
+        &[
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-a"),
+                status: ExternalImportItemStatus::Imported,
+                reason_code: None,
+                imported_mod_id: Some(ModId::new("mod-1")),
+                retryable: false,
+            },
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-b"),
+                status: ExternalImportItemStatus::Failed,
+                reason_code: Some(ExternalImportReasonCode::SourceChanged),
+                imported_mod_id: None,
+                retryable: true,
+            },
+        ],
+    );
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    let page = service
+        .get_results(&batch.batch_id, 0, 50)
+        .expect("result page");
+
+    assert_eq!(
+        page.results
+            .iter()
+            .map(|record| {
+                (
+                    record.result.candidate_id.as_str(),
+                    record.display_name.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        [
+            ("candidate-a", Some("Fixture candidate-a")),
+            ("candidate-b", Some("Fixture candidate-b")),
+        ]
+    );
+}
+
+#[test]
+fn history_limit_bounds_are_rejected_before_repository_access() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    // 若校验失守而触达仓储,fail_history 会把错误变成 BatchUnavailable,断言就会失败。
+    repository.set_fail_history(true);
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    assert_eq!(
+        service.list_history(0, 0),
+        Err(ExternalImportBatchError::HistoryPageInvalid)
+    );
+    assert_eq!(
+        service.list_history(0, MAX_EXTERNAL_IMPORT_HISTORY_LIMIT + 1),
+        Err(ExternalImportBatchError::HistoryPageInvalid)
+    );
+}
+
+#[test]
+fn history_entries_preserve_repository_order_and_counts() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let mut older = fixture_batch(
+        "batch-older",
+        "source-current",
+        ExternalImportBatchImportStatus::Completed,
+    );
+    older.created_at_unix_millis = 100;
+    let mut newer = fixture_batch(
+        "batch-newer",
+        "source-current",
+        ExternalImportBatchImportStatus::CompletedWithErrors,
+    );
+    newer.created_at_unix_millis = 200;
+    repository.create_batch(&older).expect("seed older batch");
+    repository.create_batch(&newer).expect("seed newer batch");
+    repository
+        .replace_candidates(
+            &newer.batch_id,
+            &[
+                fixture_candidate(&newer, "candidate-a", 1),
+                fixture_candidate(&newer, "candidate-b", 2),
+            ],
+        )
+        .expect("seed candidates");
+    repository.seed_results(
+        &newer.batch_id,
+        &[
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-a"),
+                status: ExternalImportItemStatus::Imported,
+                reason_code: None,
+                imported_mod_id: Some(ModId::new("mod-1")),
+                retryable: false,
+            },
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-b"),
+                status: ExternalImportItemStatus::Failed,
+                reason_code: Some(ExternalImportReasonCode::SourceChanged),
+                imported_mod_id: None,
+                retryable: true,
+            },
+        ],
+    );
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    let page = service.list_history(0, 20).expect("history page");
+
+    assert_eq!(page.total_count, 2);
+    assert_eq!(page.next_offset, None);
+    assert_eq!(
+        page.entries
+            .iter()
+            .map(|entry| entry.batch.batch_id.as_str())
+            .collect::<Vec<_>>(),
+        ["batch-newer", "batch-older"]
+    );
+    assert_eq!(page.entries[0].candidate_count, 2);
+    assert_eq!(page.entries[0].result_counts.imported, 1);
+    assert_eq!(page.entries[0].result_counts.failed, 1);
+    assert_eq!(page.entries[0].result_counts.total(), 2);
+    assert_eq!(
+        page.entries[1].result_counts,
+        ExternalImportItemStatusCounts::default()
+    );
+}
+
+#[test]
+fn history_repository_failure_maps_to_batch_unavailable() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    repository.set_fail_history(true);
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    assert_eq!(
+        service.list_history(0, 20),
+        Err(ExternalImportBatchError::BatchUnavailable)
+    );
+}
+
+#[test]
+fn retention_pruning_passes_documented_limits_and_scan_only_ttl() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        // now = 1,早于 scan-only TTL,过期阈值必须饱和到 0 而不是回绕。
+        Arc::new(FixtureClock::available()),
+    );
+
+    assert_eq!(service.prune_batch_history().expect("prune history"), 3);
+    assert_eq!(
+        repository.retention_request(),
+        Some(ExternalImportBatchRetentionRequest {
+            max_imported_batches: EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES,
+            max_scan_only_batches: EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
+            scan_only_expires_before_unix_millis: 0,
+        })
+    );
+
+    let unavailable_repository = Arc::new(FixtureBatchRepository::default());
+    let (unavailable_service, _unavailable_task_manager) = fixture_service(
+        Arc::clone(&unavailable_repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::unavailable()),
+    );
+
+    assert_eq!(
+        unavailable_service.prune_batch_history(),
+        Err(ExternalImportBatchError::ClockUnavailable)
+    );
+    assert_eq!(unavailable_repository.retention_request(), None);
+}
+
 fn fixture_service(
     repository: Arc<FixtureBatchRepository>,
     source_registry: Arc<FixtureSourceRegistry>,
@@ -1320,6 +1550,8 @@ struct FixtureBatchRepository {
     state: Mutex<FixtureBatchRepositoryState>,
     fail_seal: Mutex<bool>,
     fail_restart: Mutex<bool>,
+    fail_history: Mutex<bool>,
+    retention_request: Mutex<Option<ExternalImportBatchRetentionRequest>>,
 }
 
 #[derive(Default)]
@@ -1356,6 +1588,25 @@ impl FixtureBatchRepository {
 
     fn set_fail_restart(&self, value: bool) {
         *self.fail_restart.lock().expect("restart mode lock") = value;
+    }
+
+    fn set_fail_history(&self, value: bool) {
+        *self.fail_history.lock().expect("history mode lock") = value;
+    }
+
+    fn seed_results(&self, batch_id: &ExternalImportBatchId, results: &[ExternalImportItemResult]) {
+        self.state
+            .lock()
+            .expect("fixture repository lock")
+            .results
+            .insert(batch_id.as_str().to_owned(), results.to_vec());
+    }
+
+    fn retention_request(&self) -> Option<ExternalImportBatchRetentionRequest> {
+        *self
+            .retention_request
+            .lock()
+            .expect("retention request lock")
     }
 
     fn batch(&self, batch_id: &ExternalImportBatchId) -> ExternalImportBatch {
@@ -1642,6 +1893,109 @@ impl ExternalImportBatchRepository for FixtureBatchRepository {
             total_count,
             next_offset,
         })
+    }
+
+    fn list_item_result_details_page(
+        &self,
+        batch_id: &ExternalImportBatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportItemResultDetailPage> {
+        let page = self.list_item_results_page(batch_id, offset, limit)?;
+        let state = self.state.lock().expect("fixture repository lock");
+        let candidates = state
+            .candidates
+            .get(batch_id.as_str())
+            .cloned()
+            .unwrap_or_default();
+        let records = page
+            .results
+            .into_iter()
+            .map(|result| {
+                let display_name = candidates
+                    .iter()
+                    .find(|candidate| candidate.candidate_id == result.candidate_id)
+                    .and_then(|candidate| candidate.metadata_hint.display_name.clone());
+                ExternalImportItemResultRecord {
+                    result,
+                    display_name,
+                }
+            })
+            .collect();
+        Ok(ExternalImportItemResultDetailPage {
+            records,
+            total_count: page.total_count,
+            next_offset: page.next_offset,
+        })
+    }
+
+    fn list_batch_history_page(
+        &self,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportBatchHistoryPage> {
+        if *self.fail_history.lock().expect("history mode lock") {
+            bail!("fixture history is unavailable");
+        }
+        let state = self.state.lock().expect("fixture repository lock");
+        let mut batches = state.batches.values().cloned().collect::<Vec<_>>();
+        batches.sort_by(|left, right| {
+            right
+                .created_at_unix_millis
+                .cmp(&left.created_at_unix_millis)
+                .then_with(|| left.batch_id.as_str().cmp(right.batch_id.as_str()))
+        });
+        let total_count = batches.len();
+        let entries = batches
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|batch| {
+                let candidate_count = state
+                    .candidates
+                    .get(batch.batch_id.as_str())
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                let mut result_counts = ExternalImportItemStatusCounts::default();
+                for result in state
+                    .results
+                    .get(batch.batch_id.as_str())
+                    .into_iter()
+                    .flatten()
+                {
+                    result_counts
+                        .add(result.status, 1)
+                        .expect("fixture result count");
+                }
+                ExternalImportBatchHistoryEntry {
+                    batch,
+                    candidate_count,
+                    result_counts,
+                }
+            })
+            .collect::<Vec<_>>();
+        let next_offset = offset
+            .checked_add(entries.len())
+            .filter(|next_offset| *next_offset < total_count);
+        Ok(ExternalImportBatchHistoryPage {
+            entries,
+            total_count,
+            next_offset,
+        })
+    }
+
+    fn prune_batches(
+        &self,
+        request: ExternalImportBatchRetentionRequest,
+    ) -> Result<ExternalImportBatchRetentionOutcome> {
+        if *self.fail_history.lock().expect("history mode lock") {
+            bail!("fixture retention is unavailable");
+        }
+        *self
+            .retention_request
+            .lock()
+            .expect("retention request lock") = Some(request);
+        Ok(ExternalImportBatchRetentionOutcome { removed_batches: 3 })
     }
 }
 

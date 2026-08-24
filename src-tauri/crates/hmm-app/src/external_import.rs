@@ -2,9 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod external_import_catalog;
+mod external_import_history;
 mod external_import_preview;
 use external_import_catalog::{
     merge_external_metadata_hint, normalize_display_name, CatalogIndex, PendingCatalogImport,
+};
+pub use external_import_history::{
+    ExternalImportHistoryEntry, ExternalImportHistoryPage, DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT,
+    MAX_EXTERNAL_IMPORT_HISTORY_LIMIT,
 };
 pub use external_import_preview::{ExternalImportPreviewCandidate, ExternalImportPreviewPage};
 
@@ -20,7 +25,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, CancellationToken, CategoryRepository, ExternalImportBatchRepository,
-    ExternalImportItemResultPage, ExternalImportMaterializationOutcome,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
     ExternalImportMaterializeRequest, ExternalImportMaterializer, ExternalImportScanRequest,
     ExternalImportScanner, ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
     ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
@@ -408,7 +413,7 @@ pub struct ExternalImportBatchLaunch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalImportResultPage {
     pub batch: ExternalImportBatch,
-    pub results: Vec<ExternalImportItemResult>,
+    pub results: Vec<ExternalImportItemResultRecord>,
     pub total_count: usize,
     pub next_offset: Option<usize>,
 }
@@ -435,6 +440,8 @@ pub enum ExternalImportBatchError {
     PreviewPageInvalid,
     #[error("external import result page is invalid")]
     ResultPageInvalid,
+    #[error("external import history page is invalid")]
+    HistoryPageInvalid,
     #[error("external import clock is unavailable")]
     ClockUnavailable,
 }
@@ -452,6 +459,7 @@ impl ExternalImportBatchError {
             Self::CategoryUnavailable => "external_import_category_unavailable",
             Self::PreviewPageInvalid => "external_import_preview_request_invalid",
             Self::ResultPageInvalid => "external_import_result_request_invalid",
+            Self::HistoryPageInvalid => "external_import_history_request_invalid",
             Self::ClockUnavailable => "external_import_clock_unavailable",
         }
     }
@@ -1406,13 +1414,13 @@ impl ExternalImportBatchService {
             return Err(ExternalImportBatchError::ResultPageInvalid);
         }
         let batch = self.get_batch(batch_id)?;
-        let page: ExternalImportItemResultPage = self
+        let page = self
             .batch_repository
-            .list_item_results_page(batch_id, offset, limit)
+            .list_item_result_details_page(batch_id, offset, limit)
             .map_err(|_| ExternalImportBatchError::BatchUnavailable)?;
         Ok(ExternalImportResultPage {
             batch,
-            results: page.results,
+            results: page.records,
             total_count: page.total_count,
             next_offset: page.next_offset,
         })

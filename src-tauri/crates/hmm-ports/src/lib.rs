@@ -49,13 +49,15 @@ pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use external_import::{
-    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
-    ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
-    ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
-    ExternalImportScanResult, ExternalImportScanner, ExternalImportSealAndStartRequest,
-    ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
-    ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
-    ExternalImportSourceRegistry,
+    ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage, ExternalImportBatchRepository,
+    ExternalImportBatchRetentionOutcome, ExternalImportBatchRetentionRequest,
+    ExternalImportCandidatePage, ExternalImportItemResultDetailPage, ExternalImportItemResultPage,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
+    ExternalImportMaterializeRequest, ExternalImportMaterializedPackage,
+    ExternalImportMaterializer, ExternalImportScanRequest, ExternalImportScanResult,
+    ExternalImportScanner, ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
+    ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
+    ExternalImportSourceRegistration, ExternalImportSourceRegistry,
 };
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,
