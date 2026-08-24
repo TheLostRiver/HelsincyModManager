@@ -46,7 +46,7 @@ use category_commands::{
 use debug_log_commands::{get_debug_log_settings, set_debug_log_settings};
 use external_import_commands::{
     create_external_import_selection, get_external_import_batch_result,
-    get_external_import_preview, retry_external_import_batch,
+    get_external_import_preview, list_external_import_batches, retry_external_import_batch,
     select_all_external_import_candidates, select_external_import_source,
     start_external_import_batch, start_external_import_scan, update_external_import_selection,
 };
@@ -169,6 +169,7 @@ pub fn run() {
             start_external_import_batch,
             retry_external_import_batch,
             get_external_import_batch_result,
+            list_external_import_batches,
             preview_install_plan,
             preview_imported_mod_install_plan,
             start_install_task,

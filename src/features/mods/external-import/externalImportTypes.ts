@@ -170,6 +170,7 @@ export type ExternalImportItemStatus =
 
 export type ExternalImportItemResultDto = {
   candidateId: string;
+  displayName: string | null;
   status: ExternalImportItemStatus;
   reasonCode: string | null;
   importedModId: string | null;

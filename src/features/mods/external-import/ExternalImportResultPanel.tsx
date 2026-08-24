@@ -121,7 +121,7 @@ export function ExternalImportResultPanel({
             {state.results.map((result) => (
               <li key={result.candidateId} className="external-import__result-item">
                 <div className="external-import__result-main">
-                  <strong>{extCopy.resultPanel.candidateResult}</strong>
+                  <strong>{result.displayName ?? extCopy.preview.unnamed}</strong>
                   <code>{result.candidateId}</code>
                   {result.importedModId ? <span>{extCopy.resultPanel.modId(result.importedModId)}</span> : null}
                 </div>
