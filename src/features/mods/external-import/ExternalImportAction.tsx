@@ -1,16 +1,26 @@
 import { resolveCopy, useI18n } from "../../../shared/i18n";
 import { externalImportCopy } from "./externalImportCopy";
 import { listen } from "@tauri-apps/api/event";
-import { CircleAlert, FolderInput, LoaderCircle, RefreshCcw, XCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  CircleAlert,
+  FolderInput,
+  History,
+  LoaderCircle,
+  RefreshCcw,
+  XCircle,
+} from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../../shared/feedback";
+import { ModLibraryControlTooltip } from "../ModLibraryControlTooltip";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../modImportTypes";
 import {
   cancelExternalImportScan,
   selectExternalImportSource,
   startExternalImportScan,
 } from "./externalImportApi";
+import { ExternalImportHistoryPanel } from "./ExternalImportHistoryPanel";
 import { ExternalImportSelectionPanel } from "./ExternalImportSelectionPanel";
+import { useExternalImportHistory } from "./useExternalImportHistory";
 import {
   getExternalImportScanErrorMessage,
   getExternalImportScanPhaseLabel,
@@ -66,6 +76,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
   const chooseSourceButtonRef = useRef<HTMLButtonElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [view, setView] = useState<"current" | "history">("current");
   const [listenerStatus, setListenerStatus] = useState<ListenerStatus>("loading");
   const [listenerAttempt, setListenerAttempt] = useState(0);
   const [sourcePickerActive, setSourcePickerActive] = useState(false);
@@ -83,6 +94,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
     scanState.status === "completed" ? batchId : null,
     onImported,
   );
+  const historyWorkflow = useExternalImportHistory();
   const selectionWorkflowBusy =
     selectionWorkflow.pendingAction !== null ||
     selectionWorkflow.importActive ||
@@ -356,9 +368,24 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
   }
 
   function openDialog() {
+    setView("current");
     setDialogOpen(true);
     if (scanStateRef.current.status === "idle" && source === null && listenerStatus === "ready") {
       void chooseSource();
+    }
+  }
+
+  // 记录模式打开:纯查询视图,绝不拉起原生目录选择器。
+  function openHistory() {
+    setView("history");
+    setDialogOpen(true);
+    historyWorkflow.ensureLoaded();
+  }
+
+  function switchView(next: "current" | "history") {
+    setView(next);
+    if (next === "history") {
+      historyWorkflow.ensureLoaded();
     }
   }
 
@@ -375,26 +402,66 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
     sourcePickerActive ||
     isScanActive(scanState) ||
     selectionWorkflowBusy;
+  // 服务状态走 tooltip + 警示点(与其他工具栏按钮一致),不占工具栏红字;
+  // 可访问播报由隐藏 live region 保留。
+  const triggerStatusText =
+    listenerStatus === "failed"
+      ? getExternalImportScanErrorMessage("external_import_listener_unavailable", extCopy.scan)
+      : undefined;
+  const triggerStatusId = useId();
 
   return (
     <>
+      <ModLibraryControlTooltip content={triggerStatusText}>
+        {(descriptionId) => (
+          <button
+            type="button"
+            className="compact-action is-neutral external-import-action__trigger"
+            data-listener-status={listenerStatus}
+            disabled={listenerStatus === "loading"}
+            aria-label={extCopy.action.trigger}
+            aria-describedby={triggerStatusText ? descriptionId : undefined}
+            onClick={openDialog}
+          >
+            <span className="compact-action__left">
+              <FolderInput size={14} strokeWidth={2.4} aria-hidden="true" />
+              <span className="compact-action__label">{extCopy.action.trigger}</span>
+              {listenerStatus === "failed" ? (
+                <span className="compact-import-action__alert-dot" aria-hidden="true" />
+              ) : null}
+            </span>
+          </button>
+        )}
+      </ModLibraryControlTooltip>
+      <span
+        id={triggerStatusId}
+        className="compact-import-action__sr-status"
+        role={listenerStatus === "failed" ? "alert" : "status"}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {triggerStatusText ?? ""}
+      </span>
       <button
         type="button"
-        className="compact-action is-neutral external-import-action__trigger"
-        disabled={listenerStatus === "loading"}
-        aria-label={extCopy.action.trigger}
-        onClick={openDialog}
+        className="compact-action is-neutral external-import-action__history-trigger"
+        aria-label={extCopy.history.historyTriggerAria}
+        title={extCopy.history.historyTriggerAria}
+        onClick={openHistory}
       >
         <span className="compact-action__left">
-          <FolderInput size={14} strokeWidth={2.4} aria-hidden="true" />
-          <span className="compact-action__label">{extCopy.action.trigger}</span>
+          <History size={14} strokeWidth={2.4} aria-hidden="true" />
         </span>
       </button>
 
       <Dialog
         open={dialogOpen}
         title={extCopy.action.dialogTitle}
-        description={source?.displayLabel ?? extCopy.action.dialogFallbackDescription}
+        description={
+          view === "history"
+            ? extCopy.history.tabHistory
+            : source?.displayLabel ?? extCopy.action.dialogFallbackDescription
+        }
         icon={<FolderInput size={20} />}
         busy={
           sourcePickerActive ||
@@ -404,6 +471,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
         initialFocusRef={chooseSourceButtonRef}
         onClose={() => setDialogOpen(false)}
         footer={
+          view === "history" ? undefined : (
           <>
             {scanState.status === "running" ? (
               <button
@@ -433,9 +501,43 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
               {extCopy.action.chooseSource}
             </button>
           </>
+          )
         }
       >
         <div className="external-import">
+          <div
+            className="external-import__tabs"
+            role="tablist"
+            aria-label={extCopy.history.tablistAria}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "current"}
+              className={view === "current" ? "is-active" : undefined}
+              disabled={sourcePickerActive}
+              onClick={() => switchView("current")}
+            >
+              <FolderInput size={15} aria-hidden="true" />
+              {extCopy.history.tabCurrent}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "history"}
+              className={view === "history" ? "is-active" : undefined}
+              disabled={sourcePickerActive}
+              onClick={() => switchView("history")}
+            >
+              <History size={15} aria-hidden="true" />
+              {extCopy.history.tabHistory}
+            </button>
+          </div>
+
+          {view === "history" ? (
+            <ExternalImportHistoryPanel workflow={historyWorkflow} />
+          ) : (
+          <>
           <div className="external-import__source-row">
             <span className="external-import__eyebrow">{extCopy.action.sourceEyebrow}</span>
             <strong>{source?.displayLabel ?? extCopy.action.sourceNotChosen}</strong>
@@ -477,8 +579,18 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
           ) : null}
 
           {scanState.status === "completed" && batchId ? (
-            <ExternalImportSelectionPanel workflow={selectionWorkflow} />
+            <ExternalImportSelectionPanel
+              workflow={selectionWorkflow}
+              onViewHistory={() => {
+                setView("history");
+                // 刚完成的批次要立刻可见,直接刷新而不是命中 ensureLoaded 的缓存。
+                historyWorkflow.refresh();
+              }}
+              onCloseDialog={() => setDialogOpen(false)}
+            />
           ) : null}
+          </>
+          )}
         </div>
       </Dialog>
     </>
