@@ -57,7 +57,9 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
         );
     }
 
-    // v3 起全部 269 条覆盖中英日三语（v2 时 5 条活动/联动装缺 en/ja，已从 kiranico 补齐）。
+    // v3 起 268/269 条覆盖中英日三语展示名（v2 时 5 条活动/联动装缺 en/ja）。
+    // 唯一例外 pl057_0010：官方英文名与 pl019_0000 重名，按治理规则 en 走 alias，
+    // 键集细节由 catalog 单元测试锁定。
     let with_three_locales = catalog
         .targets()
         .iter()
@@ -67,7 +69,7 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
                 .all(|locale| target.display_name().get(locale).is_some())
         })
         .count();
-    assert_eq!(with_three_locales, 269, "中英日三语覆盖数量变了");
+    assert_eq!(with_three_locales, 268, "中英日三语覆盖数量变了");
 }
 
 #[test]
