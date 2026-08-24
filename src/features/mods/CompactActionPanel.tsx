@@ -323,9 +323,7 @@ export function CompactActionPanel({
             <span>{compact.footerSinglePage(selectedPageCount, pageCount)}</span>
           )}
         </span>
-        {selectionNotice ? (
-          <span className="compact-panel__selection-feedback">{selectionNotice}</span>
-        ) : null}
+        {/* 选择回执改由页级 toast 呈现；这里只保留无障碍播报。 */}
         <span
           className="compact-panel__selection-announcement"
           role="status"

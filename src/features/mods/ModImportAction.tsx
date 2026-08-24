@@ -4,6 +4,7 @@ import { FileArchive, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
+import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import { modImportCopy, type ModImportCopy } from "./modImportCopy";
 import { startImportModRevisionTask, startImportModTask } from "./modImportApi";
 import {
@@ -371,47 +372,58 @@ export function ModImportAction({
 
   return (
     <>
-      <button
-        type="button"
-        className="compact-action compact-import-action is-primary"
-        data-variant="primary"
-        data-tour-id={tourId}
-        onClick={() => {
-          if (listenerStatus === "failed") {
-            continueImportAfterReconnectRef.current = true;
-            retryTaskProgressListener();
-            return;
-          }
-          void handleImport();
-        }}
-        disabled={actionDisabled}
-        aria-describedby={statusText ? statusId : undefined}
-      >
-        <span className="compact-action__left">
-          {taskActive || listenerLoading ? (
-            <LoaderCircle className="compact-import-action__spinner" size={14} aria-hidden="true" />
-          ) : (
-            <FileArchive size={14} strokeWidth={2.6} aria-hidden="true" />
-          )}
-          <span className="compact-action__label">
-            {listenerLoading
-              ? copy.action.preparing
-              : listenerStatus === "failed"
-                ? mode === "revision" ? copy.action.reconnectRevision : copy.action.reconnectImport
-                : importActionLabel(label, taskState, mode, copy)}
-          </span>
-        </span>
-      </button>
+      {/* 禁用原因与服务状态走 tooltip（与其他工具栏按钮一致），不再以内联
+          红字占据工具栏；服务待重连时按钮加警示点，可访问播报由隐藏的
+          live region 保留。 */}
+      <ModLibraryControlTooltip content={statusText}>
+        {(descriptionId) => (
+          <button
+            type="button"
+            className="compact-action compact-import-action is-primary"
+            data-variant="primary"
+            data-listener-status={listenerStatus}
+            data-tour-id={tourId}
+            onClick={() => {
+              if (listenerStatus === "failed") {
+                continueImportAfterReconnectRef.current = true;
+                retryTaskProgressListener();
+                return;
+              }
+              void handleImport();
+            }}
+            disabled={actionDisabled}
+            aria-describedby={statusText ? descriptionId : undefined}
+          >
+            <span className="compact-action__left">
+              {taskActive || listenerLoading ? (
+                <LoaderCircle className="compact-import-action__spinner" size={14} aria-hidden="true" />
+              ) : (
+                <FileArchive size={14} strokeWidth={2.6} aria-hidden="true" />
+              )}
+              <span className="compact-action__label">
+                {listenerLoading
+                  ? copy.action.preparing
+                  : listenerStatus === "failed"
+                    ? mode === "revision" ? copy.action.reconnectRevision : copy.action.reconnectImport
+                    : importActionLabel(label, taskState, mode, copy)}
+              </span>
+              {listenerStatus === "failed" ? (
+                <span className="compact-import-action__alert-dot" aria-hidden="true" />
+              ) : null}
+            </span>
+          </button>
+        )}
+      </ModLibraryControlTooltip>
 
-      {statusText ? (
-        <span
-          id={statusId}
-          className={`compact-import-action__status is-${taskState.status}`}
-          role={taskState.status === "failed" ? "alert" : "status"}
-        >
-          {statusText}
-        </span>
-      ) : null}
+      <span
+        id={statusId}
+        className="compact-import-action__sr-status"
+        role={taskState.status === "failed" ? "alert" : "status"}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {statusText ?? ""}
+      </span>
     </>
   );
 }
