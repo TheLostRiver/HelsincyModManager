@@ -14,7 +14,7 @@ use hmm_core::{
     BatchItemInput, BatchOperation, BatchPlanRequest, BatchResultSummary, FileLayer, ModId,
     ModRevisionId, ProfileId, ReplacementTargetId, DEFAULT_BATCH_MAX_ITEMS,
 };
-use hmm_runtime::{SandboxBatchInstallAutomation, SandboxBatchPlanRequest};
+use hmm_runtime::{BatchLifecycleAutomation, BatchLifecyclePlanRequest};
 use std::collections::BTreeMap;
 use tauri::{AppHandle, State};
 
@@ -57,7 +57,7 @@ pub fn preview_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let request = parse_batch_plan_request(request)?;
-    let preview = SandboxBatchInstallAutomation::preview_request(environment, request)
+    let preview = BatchLifecycleAutomation::preview_request(environment, request)
         .map_err(batch_automation_error)?;
     Ok(project_preview(preview))
 }
@@ -73,13 +73,13 @@ pub fn seal_batch_mod_lifecycle(
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let request = parse_batch_plan_request(request)?;
     let sealed = match state.batch_sandbox_database() {
-        Some(database) => SandboxBatchInstallAutomation::seal_request_with_database(
+        Some(database) => BatchLifecycleAutomation::seal_request_with_database(
             environment,
             request,
             &preview_token,
             database,
         ),
-        None => SandboxBatchInstallAutomation::seal_request(environment, request, &preview_token),
+        None => BatchLifecycleAutomation::seal_request(environment, request, &preview_token),
     }
     .map_err(batch_automation_error)?
     .1;
@@ -108,13 +108,13 @@ pub async fn start_batch_mod_lifecycle(
         .clone();
     let database = state.batch_sandbox_database();
     let (operation, run) = tauri::async_runtime::spawn_blocking(move || match database {
-        Some(database) => SandboxBatchInstallAutomation::start_request_with_database(
+        Some(database) => BatchLifecycleAutomation::start_request_with_database(
             &environment,
             &batch_id,
             &plan_token,
             database,
         ),
-        None => SandboxBatchInstallAutomation::start_request(&environment, &batch_id, &plan_token),
+        None => BatchLifecycleAutomation::start_request(&environment, &batch_id, &plan_token),
     })
     .await
     .map_err(|_| batch_internal_error())?
@@ -137,13 +137,13 @@ pub fn get_batch_mod_lifecycle_result(
     let offset = parse_result_cursor(cursor)?;
     let limit = parse_result_limit(limit)?;
     let snapshot = match state.batch_sandbox_database() {
-        Some(database) => SandboxBatchInstallAutomation::result_with_database(
+        Some(database) => BatchLifecycleAutomation::result_with_database(
             environment,
             &batch_id,
             attempt_number,
             database,
         ),
-        None => SandboxBatchInstallAutomation::result(environment, &batch_id, attempt_number),
+        None => BatchLifecycleAutomation::result(environment, &batch_id, attempt_number),
     }
     .map_err(batch_automation_error)?;
     Ok(project_result_page(snapshot, offset, limit))
@@ -162,13 +162,13 @@ pub async fn retry_batch_mod_lifecycle(
         .clone();
     let database = state.batch_sandbox_database();
     let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || match database {
-        Some(database) => SandboxBatchInstallAutomation::retry_with_operation_with_database(
+        Some(database) => BatchLifecycleAutomation::retry_with_operation_with_database(
             &environment,
             &batch_id,
             expected_attempt_number,
             database,
         ),
-        None => SandboxBatchInstallAutomation::retry_with_operation(
+        None => BatchLifecycleAutomation::retry_with_operation(
             &environment,
             &batch_id,
             expected_attempt_number,
@@ -185,7 +185,7 @@ pub async fn retry_batch_mod_lifecycle(
 
 fn parse_batch_plan_request(
     request: BatchModLifecycleRequestDto,
-) -> Result<SandboxBatchPlanRequest, CommandErrorDto> {
+) -> Result<BatchLifecyclePlanRequest, CommandErrorDto> {
     if request.schema_version != BATCH_MOD_LIFECYCLE_SCHEMA_VERSION {
         return Err(batch_input_invalid_error());
     }
@@ -249,7 +249,7 @@ fn parse_batch_plan_request(
             }),
         });
     }
-    Ok(SandboxBatchPlanRequest {
+    Ok(BatchLifecyclePlanRequest {
         plan: BatchPlanRequest {
             schema_version: BATCH_MOD_LIFECYCLE_SCHEMA_VERSION,
             operation,
@@ -517,7 +517,7 @@ fn batch_internal_error() -> CommandErrorDto {
     }
 }
 
-fn batch_automation_error(error: hmm_runtime::SandboxBatchAutomationError) -> CommandErrorDto {
+fn batch_automation_error(error: hmm_runtime::BatchAutomationError) -> CommandErrorDto {
     CommandErrorDto {
         code: error.code().to_owned(),
         message: batch_error_message(error.code()),
