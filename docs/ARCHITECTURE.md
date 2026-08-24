@@ -163,8 +163,8 @@ game/profile 的 `queued/running/stopping` attempt，并原子完成 sealed -> q
 最多一个能取得同 scope 的 batch admission；retry 在竞争失败时只回收仍 sealed、没有 item result
 且 verifier 匹配的未执行新 attempt。`result` 不执行 scope reconciliation，只读取调用方明确指定的
 batch/attempt，使遗留 active attempt 的诊断结果保持可读。该原子性只覆盖 Sandbox batch journal，
-不等于 Production 通用写 admission；Production 在 CLI policy 和 runtime composition 两层继续
-fail closed。
+不等于 Production 通用写 admission；batch 的 Production 请求在 automation 边界继续
+fail closed（开放前置 per-installation secret，不随 CLI-3B 单项命令解禁）。
 
 Slice C 的 runtime 按 sealed operation 路由 facts provider、item executor、runner 和 retry，不让 CLI
 循环单项 command。跨 revision reinstall 与 uninstall 复用 T13-03/T13-04 的 app executor；

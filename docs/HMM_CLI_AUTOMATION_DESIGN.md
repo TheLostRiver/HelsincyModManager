@@ -119,7 +119,8 @@ fixture 只能描述人工文件和稳定 ID，不能携带真实用户名、Ste
 
 CLI-0A 固定了不访问文件系统的环境策略：
 
-- Production 禁止 `--data-dir`，数据根模式为 `system`，写命令策略固定为 `disabled`。
+- Production 禁止 `--data-dir`，数据根模式为 `system`；写命令策略在 CLI-0A 至 CLI-3A 期间
+  固定为 `disabled`，CLI-3B 起演进为 `production_command_level`（见跨进程写入门禁一节）。
 - Sandbox 必须提供显式绝对路径，并拒绝文件系统根以及包含 `.` / `..` 的词法不安全路径。
 - `sandbox_only` 只表示未来写命令的准入范围，不代表已创建 marker、完成 canonical containment
   或签发写 capability。
@@ -795,7 +796,8 @@ fixture 必须：
 
 - CLI-0A 交付时 `hmm-cli` dependency tree 不包含 Tauri、`hmm-tauri`、`hmm-infra` 或真实文件系统
   adapter；CLI-0B 接入共享 runtime 后会传递包含业务/infra crate，但仍不得包含 Tauri。
-- Production 始终报告 `productionWritesAllowed=false`、`writeCommandPolicy=disabled`。
+- CLI-0A 至 CLI-3A 期间 Production 报告 `productionWritesAllowed=false`、
+  `writeCommandPolicy=disabled`；CLI-3B 起演进为 `true` / `production_command_level`。
 - `sandbox_only` 不被当作已具备安全写 capability。
 - 聚焦 format/test/clippy 通过，测试不访问真实游戏、Steam、存档、AppData 或 Scheduled Task。
 
