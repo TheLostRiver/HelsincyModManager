@@ -1,5 +1,6 @@
 import { DEFAULT_PROFILE_BACKUP_RETENTION } from "./profileSaveSettingsDefaults";
 import type { SaveBackupSummaryDto } from "./profileSaveBackupTypes";
+import type { SaveDirectoryDiscoveryDto } from "./profileSaveDirectoryDiscoveryTypes";
 import type {
   ProfileDirectorySelectionDto,
   ProfileSaveSettingsDto,
@@ -172,6 +173,85 @@ export function createPreviewSaveBackups(gameId: string, profileId: string | nul
   }
 
   return rows;
+}
+
+/** 预览环境的 Steam 多账号发现结果：让候选选择 UI 在纯浏览器下可见、可调整。
+ *  真实链路里账号/路径由后端脱敏投影，这里的标签只模仿投影后的形态。 */
+export function createPreviewSaveDirectoryDiscovery(
+  gameId: string,
+  profileId: string,
+): SaveDirectoryDiscoveryDto {
+  const now = Date.now();
+
+  return {
+    discoveryId: `preview-discovery-${profileId}`,
+    gameId,
+    profileId,
+    outcome: "confirmation_required",
+    recommendedCandidateId: "preview-candidate-recent",
+    savedSettings: null,
+    candidates: [
+      {
+        candidateId: "preview-candidate-recent",
+        source: "steam_userdata",
+        confidence: "high",
+        recommended: true,
+        accountName: "Hunter-Rathalos",
+        avatarUrl: null,
+        accountLabel: "Steam 账号 ····2481",
+        pathLabel: "userdata/····2481/582010/remote",
+        lastModifiedAt: now - 2 * 60 * 60 * 1000,
+        evidence: ["预览示例：检测到 MHW:I 存档文件", "最近游玩过本作"],
+      },
+      {
+        candidateId: "preview-candidate-secondary",
+        source: "steam_userdata",
+        confidence: "medium",
+        recommended: false,
+        accountName: null,
+        avatarUrl: null,
+        accountLabel: "Steam 账号 ····0937",
+        pathLabel: "userdata/····0937/582010/remote",
+        lastModifiedAt: now - 26 * 60 * 60 * 1000,
+        evidence: ["预览示例：存在存档目录，公开资料未能补全"],
+      },
+      {
+        candidateId: "preview-candidate-stale",
+        source: "steam_userdata",
+        confidence: "low",
+        recommended: false,
+        accountName: "Palico-Fan",
+        avatarUrl: null,
+        accountLabel: "Steam 账号 ····5610",
+        pathLabel: "userdata/····5610/582010/remote",
+        lastModifiedAt: now - 40 * 24 * 60 * 60 * 1000,
+        evidence: ["预览示例：目录较旧，可能来自弃用账号"],
+      },
+    ],
+  };
+}
+
+/** 预览环境确认候选后的推进结果：仿真真实链路的 auto_saved 收尾。 */
+export function createPreviewSaveDirectoryConfirmation(
+  discovery: SaveDirectoryDiscoveryDto,
+  candidateId: string,
+): SaveDirectoryDiscoveryDto {
+  const chosen = discovery.candidates.find(
+    (candidate) => candidate.candidateId === candidateId,
+  );
+
+  return {
+    ...discovery,
+    outcome: "auto_saved",
+    recommendedCandidateId: null,
+    candidates: chosen ? [chosen] : [],
+    savedSettings: {
+      mode: "custom",
+      status: "valid",
+      pathLabel: chosen?.pathLabel ?? "userdata/····2481/582010/remote",
+      messages: ["预览环境已模拟保存所选账号的存档目录"],
+    },
+  };
 }
 
 export function createPreviewDirectorySelection(
