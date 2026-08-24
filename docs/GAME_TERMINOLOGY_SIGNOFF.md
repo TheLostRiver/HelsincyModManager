@@ -110,3 +110,14 @@ NOTICE.md「MHW:I 装备与武器名称」一节内容与政策边界一致：�
 
 签核只对上表所列 artifact 版本有效。catalog 数据更新（新增条目或版本变更）时，本签核须
 重新执行——候选 source 声明、`--require-bundled` 复验与边界核对缺一不可。
+
+## 变更记录：mhw-armor-v3（2026-08-24，签核待重新执行）
+
+- 变更内容：防具 artifact 升至 `mhw-armor-v3`，仅补齐 5 条活动/联动装（pl019_0000、
+  pl057_0000、pl057_0010、pl133_0000、pl132_0010）缺失的 en/ja 展示名；条目数（269）、
+  stable ID、resource 语义、alias 与武器 artifact（`mhw-weapon-v1`）均未变化。
+- 名称来源：kiranico（mhworld.kiranico.com）zh/en/ja 系列页逐条对照（catalog 既有 zh_cn 名
+  与 kiranico zh 逐字一致），日文名另经 altema/game8 交叉验证；名称属于卡普空，
+  `game_terminology` 状态与第 4 节边界不变。
+- 按上文规则，2026-08-23 签核对防具 artifact 不再有效：防具部分须按第 5 节清单重新执行
+  签核（武器部分不受影响）。重签完成前，防具 catalog 相关发版判断以本记录为准。

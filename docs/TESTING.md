@@ -886,8 +886,8 @@ cargo test -p hmm-games-mhw --test armor_catalog
 ```
 
 这些测试分别锁定 stable target/binding/source/catalog identity 与 serde 不变量、catalog list/find/search
-trait contract、`mhw-armor-v2` catalog、MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和
-Fatalis/Alatreon 精确隔离。
+trait contract、`mhw-armor-v3` catalog（269 条全三语；防具与武器 catalog 均有键集完备性防回归断言）、
+MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和 Fatalis/Alatreon 精确隔离。
 
 ### CAT-01 装备 Catalog 候选数据治理
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "mhw-armor-v2",
+  "catalog_version": "mhw-armor-v3",
   "game_id": "mhw",
   "targets": [
     {
@@ -338,7 +338,9 @@
       "id": "mhw:armor:93c339cad8c90a98d7a3fc5d07fee7b9b7beacf4860764ac40b477da13811955",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "燕尾蝶贝塔"
+        "zh_cn": "燕尾蝶贝塔",
+        "en": "Butterfly β",
+        "ja": "パピメルβ"
       },
       "aliases": [],
       "internal_id": "pl019_0000",
@@ -2041,7 +2043,9 @@
       "id": "mhw:armor:54ff0e6b308c41e65fcaeceb984e2f9c0e57b34837b85ad21e7880571df30eb6",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "独角仙后贝塔"
+        "zh_cn": "独角仙后贝塔",
+        "en": "Queen Beetle β",
+        "ja": "クインビートβ"
       },
       "aliases": [],
       "internal_id": "pl057_0000",
@@ -2054,7 +2058,9 @@
       "id": "mhw:armor:29346edaee99dc9a60396ea8231bae8d79432b736862a2671919989d8b5f00b0",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "燕尾蝶男贝塔"
+        "zh_cn": "燕尾蝶男贝塔",
+        "en": "Butterfly β",
+        "ja": "パピオムβ"
       },
       "aliases": [],
       "internal_id": "pl057_0010",
@@ -5676,7 +5682,9 @@
       "id": "mhw:armor:076a75371534ac5b97398b479edc9186ac7c6e720aa078cb098beaa983030b1c",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "【狩猎女神】服装"
+        "zh_cn": "【狩猎女神】服装",
+        "en": "Artemis",
+        "ja": "【アルテミス】衣装"
       },
       "aliases": [],
       "internal_id": "pl133_0000",
@@ -5688,7 +5696,9 @@
       "id": "mhw:armor:2b14c6c6e21665019201feab566e2b7c99c6dcc8c4399639b178909ccae3c864",
       "target_type": "armor",
       "display_name": {
-        "zh_cn": "精英·阿尔忒弥斯阿尔法"
+        "zh_cn": "精英·阿尔忒弥斯阿尔法",
+        "en": "Artemis α+",
+        "ja": "EXアルテミスα"
       },
       "aliases": [],
       "internal_id": "pl132_0010",
