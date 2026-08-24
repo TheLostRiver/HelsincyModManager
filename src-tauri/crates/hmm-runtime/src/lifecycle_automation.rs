@@ -1,6 +1,6 @@
 use crate::{
     HmmRuntime, ReadOnlyInstallAutomation, ReadOnlyInstallRecoveryAction, RuntimeEnvironment,
-    RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
+    SandboxWriteCapability, SandboxWriteRoots,
 };
 use hmm_app::{
     GamePrerequisiteDecision, InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason,
@@ -36,6 +36,19 @@ pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
     )
     .expect("sandbox marker");
     let game_root = sandbox.join("fixtures/games/mhw-minimal");
+    write_lifecycle_data_fixture(sandbox, &game_root);
+    game_root
+}
+
+#[cfg(test)]
+/// Production 风格 fixture：同一份数据布局，但没有 sandbox marker，游戏根位于
+/// 数据根之外的独立目录——模拟真实生产中 app data 与 Steam 游戏目录分离的形态。
+pub(crate) fn write_production_style_fixture(app_data_root: &Path, game_root: &Path) {
+    write_lifecycle_data_fixture(app_data_root, game_root);
+}
+
+#[cfg(test)]
+fn write_lifecycle_data_fixture(data_root: &Path, game_root: &Path) {
     fs::create_dir_all(game_root.join("nativePC/models")).expect("game fixture");
     fs::create_dir_all(game_root.join("nativePC/plugins")).expect("prerequisite fixture directory");
     fs::write(game_root.join("MonsterHunterWorld.exe"), b"fixture").expect("game executable");
@@ -54,7 +67,7 @@ pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
         br#"{"enablePluginLoader":true}"#,
     )
     .expect("write prerequisite config");
-    let config_root = sandbox.join("config");
+    let config_root = data_root.join("config");
     fs::create_dir_all(&config_root).expect("config root");
     fs::write(
         config_root.join("games.json"),
@@ -72,7 +85,7 @@ pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
         .to_string(),
     )
     .expect("game config");
-    let catalog_root = sandbox.join("mod-import");
+    let catalog_root = data_root.join("mod-import");
     fs::create_dir_all(&catalog_root).expect("catalog root");
     fs::write(
         catalog_root.join("results.json"),
@@ -90,9 +103,26 @@ pub(crate) fn write_install_fixture(sandbox: &Path) -> PathBuf {
     let package_root = catalog_root.join("sandboxes/package-a/nativePC/models");
     fs::create_dir_all(&package_root).expect("package root");
     fs::write(package_root.join("player.mod3"), b"fixture").expect("package file");
-    game_root
 }
 const LIFECYCLE_PLAN_TOKEN_TTL_MILLIS: u128 = 5 * 60 * 1000;
+
+/// Token 绑定的运行环境事实。production 与 sandbox 的 token 互不通用：
+/// facts 里的环境标签参与 digest，跨环境重放一律 `PlanTokenInvalid`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleTokenEnvironment {
+    Production,
+    Sandbox,
+}
+
+impl LifecycleTokenEnvironment {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::Sandbox => "sandbox",
+        }
+    }
+}
+
 const INSTALL_APPLY_COMMAND: &str = "install.apply";
 const INSTALL_UNINSTALL_COMMAND: &str = "install.uninstall";
 const INSTALL_REINSTALL_COMMAND: &str = "install.reinstall";
@@ -116,8 +146,7 @@ impl LifecycleTaskCancellationHandle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SandboxLifecycleAutomationError {
-    ProductionForbidden,
+pub enum CliLifecycleAutomationError {
     PlanBlocked,
     PlanUnavailable,
     PlanTokenExpired,
@@ -131,10 +160,9 @@ pub enum SandboxLifecycleAutomationError {
     WriteRejected,
 }
 
-impl SandboxLifecycleAutomationError {
+impl CliLifecycleAutomationError {
     pub const fn code(&self) -> &'static str {
         match self {
-            Self::ProductionForbidden => "sandbox_lifecycle_production_forbidden",
             Self::PlanBlocked => "install_plan_blocked",
             Self::PlanUnavailable => "install_plan_unavailable",
             Self::PlanTokenExpired => "plan_token_expired",
@@ -157,15 +185,165 @@ impl SandboxLifecycleAutomationError {
     }
 }
 
-impl fmt::Display for SandboxLifecycleAutomationError {
+impl fmt::Display for CliLifecycleAutomationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.code())
     }
 }
 
-impl std::error::Error for SandboxLifecycleAutomationError {}
+impl std::error::Error for CliLifecycleAutomationError {}
 
-pub struct SandboxLifecycleAutomation {
+/// prepare 阶段解析出的环境事实：数据根、token 环境与可选 Sandbox 根。
+/// Production 数据根只能来自操作系统解析（或 crate 内测试注入），没有 CLI 注入面。
+struct LifecycleEnvironmentContext {
+    app_data_dir: PathBuf,
+    token_environment: LifecycleTokenEnvironment,
+    sandbox_root: Option<PathBuf>,
+}
+
+impl LifecycleEnvironmentContext {
+    fn resolve(environment: &RuntimeEnvironment) -> Result<Self, CliLifecycleAutomationError> {
+        match environment.sandbox_data_dir() {
+            Some(root) => Ok(Self {
+                app_data_dir: root.to_path_buf(),
+                token_environment: LifecycleTokenEnvironment::Sandbox,
+                sandbox_root: Some(root.to_path_buf()),
+            }),
+            None => Ok(Self {
+                app_data_dir: environment
+                    .resolved_production_app_data_dir()
+                    .ok_or(CliLifecycleAutomationError::RuntimeUnavailable)?,
+                token_environment: LifecycleTokenEnvironment::Production,
+                sandbox_root: None,
+            }),
+        }
+    }
+
+    fn game_config_repository(&self) -> Arc<dyn GameConfigRepository> {
+        Arc::new(JsonGameConfigRepository::new(
+            self.app_data_dir.join("config").join("games.json"),
+        ))
+    }
+
+    /// 锁外获取写根事实：Sandbox 走 marker/containment capability；Production 从已保存
+    /// 配置读取游戏根并记录，供锁内一致性重验。两条路径都不接受调用方提交的目标路径。
+    fn acquire_root_admission(
+        &self,
+        environment: &RuntimeEnvironment,
+        game_config_repository: &dyn GameConfigRepository,
+        game_id: &GameId,
+    ) -> Result<LifecycleRootAdmission, CliLifecycleAutomationError> {
+        match &self.sandbox_root {
+            Some(sandbox_root) => {
+                let capability = Arc::new(
+                    environment
+                        .acquire_sandbox_write_capability()
+                        .map_err(|_| CliLifecycleAutomationError::WriteRejected)?,
+                );
+                Ok(LifecycleRootAdmission::Sandbox {
+                    capability,
+                    sandbox_root: sandbox_root.clone(),
+                })
+            }
+            None => {
+                let game_instance = game_config_repository
+                    .load_game_instance(game_id)
+                    .map_err(|_| CliLifecycleAutomationError::WriteRejected)?
+                    .ok_or(CliLifecycleAutomationError::WriteRejected)?;
+                if !game_instance.root_dir.is_dir() {
+                    return Err(CliLifecycleAutomationError::WriteRejected);
+                }
+                Ok(LifecycleRootAdmission::Production {
+                    expected_game_root: game_instance.root_dir,
+                })
+            }
+        }
+    }
+}
+
+/// 锁内写根重验。两种环境都先核对 game/profile 身份并锁内重载配置，再执行
+/// 环境各自的根事实校验：Sandbox 重验 marker/containment/目录身份；Production
+/// 要求锁内重载的游戏根与锁外记录一致且仍然存在——配置在 preview 与 commit
+/// 之间被改指向其他目录时 fail closed。
+enum LifecycleRootAdmission {
+    Sandbox {
+        capability: Arc<SandboxWriteCapability>,
+        sandbox_root: PathBuf,
+    },
+    Production {
+        expected_game_root: PathBuf,
+    },
+}
+
+impl LifecycleRootAdmission {
+    fn revalidate(
+        &self,
+        game_config_repository: &dyn GameConfigRepository,
+        expected_game_id: &GameId,
+        expected_profile_id: &ProfileId,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        if game_id != expected_game_id || profile_id != expected_profile_id {
+            return Err(InstallWriteAdmissionError::SafetyRejected);
+        }
+        let game_instance = game_config_repository
+            .load_game_instance(game_id)
+            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+        match self {
+            Self::Sandbox {
+                capability,
+                sandbox_root,
+            } => admit_sandbox_write_roots(capability, sandbox_root, game_instance.root_dir),
+            Self::Production { expected_game_root } => {
+                if &game_instance.root_dir != expected_game_root || !game_instance.root_dir.is_dir()
+                {
+                    return Err(InstallWriteAdmissionError::SafetyRejected);
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn admit_sandbox_write_roots(
+    capability: &SandboxWriteCapability,
+    sandbox_root: &std::path::Path,
+    game_root: PathBuf,
+) -> Result<(), InstallWriteAdmissionError> {
+    capability
+        .admit_roots(SandboxWriteRoots::new(
+            sandbox_root.to_path_buf(),
+            game_root,
+        ))
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+        .revalidate()
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+}
+
+/// Sandbox batch 写侧沿用的锁内根重验：身份核对 + 配置重载 + marker/containment。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn revalidate_sandbox_write_roots(
+    capability: &SandboxWriteCapability,
+    sandbox_root: &std::path::Path,
+    game_config_repository: &dyn GameConfigRepository,
+    expected_game_id: &GameId,
+    expected_profile_id: &ProfileId,
+    game_id: &GameId,
+    profile_id: &ProfileId,
+) -> Result<(), InstallWriteAdmissionError> {
+    if game_id != expected_game_id || profile_id != expected_profile_id {
+        return Err(InstallWriteAdmissionError::SafetyRejected);
+    }
+    let game_instance = game_config_repository
+        .load_game_instance(game_id)
+        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+        .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+    admit_sandbox_write_roots(capability, sandbox_root, game_instance.root_dir)
+}
+
+pub struct CliLifecycleAutomation {
     runtime: HmmRuntime,
     install_request: Option<StartInstallTaskRequest>,
     uninstall_request: Option<StartUninstallTaskRequest>,
@@ -173,33 +351,29 @@ pub struct SandboxLifecycleAutomation {
     recovery_request: Option<StartRecoveryActionTaskRequest>,
 }
 
-impl SandboxLifecycleAutomation {
+impl CliLifecycleAutomation {
     pub fn prepare_install(
         environment: &RuntimeEnvironment,
         game_id: &str,
         profile_id: &str,
         mod_id: &str,
         plan_token: &str,
-    ) -> Result<Self, SandboxLifecycleAutomationError> {
-        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-            return Err(SandboxLifecycleAutomationError::ProductionForbidden);
-        }
-        let sandbox_root = environment
-            .sandbox_data_dir()
-            .ok_or(SandboxLifecycleAutomationError::ProductionForbidden)?
-            .to_path_buf();
+    ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
+        let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
-                .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?,
+                .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?,
         );
         let (game_id, profile_id, mod_id, plan, prerequisite_decision) = read_only
             .build_install_plan(game_id, profile_id, mod_id)
-            .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?;
         if prerequisite_decision.is_blocked() || plan.has_blocking_conflicts() {
-            return Err(SandboxLifecycleAutomationError::PlanBlocked);
+            return Err(CliLifecycleAutomationError::PlanBlocked);
         }
         validate_install_plan_token(
             plan_token,
+            context.token_environment,
             &game_id,
             &profile_id,
             &mod_id,
@@ -207,28 +381,26 @@ impl SandboxLifecycleAutomation {
             &prerequisite_decision,
         )?;
 
-        let capability = Arc::new(
-            environment
-                .acquire_sandbox_write_capability()
-                .map_err(|_| SandboxLifecycleAutomationError::WriteRejected)?,
-        );
-        let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
-            JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
-        );
+        let game_config_repository = context.game_config_repository();
+        let root_admission = context.acquire_root_admission(
+            environment,
+            game_config_repository.as_ref(),
+            &game_id,
+        )?;
         let write_admission: Arc<dyn InstallWriteAdmission> =
-            Arc::new(SandboxInstallWriteAdmission {
-                capability,
-                sandbox_root: sandbox_root.clone(),
+            Arc::new(LifecycleInstallWriteAdmission {
+                root_admission,
                 game_config_repository,
+                token_environment: context.token_environment,
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
                 plan_token: plan_token.to_owned(),
             });
-        let runtime = HmmRuntime::builder(sandbox_root)
-            .with_sandbox_write_admission(write_admission)
+        let runtime = HmmRuntime::builder(context.app_data_dir)
+            .with_install_write_admission(write_admission)
             .build()
-            .map_err(|_| SandboxLifecycleAutomationError::RuntimeUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::RuntimeUnavailable)?;
 
         Ok(Self {
             runtime,
@@ -250,26 +422,22 @@ impl SandboxLifecycleAutomation {
         profile_id: &str,
         mod_id: &str,
         plan_token: &str,
-    ) -> Result<Self, SandboxLifecycleAutomationError> {
-        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-            return Err(SandboxLifecycleAutomationError::ProductionForbidden);
-        }
-        let sandbox_root = environment
-            .sandbox_data_dir()
-            .ok_or(SandboxLifecycleAutomationError::ProductionForbidden)?
-            .to_path_buf();
+    ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
+        let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
-                .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?,
+                .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?,
         );
         let (game_id, profile_id, mod_id, summary, state_binding) = read_only
             .build_uninstall_facts(game_id, profile_id, mod_id)
-            .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?;
         if summary.status != InstallRecoveryStatus::Completed {
-            return Err(SandboxLifecycleAutomationError::UninstallBlocked);
+            return Err(CliLifecycleAutomationError::UninstallBlocked);
         }
         validate_uninstall_plan_token(
             plan_token,
+            context.token_environment,
             &game_id,
             &profile_id,
             &mod_id,
@@ -277,19 +445,17 @@ impl SandboxLifecycleAutomation {
             &state_binding,
         )?;
 
-        let capability = Arc::new(
-            environment
-                .acquire_sandbox_write_capability()
-                .map_err(|_| SandboxLifecycleAutomationError::WriteRejected)?,
-        );
-        let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
-            JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
-        );
+        let game_config_repository = context.game_config_repository();
+        let root_admission = context.acquire_root_admission(
+            environment,
+            game_config_repository.as_ref(),
+            &game_id,
+        )?;
         let write_admission: Arc<dyn InstallWriteAdmission> =
-            Arc::new(SandboxUninstallWriteAdmission {
-                capability,
-                sandbox_root: sandbox_root.clone(),
+            Arc::new(LifecycleUninstallWriteAdmission {
+                root_admission,
                 game_config_repository,
+                token_environment: context.token_environment,
                 state_reader: Arc::clone(&read_only),
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
@@ -298,10 +464,10 @@ impl SandboxLifecycleAutomation {
                 expected_state_binding: state_binding,
                 plan_token: plan_token.to_owned(),
             });
-        let runtime = HmmRuntime::builder(sandbox_root)
-            .with_sandbox_write_admission(write_admission)
+        let runtime = HmmRuntime::builder(context.app_data_dir)
+            .with_install_write_admission(write_admission)
             .build()
-            .map_err(|_| SandboxLifecycleAutomationError::RuntimeUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::RuntimeUnavailable)?;
 
         Ok(Self {
             runtime,
@@ -323,26 +489,22 @@ impl SandboxLifecycleAutomation {
         mod_id: &str,
         action: ReadOnlyInstallRecoveryAction,
         plan_token: &str,
-    ) -> Result<Self, SandboxLifecycleAutomationError> {
-        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-            return Err(SandboxLifecycleAutomationError::ProductionForbidden);
-        }
-        let sandbox_root = environment
-            .sandbox_data_dir()
-            .ok_or(SandboxLifecycleAutomationError::ProductionForbidden)?
-            .to_path_buf();
+    ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
+        let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
-                .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?,
+                .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?,
         );
         let (game_id, profile_id, mod_id, preview, state_binding) = read_only
             .build_recovery_preview_facts(game_id, profile_id, mod_id, action)
-            .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?;
         if preview.availability != InstallRecoveryActionAvailability::Available {
-            return Err(SandboxLifecycleAutomationError::RecoveryBlocked);
+            return Err(CliLifecycleAutomationError::RecoveryBlocked);
         }
         validate_recovery_plan_token(
             plan_token,
+            context.token_environment,
             &game_id,
             &profile_id,
             &mod_id,
@@ -350,20 +512,18 @@ impl SandboxLifecycleAutomation {
             &state_binding,
         )?;
 
-        let capability = Arc::new(
-            environment
-                .acquire_sandbox_write_capability()
-                .map_err(|_| SandboxLifecycleAutomationError::WriteRejected)?,
-        );
-        let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
-            JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
-        );
+        let game_config_repository = context.game_config_repository();
+        let root_admission = context.acquire_root_admission(
+            environment,
+            game_config_repository.as_ref(),
+            &game_id,
+        )?;
         let action_kind = preview.action_kind;
         let write_admission: Arc<dyn InstallWriteAdmission> =
-            Arc::new(SandboxRecoveryWriteAdmission {
-                capability,
-                sandbox_root: sandbox_root.clone(),
+            Arc::new(LifecycleRecoveryWriteAdmission {
+                root_admission,
                 game_config_repository,
+                token_environment: context.token_environment,
                 state_reader: Arc::clone(&read_only),
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
@@ -372,10 +532,10 @@ impl SandboxLifecycleAutomation {
                 expected_state_binding: state_binding,
                 plan_token: plan_token.to_owned(),
             });
-        let runtime = HmmRuntime::builder(sandbox_root)
-            .with_sandbox_write_admission(write_admission)
+        let runtime = HmmRuntime::builder(context.app_data_dir)
+            .with_install_write_admission(write_admission)
             .build()
-            .map_err(|_| SandboxLifecycleAutomationError::RuntimeUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::RuntimeUnavailable)?;
 
         Ok(Self {
             runtime,
@@ -398,30 +558,26 @@ impl SandboxLifecycleAutomation {
         mod_id: &str,
         candidate_revision_id: &str,
         plan_token: &str,
-    ) -> Result<Self, SandboxLifecycleAutomationError> {
-        if environment.kind() != RuntimeEnvironmentKind::Sandbox {
-            return Err(SandboxLifecycleAutomationError::ProductionForbidden);
-        }
-        let sandbox_root = environment
-            .sandbox_data_dir()
-            .ok_or(SandboxLifecycleAutomationError::ProductionForbidden)?
-            .to_path_buf();
+    ) -> Result<Self, CliLifecycleAutomationError> {
+        precheck_plan_token(plan_token)?;
+        let context = LifecycleEnvironmentContext::resolve(environment)?;
         let read_only = Arc::new(
             ReadOnlyInstallAutomation::from_environment(environment)
-                .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?,
+                .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?,
         );
         let (game_id, profile_id, mod_id, candidate_revision_id, preview) = read_only
             .build_reinstall_facts(game_id, profile_id, mod_id, candidate_revision_id)
-            .map_err(|_| SandboxLifecycleAutomationError::PlanUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::PlanUnavailable)?;
         if preview.status != ReinstallPreviewStatus::Ready {
-            return Err(SandboxLifecycleAutomationError::ReinstallBlocked);
+            return Err(CliLifecycleAutomationError::ReinstallBlocked);
         }
         let internal_plan_token = preview
             .plan_token
             .clone()
-            .ok_or(SandboxLifecycleAutomationError::ReinstallBlocked)?;
+            .ok_or(CliLifecycleAutomationError::ReinstallBlocked)?;
         validate_reinstall_plan_token(
             plan_token,
+            context.token_environment,
             &game_id,
             &profile_id,
             &mod_id,
@@ -429,19 +585,17 @@ impl SandboxLifecycleAutomation {
             &preview,
         )?;
 
-        let capability = Arc::new(
-            environment
-                .acquire_sandbox_write_capability()
-                .map_err(|_| SandboxLifecycleAutomationError::WriteRejected)?,
-        );
-        let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
-            JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
-        );
+        let game_config_repository = context.game_config_repository();
+        let root_admission = context.acquire_root_admission(
+            environment,
+            game_config_repository.as_ref(),
+            &game_id,
+        )?;
         let write_admission: Arc<dyn InstallWriteAdmission> =
-            Arc::new(SandboxReinstallWriteAdmission {
-                capability,
-                sandbox_root: sandbox_root.clone(),
+            Arc::new(LifecycleReinstallWriteAdmission {
+                root_admission,
                 game_config_repository,
+                token_environment: context.token_environment,
                 expected_game_id: game_id.clone(),
                 expected_profile_id: profile_id.clone(),
                 expected_mod_id: mod_id.clone(),
@@ -450,10 +604,10 @@ impl SandboxLifecycleAutomation {
                 expected_preview: preview,
                 plan_token: plan_token.to_owned(),
             });
-        let runtime = HmmRuntime::builder(sandbox_root)
-            .with_sandbox_write_admission(write_admission)
+        let runtime = HmmRuntime::builder(context.app_data_dir)
+            .with_install_write_admission(write_admission)
             .build()
-            .map_err(|_| SandboxLifecycleAutomationError::RuntimeUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::RuntimeUnavailable)?;
 
         Ok(Self {
             runtime,
@@ -471,23 +625,23 @@ impl SandboxLifecycleAutomation {
         })
     }
 
-    pub fn run_install(&self) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    pub fn run_install(&self) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         self.run_install_with_observer(&NoopLifecycleObserver)
     }
 
     pub fn run_install_with_observer<O: TaskProgressObserver + ?Sized>(
         &self,
         observer: &O,
-    ) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    ) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         let request = self
             .install_request
             .as_ref()
-            .ok_or(SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .ok_or(CliLifecycleAutomationError::TaskUnavailable)?;
         let started = self
             .runtime
             .install_tasks
             .start_install_task(request.clone())
-            .map_err(|_| SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::TaskUnavailable)?;
         let _ = observer.observe(&TaskProgressEvent::new(
             started.task_id.clone(),
             started.kind,
@@ -503,7 +657,7 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(CliLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
                 code: write_admission_task_error_code(&error.events)
                     .unwrap_or("install_task_failed"),
@@ -511,23 +665,23 @@ impl SandboxLifecycleAutomation {
         }
     }
 
-    pub fn run_uninstall(&self) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    pub fn run_uninstall(&self) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         self.run_uninstall_with_observer(&NoopLifecycleObserver)
     }
 
     pub fn run_uninstall_with_observer<O: TaskProgressObserver + ?Sized>(
         &self,
         observer: &O,
-    ) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    ) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         let request = self
             .uninstall_request
             .as_ref()
-            .ok_or(SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .ok_or(CliLifecycleAutomationError::TaskUnavailable)?;
         let started = self
             .runtime
             .uninstall_tasks
             .start_uninstall_task(request.clone())
-            .map_err(|_| SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::TaskUnavailable)?;
         let _ = observer.observe(&TaskProgressEvent::new(
             started.task_id.clone(),
             started.kind,
@@ -543,7 +697,7 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(CliLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
                 code: write_admission_task_error_code(&error.events)
                     .unwrap_or("install_uninstall_task_failed"),
@@ -551,27 +705,27 @@ impl SandboxLifecycleAutomation {
         }
     }
 
-    pub fn run_recovery(&self) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    pub fn run_recovery(&self) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         self.run_recovery_with_observer(&NoopLifecycleObserver)
     }
 
-    pub fn run_reinstall(&self) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    pub fn run_reinstall(&self) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         self.run_reinstall_with_observer(&NoopLifecycleObserver)
     }
 
     pub fn run_reinstall_with_observer<O: TaskProgressObserver + ?Sized>(
         &self,
         observer: &O,
-    ) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    ) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         let request = self
             .reinstall_request
             .as_ref()
-            .ok_or(SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .ok_or(CliLifecycleAutomationError::TaskUnavailable)?;
         let started = self
             .runtime
             .reinstall_tasks
             .start_reinstall_task(request.clone())
-            .map_err(|_| SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::TaskUnavailable)?;
         let _ = observer.observe(&TaskProgressEvent::new(
             started.task_id.clone(),
             started.kind,
@@ -587,7 +741,7 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(CliLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
                 code: write_admission_task_error_code(&error.events)
                     .unwrap_or("install_reinstall_task_failed"),
@@ -598,16 +752,16 @@ impl SandboxLifecycleAutomation {
     pub fn run_recovery_with_observer<O: TaskProgressObserver + ?Sized>(
         &self,
         observer: &O,
-    ) -> Result<LifecycleTaskOutcome, SandboxLifecycleAutomationError> {
+    ) -> Result<LifecycleTaskOutcome, CliLifecycleAutomationError> {
         let request = self
             .recovery_request
             .as_ref()
-            .ok_or(SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .ok_or(CliLifecycleAutomationError::TaskUnavailable)?;
         let started = self
             .runtime
             .recovery_action_tasks
             .start_recovery_action_task(request.clone())
-            .map_err(|_| SandboxLifecycleAutomationError::TaskUnavailable)?;
+            .map_err(|_| CliLifecycleAutomationError::TaskUnavailable)?;
         let _ = observer.observe(&TaskProgressEvent::new(
             started.task_id.clone(),
             started.kind,
@@ -623,7 +777,7 @@ impl SandboxLifecycleAutomation {
                 task_id: started.task_id,
                 events,
             }),
-            Err(error) => Err(SandboxLifecycleAutomationError::TaskFailed {
+            Err(error) => Err(CliLifecycleAutomationError::TaskFailed {
                 task_id: started.task_id,
                 code: write_admission_task_error_code(&error.events)
                     .unwrap_or("install_recovery_task_failed"),
@@ -656,25 +810,23 @@ fn write_admission_task_error_code(events: &[TaskProgressEvent]) -> Option<&'sta
     }
 }
 
-struct SandboxInstallWriteAdmission {
-    capability: Arc<SandboxWriteCapability>,
-    sandbox_root: PathBuf,
+struct LifecycleInstallWriteAdmission {
+    root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
+    token_environment: LifecycleTokenEnvironment,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
     plan_token: String,
 }
 
-impl InstallWriteAdmission for SandboxInstallWriteAdmission {
+impl InstallWriteAdmission for LifecycleInstallWriteAdmission {
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
         profile_id: &ProfileId,
     ) -> Result<(), InstallWriteAdmissionError> {
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
+        self.root_admission.revalidate(
             self.game_config_repository.as_ref(),
             &self.expected_game_id,
             &self.expected_profile_id,
@@ -699,6 +851,7 @@ impl InstallWriteAdmission for SandboxInstallWriteAdmission {
         }
         validate_install_plan_token(
             &self.plan_token,
+            self.token_environment,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -710,10 +863,10 @@ impl InstallWriteAdmission for SandboxInstallWriteAdmission {
     }
 }
 
-struct SandboxUninstallWriteAdmission {
-    capability: Arc<SandboxWriteCapability>,
-    sandbox_root: PathBuf,
+struct LifecycleUninstallWriteAdmission {
+    root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
+    token_environment: LifecycleTokenEnvironment,
     state_reader: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
@@ -723,7 +876,7 @@ struct SandboxUninstallWriteAdmission {
     plan_token: String,
 }
 
-impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
+impl InstallWriteAdmission for LifecycleUninstallWriteAdmission {
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
@@ -734,6 +887,7 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
         }
         validate_uninstall_plan_token(
             &self.plan_token,
+            self.token_environment,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -741,9 +895,7 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
             &self.expected_state_binding,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
+        self.root_admission.revalidate(
             self.game_config_repository.as_ref(),
             &self.expected_game_id,
             &self.expected_profile_id,
@@ -754,7 +906,7 @@ impl InstallWriteAdmission for SandboxUninstallWriteAdmission {
     }
 }
 
-impl SandboxUninstallWriteAdmission {
+impl LifecycleUninstallWriteAdmission {
     fn ensure_lifecycle_state_unchanged(&self) -> Result<(), InstallWriteAdmissionError> {
         let current = self
             .state_reader
@@ -768,10 +920,10 @@ impl SandboxUninstallWriteAdmission {
     }
 }
 
-struct SandboxReinstallWriteAdmission {
-    capability: Arc<SandboxWriteCapability>,
-    sandbox_root: PathBuf,
+struct LifecycleReinstallWriteAdmission {
+    root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
+    token_environment: LifecycleTokenEnvironment,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
     expected_mod_id: ModId,
@@ -781,7 +933,7 @@ struct SandboxReinstallWriteAdmission {
     plan_token: String,
 }
 
-impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
+impl InstallWriteAdmission for LifecycleReinstallWriteAdmission {
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
@@ -795,6 +947,7 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
         }
         validate_reinstall_plan_token(
             &self.plan_token,
+            self.token_environment,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -802,9 +955,7 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
             &self.expected_preview,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
+        self.root_admission.revalidate(
             self.game_config_repository.as_ref(),
             &self.expected_game_id,
             &self.expected_profile_id,
@@ -814,10 +965,10 @@ impl InstallWriteAdmission for SandboxReinstallWriteAdmission {
     }
 }
 
-struct SandboxRecoveryWriteAdmission {
-    capability: Arc<SandboxWriteCapability>,
-    sandbox_root: PathBuf,
+struct LifecycleRecoveryWriteAdmission {
+    root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
+    token_environment: LifecycleTokenEnvironment,
     state_reader: Arc<ReadOnlyInstallAutomation>,
     expected_game_id: GameId,
     expected_profile_id: ProfileId,
@@ -827,7 +978,7 @@ struct SandboxRecoveryWriteAdmission {
     plan_token: String,
 }
 
-impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
+impl InstallWriteAdmission for LifecycleRecoveryWriteAdmission {
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
@@ -838,6 +989,7 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
         }
         validate_recovery_plan_token(
             &self.plan_token,
+            self.token_environment,
             &self.expected_game_id,
             &self.expected_profile_id,
             &self.expected_mod_id,
@@ -845,9 +997,7 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
             &self.expected_state_binding,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
+        self.root_admission.revalidate(
             self.game_config_repository.as_ref(),
             &self.expected_game_id,
             &self.expected_profile_id,
@@ -858,7 +1008,7 @@ impl InstallWriteAdmission for SandboxRecoveryWriteAdmission {
     }
 }
 
-impl SandboxRecoveryWriteAdmission {
+impl LifecycleRecoveryWriteAdmission {
     fn ensure_lifecycle_state_unchanged(&self) -> Result<(), InstallWriteAdmissionError> {
         let current = self
             .state_reader
@@ -870,33 +1020,6 @@ impl SandboxRecoveryWriteAdmission {
             Err(InstallWriteAdmissionError::SafetyRejected)
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn revalidate_sandbox_write_roots(
-    capability: &SandboxWriteCapability,
-    sandbox_root: &std::path::Path,
-    game_config_repository: &dyn GameConfigRepository,
-    expected_game_id: &GameId,
-    expected_profile_id: &ProfileId,
-    game_id: &GameId,
-    profile_id: &ProfileId,
-) -> Result<(), InstallWriteAdmissionError> {
-    if game_id != expected_game_id || profile_id != expected_profile_id {
-        return Err(InstallWriteAdmissionError::SafetyRejected);
-    }
-    let game_instance = game_config_repository
-        .load_game_instance(game_id)
-        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-        .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
-    capability
-        .admit_roots(SandboxWriteRoots::new(
-            sandbox_root.to_path_buf(),
-            game_instance.root_dir,
-        ))
-        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-        .revalidate()
-        .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
 }
 
 struct NoopLifecycleObserver;
@@ -1000,20 +1123,22 @@ struct ReinstallBlockReasonTokenFacts {
 }
 
 pub(crate) fn issue_install_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
     prerequisite_decision: &GamePrerequisiteDecision,
-) -> Result<IssuedLifecyclePlanToken, SandboxLifecycleAutomationError> {
+) -> Result<IssuedLifecyclePlanToken, CliLifecycleAutomationError> {
     if plan.has_blocking_conflicts() || prerequisite_decision.is_blocked() {
-        return Err(SandboxLifecycleAutomationError::PlanBlocked);
+        return Err(CliLifecycleAutomationError::PlanBlocked);
     }
     let now = now_unix_millis()?;
     let expires_at_unix_millis = now
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
-        .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .ok_or(CliLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_install_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1028,17 +1153,19 @@ pub(crate) fn issue_install_plan_token(
 }
 
 pub(crate) fn issue_uninstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     summary: &InstallRecoverySummary,
     state_binding: &str,
-) -> Result<IssuedLifecyclePlanToken, SandboxLifecycleAutomationError> {
+) -> Result<IssuedLifecyclePlanToken, CliLifecycleAutomationError> {
     let now = now_unix_millis()?;
     let expires_at_unix_millis = now
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
-        .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .ok_or(CliLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_uninstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1053,17 +1180,19 @@ pub(crate) fn issue_uninstall_plan_token(
 }
 
 pub(crate) fn issue_recovery_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     preview: &InstallRecoveryActionPreview,
     state_binding: &str,
-) -> Result<IssuedLifecyclePlanToken, SandboxLifecycleAutomationError> {
+) -> Result<IssuedLifecyclePlanToken, CliLifecycleAutomationError> {
     let now = now_unix_millis()?;
     let expires_at_unix_millis = now
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
-        .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .ok_or(CliLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_recovery_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1078,17 +1207,19 @@ pub(crate) fn issue_recovery_plan_token(
 }
 
 pub(crate) fn issue_reinstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     candidate_revision_id: &ModRevisionId,
     preview: &ReinstallPlanPreview,
-) -> Result<IssuedLifecyclePlanToken, SandboxLifecycleAutomationError> {
+) -> Result<IssuedLifecyclePlanToken, CliLifecycleAutomationError> {
     let now = now_unix_millis()?;
     let expires_at_unix_millis = now
         .checked_add(LIFECYCLE_PLAN_TOKEN_TTL_MILLIS)
-        .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .ok_or(CliLifecycleAutomationError::PlanTokenInvalid)?;
     let token = build_reinstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1104,17 +1235,19 @@ pub(crate) fn issue_reinstall_plan_token(
 
 fn validate_install_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
     prerequisite_decision: &GamePrerequisiteDecision,
-) -> Result<(), SandboxLifecycleAutomationError> {
+) -> Result<(), CliLifecycleAutomationError> {
     let expires_at_unix_millis = parse_token_expiry(token)?;
     if now_unix_millis()? >= expires_at_unix_millis {
-        return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_install_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1125,23 +1258,25 @@ fn validate_install_plan_token(
     if token == expected {
         Ok(())
     } else {
-        Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+        Err(CliLifecycleAutomationError::PlanTokenInvalid)
     }
 }
 
 fn validate_uninstall_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     summary: &InstallRecoverySummary,
     state_binding: &str,
-) -> Result<(), SandboxLifecycleAutomationError> {
+) -> Result<(), CliLifecycleAutomationError> {
     let expires_at_unix_millis = parse_token_expiry(token)?;
     if now_unix_millis()? >= expires_at_unix_millis {
-        return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_uninstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1152,23 +1287,25 @@ fn validate_uninstall_plan_token(
     if token == expected {
         Ok(())
     } else {
-        Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+        Err(CliLifecycleAutomationError::PlanTokenInvalid)
     }
 }
 
 fn validate_recovery_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     preview: &InstallRecoveryActionPreview,
     state_binding: &str,
-) -> Result<(), SandboxLifecycleAutomationError> {
+) -> Result<(), CliLifecycleAutomationError> {
     let expires_at_unix_millis = parse_token_expiry(token)?;
     if now_unix_millis()? >= expires_at_unix_millis {
-        return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_recovery_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1179,23 +1316,25 @@ fn validate_recovery_plan_token(
     if token == expected {
         Ok(())
     } else {
-        Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+        Err(CliLifecycleAutomationError::PlanTokenInvalid)
     }
 }
 
 fn validate_reinstall_plan_token(
     token: &str,
+    environment: LifecycleTokenEnvironment,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     candidate_revision_id: &ModRevisionId,
     preview: &ReinstallPlanPreview,
-) -> Result<(), SandboxLifecycleAutomationError> {
+) -> Result<(), CliLifecycleAutomationError> {
     let expires_at_unix_millis = parse_token_expiry(token)?;
     if now_unix_millis()? >= expires_at_unix_millis {
-        return Err(SandboxLifecycleAutomationError::PlanTokenExpired);
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
     }
     let expected = build_reinstall_plan_token(
+        environment,
         expires_at_unix_millis,
         game_id,
         profile_id,
@@ -1206,24 +1345,25 @@ fn validate_reinstall_plan_token(
     if token == expected {
         Ok(())
     } else {
-        Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+        Err(CliLifecycleAutomationError::PlanTokenInvalid)
     }
 }
 
 fn build_install_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     plan: &InstallPlan,
     prerequisite_decision: &GamePrerequisiteDecision,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     build_lifecycle_plan_token(
         expires_at_unix_millis,
         &InstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_APPLY_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1240,19 +1380,20 @@ fn build_install_plan_token(
 }
 
 fn build_uninstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     summary: &InstallRecoverySummary,
     state_binding: &str,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     build_lifecycle_plan_token(
         expires_at_unix_millis,
         &UninstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_UNINSTALL_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1266,19 +1407,20 @@ fn build_uninstall_plan_token(
 }
 
 fn build_recovery_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     preview: &InstallRecoveryActionPreview,
     state_binding: &str,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     build_lifecycle_plan_token(
         expires_at_unix_millis,
         &RecoveryPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_RECOVERY_APPLY_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1302,19 +1444,20 @@ fn build_recovery_plan_token(
 }
 
 fn build_reinstall_plan_token(
+    environment: LifecycleTokenEnvironment,
     expires_at_unix_millis: u128,
     game_id: &GameId,
     profile_id: &ProfileId,
     mod_id: &ModId,
     candidate_revision_id: &ModRevisionId,
     preview: &ReinstallPlanPreview,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     build_lifecycle_plan_token(
         expires_at_unix_millis,
         &ReinstallPlanTokenFacts {
             schema_version: "hmm.lifecycle-plan/v1",
             command: INSTALL_REINSTALL_COMMAND,
-            environment: "sandbox",
+            environment: environment.as_str(),
             game_id,
             profile_id,
             mod_id,
@@ -1348,11 +1491,11 @@ fn build_reinstall_plan_token(
 fn build_lifecycle_plan_token(
     expires_at_unix_millis: u128,
     facts: &impl Serialize,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     let expiry = u64::try_from(expires_at_unix_millis)
-        .map_err(|_| SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .map_err(|_| CliLifecycleAutomationError::PlanTokenInvalid)?;
     let facts =
-        serde_json::to_vec(facts).map_err(|_| SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        serde_json::to_vec(facts).map_err(|_| CliLifecycleAutomationError::PlanTokenInvalid)?;
     let mut hasher = Sha256::new();
     hasher.update(b"hmm.lifecycle-plan/v1");
     hasher.update(expiry.to_be_bytes());
@@ -1369,9 +1512,9 @@ fn build_lifecycle_plan_token(
 
 pub(crate) fn lifecycle_state_binding(
     state: &impl Serialize,
-) -> Result<String, SandboxLifecycleAutomationError> {
+) -> Result<String, CliLifecycleAutomationError> {
     let state =
-        serde_json::to_vec(state).map_err(|_| SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        serde_json::to_vec(state).map_err(|_| CliLifecycleAutomationError::PlanTokenInvalid)?;
     let mut hasher = Sha256::new();
     hasher.update(b"hmm.lifecycle-state-binding/v1");
     hasher.update((state.len() as u64).to_be_bytes());
@@ -1449,14 +1592,24 @@ fn reinstall_block_reason_token_code(reason: ReinstallBlockingReason) -> &'stati
     }
 }
 
-fn parse_token_expiry(token: &str) -> Result<u128, SandboxLifecycleAutomationError> {
+/// 纯语法 token 预检：格式与有效期，不读取任何数据根。放在 prepare 最前，
+/// 让明显无效的 token 在触达文件系统之前 fail closed。
+fn precheck_plan_token(token: &str) -> Result<(), CliLifecycleAutomationError> {
+    let expires_at_unix_millis = parse_token_expiry(token)?;
+    if now_unix_millis()? >= expires_at_unix_millis {
+        return Err(CliLifecycleAutomationError::PlanTokenExpired);
+    }
+    Ok(())
+}
+
+fn parse_token_expiry(token: &str) -> Result<u128, CliLifecycleAutomationError> {
     let payload = token
         .strip_prefix(LIFECYCLE_PLAN_TOKEN_PREFIX)
-        .ok_or(SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+        .ok_or(CliLifecycleAutomationError::PlanTokenInvalid)?;
     if payload.len() != LIFECYCLE_PLAN_TOKEN_PAYLOAD_HEX_LENGTH
         || !payload.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
-        return Err(SandboxLifecycleAutomationError::PlanTokenInvalid);
+        return Err(CliLifecycleAutomationError::PlanTokenInvalid);
     }
     let expiry_bytes = decode_hex_8(&payload[..16])?;
     Ok(u64::from_be_bytes(expiry_bytes) as u128)
@@ -1466,21 +1619,21 @@ fn encode_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn decode_hex_8(value: &str) -> Result<[u8; 8], SandboxLifecycleAutomationError> {
+fn decode_hex_8(value: &str) -> Result<[u8; 8], CliLifecycleAutomationError> {
     let mut bytes = [0_u8; 8];
     for (index, slot) in bytes.iter_mut().enumerate() {
         let offset = index * 2;
         *slot = u8::from_str_radix(&value[offset..offset + 2], 16)
-            .map_err(|_| SandboxLifecycleAutomationError::PlanTokenInvalid)?;
+            .map_err(|_| CliLifecycleAutomationError::PlanTokenInvalid)?;
     }
     Ok(bytes)
 }
 
-fn now_unix_millis() -> Result<u128, SandboxLifecycleAutomationError> {
+fn now_unix_millis() -> Result<u128, CliLifecycleAutomationError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
-        .map_err(|_| SandboxLifecycleAutomationError::RuntimeUnavailable)
+        .map_err(|_| CliLifecycleAutomationError::RuntimeUnavailable)
 }
 
 #[cfg(test)]
@@ -1526,7 +1679,7 @@ mod tests {
             .expect("install preview");
         let token = preview.plan_token.expect("sandbox plan token");
 
-        let automation = SandboxLifecycleAutomation::prepare_install(
+        let automation = CliLifecycleAutomation::prepare_install(
             &environment,
             "mhw",
             "default",
@@ -1565,7 +1718,7 @@ mod tests {
         assert!(uninstall_preview.available);
         assert_eq!(uninstall_preview.status, "installed");
         let uninstall_token = uninstall_preview.plan_token.expect("uninstall plan token");
-        let uninstall = SandboxLifecycleAutomation::prepare_uninstall(
+        let uninstall = CliLifecycleAutomation::prepare_uninstall(
             &environment,
             "mhw",
             "default",
@@ -1607,7 +1760,7 @@ mod tests {
             .plan_for_profile("mhw", "default", "mod-a")
             .expect("install preview");
         let token = preview.plan_token.expect("sandbox plan token");
-        let automation = SandboxLifecycleAutomation::prepare_install(
+        let automation = CliLifecycleAutomation::prepare_install(
             &environment,
             "mhw",
             "default",
@@ -1644,7 +1797,7 @@ mod tests {
             .expect("read-only automation")
             .plan_for_profile("mhw", "default", "mod-a")
             .expect("install preview");
-        SandboxLifecycleAutomation::prepare_install(
+        CliLifecycleAutomation::prepare_install(
             &environment,
             "mhw",
             "default",
@@ -1662,7 +1815,7 @@ mod tests {
             .expect("read-only automation")
             .uninstall_preview("mhw", "default", "mod-a")
             .expect("uninstall preview");
-        let automation = SandboxLifecycleAutomation::prepare_uninstall(
+        let automation = CliLifecycleAutomation::prepare_uninstall(
             &environment,
             "mhw",
             "default",
@@ -1726,7 +1879,7 @@ mod tests {
                 ReadOnlyInstallRecoveryAction::RollbackInstall,
             )
             .expect("recovery preview");
-        let automation = SandboxLifecycleAutomation::prepare_recovery(
+        let automation = CliLifecycleAutomation::prepare_recovery(
             &environment,
             "mhw",
             "default",
@@ -1786,6 +1939,7 @@ mod tests {
             .build_install_plan("mhw", "default", "mod-a")
             .expect("plan facts");
         let issued = issue_install_plan_token(
+            LifecycleTokenEnvironment::Sandbox,
             &game_id,
             &profile_id,
             &mod_id,
@@ -1797,15 +1951,62 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &issued.token,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &ProfileId::new("other"),
                 &mod_id,
                 &plan,
                 &prerequisite_decision,
             ),
-            Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+            Err(CliLifecycleAutomationError::PlanTokenInvalid)
         );
+        assert_eq!(
+            validate_install_plan_token(
+                &issued.token,
+                LifecycleTokenEnvironment::Production,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
+            Err(CliLifecycleAutomationError::PlanTokenInvalid),
+            "sandbox token 不得在 production 环境通过校验"
+        );
+        let production_issued = issue_install_plan_token(
+            LifecycleTokenEnvironment::Production,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("production token");
+        assert_eq!(
+            validate_install_plan_token(
+                &production_issued.token,
+                LifecycleTokenEnvironment::Sandbox,
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &plan,
+                &prerequisite_decision,
+            ),
+            Err(CliLifecycleAutomationError::PlanTokenInvalid),
+            "production token 不得在 sandbox 环境通过校验"
+        );
+        validate_install_plan_token(
+            &production_issued.token,
+            LifecycleTokenEnvironment::Production,
+            &game_id,
+            &profile_id,
+            &mod_id,
+            &plan,
+            &prerequisite_decision,
+        )
+        .expect("production token 在 production 环境有效");
         let expired = build_install_plan_token(
+            LifecycleTokenEnvironment::Sandbox,
             1,
             &game_id,
             &profile_id,
@@ -1817,24 +2018,26 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &expired,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
                 &plan,
                 &prerequisite_decision,
             ),
-            Err(SandboxLifecycleAutomationError::PlanTokenExpired)
+            Err(CliLifecycleAutomationError::PlanTokenExpired)
         );
         assert_eq!(
             validate_install_plan_token(
                 "not-a-token",
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
                 &plan,
                 &prerequisite_decision,
             ),
-            Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+            Err(CliLifecycleAutomationError::PlanTokenInvalid)
         );
         let mut changed_prerequisite_decision = prerequisite_decision.clone();
         changed_prerequisite_decision.rules_version = Some(
@@ -1846,13 +2049,14 @@ mod tests {
         assert_eq!(
             validate_install_plan_token(
                 &issued.token,
+                LifecycleTokenEnvironment::Sandbox,
                 &game_id,
                 &profile_id,
                 &mod_id,
                 &plan,
                 &changed_prerequisite_decision,
             ),
-            Err(SandboxLifecycleAutomationError::PlanTokenInvalid)
+            Err(CliLifecycleAutomationError::PlanTokenInvalid)
         );
         let serialized = serde_json::to_string(&issued.token).expect("serialize token");
         assert!(!serialized.contains(&sandbox.path().to_string_lossy().to_string()));
@@ -1861,63 +2065,206 @@ mod tests {
     }
 
     #[test]
-    fn production_cannot_prepare_install_even_with_a_well_formed_token() {
-        let environment =
-            RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
-                .expect("production");
-        let result = SandboxLifecycleAutomation::prepare_install(
+    fn production_install_and_uninstall_run_with_production_tokens_in_a_test_root() {
+        let data_root = tempfile::tempdir().expect("production app data root");
+        let game_dir = tempfile::tempdir().expect("game root parent");
+        let game_root = game_dir.path().join("mhw");
+        write_production_style_fixture(data_root.path(), &game_root);
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
+        );
+
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("production read-only automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("production install preview");
+        let token = preview.plan_token.expect("production plan token");
+
+        let automation = CliLifecycleAutomation::prepare_install(
             &environment,
             "mhw",
             "default",
             "mod-a",
-            &format!("{LIFECYCLE_PLAN_TOKEN_PREFIX}{}", "0".repeat(80)),
+            &token,
+        )
+        .expect("prepare production install");
+        let outcome = automation
+            .run_install()
+            .expect("production install succeeds");
+
+        assert!(outcome.task_id.starts_with("install-"));
+        assert_eq!(
+            fs::read(game_root.join("nativePC/models/player.mod3")).expect("installed target"),
+            b"fixture"
         );
-        let error = match result {
-            Ok(_) => panic!("production write is unreachable"),
+        // Production 写入不创建 sandbox marker，也不要求 marker 存在。
+        assert!(!data_root
+            .path()
+            .join(crate::SANDBOX_MARKER_FILE_NAME)
+            .exists());
+        assert!(data_root
+            .path()
+            .join("install/manifests/default.json")
+            .exists());
+
+        let uninstall_preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("restarted read-only automation")
+            .uninstall_preview("mhw", "default", "mod-a")
+            .expect("uninstall preview");
+        assert!(uninstall_preview.available);
+        let uninstall_token = uninstall_preview
+            .plan_token
+            .expect("production uninstall token");
+        CliLifecycleAutomation::prepare_uninstall(
+            &environment,
+            "mhw",
+            "default",
+            "mod-a",
+            &uninstall_token,
+        )
+        .expect("prepare production uninstall")
+        .run_uninstall()
+        .expect("production uninstall succeeds");
+        assert!(!game_root.join("nativePC/models/player.mod3").exists());
+    }
+
+    #[test]
+    fn prepare_rejects_tokens_issued_for_the_other_environment() {
+        // 同一份数据布局分别以两种环境读取：build 出的计划事实完全一致，token 的
+        // 唯一差异就是环境标签，互换必须在 prepare 层被拒。
+        let root = tempfile::tempdir().expect("shared root");
+        write_install_fixture(root.path());
+        let sandbox = RuntimeEnvironment::sandbox(root.path().to_path_buf()).expect("sandbox");
+        let production =
+            RuntimeEnvironment::production_with_app_data_root_for_tests(root.path().to_path_buf());
+
+        let sandbox_token = ReadOnlyInstallAutomation::from_environment(&sandbox)
+            .expect("sandbox automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("sandbox preview")
+            .plan_token
+            .expect("sandbox token");
+        let production_token = ReadOnlyInstallAutomation::from_environment(&production)
+            .expect("production automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("production preview")
+            .plan_token
+            .expect("production token");
+        assert_ne!(sandbox_token, production_token);
+
+        let error = match CliLifecycleAutomation::prepare_install(
+            &production,
+            "mhw",
+            "default",
+            "mod-a",
+            &sandbox_token,
+        ) {
+            Ok(_) => panic!("sandbox token must not unlock production"),
             Err(error) => error,
         };
-        assert_eq!(error, SandboxLifecycleAutomationError::ProductionForbidden);
-
-        let result = SandboxLifecycleAutomation::prepare_uninstall(
-            &environment,
+        assert_eq!(error, CliLifecycleAutomationError::PlanTokenInvalid);
+        let error = match CliLifecycleAutomation::prepare_install(
+            &sandbox,
             "mhw",
             "default",
             "mod-a",
-            &format!("{LIFECYCLE_PLAN_TOKEN_PREFIX}{}", "0".repeat(80)),
-        );
-        let error = match result {
-            Ok(_) => panic!("production uninstall is unreachable"),
+            &production_token,
+        ) {
+            Ok(_) => panic!("production token must not unlock sandbox"),
             Err(error) => error,
         };
-        assert_eq!(error, SandboxLifecycleAutomationError::ProductionForbidden);
+        assert_eq!(error, CliLifecycleAutomationError::PlanTokenInvalid);
+    }
 
-        let result = SandboxLifecycleAutomation::prepare_reinstall(
-            &environment,
-            "mhw",
-            "default",
-            "mod-a",
-            "revision-v2",
-            &format!("{LIFECYCLE_PLAN_TOKEN_PREFIX}{}", "0".repeat(80)),
+    #[test]
+    fn production_recovery_rollback_runs_with_a_production_token_in_a_test_root() {
+        let data_root = tempfile::tempdir().expect("production app data root");
+        let game_dir = tempfile::tempdir().expect("game root parent");
+        let game_root = game_dir.path().join("mhw");
+        write_production_style_fixture(data_root.path(), &game_root);
+        let original_target = write_rollback_recovery_fixture(data_root.path(), &game_root);
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
         );
-        let error = match result {
-            Ok(_) => panic!("production reinstall is unreachable"),
-            Err(error) => error,
-        };
-        assert_eq!(error, SandboxLifecycleAutomationError::ProductionForbidden);
 
-        let result = SandboxLifecycleAutomation::prepare_recovery(
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .recovery_preview(
+                "mhw",
+                "default",
+                "mod-recovery",
+                ReadOnlyInstallRecoveryAction::RollbackInstall,
+            )
+            .expect("recovery preview");
+        assert_eq!(preview.availability, "available");
+        let token = preview.plan_token.expect("production recovery token");
+
+        CliLifecycleAutomation::prepare_recovery(
             &environment,
             "mhw",
             "default",
-            "mod-a",
+            "mod-recovery",
             ReadOnlyInstallRecoveryAction::RollbackInstall,
-            &format!("{LIFECYCLE_PLAN_TOKEN_PREFIX}{}", "0".repeat(80)),
+            &token,
+        )
+        .expect("prepare production recovery")
+        .run_recovery()
+        .expect("production recovery succeeds");
+
+        assert!(!original_target.exists());
+    }
+
+    #[test]
+    fn production_install_rejects_game_root_config_drift_before_any_game_write() {
+        let data_root = tempfile::tempdir().expect("production app data root");
+        let game_dir = tempfile::tempdir().expect("game root parent");
+        let game_root = game_dir.path().join("mhw");
+        write_production_style_fixture(data_root.path(), &game_root);
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
         );
-        let error = match result {
-            Ok(_) => panic!("production recovery is unreachable"),
-            Err(error) => error,
-        };
-        assert_eq!(error, SandboxLifecycleAutomationError::ProductionForbidden);
+        let preview = ReadOnlyInstallAutomation::from_environment(&environment)
+            .expect("read-only automation")
+            .plan_for_profile("mhw", "default", "mod-a")
+            .expect("install preview");
+        let automation = CliLifecycleAutomation::prepare_install(
+            &environment,
+            "mhw",
+            "default",
+            "mod-a",
+            preview.plan_token.as_deref().expect("token"),
+        )
+        .expect("prepare production install");
+
+        // prepare 与 commit 之间配置被改指向另一个目录：锁内根一致性重验必须
+        // fail closed，原根与漂移根都不得被写入。
+        let drift_dir = tempfile::tempdir().expect("drifted game root parent");
+        let drifted_root = drift_dir.path().join("mhw-drifted");
+        fs::create_dir_all(drifted_root.join("nativePC")).expect("drifted layout");
+        fs::write(
+            data_root.path().join("config/games.json"),
+            serde_json::json!({
+                "version": 1,
+                "games": [{
+                    "id": "mhw-default",
+                    "game_id": "mhw",
+                    "display_name": "MHW fixture",
+                    "root_dir": drifted_root,
+                    "status": "configured",
+                    "configured_at_unix_millis": 42
+                }]
+            })
+            .to_string(),
+        )
+        .expect("rewrite games config");
+
+        let error = automation
+            .run_install()
+            .expect_err("drifted game root must fail closed");
+
+        assert_eq!(error.code(), "install_task_failed");
+        assert!(!game_root.join("nativePC/models/player.mod3").exists());
+        assert!(!drifted_root.join("nativePC/models/player.mod3").exists());
     }
 
     fn write_rollback_recovery_fixture(sandbox: &Path, game_root: &Path) -> PathBuf {

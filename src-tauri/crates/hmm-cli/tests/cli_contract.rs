@@ -561,7 +561,7 @@ fn tree_snapshot(root: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
 }
 
 #[test]
-fn production_runtime_status_is_read_only_json() {
+fn production_runtime_status_reports_command_level_write_policy_json() {
     let output = hmm(&["--format", "json", "runtime", "status"]);
 
     assert_eq!(output.status.code(), Some(0));
@@ -572,8 +572,13 @@ fn production_runtime_status_is_read_only_json() {
     assert_eq!(value["ok"], true);
     assert_eq!(value["result"]["environment"], "production");
     assert_eq!(value["result"]["dataRootMode"], "system");
-    assert_eq!(value["result"]["writeCommandPolicy"], "disabled");
-    assert_eq!(value["result"]["productionWritesAllowed"], false);
+    // CLI-3B：Production 写入按 command 逐项解禁（四条单项 lifecycle），
+    // 未认证的写命令（batch 等）仍在各自边界拒绝。
+    assert_eq!(
+        value["result"]["writeCommandPolicy"],
+        "production_command_level"
+    );
+    assert_eq!(value["result"]["productionWritesAllowed"], true);
     assert_eq!(value["result"]["businessCommandsAvailable"], true);
 }
 
@@ -3824,111 +3829,90 @@ fn sandbox_reinstall_manifest_save_failure_rolls_back_v1_in_real_binary() {
 }
 
 #[test]
-fn production_install_apply_is_rejected_before_runtime_write_admission() {
-    let output = hmm(&[
-        "--format",
-        "json",
-        "--environment",
-        "production",
-        "install",
-        "apply",
-        "--mod",
-        "mod-a",
-        "--plan-token",
-        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "--commit",
-        "--yes",
-    ]);
+fn production_lifecycle_write_commands_fail_closed_before_any_data_access() {
+    // CLI-3B: production write is now command-level.
+    // The confirmation protocol is unchanged and expired / malformed / missing
+    // tokens must be rejected by the pure syntax precheck before the process
+    // touches any data root, so this test never reads real app data.
+    let expired_token = "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let commands: [(&str, &[&str]); 4] = [
+        ("install.apply", &["install", "apply", "--mod", "mod-a"]),
+        (
+            "install.uninstall",
+            &["install", "uninstall", "--mod", "mod-a"],
+        ),
+        (
+            "install.reinstall",
+            &[
+                "install",
+                "reinstall",
+                "--mod",
+                "mod-a",
+                "--candidate-revision",
+                "revision-v2",
+            ],
+        ),
+        (
+            "install.recovery.apply",
+            &[
+                "install",
+                "recovery",
+                "apply",
+                "--profile",
+                "default",
+                "--mod",
+                "mod-a",
+                "--action",
+                "rollback-install",
+            ],
+        ),
+    ];
 
-    assert_eq!(output.status.code(), Some(3));
-    assert_eq!(stderr_text(&output), "");
-    let value: Value =
-        serde_json::from_str(&stdout_text(&output)).expect("production rejection json");
-    assert_eq!(value["command"], "install.apply");
-    assert_eq!(value["error"]["code"], "production_write_command_forbidden");
-    assert_eq!(value["error"]["category"], "data_safety_risk");
+    for (command, args) in commands {
+        let mut expired_args = vec!["--format", "json", "--environment", "production"];
+        expired_args.extend_from_slice(args);
+        expired_args.extend_from_slice(&["--plan-token", expired_token, "--commit", "--yes"]);
+        let output = hmm(&expired_args);
+        assert_eq!(
+            output.status.code(),
+            Some(3),
+            "{command} expired token exit"
+        );
+        assert_eq!(stderr_text(&output), "", "{command} expired token stderr");
+        let value: Value =
+            serde_json::from_str(&stdout_text(&output)).expect("expired token envelope");
+        assert_eq!(value["command"], command);
+        assert_eq!(value["error"]["code"], "plan_token_expired");
+        assert_eq!(value["error"]["category"], "user_action_required");
 
-    let uninstall = hmm(&[
-        "--format",
-        "json",
-        "--environment",
-        "production",
-        "install",
-        "uninstall",
-        "--mod",
-        "mod-a",
-        "--plan-token",
-        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "--commit",
-        "--yes",
-    ]);
-    assert_eq!(uninstall.status.code(), Some(3));
-    assert_eq!(stderr_text(&uninstall), "");
-    let uninstall_value: Value =
-        serde_json::from_str(&stdout_text(&uninstall)).expect("production uninstall rejection");
-    assert_eq!(uninstall_value["command"], "install.uninstall");
-    assert_eq!(
-        uninstall_value["error"]["code"],
-        "production_write_command_forbidden"
-    );
-    assert_eq!(uninstall_value["error"]["category"], "data_safety_risk");
+        let mut invalid_args = vec!["--format", "json", "--environment", "production"];
+        invalid_args.extend_from_slice(args);
+        invalid_args.extend_from_slice(&["--plan-token", "not-a-token", "--commit", "--yes"]);
+        let invalid = hmm(&invalid_args);
+        assert_eq!(
+            invalid.status.code(),
+            Some(3),
+            "{command} invalid token exit"
+        );
+        let invalid_value: Value =
+            serde_json::from_str(&stdout_text(&invalid)).expect("invalid token envelope");
+        assert_eq!(invalid_value["command"], command);
+        assert_eq!(invalid_value["error"]["code"], "plan_token_invalid");
 
-    let reinstall = hmm(&[
-        "--format",
-        "json",
-        "--environment",
-        "production",
-        "install",
-        "reinstall",
-        "--mod",
-        "mod-a",
-        "--candidate-revision",
-        "revision-v2",
-        "--plan-token",
-        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "--commit",
-        "--yes",
-    ]);
-    assert_eq!(reinstall.status.code(), Some(3));
-    assert_eq!(stderr_text(&reinstall), "");
-    let reinstall_value: Value =
-        serde_json::from_str(&stdout_text(&reinstall)).expect("production reinstall rejection");
-    assert_eq!(reinstall_value["command"], "install.reinstall");
-    assert_eq!(
-        reinstall_value["error"]["code"],
-        "production_write_command_forbidden"
-    );
-    assert_eq!(reinstall_value["error"]["category"], "data_safety_risk");
-
-    let recovery = hmm(&[
-        "--format",
-        "json",
-        "--environment",
-        "production",
-        "install",
-        "recovery",
-        "apply",
-        "--profile",
-        "default",
-        "--mod",
-        "mod-a",
-        "--action",
-        "rollback-install",
-        "--plan-token",
-        "hmm-lifecycle-plan-v1:0000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "--commit",
-        "--yes",
-    ]);
-    assert_eq!(recovery.status.code(), Some(3));
-    assert_eq!(stderr_text(&recovery), "");
-    let recovery_value: Value =
-        serde_json::from_str(&stdout_text(&recovery)).expect("production recovery rejection");
-    assert_eq!(recovery_value["command"], "install.recovery.apply");
-    assert_eq!(
-        recovery_value["error"]["code"],
-        "production_write_command_forbidden"
-    );
-    assert_eq!(recovery_value["error"]["category"], "data_safety_risk");
+        let mut missing_args = vec!["--format", "json", "--environment", "production"];
+        missing_args.extend_from_slice(args);
+        missing_args.extend_from_slice(&["--commit", "--yes"]);
+        let missing = hmm(&missing_args);
+        assert_eq!(
+            missing.status.code(),
+            Some(2),
+            "{command} missing token exit"
+        );
+        let missing_value: Value =
+            serde_json::from_str(&stdout_text(&missing)).expect("missing token envelope");
+        assert_eq!(missing_value["command"], command);
+        assert_eq!(missing_value["error"]["code"], "plan_token_required");
+    }
 }
 
 #[test]

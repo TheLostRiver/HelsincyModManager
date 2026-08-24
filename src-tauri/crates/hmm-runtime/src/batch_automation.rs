@@ -883,7 +883,7 @@ fn build_write_context(
         expected: Mutex::new(None),
     });
     let runtime = HmmRuntime::builder(sandbox_root.clone())
-        .with_sandbox_write_admission(admission.clone())
+        .with_install_write_admission(admission.clone())
         .build()
         .map_err(|_| SandboxBatchAutomationError::new("batch_runtime_unavailable"))?;
     let repository_impl = Arc::new(SqliteBatchLifecycleRepository::new(

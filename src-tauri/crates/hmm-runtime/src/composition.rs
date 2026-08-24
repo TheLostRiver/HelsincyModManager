@@ -122,7 +122,9 @@ impl HmmRuntimeBuilder {
         self
     }
 
-    pub(crate) fn with_sandbox_write_admission(
+    /// 注入 lifecycle per-command 写 admission（Sandbox 或 Production 均经此进入）。
+    /// crate 私有：只有 lifecycle automation 的 prepare 流程在 token 校验通过后调用。
+    pub(crate) fn with_install_write_admission(
         mut self,
         admission: Arc<dyn InstallWriteAdmission>,
     ) -> Self {

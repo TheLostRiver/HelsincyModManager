@@ -45,8 +45,8 @@ pub use install_automation::{
     UninstallPlanSnapshot,
 };
 pub use lifecycle_automation::{
-    LifecycleTaskCancellationHandle, LifecycleTaskOutcome, SandboxLifecycleAutomation,
-    SandboxLifecycleAutomationError,
+    CliLifecycleAutomation, CliLifecycleAutomationError, LifecycleTaskCancellationHandle,
+    LifecycleTaskOutcome,
 };
 pub use sandbox_write::{
     SandboxWriteAdmission, SandboxWriteCapability, SandboxWriteCapabilityError, SandboxWriteRoots,
@@ -114,14 +114,17 @@ impl RuntimeDataRootMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliWriteCommandPolicy {
-    Disabled,
+    /// CLI-3B 起：Production 写命令按 command 逐项解禁（当前为四条单项 lifecycle），
+    /// 每条各自要求 production token + `--commit --yes` + 跨进程 admission + 锁内重验。
+    /// 未逐项认证的写命令（batch、backup create 等）继续在各自边界拒绝。
+    ProductionCommandLevel,
     SandboxOnly,
 }
 
 impl CliWriteCommandPolicy {
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
+            Self::ProductionCommandLevel => "production_command_level",
             Self::SandboxOnly => "sandbox_only",
         }
     }
@@ -131,6 +134,10 @@ impl CliWriteCommandPolicy {
 pub struct RuntimeEnvironment {
     kind: RuntimeEnvironmentKind,
     sandbox_data_dir: Option<PathBuf>,
+    /// 仅供 crate 内测试把 Production 链路指向临时根。没有任何 CLI 参数、环境变量或
+    /// 公开构造器能设置它：`from_options` 与 `sandbox` 恒置 `None`，因此运行时的
+    /// Production 数据根始终由操作系统解析。
+    production_app_data_override: Option<PathBuf>,
 }
 
 impl RuntimeEnvironment {
@@ -142,6 +149,7 @@ impl RuntimeEnvironment {
             (RuntimeEnvironmentKind::Production, None) => Ok(Self {
                 kind: RuntimeEnvironmentKind::Production,
                 sandbox_data_dir: None,
+                production_app_data_override: None,
             }),
             (RuntimeEnvironmentKind::Production, Some(_)) => {
                 Err(RuntimeEnvironmentError::ProductionDataDirForbidden)
@@ -158,7 +166,27 @@ impl RuntimeEnvironment {
         Ok(Self {
             kind: RuntimeEnvironmentKind::Sandbox,
             sandbox_data_dir: Some(data_dir),
+            production_app_data_override: None,
         })
+    }
+
+    /// 测试专用：Production 语义 + 显式临时 app-data 根。crate 私有，CLI 与外部
+    /// crate 均不可达，不构成生产写入的注入面。
+    #[cfg(test)]
+    pub(crate) fn production_with_app_data_root_for_tests(app_data_dir: PathBuf) -> Self {
+        Self {
+            kind: RuntimeEnvironmentKind::Production,
+            sandbox_data_dir: None,
+            production_app_data_override: Some(app_data_dir),
+        }
+    }
+
+    /// Production 数据根解析的唯一入口：正常路径走操作系统解析，测试 override 仅在
+    /// crate 内测试构造器下存在。
+    pub(crate) fn resolved_production_app_data_dir(&self) -> Option<PathBuf> {
+        self.production_app_data_override
+            .clone()
+            .or_else(production_app_data_dir)
     }
 
     pub const fn kind(&self) -> RuntimeEnvironmentKind {
@@ -174,7 +202,7 @@ impl RuntimeEnvironment {
 
     pub const fn cli_write_command_policy(&self) -> CliWriteCommandPolicy {
         match self.kind {
-            RuntimeEnvironmentKind::Production => CliWriteCommandPolicy::Disabled,
+            RuntimeEnvironmentKind::Production => CliWriteCommandPolicy::ProductionCommandLevel,
             RuntimeEnvironmentKind::Sandbox => CliWriteCommandPolicy::SandboxOnly,
         }
     }
@@ -327,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn production_is_read_only_and_does_not_accept_data_dir_override() {
+    fn production_uses_command_level_write_policy_and_rejects_data_dir_override() {
         let environment =
             RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
                 .expect("production environment");
@@ -336,9 +364,10 @@ mod tests {
         assert_eq!(environment.data_root_mode(), RuntimeDataRootMode::System);
         assert_eq!(
             environment.cli_write_command_policy(),
-            CliWriteCommandPolicy::Disabled
+            CliWriteCommandPolicy::ProductionCommandLevel
         );
         assert_eq!(environment.sandbox_data_dir(), None);
+        // --data-dir 禁令是 Production 数据根安全的根基，随 CLI-3B 开放依然不变。
         assert_eq!(
             RuntimeEnvironment::from_options(
                 RuntimeEnvironmentKind::Production,

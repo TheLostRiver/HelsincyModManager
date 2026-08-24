@@ -82,12 +82,18 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 
 ## CLI 自动化边界
 
-- Production CLI 禁止 `--data-dir`。当前只开放 runtime status、game
-  status/scan/validate/prerequisites、install plan/status/recovery scan/preview、
-  backup list/background status 与 diagnostics snapshot 读取。install apply/uninstall/reinstall/
-  recovery apply 虽有稳定 parser contract，但会先在 CLI policy 层拒绝 Production，runtime
-  `SandboxLifecycleAutomation` 还会再次拒绝；backup create/restore/background enable|disable 和
-  diagnostics export 继续在 parser 边界不可达。
+- Production CLI 禁止 `--data-dir`，数据根仅由操作系统解析。只读命令继续开放 runtime status、
+  game status/scan/validate/prerequisites、install plan/status/recovery scan/preview、
+  backup list/background status 与 diagnostics snapshot。CLI-3B 起 install apply/uninstall/
+  reinstall/recovery apply 四条单项 lifecycle 命令按 command 开放 Production 写入：每条命令要求
+  production 环境签发的 5 分钟 opaque token、显式 `--commit --yes`、CLI-3A `game-profile-write`
+  跨进程 admission，以及 game/profile 写锁内的 token/事实/游戏根一致性重验；production 与
+  sandbox token 的环境标签参与 digest，跨环境重放必然失效。install batch 在 automation 边界继续
+  拒绝 Production（前置 per-installation secret，属后续切片）；backup create/restore/background
+  enable|disable 和 diagnostics export 继续在 parser 边界不可达。
+- Production 写侧没有 sandbox marker；对应的根事实是 prepare 阶段从已保存配置读取的游戏根，
+  锁内重载配置并要求与锁外记录一致且仍然存在为目录，配置漂移 fail closed。CLI 不接受任何
+  调用方提交的目标路径。
 - Sandbox game 命令只读取显式数据根下的 `config` 和 `fixtures`；保存游戏目录、Steam library 与
   discovery candidate 必须通过词法和 canonical containment。
 - `libraryfolders.vdf` 中声明的隔离根外 library 必须在读取 app manifest 前拒绝。
@@ -121,8 +127,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验 app-data、game、save、
   backup 根。symlink、junction、reparse point、marker 篡改、祖先替换或 Sandbox 外根全部 fail
   closed。该 capability 不替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或写锁。
-- CLI-2C 只为 ready 的 Sandbox install/uninstall/reinstall/recovery preview 签发 5 分钟 opaque
-  token。提交同时要求 `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery
+- lifecycle preview 只在 ready/available 时签发 5 分钟 opaque token；Sandbox 与 Production
+  各自签发（CLI-3B），环境标签参与 digest，跨环境重放一律 `plan_token_invalid`。提交同时要求
+  `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery
   结构化状态摘要，不包含路径，并在装配写 runtime 前和 game/profile 写锁内重建事实后各验证一次。
   manifest/recovery record 内容变化即使聚合计数相同也会使旧 token 失效；blocked preview 不签发
   token。
@@ -138,7 +145,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - T13-05 的 Sandbox `install batch plan|apply|result|retry` 通过批次级 operation 支持 install、
   uninstall 和 reinstall。Preview 在构造写 runtime 前只读校验，same-revision retarget 不创建 staging、
   DB、journal、Audit 或 projection；apply 才能在 capability、token、SQLite scope admission 和共享
-  game/profile 写锁全部通过后复用单项事务。Production 在 CLI policy 与 runtime composition 两层拒绝。
+  game/profile 写锁全部通过后复用单项事务。batch 的 Production 请求在 automation 边界拒绝
+  （`sandbox_batch_production_forbidden`）；开放前置 per-installation secret，不随 CLI-3B
+  单项命令解禁。
 - Batch result 只读取显式 batch/attempt。非终态查询返回 `0` 以保留诊断能力；terminal 状态复用
   apply/retry 的稳定退出码，其中 `completed_with_errors` 返回 partial exit `5`。遗留 active attempt
   继续使 apply/retry/new apply 对同 scope fail closed。
