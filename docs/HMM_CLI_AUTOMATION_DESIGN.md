@@ -1,7 +1,8 @@
 # HMM CLI 与自动化测试设计
 
-> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C、CLI-4 Slice B/C 与
-> CLI-3B（四条单项 lifecycle 的 Production command-level 开放）已实现
+> 状态：设计已确认；CLI-0A、CLI-0B、CLI-1A/1B、CLI-2A/2B/2C、CLI-4 Slice B/C、
+> CLI-3B（四条单项 lifecycle 的 Production command-level 开放）与
+> CLI-3C（batch Production：per-installation secret 签名 token）已实现
 >
 > 日期：2026-08-02
 >
@@ -280,7 +281,8 @@ hmm
 | CLI-2B/2C | `install apply/uninstall/reinstall/recovery apply` | 仅 Sandbox | 验证完整安全链路和失败恢复 |
 | CLI-2 后续切片 | `backup create`、`diagnostics export` | 仅 Sandbox | 写入隔离 app data/backup 根；需各自独立安全评审 |
 | CLI-3B（已实现） | `install apply/uninstall/reinstall/recovery apply` | Production | production token + `--commit --yes` + 跨进程 admission + 锁内 token/事实/游戏根重验 |
-| CLI-3 后续 | `install batch`（Production）、`backup background enable/disable` 等 | Production | batch 前置 per-installation secret；其余按 command 独立评审后开放 |
+| CLI-3C（已实现） | `install batch plan/apply/result/retry` | Production | per-installation secret 签名 token + 双确认 + 跨进程 admission + 锁内根/digest 重验 |
+| CLI-3 后续 | `backup background enable/disable`、`backup create`、`diagnostics export` 等 | Production | 按 command 独立评审后开放 |
 | CLI-3 | `backup background enable/disable` | Production | 复用固定 registry 用例，不接受 task/path/XML 参数 |
 | CLI-4（Slice B/C） | `install batch --operation install\|uninstall\|reinstall` | Sandbox；Production 受 CLI-3 门禁 | 三种 operation 共用 plan/apply/result/retry 与 batch service |
 
@@ -493,7 +495,8 @@ CLI-3A 建立共享互斥基础；CLI-3B（2026-08-24）按 command 复核后开
 - 已开放的四条命令各自要求 production token（环境标签参与 digest，与 sandbox token 互不通用）、
   显式 `--commit --yes`、`game-profile-write` 跨进程 admission，以及锁内 token/事实/游戏根
   一致性重验；游戏根只能来自已保存配置，锁内重载与锁外记录不一致或已消失时 fail closed。
-- `install batch` 的 Production 开放前置 per-installation secret，仍在 automation 边界拒绝；
+- `install batch` 已由 CLI-3C（2026-08-24）开放 Production：token 由 per-installation
+  secret 签名（不可离线伪造），纯语法预检前置于一切数据根读取；
   `backup create/restore/background enable|disable` 与 `diagnostics export` 仍在 parser 边界
   不可达。后续每个 command 仍须独立复核 capability、token、Audit、锁内事实和 disposable
   Windows 验收，GUI 测试、单进程锁测试或仅取得跨进程 guard 都不是授权证据。
@@ -553,8 +556,10 @@ bounded snapshot，尚未实现 cursor/limit 分页参数；preview token 默认
 retryable，不返回路径、Steam ID、digest、backup/snapshot ref、manifest/source 正文、hash
 列表或原始错误。`plan` 的直接响应可以返回短期 opaque `previewToken`，供用户确认后作为
 `apply --preview-token` 输入；该 token 不写入 journal、Task Log、Audit Log 或其他持久化状态。
-Sandbox batch token 是可伪造的 stale/plan tag，不是认证凭据；Production 开放前必须接入
-per-installation secret 和跨进程 admission。
+Sandbox batch token 是可伪造的 stale/plan tag（其安全性由 sandbox 隔离承担）；Production
+batch token 自 CLI-3C 起由 per-installation secret（app data `secrets/` 下首次生成的随机
+256-bit key，损坏即轮换、旧 token 失效）签名，不可离线伪造，且跨环境互不通用。写入仍经
+CLI-3A 跨进程 admission 与锁内逐项 digest/游戏根重验。
 `seal` 返回的 plan token 只在 adapter 内存中传递，不作为 CLI 参数或机器输出暴露。
 Result 查询绑定确切 attempt；CLI 在 retry 后必须使用新 attempt，不能查询隐式“最新结果”。成功读取
 result 时，非终态 `sealed/queued/running/stopping` 返回 `0`；terminal 状态与 apply/retry 使用同一退出码
@@ -916,7 +921,7 @@ CLI-3B（2026-08-24 实现）按 command 复核后开放了 `install apply`、`i
   配置漂移 fail closed。Audit/Task Log、跨进程 admission 与既有安全链路完全复用。
 - `runtime status` 契约演进：Production `writeCommandPolicy=production_command_level`、
   `productionWritesAllowed=true`；Sandbox 报告不变。
-- 未逐项认证的写命令不随本切片开放：`install batch`（前置 per-installation secret）、
+- 未逐项认证的写命令不随本切片开放（batch 随后由 CLI-3C 单独复核开放）：`install batch`（前置 per-installation secret）、
   `backup create`、`diagnostics export`、`backup background enable/disable`。
 - disposable Windows 环境的 GUI/CLI/worker 竞争与真机安装态验收按独立 gate 记录，
   不并入普通 CI 结果。
