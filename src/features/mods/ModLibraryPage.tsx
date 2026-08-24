@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
@@ -315,6 +316,7 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheet
 
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const { locale } = useI18n();
+  const { pushToast } = useFeedback();
   const copy = resolveCopy(modLibraryCopy, locale);
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
   const batchCopy = resolveCopy(batchModLifecycleCopy, locale);
@@ -724,16 +726,26 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [contextMenuState, selectionMode]);
 
+  // 选择回执经页级 toast 呈现（终态 toast effect 走 copyRef：语言切换不得重复弹）。
+  const selectionNoticeCopyRef = useRef(copy.selection);
+  selectionNoticeCopyRef.current = copy.selection;
   useEffect(() => {
     if (selectionNotice === null) {
       return undefined;
     }
 
+    const selectionCopy = selectionNoticeCopyRef.current;
+    pushToast({
+      eventKey: "mod-library.selection-notice",
+      tone: "neutral",
+      title: selectionCopy.noticeToastTitle,
+      message: renderModSelectionNotice(selectionNotice, selectionCopy),
+    });
     const noticeTimer = window.setTimeout(() => {
       dispatchSelection({ type: "dismiss-notice" });
     }, 4000);
     return () => window.clearTimeout(noticeTimer);
-  }, [selectionNotice]);
+  }, [pushToast, selectionNotice]);
 
   // Selection changes invalidate any in-flight batch preview; the next action starts fresh.
   useEffect(() => {
