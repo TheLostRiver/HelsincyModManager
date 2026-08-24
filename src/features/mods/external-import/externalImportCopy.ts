@@ -74,6 +74,8 @@ export type ExternalImportCopy = {
     cancelImport: string;
     cancellingSafely: string;
     completedReadingResults: string;
+    viewImportHistory: string;
+    closeAndReturn: string;
     cancelledNoInference: string;
     incompleteReadingResults: string;
     candidateEyebrow: string;
@@ -355,6 +357,8 @@ export const externalImportCopy = {
       cancelImport: "取消导入",
       cancellingSafely: "正在安全取消；等待批量导入专用终态",
       completedReadingResults: "批量导入已完成。正在读取下方的权威结果明细。",
+      viewImportHistory: "查看导入记录",
+      closeAndReturn: "关闭并回到 Mod 库",
       cancelledNoInference: "批量导入已取消；本页面不会根据聚合计数推断部分成功结果。",
       incompleteReadingResults: "批量导入未完成。正在读取已保留结果与可恢复操作。",
       candidateEyebrow: "候选选择",
@@ -645,6 +649,8 @@ export const externalImportCopy = {
       cancellingSafely: "Cancelling safely; waiting for the batch import's own terminal state",
       completedReadingResults:
         "Batch import finished. Reading the authoritative result details below.",
+      viewImportHistory: "View import history",
+      closeAndReturn: "Close and return to the mod library",
       cancelledNoInference:
         "Batch import cancelled; this page never infers partial success from aggregate counts.",
       incompleteReadingResults:
@@ -940,6 +946,8 @@ export const externalImportCopy = {
       cancelImport: "インポートをキャンセル",
       cancellingSafely: "安全にキャンセル中。一括インポート専用の終了状態を待っています",
       completedReadingResults: "一括インポートが完了しました。下の確定済み結果明細を読み込んでいます。",
+      viewImportHistory: "インポート履歴を表示",
+      closeAndReturn: "閉じて Mod ライブラリに戻る",
       cancelledNoInference:
         "一括インポートをキャンセルしました。このページは集計値から部分成功を推測しません。",
       incompleteReadingResults: "一括インポートは未完了です。保持された結果と復旧可能な操作を読み込んでいます。",

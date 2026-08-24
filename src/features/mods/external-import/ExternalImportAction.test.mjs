@@ -129,6 +129,23 @@ test("external import action composes selection, result, and retry without a fro
   // 工具栏记录直达入口只打开记录视图,不承担导入职责。
   assert.match(source, /external-import-action__history-trigger/);
   assert.match(source, /onClick=\{openHistory\}/);
+  // 入口按钮工具栏治理:服务状态走 tooltip + 警示点,可访问播报走隐藏 live region,
+  // 工具栏不出现常驻红字。
+  assert.match(source, /<ModLibraryControlTooltip content=\{triggerStatusText\}>/);
+  assert.match(source, /data-listener-status=\{listenerStatus\}/);
+  assert.match(
+    source,
+    /listenerStatus === "failed" \? \(\s*<span className="compact-import-action__alert-dot" aria-hidden="true" \/>/,
+  );
+  assert.match(
+    source,
+    /className="compact-import-action__sr-status"\s*role=\{listenerStatus === "failed" \? "alert" : "status"\}/,
+  );
+  // 导入完成后的去处引导:查看记录会强制刷新历史,让刚完成的批次立刻可见。
+  assert.match(selectionPanel, /selectionPanel\.viewImportHistory/);
+  assert.match(selectionPanel, /selectionPanel\.closeAndReturn/);
+  assert.match(source, /onViewHistory=\{\(\) => \{\s*setView\("history"\);[\s\S]{0,120}historyWorkflow\.refresh\(\);/);
+  assert.match(source, /onCloseDialog=\{\(\) => setDialogOpen\(false\)\}/);
   assert.doesNotMatch(
     `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,
     /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i,
