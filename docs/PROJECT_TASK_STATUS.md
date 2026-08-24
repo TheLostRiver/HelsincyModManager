@@ -44,13 +44,16 @@ SAVE-04 玩家存档恢复代码、temp/artificial fixture 自动化、完整 ve
 disposable Windows 人工验收均已完成并标记为 `certified`；SAVE-05 retention/备份中心也已完成实现、
 完整验证、全 diff 自审和 disposable Windows synthetic 人工验收并标记为 `certified`。CLI-3A 三类
 跨进程写入 admission 已于 2026-08-16 完成工程实现、本地完整验证、findings-first 全 diff 审查、
-Ubuntu required CI 和 disposable Windows synthetic 多进程 gate，并标记为 `certified`；Production CLI
-command-level admission 与开放仍未完成。
+Ubuntu required CI 和 disposable Windows synthetic 多进程 gate，并标记为 `certified`。CLI-3B
+（2026-08-24 实现）按 command 复核后开放四条单项 lifecycle 命令的 Production 写入：production
+token（环境标签参与 digest，与 sandbox token 互不通用）+ `--commit --yes` +
+`game-profile-write` 跨进程 admission + 锁内 token/事实/游戏根一致性重验；disposable Windows
+真机 gate 验收未完成前不标记 `certified`。
 后端命令化已完成 CLI-2C：`hmm-runtime` 已承载真实共享 composition，
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
-校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；仅 Sandbox
-开放单项安装、卸载、真正重装和恢复 apply。备份创建/恢复、后台启停、诊断导出和任何 Production
-写入仍不可达。
+校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；单项安装、
+卸载、真正重装和恢复 apply 在 Sandbox 与 Production（CLI-3B 门禁）均可达。批量命令的
+Production 开放前置 per-installation secret；备份创建/恢复、后台启停、诊断导出仍不可达。
 
 快照时：
 
@@ -92,7 +95,7 @@ command-level admission 与开放仍未完成。
 | T18 Mod 库分页 | 已完成 | 后端权威分页、projection、freshness gate 和 10,000 条性能门禁已落地 |
 | T19 生命周期产品化加固 | 已完成 | A1-L3：headless acceptance、日志/诊断与反馈 UI 均已交付 |
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
-| CLI 自动化入口 | CLI-2C 已实现；CLI-3A Certified；CLI-3B Ready | 已有只读 game/install/backup/diagnostics 命令，以及仅 Sandbox 的单项 install/uninstall/reinstall/recovery apply；5 分钟 token、双确认、写锁内重验、取消、失败恢复与 Production 双层拒绝已覆盖。CLI-3A 已接入 game/save/background 三类跨进程 admission、稳定错误码和共享 GUI/CLI/worker composition，并通过 Ubuntu CI 与 disposable Windows synthetic gate；Production command-level 写入仍未开放 |
+| CLI 自动化入口 | CLI-2C/CLI-3A Certified；CLI-3B 已实现（待 Windows gate） | 已有只读 game/install/backup/diagnostics 命令；单项 install/uninstall/reinstall/recovery apply 在 Sandbox 与 Production 均可达：5 分钟 token（环境标签参与 digest，跨环境重放失效）、双确认、写锁内 token/事实/游戏根重验、取消、失败恢复已覆盖。CLI-3A 三类跨进程 admission 与共享 GUI/CLI/worker composition 经 Ubuntu CI 与 disposable Windows synthetic gate 认证。CLI-3B 的 disposable Windows 真机 gate 未执行前不标记 certified；batch Production 前置 per-installation secret |
 | 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
 | LOG-01 Task/Audit retention | 已完成 | Task 30 天、Audit 90 天；共享 runtime composition、capability-relative no-follow 清理、稳定 health code/count 与 temp-root junction 负测已落地 |
 | LOG-02 日志总空间上限 | 已完成 | 128 MiB 默认/1 MiB 下限、Debug/Task -> App -> 30 天外 Audit 优先级、16 KiB Audit reserve、稳定 health/count 与 no-follow 复验已落地 |
@@ -310,7 +313,8 @@ retention 失败通过独立稳定 health/count 投影，不会改变安装或�
 - workspace 已新增 `hmm-runtime` 与 `hmm-cli`，CLI dependency tree 不包含 Tauri。
 - `hmm runtime status` 支持 `human|json|jsonl`、Production/Sandbox 环境和稳定退出码。
 - CLI-0A human/help/error 输出统一无 ANSI，`--no-color` 保留为稳定全局参数。
-- Production 禁止 `--data-dir`，写命令策略固定为 `disabled`。
+- Production 禁止 `--data-dir`；写命令策略在 CLI-0A 至 CLI-3A 期间固定为 `disabled`，
+  CLI-3B 起演进为 `production_command_level`。
 - Sandbox 要求显式绝对数据根并拒绝 root、`.` 和 `..`；只读命令不创建 marker，CLI-2C lifecycle
   写命令才显式申请受控 write capability。
 - JSON/JSONL 使用 `hmm.cli/v1`；机器模式的 runtime/parse 错误使用稳定脱敏 envelope。
@@ -357,8 +361,10 @@ retention 失败通过独立稳定 health/count 投影，不会改变安装或�
   完整 bounded snapshot，尚未实现 cursor/limit。JSONL apply/retry 先输出 parent terminal event，
   再输出 command result，两者共用同一 taskId。遗留 `queued/running/stopping` attempt 继续阻断新
   写入并返回 `batch_attempt_reconciliation_required`，不会自动续跑或收敛。
-- Production 四条 lifecycle 写命令和 batch 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
-  enable|disable 和 diagnostics export 仍未开放。
+- CLI-3B 起四条单项 lifecycle 写命令在 Production 可达（production token + `--commit --yes` +
+  跨进程 admission + 锁内重验）；batch 的 Production 请求在 automation 边界拒绝（前置
+  per-installation secret）；backup create/restore/background enable|disable 和
+  diagnostics export 仍未开放。
 
 ### 下一步
 
@@ -379,8 +385,11 @@ LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证。CLI-3A 已
 backup immutable opener 当前没有跨进程只读快照锁；需要一致结果时先关闭桌面端。后续如果要支持
 GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 WAL/SHM fail-closed 门禁。
 
-Production 写命令仍依赖 CLI-3B 的 command-level capability、token、Audit、锁内重验和 Windows 验收；
-CLI-3A 的共享互斥基础不自动解锁 backup、restore、background registration 或 diagnostics export。
+CLI-3B（2026-08-24）已按 command 复核并开放四条单项 lifecycle 命令的 Production 写入：
+production token（环境绑定）、`--commit --yes`、`game-profile-write` 跨进程 admission 与锁内
+token/事实/游戏根一致性重验缺一不可；disposable Windows 真机 gate 完成前不标记 `certified`。
+CLI-3A/3B 的基础不自动解锁 batch（前置 per-installation secret）、backup、restore、
+background registration 或 diagnostics export；后续每个 command 仍须独立复核。
 
 ## 验证证据
 
@@ -559,8 +568,9 @@ CLI-2A/2B/2C 与 CORE-PREF-01 当前聚焦证据：
 4. T17 只做条件式脱敏真实来源 smoke 或明确 bugfix，不重新实现。
 5. LOG-01、LOG-02、LOG-03、SAVE-02、SAVE-03、SAVE-04 与 SAVE-05 已完成并认证；继续保持完整
    verify、findings-first review 和人工 gate 证据可追溯。
-6. CLI-3A 的本地完整 verify、findings-first review、Ubuntu required CI 与 disposable Windows gate 均已
-   完成并认证；进入 CLI-3B，按 command 复核 capability、token、Audit、锁内事实和 Windows 验收。
-   Production 写入仍不能仅凭跨进程 guard 绕过这些门禁。
+6. CLI-3A 已认证；CLI-3B（2026-08-24）按 command 复核后开放四条单项 lifecycle 的 Production
+   写入，disposable Windows 真机 gate 完成后方可标记 certified。后续写命令（batch、backup、
+   diagnostics export、background registration）仍按 command 逐项复核 capability、token、Audit、
+   锁内事实和 Windows 验收；Production 写入不能仅凭跨进程 guard 绕过这些门禁。
 
 完整 task 依赖和合并门禁见 [Windows 自主迭代路线图](AUTONOMOUS_ITERATION_ROADMAP.md)。

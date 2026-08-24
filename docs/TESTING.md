@@ -330,16 +330,21 @@ cargo run -p hmm-cli -- --format json runtime status
 CLI-0A contract 测试必须确认：
 
 - `hmm-cli` 不依赖 Tauri，`runtime status` 不构造真实 composition 或访问真实文件系统。
-- Production 禁止 `--data-dir`，并始终报告 `productionWritesAllowed=false` 与
-  `writeCommandPolicy=disabled`。
+- Production 禁止 `--data-dir`；CLI-3B 起报告 `productionWritesAllowed=true` 与
+  `writeCommandPolicy=production_command_level`（按 command 逐项解禁，而非全量开放）。
 - Sandbox 缺少数据根、使用相对路径、文件系统根或包含 `.` / `..` 时 fail closed。
 - `sandbox_only` 只是策略声明；测试不得创建 marker、签发写 permit 或把它表述成写能力已开放。
 - JSON/JSONL 每次输出完整合法 object，stdout 不混入日志，机器解析错误使用稳定脱敏 envelope。
 - CLI-0A 的 clap human/help/error 输出不含 ANSI；`--no-color` 不改变机器契约。
 - stdout/stderr 不回显 sandbox 绝对路径、用户名、Steam ID、真实 Mod/存档内容或内部错误文本。
-- CLI-2C 的 `install apply/uninstall/reinstall/recovery apply` 具有稳定 parser contract，但
-  Production 必须在 CLI policy 和 runtime 两层拒绝；`backup create/restore/background
+- CLI-3B 起 `install apply/uninstall/reinstall/recovery apply` 在 Production 可达，但自动化
+  测试不得读取真实 app data：进程级契约测试只断言纯语法 token 预检的 fail closed 路径
+  （过期/非法 token 与缺失 token 在触达任何数据根之前拒绝）；Production 写链路的行为测试在
+  `hmm-runtime` 层用 crate 内测试构造器把数据根指向临时 fixture（该构造器对 CLI 参数不可达）。
+  `install batch` 在 Production 继续拒绝；`backup create/restore/background
   enable|disable` 和 `diagnostics export` 仍在 parser 边界不可达。
+- Production 真机验收（真实 OS app data 根 + 合成游戏目录 + GUI/CLI/worker 竞争）只在
+  disposable Windows 环境执行，与普通 CI 结果分开记录。
 
 CLI-1A binary contract 使用测试进程创建的临时根：
 
@@ -472,8 +477,9 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
   task/game write 前拒绝；所有成功和失败路径保持 Sandbox 外 sentinel 不变。
 - CLI JSONL 从 0 单调编号，每个已启动任务只有一个 terminal；Ctrl+C 首次协作式取消、确认后返回
   130，第二次中断不伪造 cancelled，不可抢占 commit 仍以真实 terminal 为准。
-- Production 四条 lifecycle 写命令在 CLI policy 和 runtime 两层拒绝；测试不得读取或写入真实
-  Steam、游戏、存档、AppData、Scheduled Task 或第三方 Mod。
+- CLI-3B 起 Production 四条 lifecycle 写命令走 production token + `--commit --yes` + 跨进程
+  admission + 锁内重验；测试仍不得读取或写入真实 Steam、游戏、存档、AppData、Scheduled Task
+  或第三方 Mod（Production 行为测试用 crate 内临时根注入，真机验收走 disposable gate）。
 
 CLI-3A 跨进程写入 admission 的聚焦入口：
 
