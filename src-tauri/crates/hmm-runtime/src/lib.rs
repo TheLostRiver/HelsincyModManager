@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 mod backup_automation;
 mod batch_automation;
+mod batch_token_secret;
 mod composition;
 mod diagnostics_automation;
 mod external_import;
