@@ -529,4 +529,20 @@ test("browser preview serves mock steam candidates so the selection ui stays rev
   );
   assert.match(previewData, /accountName: null/);
   assert.match(previewData, /outcome: "auto_saved"/);
+
+  // 悬浮层形态：候选选择走共享 Dialog 基元（不新增第三套浮层实现，守住 T20 边界）；
+  // 打开条件与"暂时关闭后可经 toast 重新打开"的语义由 Provider 单一持有。
+  const candidateList = readSource("src/features/profiles/ProfileSaveDirectoryCandidateList.tsx");
+  assert.match(candidateList, /import \{ Dialog \} from "\.\.\/\.\.\/shared\/feedback"/);
+  assert.match(candidateList, /open=\{isCandidateSelectionOpen\}/);
+  assert.match(candidateList, /onClose=\{dismissCandidateSelection\}/);
+  assert.doesNotMatch(candidateList, /createPortal/);
+  assert.match(
+    provider,
+    /const isCandidateSelectionOpen =[\s\S]*?"confirmation_required"[\s\S]*?dismissedDiscoveryId/,
+  );
+  assert.match(
+    provider,
+    /const reviewCandidates = useCallback\(\(\) => \{[\s\S]*?setDismissedDiscoveryId\(null\)/,
+  );
 });

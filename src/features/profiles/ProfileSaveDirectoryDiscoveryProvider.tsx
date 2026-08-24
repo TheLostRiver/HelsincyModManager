@@ -44,8 +44,12 @@ type ProfileSaveDirectoryDiscoveryContextValue = {
   isDiscovering: boolean;
   discoveringTarget: DiscoveryTarget | null;
   notice: ProfileSaveDirectoryNotice | null;
+  /** 候选选择浮层是否应打开：需要确认且未被用户暂时关闭。 */
+  isCandidateSelectionOpen: boolean;
   runDiscovery: (input: { gameId: string; profileId: string; reason: DiscoveryReason }) => Promise<void>;
   confirmCandidate: (candidateId: string) => Promise<void>;
+  /** 暂时关闭候选浮层（不做选择）；重新检测或 toast 的"查看候选"可再次打开。 */
+  dismissCandidateSelection: () => void;
   dismissNotice: () => void;
 };
 
@@ -79,8 +83,18 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   const [notice, setNotice] = useState<ProfileSaveDirectoryNotice | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveringTarget, setDiscoveringTarget] = useState<DiscoveryTarget | null>(null);
+  // 记录被用户暂时关闭的 discoveryId：新一轮检测产生新 ID，浮层自然重新打开。
+  const [dismissedDiscoveryId, setDismissedDiscoveryId] = useState<string | null>(null);
 
   const dismissNotice = useCallback(() => setNotice(null), []);
+
+  const dismissCandidateSelection = useCallback(() => {
+    setDismissedDiscoveryId((current) => latestDiscovery?.discoveryId ?? current);
+  }, [latestDiscovery]);
+
+  const isCandidateSelectionOpen =
+    latestDiscovery?.outcome === "confirmation_required" &&
+    latestDiscovery.discoveryId !== dismissedDiscoveryId;
 
   const runDiscovery = useCallback(
     async (input: { gameId: string; profileId: string; reason: DiscoveryReason }) => {
@@ -206,10 +220,9 @@ export function ProfileSaveDirectoryDiscoveryProvider({
     await runDiscovery({ gameId: notice.gameId, profileId: notice.profileId, reason: "manual" });
   }, [notice, runDiscovery]);
 
+  // 候选选择已是悬浮层："查看候选"重新打开被关闭的浮层，而不是滚动定位。
   const reviewCandidates = useCallback(() => {
-    document
-      .getElementById("profile-save-directory-candidates")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setDismissedDiscoveryId(null);
   }, []);
 
   useEffect(() => {
@@ -237,11 +250,23 @@ export function ProfileSaveDirectoryDiscoveryProvider({
       isDiscovering,
       discoveringTarget,
       notice,
+      isCandidateSelectionOpen,
       runDiscovery,
       confirmCandidate,
+      dismissCandidateSelection,
       dismissNotice,
     }),
-    [confirmCandidate, dismissNotice, discoveringTarget, isDiscovering, latestDiscovery, notice, runDiscovery],
+    [
+      confirmCandidate,
+      dismissCandidateSelection,
+      dismissNotice,
+      discoveringTarget,
+      isCandidateSelectionOpen,
+      isDiscovering,
+      latestDiscovery,
+      notice,
+      runDiscovery,
+    ],
   );
 
   return (
