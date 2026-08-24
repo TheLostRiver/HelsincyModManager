@@ -19,8 +19,8 @@ use hmm_runtime::{
     ReadOnlyDiagnosticsAutomation, ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation,
     ReadOnlyGameAutomationError, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
     ReadOnlyInstallRecoveryAction, ReinstallPlanSnapshot, RuntimeEnvironment,
-    RuntimeEnvironmentError, RuntimeEnvironmentKind, SandboxBatchAutomationError,
-    SandboxBatchAutomationErrorClass, SandboxBatchInstallAutomation, SandboxBatchPlanRequest,
+    RuntimeEnvironmentError, RuntimeEnvironmentKind, BatchAutomationError,
+    BatchAutomationErrorClass, BatchLifecycleAutomation, BatchLifecyclePlanRequest,
     TaskProgressEvent, TaskProgressObserver, UninstallPlanSnapshot,
 };
 use serde::Serialize;
@@ -994,7 +994,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     );
                 }
             };
-            match SandboxBatchInstallAutomation::preview_request(environment, request) {
+            match BatchLifecycleAutomation::preview_request(environment, request) {
                 Ok(preview) => write_install_result(
                     format,
                     INSTALL_BATCH_PLAN_COMMAND,
@@ -1046,7 +1046,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     );
                 }
             };
-            match SandboxBatchInstallAutomation::apply_request(environment, request, preview_token)
+            match BatchLifecycleAutomation::apply_request(environment, request, preview_token)
             {
                 Ok((operation, _sealed, run)) => {
                     let result = project_batch_run(
@@ -1075,7 +1075,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
             }
         }
         InstallBatchCommand::Result(options) => {
-            match SandboxBatchInstallAutomation::result(
+            match BatchLifecycleAutomation::result(
                 environment,
                 &options.batch_id,
                 options.attempt,
@@ -1106,7 +1106,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     stderr,
                 );
             }
-            match SandboxBatchInstallAutomation::retry_with_operation(
+            match BatchLifecycleAutomation::retry_with_operation(
                 environment,
                 &options.batch_id,
                 options.attempt,
@@ -1293,7 +1293,7 @@ fn project_batch_reason(reason: &hmm_core::BatchReasonSummary) -> BatchReasonSum
 
 fn batch_plan_request(
     options: &InstallBatchRequestOptions,
-) -> Result<SandboxBatchPlanRequest, &'static str> {
+) -> Result<BatchLifecyclePlanRequest, &'static str> {
     let game_id = GameId::parse(&options.game).map_err(|_| "batch_game_invalid")?;
     let profile_id =
         parse_batch_id_component(&options.profile, "batch_profile_invalid").map(ProfileId::new)?;
@@ -1387,7 +1387,7 @@ fn batch_plan_request(
             return Err("batch_item_invalid");
         }
     }
-    Ok(SandboxBatchPlanRequest {
+    Ok(BatchLifecyclePlanRequest {
         plan: BatchPlanRequest {
             schema_version: BATCH_PLAN_SCHEMA_VERSION,
             operation,
@@ -2331,19 +2331,19 @@ fn write_batch_error<W: Write, E: Write>(
 fn write_batch_automation_error<W: Write, E: Write>(
     format: OutputFormat,
     command: &'static str,
-    error: SandboxBatchAutomationError,
+    error: BatchAutomationError,
     stdout: &mut W,
     stderr: &mut E,
 ) -> i32 {
     let code = error.code();
     let (category, exit_code) = match error.class() {
-        SandboxBatchAutomationErrorClass::DataSafetyRisk => {
+        BatchAutomationErrorClass::DataSafetyRisk => {
             (CliErrorCategory::DataSafetyRisk, CliExitCode::Rejected)
         }
-        SandboxBatchAutomationErrorClass::UserActionRequired => {
+        BatchAutomationErrorClass::UserActionRequired => {
             (CliErrorCategory::UserActionRequired, CliExitCode::Rejected)
         }
-        SandboxBatchAutomationErrorClass::Recoverable => (
+        BatchAutomationErrorClass::Recoverable => (
             CliErrorCategory::Recoverable,
             CliExitCode::RuntimeUnavailable,
         ),

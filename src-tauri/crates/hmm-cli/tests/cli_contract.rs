@@ -1989,7 +1989,9 @@ fn batch_parser_rejects_single_item_plan_token_and_requires_explicit_attempts() 
 }
 
 #[test]
-fn production_install_batch_apply_is_rejected_before_runtime_write_admission() {
+fn production_install_batch_apply_fails_closed_before_any_data_access() {
+    // CLI-3C：production batch 可达，但 token 纯语法预检在触达任何数据根之前
+    // 拒绝格式非法与过期 token——本测试因此不读真实 app data。
     let output = hmm(&[
         "--format",
         "json",
@@ -2010,10 +2012,30 @@ fn production_install_batch_apply_is_rejected_before_runtime_write_admission() {
     assert_eq!(stderr_text(&output), "");
     let stdout = stdout_text(&output);
     assert!(!stdout.contains("opaque-preview-token"));
-    let value: Value = serde_json::from_str(&stdout).expect("production batch rejection json");
+    let value: Value = serde_json::from_str(&stdout).expect("production batch envelope");
     assert_eq!(value["command"], "install.batch.apply");
-    assert_eq!(value["error"]["code"], "sandbox_batch_production_forbidden");
-    assert_eq!(value["error"]["category"], "data_safety_risk");
+    assert_eq!(value["error"]["code"], "batch_token_invalid");
+    assert_eq!(value["error"]["category"], "user_action_required");
+
+    let expired = hmm(&[
+        "--format",
+        "json",
+        "--environment",
+        "production",
+        "install",
+        "batch",
+        "apply",
+        "--item",
+        "mod-a:package-a",
+        "--preview-token",
+        "hmm-batch-v2.preview.1.2.deadbeef",
+        "--commit",
+        "--yes",
+    ]);
+    assert_eq!(expired.status.code(), Some(3));
+    let expired_value: Value =
+        serde_json::from_str(&stdout_text(&expired)).expect("expired token envelope");
+    assert_eq!(expired_value["error"]["code"], "batch_plan_expired");
 }
 
 #[test]
