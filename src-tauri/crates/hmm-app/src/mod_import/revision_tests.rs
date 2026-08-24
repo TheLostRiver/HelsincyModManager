@@ -544,6 +544,44 @@ fn metadata_and_category_overlays_remain_bound_to_logical_mod_after_append() {
     assert_eq!(detail.name, "User Overlay Name");
 }
 
+#[test]
+fn mod_detail_reports_external_import_origin_without_private_digests() {
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed("mod-a", "revision-v1", "package-v1");
+    repository.set_origin_provenance(
+        "mod-a",
+        StoredModOriginProvenance::ExternalImport {
+            provenance: hmm_core::ExternalImportProvenance {
+                adapter_id: hmm_core::ExternalImportAdapterId::new("hunting_box_directory_v1"),
+                batch_id: hmm_core::ExternalImportBatchId::new("external-import-batch-1"),
+                source_item_key_hash: "private-item-key".to_owned(),
+                content_fingerprint: "sha256:private-content".to_owned(),
+                imported_at_unix_millis: 1_724_000_000_000,
+            },
+        },
+    );
+    let service = ModLibraryService::new(
+        repository,
+        Arc::new(SingleMetadataRepository),
+        Arc::new(SingleCategoryRepository),
+    );
+
+    let detail = service
+        .get_mod_detail("mod-a")
+        .expect("load detail")
+        .expect("detail exists");
+
+    // 展示摘要只携带稳定 ID 与导入时间;私有摘要连类型上都不允许存在。
+    assert_eq!(
+        detail.origin,
+        crate::ModOriginSummary::ExternalImport {
+            adapter_id: "hunting_box_directory_v1".to_owned(),
+            batch_id: "external-import-batch-1".to_owned(),
+            imported_at_unix_millis: 1_724_000_000_000,
+        }
+    );
+}
+
 fn runner(
     task_manager: Arc<crate::TaskManager>,
     preparer: Box<dyn ModImportPackagePreparer>,
@@ -792,6 +830,15 @@ impl FakeRevisionCatalogRepository {
                 metadata: StoredModPackageMetadata::default(),
                 preview_image: fallback_preview(),
             });
+    }
+
+    fn set_origin_provenance(&self, mod_id: &str, provenance: StoredModOriginProvenance) {
+        let mut mods = self.mods.lock().expect("mods lock");
+        let logical_mod = mods
+            .iter_mut()
+            .find(|logical_mod| logical_mod.mod_id.as_str() == mod_id)
+            .expect("seeded logical mod exists");
+        logical_mod.origin_provenance = provenance;
     }
 
     fn fail_list_mods_with(&self, message: &str) {
