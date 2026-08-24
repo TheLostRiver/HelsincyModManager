@@ -11,16 +11,16 @@ use hmm_core::{
 };
 use hmm_runtime::{
     BackupBackgroundStatusSnapshot, BackupListSnapshot,
-    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, CliLifecycleAutomation,
-    CliLifecycleAutomationError, DiagnosticsSnapshot, GamePrerequisiteSnapshot, GameScanSnapshot,
-    GameStatusSnapshot, GameValidationSnapshot, InstallPlanSnapshot,
-    InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot, InstallStatusSnapshot,
-    LifecycleTaskOutcome, ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
-    ReadOnlyDiagnosticsAutomation, ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation,
-    ReadOnlyGameAutomationError, ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError,
-    ReadOnlyInstallRecoveryAction, ReinstallPlanSnapshot, RuntimeEnvironment,
-    RuntimeEnvironmentError, RuntimeEnvironmentKind, BatchAutomationError,
+    BatchAttemptSnapshot as RuntimeBatchAttemptSnapshot, BatchAutomationError,
     BatchAutomationErrorClass, BatchLifecycleAutomation, BatchLifecyclePlanRequest,
+    CliLifecycleAutomation, CliLifecycleAutomationError, DiagnosticsSnapshot,
+    GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot, GameValidationSnapshot,
+    InstallPlanSnapshot, InstallRecoveryPreviewSnapshot, InstallRecoveryScanSnapshot,
+    InstallStatusSnapshot, LifecycleTaskOutcome, ReadOnlyBackupAutomation,
+    ReadOnlyBackupAutomationError, ReadOnlyDiagnosticsAutomation,
+    ReadOnlyDiagnosticsAutomationError, ReadOnlyGameAutomation, ReadOnlyGameAutomationError,
+    ReadOnlyInstallAutomation, ReadOnlyInstallAutomationError, ReadOnlyInstallRecoveryAction,
+    ReinstallPlanSnapshot, RuntimeEnvironment, RuntimeEnvironmentError, RuntimeEnvironmentKind,
     TaskProgressEvent, TaskProgressObserver, UninstallPlanSnapshot,
 };
 use serde::Serialize;
@@ -1046,8 +1046,7 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
                     );
                 }
             };
-            match BatchLifecycleAutomation::apply_request(environment, request, preview_token)
-            {
+            match BatchLifecycleAutomation::apply_request(environment, request, preview_token) {
                 Ok((operation, _sealed, run)) => {
                     let result = project_batch_run(
                         &run.batch_id,
@@ -1075,11 +1074,8 @@ fn run_install_batch_command<W: Write + Send, E: Write>(
             }
         }
         InstallBatchCommand::Result(options) => {
-            match BatchLifecycleAutomation::result(
-                environment,
-                &options.batch_id,
-                options.attempt,
-            ) {
+            match BatchLifecycleAutomation::result(environment, &options.batch_id, options.attempt)
+            {
                 Ok(snapshot) => write_batch_attempt_result(
                     format,
                     INSTALL_BATCH_RESULT_COMMAND,
