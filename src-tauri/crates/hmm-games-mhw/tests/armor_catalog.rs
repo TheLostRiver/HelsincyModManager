@@ -7,7 +7,7 @@ fn armor_catalog_is_versioned_and_uses_stable_hash_ids() {
     let provider = MhwArmorCatalog;
     let catalog = provider.replacement_catalog().expect("armor catalog");
 
-    assert_eq!(catalog.version().as_str(), "mhw-armor-v2");
+    assert_eq!(catalog.version().as_str(), "mhw-armor-v3");
     assert_eq!(catalog.game_id().as_str(), "mhw");
     assert_eq!(catalog.targets().len(), 269);
 
@@ -57,6 +57,7 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
         );
     }
 
+    // v3 起全部 269 条覆盖中英日三语（v2 时 5 条活动/联动装缺 en/ja，已从 kiranico 补齐）。
     let with_three_locales = catalog
         .targets()
         .iter()
@@ -66,16 +67,7 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
                 .all(|locale| target.display_name().get(locale).is_some())
         })
         .count();
-    assert_eq!(with_three_locales, 264, "中英日三语覆盖数量变了");
-
-    // 其余条目至少要有中文名，否则 UI 会显示空白。
-    for target in catalog.targets() {
-        assert!(
-            target.display_name().get("zh_cn").is_some(),
-            "{} 缺少中文名",
-            target.internal_id()
-        );
-    }
+    assert_eq!(with_three_locales, 269, "中英日三语覆盖数量变了");
 }
 
 #[test]

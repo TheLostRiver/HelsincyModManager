@@ -324,6 +324,28 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn bundled_armor_catalog_names_cover_all_mhw_locales() {
+        // 键集即 per-game locale 能力声明（I18N-08）：少一种语言，对应语言界面
+        // 会 fallback 显示其他语言，且该语言的名称检索不命中。扩容或修名时必须保持齐全
+        // （AR6 曾漏 5 条 en/ja，本测试防止回归）。
+        let raw: Value =
+            serde_json::from_str(BUNDLED_ARMOR_CATALOG).expect("bundled armor catalog json");
+        for target in raw["targets"].as_array().expect("targets array") {
+            let names = target["display_name"]
+                .as_object()
+                .expect("display_name object");
+            let mut keys: Vec<_> = names.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            assert_eq!(
+                keys,
+                ["en", "ja", "zh_cn"],
+                "armor target {} must carry the full locale set",
+                target["internal_id"]
+            );
+        }
+    }
+
+    #[test]
     fn rejects_unsupported_catalog_schema_version() {
         let error = parse_armor_catalog(r#"{"schema_version":99}"#)
             .expect_err("unsupported schema should not require v1 fields");

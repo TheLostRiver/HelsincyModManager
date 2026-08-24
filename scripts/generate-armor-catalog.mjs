@@ -12,6 +12,10 @@
  * Stable ID 严格按 docs/EQUIPMENT_CATALOG_GOVERNANCE.md 的算法计算，
  * 与 Rust 侧 generate_mhw_equipment_stable_id 必须逐字节一致。
  *
+ * 注意：v3 在生成产物上手工补入了 5 条活动/联动装的 en/ja 名（来源 kiranico，
+ * 见对应 PR 记录）。重新运行本脚本前必须先把这 5 条并入候选 CSV，否则会回退
+ * 语言覆盖（catalog 键集完备性由 hmm-games-mhw 的测试把关）。
+ *
  * 许可：名称属于卡普空，按 game_terminology 状态如实声明，不主张任何权利。
  * 政策依据见 EQUIPMENT_CATALOG_GOVERNANCE.md 的「关于 game_terminology 的政策决定」。
  */
@@ -43,7 +47,7 @@ const CANDIDATE_OUT = "armor-data/generated/mhw-equipment-candidates.armor.v1.js
 const ARTIFACT_OUT = "src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json";
 const PATH_FAMILY = "pl/f_equip";
 const SOURCE_ID = "mhw-ingame-equipment-names";
-const CATALOG_VERSION = "mhw-armor-v2";
+const CATALOG_VERSION = "mhw-armor-v3";
 
 /** 占位条目：治理要求生成 artifact 前显式移除，不能静默变成可选择目标。 */
 const DUMMY_NAME = "HARDUMMY";
