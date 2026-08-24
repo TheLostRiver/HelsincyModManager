@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useId } from "react";
+import { History, X } from "lucide-react";
 import { ExternalImportCandidateSelectionItem } from "./ExternalImportCandidateSelectionItem";
 import { ExternalImportResultPanel } from "./ExternalImportResultPanel";
 import { getExternalImportPhaseLabel } from "./externalImportProgressState";
@@ -16,6 +17,8 @@ import type { ExternalImportSelectionWorkflow } from "./useExternalImportSelecti
 
 type ExternalImportSelectionPanelProps = {
   workflow: ExternalImportSelectionWorkflow;
+  onViewHistory?: () => void;
+  onCloseDialog?: () => void;
 };
 
 function formatCount(value: number) {
@@ -24,8 +27,12 @@ function formatCount(value: number) {
 
 function ImportProgress({
   workflow,
+  onViewHistory,
+  onCloseDialog,
 }: {
   workflow: ExternalImportSelectionWorkflow;
+  onViewHistory?: () => void;
+  onCloseDialog?: () => void;
 }) {
   const { locale } = useI18n();
   const extCopy = resolveCopy(externalImportCopy, locale);
@@ -78,10 +85,37 @@ function ImportProgress({
   }
   if (state.status === "completed") {
     return (
-      <div className="external-import__state is-success" role="status" aria-live="polite">
-        <CheckCircle2 size={18} aria-hidden="true" />
-        <span>{extCopy.selectionPanel.completedReadingResults}</span>
-      </div>
+      <>
+        <div className="external-import__state is-success" role="status" aria-live="polite">
+          <CheckCircle2 size={18} aria-hidden="true" />
+          <span>{extCopy.selectionPanel.completedReadingResults}</span>
+        </div>
+        {/* 完成后的去处引导:保守一行两个 secondary 按钮,不加卡片不重排既有区块。 */}
+        {onViewHistory || onCloseDialog ? (
+          <div className="external-import__result-actions">
+            {onViewHistory ? (
+              <button
+                type="button"
+                className="external-import__button is-secondary"
+                onClick={onViewHistory}
+              >
+                <History size={15} aria-hidden="true" />
+                {extCopy.selectionPanel.viewImportHistory}
+              </button>
+            ) : null}
+            {onCloseDialog ? (
+              <button
+                type="button"
+                className="external-import__button is-secondary"
+                onClick={onCloseDialog}
+              >
+                <X size={15} aria-hidden="true" />
+                {extCopy.selectionPanel.closeAndReturn}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </>
     );
   }
   if (state.status === "cancelled") {
@@ -102,6 +136,8 @@ function ImportProgress({
 
 export function ExternalImportSelectionPanel({
   workflow,
+  onViewHistory,
+  onCloseDialog,
 }: ExternalImportSelectionPanelProps) {
   const { locale } = useI18n();
   const extCopy = resolveCopy(externalImportCopy, locale);
@@ -300,7 +336,11 @@ export function ExternalImportSelectionPanel({
         </div>
       ) : null}
 
-      <ImportProgress workflow={workflow} />
+      <ImportProgress
+        workflow={workflow}
+        onViewHistory={onViewHistory}
+        onCloseDialog={onCloseDialog}
+      />
       <ExternalImportResultPanel workflow={workflow.result} />
     </section>
   );

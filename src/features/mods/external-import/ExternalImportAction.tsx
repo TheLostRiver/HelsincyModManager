@@ -9,8 +9,9 @@ import {
   RefreshCcw,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Dialog, useFeedback } from "../../../shared/feedback";
+import { ModLibraryControlTooltip } from "../ModLibraryControlTooltip";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../modImportTypes";
 import {
   cancelExternalImportScan,
@@ -401,21 +402,46 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
     sourcePickerActive ||
     isScanActive(scanState) ||
     selectionWorkflowBusy;
+  // 服务状态走 tooltip + 警示点(与其他工具栏按钮一致),不占工具栏红字;
+  // 可访问播报由隐藏 live region 保留。
+  const triggerStatusText =
+    listenerStatus === "failed"
+      ? getExternalImportScanErrorMessage("external_import_listener_unavailable", extCopy.scan)
+      : undefined;
+  const triggerStatusId = useId();
 
   return (
     <>
-      <button
-        type="button"
-        className="compact-action is-neutral external-import-action__trigger"
-        disabled={listenerStatus === "loading"}
-        aria-label={extCopy.action.trigger}
-        onClick={openDialog}
+      <ModLibraryControlTooltip content={triggerStatusText}>
+        {(descriptionId) => (
+          <button
+            type="button"
+            className="compact-action is-neutral external-import-action__trigger"
+            data-listener-status={listenerStatus}
+            disabled={listenerStatus === "loading"}
+            aria-label={extCopy.action.trigger}
+            aria-describedby={triggerStatusText ? descriptionId : undefined}
+            onClick={openDialog}
+          >
+            <span className="compact-action__left">
+              <FolderInput size={14} strokeWidth={2.4} aria-hidden="true" />
+              <span className="compact-action__label">{extCopy.action.trigger}</span>
+              {listenerStatus === "failed" ? (
+                <span className="compact-import-action__alert-dot" aria-hidden="true" />
+              ) : null}
+            </span>
+          </button>
+        )}
+      </ModLibraryControlTooltip>
+      <span
+        id={triggerStatusId}
+        className="compact-import-action__sr-status"
+        role={listenerStatus === "failed" ? "alert" : "status"}
+        aria-live="polite"
+        aria-atomic="true"
       >
-        <span className="compact-action__left">
-          <FolderInput size={14} strokeWidth={2.4} aria-hidden="true" />
-          <span className="compact-action__label">{extCopy.action.trigger}</span>
-        </span>
-      </button>
+        {triggerStatusText ?? ""}
+      </span>
       <button
         type="button"
         className="compact-action is-neutral external-import-action__history-trigger"
@@ -553,7 +579,15 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
           ) : null}
 
           {scanState.status === "completed" && batchId ? (
-            <ExternalImportSelectionPanel workflow={selectionWorkflow} />
+            <ExternalImportSelectionPanel
+              workflow={selectionWorkflow}
+              onViewHistory={() => {
+                setView("history");
+                // 刚完成的批次要立刻可见,直接刷新而不是命中 ensureLoaded 的缓存。
+                historyWorkflow.refresh();
+              }}
+              onCloseDialog={() => setDialogOpen(false)}
+            />
           ) : null}
           </>
           )}
