@@ -177,17 +177,7 @@ impl HuntingBoxDirectoryScanner {
                 return Ok(candidate);
             }
         };
-        let files_directory = match open_child_directory_nofollow(
-            &item_directory,
-            std::ffi::OsStr::new("files"),
-            "external import candidate files directory",
-        ) {
-            Ok(directory) => directory,
-            Err(_) => {
-                candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
-                return Ok(candidate);
-            }
-        };
+        let files_metadata = item_directory.symlink_metadata(std::ffi::OsStr::new("files"));
         let mut info_xml = match open_regular_file_nofollow(
             &item_directory,
             std::ffi::OsStr::new("info.xml"),
@@ -198,6 +188,37 @@ impl HuntingBoxDirectoryScanner {
                 candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
                 return Ok(candidate);
             }
+        };
+        let files_directory = match files_metadata {
+            // 只有「files/ 确实不存在」才是狩技盒子「无操作」安装方式的残留:
+            // 元数据在、载荷不在盒子库中。仍解析 info.xml 让预览带上 mod 名。
+            // links/重解析点/非目录仍按结构无效拒绝,不得降级成缺载荷。
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if let Ok(metadata_hint) = parse_info_xml(&mut info_xml) {
+                    candidate.metadata_hint = metadata_hint;
+                }
+                candidate.preview_status = ExternalImportCandidateStatus::PayloadMissing;
+                return Ok(candidate);
+            }
+            Err(_) => {
+                candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
+                return Ok(candidate);
+            }
+            Ok(metadata) if is_link_or_reparse(&metadata) || !metadata.is_dir() => {
+                candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
+                return Ok(candidate);
+            }
+            Ok(_) => match open_child_directory_nofollow(
+                &item_directory,
+                std::ffi::OsStr::new("files"),
+                "external import candidate files directory",
+            ) {
+                Ok(directory) => directory,
+                Err(_) => {
+                    candidate.preview_status = ExternalImportCandidateStatus::StructureInvalid;
+                    return Ok(candidate);
+                }
+            },
         };
         if !files_directory
             .dir_metadata()
@@ -1145,6 +1166,8 @@ mod tests {
         let missing_files = fixture.path().join("301");
         fs::create_dir_all(&missing_files).expect("create malformed candidate");
         fs::write(missing_files.join("info.xml"), "<info />").expect("write xml");
+        let non_numeric = fixture.path().join("not-a-number");
+        fs::create_dir_all(&non_numeric).expect("create non-numeric candidate");
         write_candidate(
             fixture.path(),
             "302",
@@ -1166,9 +1189,45 @@ mod tests {
             .iter()
             .any(|candidate| candidate.preview_status
                 == ExternalImportCandidateStatus::StructureInvalid));
+        // 编号目录缺 files/ 载荷不再混入「结构无效」,单独归为缺载荷。
+        assert!(result
+            .candidates
+            .iter()
+            .any(|candidate| candidate.preview_status
+                == ExternalImportCandidateStatus::PayloadMissing));
         assert!(result.candidates.iter().any(|candidate| {
             candidate.preview_status == ExternalImportCandidateStatus::ResourceLimitExceeded
         }));
+    }
+
+    #[test]
+    fn scanner_marks_missing_payload_with_parsed_metadata_name() {
+        let fixture = tempfile::tempdir().expect("fixture root");
+        let payload_missing = fixture.path().join("401");
+        fs::create_dir_all(&payload_missing).expect("create payload-missing candidate");
+        fs::write(
+            payload_missing.join("info.xml"),
+            "<info><moduleName>盒外载荷</moduleName></info>",
+        )
+        .expect("write xml");
+
+        let result = scan_fixture(fixture.path(), ExternalImportResourceBudget::default());
+
+        assert_eq!(result.candidates.len(), 1);
+        let candidate = &result.candidates[0];
+        assert_eq!(
+            candidate.preview_status,
+            ExternalImportCandidateStatus::PayloadMissing
+        );
+        // 玩家至少要知道漏掉的是哪个 mod。
+        assert_eq!(
+            candidate.metadata_hint.display_name.as_deref(),
+            Some("盒外载荷")
+        );
+        assert_eq!(
+            candidate.preview_status.reason_code(),
+            Some(hmm_core::ExternalImportReasonCode::PayloadMissing)
+        );
     }
 
     #[test]

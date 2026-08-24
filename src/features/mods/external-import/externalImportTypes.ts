@@ -81,7 +81,8 @@ export type ExternalImportCandidateStatus =
   | "metadata_invalid"
   | "unsupported_entry"
   | "resource_limit_exceeded"
-  | "source_unreadable";
+  | "source_unreadable"
+  | "payload_missing";
 
 export type ExternalImportConflictKind = "none" | "content_duplicate" | "name_collision";
 

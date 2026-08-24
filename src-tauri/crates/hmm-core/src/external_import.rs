@@ -186,6 +186,9 @@ pub enum ExternalImportCandidateStatus {
     UnsupportedEntry,
     ResourceLimitExceeded,
     SourceUnreadable,
+    /// 编号目录有元数据但没有 `files/` 载荷(狩技盒子「无操作」安装方式的残留)。
+    /// 与 StructureInvalid 分开:预览要能带着 mod 名明确告诉玩家「载荷不在盒子库中」。
+    PayloadMissing,
 }
 
 impl ExternalImportCandidateStatus {
@@ -200,6 +203,7 @@ impl ExternalImportCandidateStatus {
             Self::UnsupportedEntry => Some(ExternalImportReasonCode::UnsupportedEntry),
             Self::ResourceLimitExceeded => Some(ExternalImportReasonCode::ResourceLimitExceeded),
             Self::SourceUnreadable => Some(ExternalImportReasonCode::SourceUnreadable),
+            Self::PayloadMissing => Some(ExternalImportReasonCode::PayloadMissing),
         }
     }
 
@@ -606,6 +610,7 @@ pub enum ExternalImportReasonCode {
     UnsupportedEntry,
     ResourceLimitExceeded,
     SourceUnreadable,
+    PayloadMissing,
     SourceChanged,
     SelectionRevisionConflict,
     SelectionEmpty,
@@ -630,6 +635,7 @@ impl ExternalImportReasonCode {
             Self::UnsupportedEntry => "unsupported_entry",
             Self::ResourceLimitExceeded => "resource_limit_exceeded",
             Self::SourceUnreadable => "source_unreadable",
+            Self::PayloadMissing => "payload_missing",
             Self::SourceChanged => "source_changed",
             Self::SelectionRevisionConflict => "selection_revision_conflict",
             Self::SelectionEmpty => "selection_empty",
@@ -798,6 +804,7 @@ fn selection_decision_is_valid(
         | ExternalImportCandidateStatus::StructureInvalid
         | ExternalImportCandidateStatus::UnsupportedEntry
         | ExternalImportCandidateStatus::ResourceLimitExceeded
-        | ExternalImportCandidateStatus::SourceUnreadable => false,
+        | ExternalImportCandidateStatus::SourceUnreadable
+        | ExternalImportCandidateStatus::PayloadMissing => false,
     }
 }

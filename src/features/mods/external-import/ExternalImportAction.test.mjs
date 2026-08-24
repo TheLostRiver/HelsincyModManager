@@ -141,6 +141,12 @@ test("external import action composes selection, result, and retry without a fro
     source,
     /className="compact-import-action__sr-status"\s*role=\{listenerStatus === "failed" \? "alert" : "status"\}/,
   );
+  // 误选目录(如狩技盒子安装根的父级)引导:0 项可导入时给定向文案,页内近似判断。
+  assert.match(selectionPanel, /selectionPanel\.noImportableHint/);
+  assert.match(
+    selectionPanel,
+    /previewStatus === "ready" \|\|[\s\S]{0,120}previewStatus === "metadata_invalid"/,
+  );
   // 导入完成后的去处引导:查看记录会强制刷新历史,让刚完成的批次立刻可见。
   assert.match(selectionPanel, /selectionPanel\.viewImportHistory/);
   assert.match(selectionPanel, /selectionPanel\.closeAndReturn/);

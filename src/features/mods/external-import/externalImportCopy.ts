@@ -90,6 +90,7 @@ export type ExternalImportCopy = {
     loadingSnapshot: string;
     reloadCandidates: string;
     noCandidates: string;
+    noImportableHint: string;
     scanReturned: (total: string) => string;
     loadedCount: (loaded: string, total: string) => string;
     selectAllImportable: string;
@@ -310,6 +311,7 @@ export const externalImportCopy = {
         unsupported_entry: "不支持的条目",
         resource_limit_exceeded: "超出资源限制",
         source_unreadable: "来源不可读取",
+        payload_missing: "载荷不在盒子库中",
       },
       rescan: "需要重新扫描",
       conflicts: {
@@ -373,6 +375,8 @@ export const externalImportCopy = {
       loadingSnapshot: "正在读取选择快照与候选预览",
       reloadCandidates: "重新加载候选",
       noCandidates: "没有可显示的候选",
+      noImportableHint:
+        "没有可导入项。请选择直接包含数字编号 Mod 文件夹的目录(狩技盒子通常是安装目录下的 Mods_582010);标注「载荷不在盒子库中」的 Mod 需要用原始压缩包重新导入。",
       scanReturned: (total) => `扫描共返回 ${total} 项。`,
       loadedCount: (loaded, total) => `已加载 ${loaded} / ${total} 项`,
       selectAllImportable: "选择全部可直接导入项",
@@ -600,6 +604,7 @@ export const externalImportCopy = {
         unsupported_entry: "Unsupported entry",
         resource_limit_exceeded: "Resource limit exceeded",
         source_unreadable: "Source unreadable",
+        payload_missing: "Payload not in the box library",
       },
       rescan: "Rescan required",
       conflicts: {
@@ -668,6 +673,8 @@ export const externalImportCopy = {
       loadingSnapshot: "Reading the selection snapshot and candidate preview",
       reloadCandidates: "Reload candidates",
       noCandidates: "No candidates to show",
+      noImportableHint:
+        "Nothing can be imported. Pick the folder that directly contains the numbered mod folders (usually Mods_582010 under the hunting box install directory); mods marked \"payload not in the box library\" must be re-imported from their original archives.",
       scanReturned: (total) => `The scan returned ${total} items.`,
       loadedCount: (loaded, total) => `Loaded ${loaded} / ${total}`,
       selectAllImportable: "Select all directly importable items",
@@ -898,6 +905,7 @@ export const externalImportCopy = {
         unsupported_entry: "未対応の項目",
         resource_limit_exceeded: "リソース上限超過",
         source_unreadable: "ソース読み取り不可",
+        payload_missing: "ペイロードがボックス内にありません",
       },
       rescan: "再スキャンが必要",
       conflicts: {
@@ -963,6 +971,8 @@ export const externalImportCopy = {
       loadingSnapshot: "選択スナップショットと候補プレビューを読み込み中",
       reloadCandidates: "候補を再読込",
       noCandidates: "表示できる候補がありません",
+      noImportableHint:
+        "インポート可能な項目がありません。番号付き Mod フォルダーを直接含むフォルダー(通常は狩技ボックスのインストール先の Mods_582010)を選択してください。「ペイロードがボックス内にありません」と表示された Mod は元のアーカイブからの再インポートが必要です。",
       scanReturned: (total) => `スキャンは ${total} 件を返しました。`,
       loadedCount: (loaded, total) => `${loaded} / ${total} 件を読み込み済み`,
       selectAllImportable: "直接インポート可能な項目をすべて選択",
