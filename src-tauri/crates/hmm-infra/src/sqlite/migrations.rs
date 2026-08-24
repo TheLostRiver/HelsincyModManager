@@ -26,6 +26,9 @@ pub(crate) fn migrations() -> Migrations<'static> {
             "migrations/013_save_backup_retention_center.sql"
         )),
         M::up(include_str!("migrations/014_profile_retention_default.sql")),
+        M::up(include_str!(
+            "migrations/015_external_import_history_query.sql"
+        )),
     ])
 }
 
@@ -156,6 +159,80 @@ mod tests {
             )
             .expect_err("orphan save settings must be rejected");
         assert!(error.to_string().to_lowercase().contains("foreign key"));
+    }
+
+    #[test]
+    fn external_import_history_migration_backfills_created_at_and_status_without_dropping_rows() {
+        let mut conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("enable foreign keys");
+        let migrations = migrations();
+        migrations
+            .to_version(&mut conn, 14)
+            .expect("migrate through 014");
+        let mut expected_batch_columns = table_columns(&conn, "external_import_batches");
+        expected_batch_columns.push("created_at".to_owned());
+        expected_batch_columns.sort();
+        let mut expected_result_columns = table_columns(&conn, "external_import_item_results");
+        expected_result_columns.push("status".to_owned());
+        expected_result_columns.sort();
+        conn.execute(
+            "INSERT INTO external_import_batches (batch_id, batch_json) VALUES (?1, ?2)",
+            rusqlite::params![
+                "legacy-batch",
+                r#"{"batch_id":"legacy-batch","adapter_id":"hunting_box_directory_v1","source_fingerprint":"private-fingerprint","scan_status":"completed","import_status":"completed","created_at_unix_millis":1234}"#,
+            ],
+        )
+        .expect("seed legacy batch");
+        conn.execute(
+            "INSERT INTO external_import_item_results
+                (batch_id, candidate_id, ordinal, result_json)
+             VALUES (?1, ?2, 0, ?3)",
+            rusqlite::params![
+                "legacy-batch",
+                "candidate-1",
+                r#"{"candidate_id":"candidate-1","status":"imported","reason_code":null,"imported_mod_id":"mod-1","retryable":false}"#,
+            ],
+        )
+        .expect("seed legacy item result");
+
+        migrations.to_latest(&mut conn).expect("migrate to latest");
+
+        // 回填必须逐行来自 JSON 事实,而不是默认值;行数不变、旧列不丢。
+        let created_at: i64 = conn
+            .query_row(
+                "SELECT created_at FROM external_import_batches WHERE batch_id = 'legacy-batch'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read backfilled created_at");
+        assert_eq!(created_at, 1234);
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM external_import_item_results
+                 WHERE batch_id = 'legacy-batch' AND candidate_id = 'candidate-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read backfilled status");
+        assert_eq!(status, "imported");
+        let row_counts: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM external_import_batches),
+                        (SELECT COUNT(*) FROM external_import_item_results)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("count migrated rows");
+        assert_eq!(row_counts, (1, 1));
+        assert_eq!(
+            table_columns(&conn, "external_import_batches"),
+            expected_batch_columns
+        );
+        assert_eq!(
+            table_columns(&conn, "external_import_item_results"),
+            expected_result_columns
+        );
     }
 
     fn table_columns(conn: &rusqlite::Connection, table: &str) -> Vec<String> {

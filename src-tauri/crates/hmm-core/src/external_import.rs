@@ -16,6 +16,14 @@ pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_SINGLE_FILE_BYTES: u64 = 1
 pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_DEPTH: u32 = 64;
 
+/// 已执行过导入的批次(终态 import_status)按数量保留,不按时间删除:
+/// 它们是「导入了哪些、成功/失败了哪些」的可追溯事实。
+pub const EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES: usize = 50;
+/// 只扫描过、从未启动导入的批次追溯价值最低、体量最大(候选可达一万行),
+/// 按数量与时间双重上限清理。
+pub const EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES: usize = 10;
+pub const EXTERNAL_IMPORT_HISTORY_SCAN_ONLY_TTL_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+
 macro_rules! string_id {
     ($name:ident) => {
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -514,6 +522,68 @@ pub enum ExternalImportItemStatus {
     Blocked,
     Failed,
     Cancelled,
+}
+
+impl ExternalImportItemStatus {
+    /// 与 serde 的 snake_case 序列化保持一字不差:SQL 派生列与 DTO 共用这套稳定字符串。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Imported => "imported",
+            Self::AlreadyImported => "already_imported",
+            Self::Skipped => "skipped",
+            Self::Blocked => "blocked",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "imported" => Some(Self::Imported),
+            "already_imported" => Some(Self::AlreadyImported),
+            "skipped" => Some(Self::Skipped),
+            "blocked" => Some(Self::Blocked),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalImportItemStatusCounts {
+    pub imported: u64,
+    pub already_imported: u64,
+    pub skipped: u64,
+    pub blocked: u64,
+    pub failed: u64,
+    pub cancelled: u64,
+}
+
+impl ExternalImportItemStatusCounts {
+    pub fn add(&mut self, status: ExternalImportItemStatus, count: u64) -> Option<()> {
+        let bucket = match status {
+            ExternalImportItemStatus::Imported => &mut self.imported,
+            ExternalImportItemStatus::AlreadyImported => &mut self.already_imported,
+            ExternalImportItemStatus::Skipped => &mut self.skipped,
+            ExternalImportItemStatus::Blocked => &mut self.blocked,
+            ExternalImportItemStatus::Failed => &mut self.failed,
+            ExternalImportItemStatus::Cancelled => &mut self.cancelled,
+        };
+        *bucket = bucket.checked_add(count)?;
+        Some(())
+    }
+
+    /// 单批结果行数受 EXTERNAL_IMPORT_SELECTION_MAX_ITEMS 约束,饱和在实践中不可达;
+    /// 写入侧 add 已做 checked 加法,前端守卫另行核对 total 与分项之和。
+    pub fn total(self) -> u64 {
+        self.imported
+            .saturating_add(self.already_imported)
+            .saturating_add(self.skipped)
+            .saturating_add(self.blocked)
+            .saturating_add(self.failed)
+            .saturating_add(self.cancelled)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

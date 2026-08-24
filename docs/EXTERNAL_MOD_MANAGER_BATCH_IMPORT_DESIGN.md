@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：已完成。Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”和 PR #198 的 Slice 4B“选择、决定与批量启动”已合并；PR #199 交付最后的 Slice 4C“结果、重试与最终加固”。
+> 状态：Slice 1–4C 已完成(Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”、PR #198 的 Slice 4B“选择、决定与批量启动”、PR #199 的 Slice 4C“结果、重试与最终加固”);Slice 5“跨批次导入记录与保留期”进行中(见同名章节)。
 >
 > 本文定义产品、架构、安全和验收边界并记录分 Slice 状态；实际可用性仍以对应 PR 与验证证据为准。
 
@@ -316,6 +316,7 @@ select_all_external_import_candidates(selectionId, expectedRevision)
 start_external_import_batch(batchId, selectionId, expectedRevision)
 retry_external_import_batch(batchId, selectionId)
 get_external_import_batch_result(batchId, cursor?, limit?)
+list_external_import_batches(cursor?, limit?)
 cancel_task(taskId)
 ```
 
@@ -420,6 +421,41 @@ cancel_task(taskId)
   result、5 次 warmup、40 次 sample，本机 p95=`3.937 ms`，低于固定 `250 ms` 同机预算。
 - 默认继续 import-only，不安装、启用、获取 game/profile 写锁或写游戏目录。
 
+### Slice 5：跨批次导入记录与保留期（进行中）
+
+Slice 1–4C 的批次事实只服务当次工作流:关闭 Dialog 后 batchId 丢失,玩家无法回看「导入了哪些、
+成功/失败了哪些」。Slice 5 把已持久化的 SQLite 批次事实开放为跨批次只读查询,并补齐配套体验。
+这是对「批次候选预览和结果分页只服务本迁移工作流」既有口径的**显式扩张**,边界如下:
+
+- **只读历史查询** `list_external_import_batches(cursor?, limit?)`:按创建时间倒序(同毫秒按
+  `batchId` 升序)分页,默认 `20`、最大 `50`。响应字段是显式白名单——`batchId`、`adapterId`、
+  `scanStatus`、`importStatus`、`createdAtUnixMillis`、`candidateCount` 与逐状态结果计数;
+  `sourceFingerprint`、`sourceId`、`selectionId`、`sourceItemKeyHash`、`contentFingerprint`
+  和任何路径不得出现。DTO 刻意不复用 preview/result 共享的 batch 形状,避免击穿前端
+  exact-key 守卫。
+- **计数与明细同源**:聚合计数来自 `external_import_item_results` 的派生 `status` 列
+  (migration 015,`created_at`/`status` 均为可空派生列,权威事实仍是 JSON,可随时回填重建;
+  残留 NULL 走 `result_json` 兜底归类,无法映射的状态整体报错,不静默漏计)。
+- **历史只读,不提供从历史重试**:来源注册是短生命周期(30 分钟 TTL),历史批次的来源多半已
+  失效;重试必须回到当次工作流重新选择来源目录。历史 UI 用文案说明这一点。
+- **保留期**:已执行过导入的批次(`completed`/`completed_with_errors`/`failed`/`cancelled`)
+  按数量保留最近 `50` 个,不按时间删除——它们是可追溯事实;只扫描未导入的批次
+  (`import_status = pending`)保留最近 `10` 个且不超过 `7` 天——追溯价值最低、体量最大;
+  `running` 永不清理。清理在启动期 `recover_interrupted_batches()` 之后执行一次,尽力而为、
+  失败不阻断启动;删除只作用于批次行,候选/selection/结果由外键级联清理。历史 UI 必须明示
+  保留上限,前端不得假设 `batchId` 长期有效。
+- **审计口径不扩张**:历史数据源就是既有批次表,不新增 audit category,只读查询不写审计。
+- **中断批次口径**:沿用启动恢复把遗留 `running` 收敛为 `failed` 的既有事实,不新增
+  `interrupted` 状态;文案用中性表述。
+- **配套体验**(按 PR 切片交付):result 明细补候选 `displayName`(后端 JOIN 候选表,只出
+  display name,digest 不流经;前后端 exact-key 守卫同 PR 原子更新);历史视图放在既有导入
+  Dialog 内页签 + 工具栏 icon 直达(记录模式打开不拉起原生选择器),不新建页面;入口按钮
+  对齐工具栏治理口径(禁用原因 tooltip、状态警示点);Mod 详情面板展示脱敏来源行
+  (`adapter` 显示名 + 导入时间,容忍批次已被保留期清理);来源易用性——注册层把「无直接
+  数字子目录但含 `Mods_582010` 子目录」的所选目录规范化到该子目录(同一 fingerprint
+  identity,materializer 契约不变),缺 `files/` 载荷的编号目录仍解析 `info.xml` 并在预览中
+  以明确原因列出。
+
 后续新增其他第三方来源时，只增加 adapter、来源契约文档和 fixtures；不得在现有 adapter 里加入来源名称分支。
 
 ## 测试策略
@@ -466,6 +502,18 @@ cancel_task(taskId)
   Mod 库刷新至多一次，刷新失败不覆盖权威结果。
 - 10,000 条人工、无路径 result 固定执行 5 次 warmup 与 40 次 sample，每次只验证最多 100 项的页；
   输出 p95 并保持 `250 ms` 同机预算，不把该 wall-clock 门禁描述为跨机器 SLA。
+
+### Slice 5 历史查询与保留期测试
+
+- migration 015 回填:legacy 行迁移后 `created_at`/`status` 逐行来自 JSON 事实,行数不变、旧列不丢。
+- 历史页按创建时间倒序、同毫秒按 `batchId` 升序,分页不重不漏。
+- 派生列聚合计数与 `result_json` 权威事实的 Rust 逐行重算完全一致(锁住 SQL 对 serde 字段名的依赖);
+  派生列被置 NULL 时计数经兜底路径不变;无法映射的状态整体报错。
+- 重试 upsert 把结果在状态桶之间迁移后计数正确。
+- 保留期:`running` 永不删除;imported 上限内不删除;超限与过期 scan-only 删除后候选/selection/结果
+  无孤儿行。
+- history cursor/limit 边界(0/1/20/50/51、非数字、路径样式)在触达仓储前整体拒绝。
+- 历史 DTO 序列化断言不含 `sourceFingerprint`/`sourceId`/`selectionId`/digest/路径。
 
 ### 验证入口
 
