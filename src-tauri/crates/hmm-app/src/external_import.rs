@@ -25,7 +25,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, CancellationToken, CategoryRepository, ExternalImportBatchRepository,
-    ExternalImportItemResultPage, ExternalImportMaterializationOutcome,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
     ExternalImportMaterializeRequest, ExternalImportMaterializer, ExternalImportScanRequest,
     ExternalImportScanner, ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
     ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
@@ -413,7 +413,7 @@ pub struct ExternalImportBatchLaunch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalImportResultPage {
     pub batch: ExternalImportBatch,
-    pub results: Vec<ExternalImportItemResult>,
+    pub results: Vec<ExternalImportItemResultRecord>,
     pub total_count: usize,
     pub next_offset: Option<usize>,
 }
@@ -1414,13 +1414,13 @@ impl ExternalImportBatchService {
             return Err(ExternalImportBatchError::ResultPageInvalid);
         }
         let batch = self.get_batch(batch_id)?;
-        let page: ExternalImportItemResultPage = self
+        let page = self
             .batch_repository
-            .list_item_results_page(batch_id, offset, limit)
+            .list_item_result_details_page(batch_id, offset, limit)
             .map_err(|_| ExternalImportBatchError::BatchUnavailable)?;
         Ok(ExternalImportResultPage {
             batch,
-            results: page.results,
+            results: page.records,
             total_count: page.total_count,
             next_offset: page.next_offset,
         })

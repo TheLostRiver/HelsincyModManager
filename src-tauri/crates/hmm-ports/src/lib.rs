@@ -51,13 +51,13 @@ pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealt
 pub use external_import::{
     ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage, ExternalImportBatchRepository,
     ExternalImportBatchRetentionOutcome, ExternalImportBatchRetentionRequest,
-    ExternalImportCandidatePage, ExternalImportItemResultPage,
-    ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
-    ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
-    ExternalImportScanResult, ExternalImportScanner, ExternalImportSealAndStartRequest,
-    ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
-    ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
-    ExternalImportSourceRegistry,
+    ExternalImportCandidatePage, ExternalImportItemResultDetailPage, ExternalImportItemResultPage,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
+    ExternalImportMaterializeRequest, ExternalImportMaterializedPackage,
+    ExternalImportMaterializer, ExternalImportScanRequest, ExternalImportScanResult,
+    ExternalImportScanner, ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
+    ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
+    ExternalImportSourceRegistration, ExternalImportSourceRegistry,
 };
 pub use game_launch::{
     GameLaunchError, GameLaunchMethod, GameLaunchReceipt, GameLaunchRunner, GameLauncher,

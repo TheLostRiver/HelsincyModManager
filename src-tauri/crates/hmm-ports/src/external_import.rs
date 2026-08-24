@@ -133,6 +133,21 @@ pub struct ExternalImportItemResultPage {
     pub next_offset: Option<usize>,
 }
 
+/// 结果明细记录:结果事实 + 候选的受限显示名。`display_name` 只取自候选
+/// metadata hint;`source_item_key_hash`/`content_fingerprint` 不得随记录流出仓储层。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportItemResultRecord {
+    pub result: ExternalImportItemResult,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalImportItemResultDetailPage {
+    pub records: Vec<ExternalImportItemResultRecord>,
+    pub total_count: usize,
+    pub next_offset: Option<usize>,
+}
+
 /// 跨批次历史条目。`batch` 是完整域对象:`source_fingerprint` 只允许在 app/infra
 /// 内流转,DTO 层必须剥离,绝不跨 Tauri 边界。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -256,6 +271,17 @@ pub trait ExternalImportBatchRepository: Send + Sync {
         _limit: usize,
     ) -> Result<ExternalImportItemResultPage> {
         anyhow::bail!("external import result paging is not supported by this repository")
+    }
+
+    /// 与 `list_item_results_page` 同序(候选 ordinal 升序)读取一页结果明细,
+    /// 并联结候选的受限显示名,避免调用方为一页结果反序列化整批候选。
+    fn list_item_result_details_page(
+        &self,
+        _batch_id: &ExternalImportBatchId,
+        _offset: usize,
+        _limit: usize,
+    ) -> Result<ExternalImportItemResultDetailPage> {
+        anyhow::bail!("external import result detail paging is not supported by this repository")
     }
 
     /// 按创建时间倒序(同毫秒按 batch_id 升序)读取一页跨批次历史,并在同一读事务内
