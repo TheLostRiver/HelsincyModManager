@@ -313,7 +313,8 @@ retention 失败通过独立稳定 health/count 投影，不会改变安装或�
 - workspace 已新增 `hmm-runtime` 与 `hmm-cli`，CLI dependency tree 不包含 Tauri。
 - `hmm runtime status` 支持 `human|json|jsonl`、Production/Sandbox 环境和稳定退出码。
 - CLI-0A human/help/error 输出统一无 ANSI，`--no-color` 保留为稳定全局参数。
-- Production 禁止 `--data-dir`，写命令策略固定为 `disabled`。
+- Production 禁止 `--data-dir`；写命令策略在 CLI-0A 至 CLI-3A 期间固定为 `disabled`，
+  CLI-3B 起演进为 `production_command_level`。
 - Sandbox 要求显式绝对数据根并拒绝 root、`.` 和 `..`；只读命令不创建 marker，CLI-2C lifecycle
   写命令才显式申请受控 write capability。
 - JSON/JSONL 使用 `hmm.cli/v1`；机器模式的 runtime/parse 错误使用稳定脱敏 envelope。
@@ -360,8 +361,10 @@ retention 失败通过独立稳定 health/count 投影，不会改变安装或�
   完整 bounded snapshot，尚未实现 cursor/limit。JSONL apply/retry 先输出 parent terminal event，
   再输出 command result，两者共用同一 taskId。遗留 `queued/running/stopping` attempt 继续阻断新
   写入并返回 `batch_attempt_reconciliation_required`，不会自动续跑或收敛。
-- Production 四条 lifecycle 写命令和 batch 写命令在 CLI policy/runtime 双层拒绝；backup create/restore/background
-  enable|disable 和 diagnostics export 仍未开放。
+- CLI-3B 起四条单项 lifecycle 写命令在 Production 可达（production token + `--commit --yes` +
+  跨进程 admission + 锁内重验）；batch 的 Production 请求在 automation 边界拒绝（前置
+  per-installation secret）；backup create/restore/background enable|disable 和
+  diagnostics export 仍未开放。
 
 ### 下一步
 

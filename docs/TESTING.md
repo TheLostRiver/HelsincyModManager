@@ -477,8 +477,9 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
   task/game write 前拒绝；所有成功和失败路径保持 Sandbox 外 sentinel 不变。
 - CLI JSONL 从 0 单调编号，每个已启动任务只有一个 terminal；Ctrl+C 首次协作式取消、确认后返回
   130，第二次中断不伪造 cancelled，不可抢占 commit 仍以真实 terminal 为准。
-- Production 四条 lifecycle 写命令在 CLI policy 和 runtime 两层拒绝；测试不得读取或写入真实
-  Steam、游戏、存档、AppData、Scheduled Task 或第三方 Mod。
+- CLI-3B 起 Production 四条 lifecycle 写命令走 production token + `--commit --yes` + 跨进程
+  admission + 锁内重验；测试仍不得读取或写入真实 Steam、游戏、存档、AppData、Scheduled Task
+  或第三方 Mod（Production 行为测试用 crate 内临时根注入，真机验收走 disposable gate）。
 
 CLI-3A 跨进程写入 admission 的聚焦入口：
 
