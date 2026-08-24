@@ -1,7 +1,7 @@
 use crate::dto::CommandErrorDto;
 use crate::external_import_dto::{
-    ExternalImportBatchResultPageDto, ExternalImportBatchStartedDto, ExternalImportPreviewPageDto,
-    ExternalImportScanStartedDto, ExternalImportSelectionDto,
+    ExternalImportBatchResultPageDto, ExternalImportBatchStartedDto, ExternalImportHistoryPageDto,
+    ExternalImportPreviewPageDto, ExternalImportScanStartedDto, ExternalImportSelectionDto,
     ExternalImportSelectionMutationInputDto, ExternalImportSelectionMutationResultDto,
     ExternalImportSourceDto,
 };
@@ -10,11 +10,12 @@ use crate::task_events::emit_task_progress;
 use hmm_app::{
     ExternalImportBatchError, ExternalImportBatchLaunch, ExternalImportBatchService,
     ExternalImportScanError, ExternalImportScanLaunch, ExternalImportScanService, TaskManager,
-    TaskProgressEvent, TaskStatus, DEFAULT_EXTERNAL_IMPORT_PREVIEW_LIMIT,
-    DEFAULT_EXTERNAL_IMPORT_RESULT_LIMIT, EXTERNAL_IMPORT_BATCH_CANCELLED_PHASE,
-    EXTERNAL_IMPORT_BATCH_FAILED_PHASE, EXTERNAL_IMPORT_BATCH_QUEUED_PHASE,
-    EXTERNAL_IMPORT_SCAN_CANCELLED_PHASE, EXTERNAL_IMPORT_SCAN_FAILED_PHASE,
-    EXTERNAL_IMPORT_SCAN_QUEUED_PHASE, MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT,
+    TaskProgressEvent, TaskStatus, DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT,
+    DEFAULT_EXTERNAL_IMPORT_PREVIEW_LIMIT, DEFAULT_EXTERNAL_IMPORT_RESULT_LIMIT,
+    EXTERNAL_IMPORT_BATCH_CANCELLED_PHASE, EXTERNAL_IMPORT_BATCH_FAILED_PHASE,
+    EXTERNAL_IMPORT_BATCH_QUEUED_PHASE, EXTERNAL_IMPORT_SCAN_CANCELLED_PHASE,
+    EXTERNAL_IMPORT_SCAN_FAILED_PHASE, EXTERNAL_IMPORT_SCAN_QUEUED_PHASE,
+    MAX_EXTERNAL_IMPORT_HISTORY_LIMIT, MAX_EXTERNAL_IMPORT_PREVIEW_LIMIT,
     MAX_EXTERNAL_IMPORT_RESULT_LIMIT,
 };
 use hmm_core::{
@@ -236,6 +237,22 @@ pub fn get_external_import_batch_result(
         .external_import
         .batches
         .get_results(&batch_id, offset, limit)
+        .map(Into::into)
+        .map_err(external_import_batch_error)
+}
+
+#[tauri::command]
+pub fn list_external_import_batches(
+    cursor: Option<String>,
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<ExternalImportHistoryPageDto, CommandErrorDto> {
+    let offset = parse_external_import_history_cursor(cursor)?;
+    let limit = parse_external_import_history_limit(limit)?;
+    state
+        .external_import
+        .batches
+        .list_history(offset, limit)
         .map(Into::into)
         .map_err(external_import_batch_error)
 }
@@ -489,6 +506,29 @@ fn parse_external_import_result_limit(value: Option<i64>) -> Result<usize, Comma
     usize::try_from(limit).map_err(|_| external_import_result_limit_invalid_error())
 }
 
+fn parse_external_import_history_cursor(value: Option<String>) -> Result<usize, CommandErrorDto> {
+    let Some(value) = value else {
+        return Ok(0);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() || !trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(external_import_history_cursor_invalid_error());
+    }
+
+    trimmed
+        .parse()
+        .map_err(|_| external_import_history_cursor_invalid_error())
+}
+
+fn parse_external_import_history_limit(value: Option<i64>) -> Result<usize, CommandErrorDto> {
+    let limit = value.unwrap_or(DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT as i64);
+    if !(1..=MAX_EXTERNAL_IMPORT_HISTORY_LIMIT as i64).contains(&limit) {
+        return Err(external_import_history_limit_invalid_error());
+    }
+
+    usize::try_from(limit).map_err(|_| external_import_history_limit_invalid_error())
+}
+
 fn parse_selection_mutations(
     entries: Vec<ExternalImportSelectionMutationInputDto>,
 ) -> Result<Vec<ExternalImportSelectionMutation>, CommandErrorDto> {
@@ -564,6 +604,9 @@ fn external_import_batch_error(error: ExternalImportBatchError) -> CommandErrorD
             "external import preview request is invalid"
         }
         ExternalImportBatchError::ResultPageInvalid => "external import result request is invalid",
+        ExternalImportBatchError::HistoryPageInvalid => {
+            "external import history request is invalid"
+        }
         ExternalImportBatchError::ClockUnavailable => "external import clock is unavailable",
     };
     CommandErrorDto {
@@ -597,6 +640,20 @@ fn external_import_preview_limit_invalid_error() -> CommandErrorDto {
     CommandErrorDto {
         code: "external_import_preview_limit_invalid".to_owned(),
         message: "external import preview limit is invalid".to_owned(),
+    }
+}
+
+fn external_import_history_cursor_invalid_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "external_import_history_cursor_invalid".to_owned(),
+        message: "external import history cursor is invalid".to_owned(),
+    }
+}
+
+fn external_import_history_limit_invalid_error() -> CommandErrorDto {
+    CommandErrorDto {
+        code: "external_import_history_limit_invalid".to_owned(),
+        message: "external import history limit is invalid".to_owned(),
     }
 }
 
@@ -702,6 +759,49 @@ mod tests {
                 .expect_err("oversized result page is rejected")
                 .code,
             "external_import_result_limit_invalid"
+        );
+    }
+
+    #[test]
+    fn history_cursor_and_limit_enforce_the_documented_bounds() {
+        assert_eq!(
+            parse_external_import_history_cursor(None).expect("default history cursor"),
+            0
+        );
+        assert_eq!(
+            parse_external_import_history_cursor(Some("20".to_owned()))
+                .expect("numeric history cursor"),
+            20
+        );
+        assert_eq!(
+            parse_external_import_history_limit(None).expect("default history page size"),
+            DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT
+        );
+        assert_eq!(
+            parse_external_import_history_limit(Some(1)).expect("minimum history page size"),
+            1
+        );
+        assert_eq!(
+            parse_external_import_history_limit(Some(50)).expect("maximum history page size"),
+            MAX_EXTERNAL_IMPORT_HISTORY_LIMIT
+        );
+        assert_eq!(
+            parse_external_import_history_cursor(Some("../private".to_owned()))
+                .expect_err("path-like history cursor is rejected")
+                .code,
+            "external_import_history_cursor_invalid"
+        );
+        assert_eq!(
+            parse_external_import_history_limit(Some(0))
+                .expect_err("zero history page is rejected")
+                .code,
+            "external_import_history_limit_invalid"
+        );
+        assert_eq!(
+            parse_external_import_history_limit(Some(51))
+                .expect_err("oversized history page is rejected")
+                .code,
+            "external_import_history_limit_invalid"
         );
     }
 

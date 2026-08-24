@@ -1,15 +1,16 @@
 use crate::dto::TaskStartedDto;
 use hmm_app::{
-    ExternalImportBatchLaunch, ExternalImportPreviewCandidate, ExternalImportPreviewPage,
-    ExternalImportResultPage, ExternalImportScanLaunch,
+    ExternalImportBatchLaunch, ExternalImportHistoryEntry, ExternalImportHistoryPage,
+    ExternalImportPreviewCandidate, ExternalImportPreviewPage, ExternalImportResultPage,
+    ExternalImportScanLaunch,
 };
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchImportStatus, ExternalImportCandidateStatus,
     ExternalImportConflictKind, ExternalImportConflictResolution, ExternalImportItemResult,
-    ExternalImportItemStatus, ExternalImportMetadataHint, ExternalImportReasonCode,
-    ExternalImportResourceUsage, ExternalImportScanStatus, ExternalImportSelection,
-    ExternalImportSelectionDecision, ExternalImportSelectionMutationResult,
-    ExternalImportSelectionStatus, ExternalImportSource,
+    ExternalImportItemStatus, ExternalImportItemStatusCounts, ExternalImportMetadataHint,
+    ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportScanStatus,
+    ExternalImportSelection, ExternalImportSelectionDecision,
+    ExternalImportSelectionMutationResult, ExternalImportSelectionStatus, ExternalImportSource,
 };
 use serde::{Deserialize, Serialize};
 
@@ -301,6 +302,80 @@ impl From<ExternalImportItemStatus> for ExternalImportItemStatusDto {
     }
 }
 
+/// 跨批次历史页。字段是显式白名单:`sourceFingerprint`、`sourceId`、`selectionId`
+/// 及任何路径/摘要都不得出现。刻意不复用 `ExternalImportPreviewBatchDto`,
+/// 避免给 preview/result 两处前端 exact-key 守卫共享的形状加字段。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportHistoryPageDto {
+    pub batches: Vec<ExternalImportHistoryEntryDto>,
+    pub total_count: usize,
+    pub next_cursor: Option<String>,
+}
+
+impl From<ExternalImportHistoryPage> for ExternalImportHistoryPageDto {
+    fn from(page: ExternalImportHistoryPage) -> Self {
+        Self {
+            batches: page.entries.into_iter().map(Into::into).collect(),
+            total_count: page.total_count,
+            next_cursor: page.next_offset.map(|offset| offset.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportHistoryEntryDto {
+    pub batch_id: String,
+    pub adapter_id: String,
+    pub scan_status: ExternalImportScanStatusDto,
+    pub import_status: ExternalImportBatchImportStatusDto,
+    pub created_at_unix_millis: u64,
+    pub candidate_count: usize,
+    pub counts: ExternalImportItemStatusCountsDto,
+}
+
+impl From<ExternalImportHistoryEntry> for ExternalImportHistoryEntryDto {
+    fn from(entry: ExternalImportHistoryEntry) -> Self {
+        let batch = entry.batch;
+        Self {
+            batch_id: batch.batch_id.as_str().to_owned(),
+            adapter_id: batch.adapter_id.as_str().to_owned(),
+            scan_status: batch.scan_status.into(),
+            import_status: batch.import_status.into(),
+            created_at_unix_millis: batch.created_at_unix_millis,
+            candidate_count: entry.candidate_count,
+            counts: entry.result_counts.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImportItemStatusCountsDto {
+    pub total: u64,
+    pub imported: u64,
+    pub already_imported: u64,
+    pub skipped: u64,
+    pub blocked: u64,
+    pub failed: u64,
+    pub cancelled: u64,
+}
+
+impl From<ExternalImportItemStatusCounts> for ExternalImportItemStatusCountsDto {
+    fn from(counts: ExternalImportItemStatusCounts) -> Self {
+        Self {
+            total: counts.total(),
+            imported: counts.imported,
+            already_imported: counts.already_imported,
+            skipped: counts.skipped,
+            blocked: counts.blocked,
+            failed: counts.failed,
+            cancelled: counts.cancelled,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalImportPreviewBatchDto {
@@ -567,6 +642,55 @@ mod tests {
         assert!(!serialized.contains("private-selection-batch-id"));
         assert!(!serialized.contains("private-selection-entry"));
         assert!(!serialized.contains("sourceFingerprint"));
+        assert!(!serialized.contains("sourceItemKeyHash"));
+        assert!(!serialized.contains("contentFingerprint"));
+    }
+
+    #[test]
+    fn history_dto_omits_source_paths_and_private_digests() {
+        let page = ExternalImportHistoryPage {
+            entries: vec![ExternalImportHistoryEntry {
+                batch: ExternalImportBatch {
+                    batch_id: ExternalImportBatchId::new("external-import-batch-1"),
+                    source_id: Some(ExternalImportSourceId::new("private-source-id")),
+                    adapter_id: ExternalImportAdapterId::new("hunting_box_directory_v1"),
+                    source_fingerprint: "C:/private/source-fingerprint".to_owned(),
+                    scan_status: ExternalImportScanStatus::Completed,
+                    import_status: ExternalImportBatchImportStatus::CompletedWithErrors,
+                    created_at_unix_millis: 1_724_000_000_000,
+                },
+                candidate_count: 4,
+                result_counts: ExternalImportItemStatusCounts {
+                    imported: 2,
+                    failed: 1,
+                    ..Default::default()
+                },
+            }],
+            total_count: 1,
+            next_offset: Some(20),
+        };
+
+        let value = serde_json::to_value(ExternalImportHistoryPageDto::from(page))
+            .expect("serialize external import history dto");
+        let serialized = value.to_string();
+
+        assert_eq!(value["batches"][0]["batchId"], "external-import-batch-1");
+        assert_eq!(value["batches"][0]["adapterId"], "hunting_box_directory_v1");
+        assert_eq!(value["batches"][0]["importStatus"], "completed_with_errors");
+        assert_eq!(
+            value["batches"][0]["createdAtUnixMillis"],
+            1_724_000_000_000_u64
+        );
+        assert_eq!(value["batches"][0]["candidateCount"], 4);
+        assert_eq!(value["batches"][0]["counts"]["total"], 3);
+        assert_eq!(value["batches"][0]["counts"]["imported"], 2);
+        assert_eq!(value["batches"][0]["counts"]["failed"], 1);
+        assert_eq!(value["nextCursor"], "20");
+        assert!(!serialized.contains("C:/private"));
+        assert!(!serialized.contains("private-source-id"));
+        assert!(!serialized.contains("sourceFingerprint"));
+        assert!(!serialized.contains("sourceId"));
+        assert!(!serialized.contains("selectionId"));
         assert!(!serialized.contains("sourceItemKeyHash"));
         assert!(!serialized.contains("contentFingerprint"));
     }

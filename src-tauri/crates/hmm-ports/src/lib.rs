@@ -49,7 +49,9 @@ pub use debug_log::{DebugLogControl, NoopDebugLogControl};
 pub use diagnostics_environment::{DiagnosticsEnvironmentProvider, DiagnosticsEnvironmentSummary};
 pub use diagnostics_health::{DiagnosticsEvidenceHealth, DiagnosticsEvidenceHealthSnapshot};
 pub use external_import::{
-    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
+    ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage, ExternalImportBatchRepository,
+    ExternalImportBatchRetentionOutcome, ExternalImportBatchRetentionRequest,
+    ExternalImportCandidatePage, ExternalImportItemResultPage,
     ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
     ExternalImportMaterializedPackage, ExternalImportMaterializer, ExternalImportScanRequest,
     ExternalImportScanResult, ExternalImportScanner, ExternalImportSealAndStartRequest,
