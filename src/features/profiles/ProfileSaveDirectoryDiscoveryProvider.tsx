@@ -5,6 +5,10 @@ import {
   discoverProfileSaveDirectories,
 } from "./profileSaveDirectoryDiscoveryApi";
 import type { SaveDirectoryDiscoveryDto } from "./profileSaveDirectoryDiscoveryTypes";
+import {
+  createPreviewSaveDirectoryConfirmation,
+  createPreviewSaveDirectoryDiscovery,
+} from "./profilesPreviewData";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useActiveProfile } from "./ActiveProfileProvider";
@@ -81,7 +85,10 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   const runDiscovery = useCallback(
     async (input: { gameId: string; profileId: string; reason: DiscoveryReason }) => {
       if (!isTauriRuntime()) {
+        // 预览环境不访问真实 Steam 目录；手动检测返回模拟多账号候选，
+        // 让候选选择 UI 在纯浏览器下可见、可调整（toast 文案继续如实说明）。
         if (input.reason === "manual") {
+          setLatestDiscovery(createPreviewSaveDirectoryDiscovery(input.gameId, input.profileId));
           setNotice({
             id: `preview-${input.profileId}`,
             tone: "attention",
@@ -136,6 +143,14 @@ export function ProfileSaveDirectoryDiscoveryProvider({
   const confirmCandidate = useCallback(
     async (candidateId: string) => {
       if (!latestDiscovery) return;
+
+      if (!isTauriRuntime()) {
+        // 预览环境本地推进为 auto_saved，仿真真实确认流（与备份中心 preview 仿真同先例）。
+        const confirmed = createPreviewSaveDirectoryConfirmation(latestDiscovery, candidateId);
+        setLatestDiscovery(confirmed);
+        setNotice(noticeForDiscovery(confirmed, "manual"));
+        return;
+      }
 
       const requestSeq = discoveryRequestSeqRef.current + 1;
       discoveryRequestSeqRef.current = requestSeq;
