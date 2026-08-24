@@ -59,6 +59,7 @@ export type ModLibraryCopy = {
     };
   };
   selection: {
+    noticeToastTitle: string;
     limitReached: (max: number) => string;
     pageLimitSelect: (newCount: number, remainingSlots: number) => string;
     pageLimitInvert: (resultCount: number, max: number) => string;
@@ -268,6 +269,7 @@ export const modLibraryCopy = {
       },
     },
     selection: {
+      noticeToastTitle: "批量选择",
       limitReached: (max) => `每批最多选择 ${max} 个 Mod，取消一项后可继续添加。`,
       pageLimitSelect: (newCount, remainingSlots) =>
         `选择本页需要新增 ${newCount} 项，当前仅剩 ${remainingSlots} 个名额。`,
@@ -486,6 +488,7 @@ export const modLibraryCopy = {
       },
     },
     selection: {
+      noticeToastTitle: "Batch selection",
       limitReached: (max) =>
         `Each batch can select at most ${max} mods. Deselect one to add more.`,
       pageLimitSelect: (newCount, remainingSlots) =>
@@ -705,6 +708,7 @@ export const modLibraryCopy = {
       },
     },
     selection: {
+      noticeToastTitle: "一括選択",
       limitReached: (max) =>
         `1 回の一括選択は最大 ${max} 件です。1 件解除すると追加できます。`,
       pageLimitSelect: (newCount, remainingSlots) =>
