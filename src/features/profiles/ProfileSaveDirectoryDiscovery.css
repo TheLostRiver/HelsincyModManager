@@ -1,9 +1,11 @@
 /* 候选选择自 2026-08-24 起为悬浮层（共享 Dialog 基元）：外壳与标题由
-   ModalSurface 提供，这里只保留候选列表与卡片样式。 */
+   ModalSurface 提供，这里只保留候选列表与卡片样式。
+   注意：浮层经 portal 渲染在 .profile-page 之外，只能使用全局设计变量，
+   不能引用 --profile-* 页面局部变量；宽度上限也由 ModalSurface 持有，
+   这里不得设置会撑破面板内容区的 min-width。 */
 .profile-save-directory-candidates__list {
   display: grid;
   gap: 10px;
-  min-width: min(560px, 78vw);
 }
 
 .profile-save-directory-candidate {
@@ -16,10 +18,20 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-inner);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.profile-save-directory-candidate:hover {
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-accent) 8%);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
 }
 
 .profile-save-directory-candidate.is-recommended {
   border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+}
+
+.profile-save-directory-candidate.is-recommended:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 52%, var(--color-border));
 }
 
 .profile-save-directory-candidate__avatar {
@@ -75,6 +87,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 10px;
+  overflow-wrap: anywhere;
   color: var(--color-text-muted);
   font-size: 12px;
 }
