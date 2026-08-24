@@ -41,7 +41,7 @@ const WEAPON_CATALOG_SHARDS: [&str; 14] = [
     include_str!("../../data/weapons/mhw-weapon-targets.swo.v1.json"),
     include_str!("../../data/weapons/mhw-weapon-targets.two.v1.json"),
 ];
-/// 聚合 catalog（armor v2 + weapon v1）的版本号，Production 与 Sandbox 共用，
+/// 聚合 catalog（armor v3 + weapon v1）的版本号，Production 与 Sandbox 共用，
 /// 与 armor、weapon 各自的 catalog_version 相互独立（治理契约见
 /// EQUIPMENT_CATALOG_GOVERNANCE.md）。
 const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v1";
@@ -466,6 +466,26 @@ mod tests {
     use super::*;
     use hmm_core::{ModId, ProfileId, ReplacementBinding, ReplacementBindingId};
     use hmm_ports::{ReplacementAsset, RetargetPlanRequest};
+
+    #[test]
+    fn bundled_weapon_catalog_names_cover_all_mhw_locales() {
+        // 与 armor catalog 同一约束：names 键集即 per-game locale 能力声明（I18N-08），
+        // 分片扩容时漏语言会导致对应界面 fallback 与检索缺口。
+        for shard in WEAPON_CATALOG_SHARDS {
+            let raw: Value = serde_json::from_str(shard).expect("weapon shard json");
+            for target in raw["targets"].as_array().expect("targets array") {
+                let names = target["names"].as_object().expect("names object");
+                let mut keys: Vec<_> = names.keys().map(String::as_str).collect();
+                keys.sort_unstable();
+                assert_eq!(
+                    keys,
+                    ["en", "ja", "zh_cn"],
+                    "weapon target {} must carry the full locale set",
+                    target["internal_id"]
+                );
+            }
+        }
+    }
 
     const MOD3_HEADER_SIZE: usize = 320;
     const MOD3_MATERIAL_ENTRY_SIZE: usize = 128;
