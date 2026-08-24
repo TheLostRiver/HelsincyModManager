@@ -19,6 +19,15 @@ const terminalBatchStatuses = new Set([
   "failed",
   "cancelled",
 ]);
+const allScanStatuses = new Set(["pending", "running", "completed", "failed", "cancelled"]);
+const allBatchImportStatuses = new Set([
+  "pending",
+  "running",
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "cancelled",
+]);
 const itemStatuses = new Set([
   "imported",
   "already_imported",
@@ -133,9 +142,11 @@ function isValidNextCursor(value: unknown, totalCount: number, pageLength: numbe
   return Number.isSafeInteger(cursor) && cursor < totalCount;
 }
 
-export function isExternalImportBatchResultPageForBatch(
+function isBatchResultPageShape(
   value: unknown,
   expectedBatchId: string,
+  scanStatuses: ReadonlySet<string>,
+  importStatuses: ReadonlySet<string>,
 ): value is ExternalImportBatchResultPageDto {
   if (
     !isPlainRecord(value) ||
@@ -152,9 +163,10 @@ export function isExternalImportBatchResultPageForBatch(
     batch.batchId !== expectedBatchId ||
     !isExternalImportOpaqueId(batch.batchId) ||
     !isExternalImportOpaqueId(batch.adapterId) ||
-    batch.scanStatus !== "completed" ||
+    typeof batch.scanStatus !== "string" ||
+    !scanStatuses.has(batch.scanStatus) ||
     typeof batch.importStatus !== "string" ||
-    !terminalBatchStatuses.has(batch.importStatus) ||
+    !importStatuses.has(batch.importStatus) ||
     !isSafeNonNegativeInteger(value.totalCount) ||
     value.totalCount < value.results.length ||
     value.totalCount > EXTERNAL_IMPORT_RESULT_TOTAL_MAX_SIZE ||
@@ -173,6 +185,32 @@ export function isExternalImportBatchResultPageForBatch(
     candidateIds.add(result.candidateId);
   }
   return true;
+}
+
+export function isExternalImportBatchResultPageForBatch(
+  value: unknown,
+  expectedBatchId: string,
+): value is ExternalImportBatchResultPageDto {
+  return isBatchResultPageShape(
+    value,
+    expectedBatchId,
+    new Set(["completed"]),
+    terminalBatchStatuses,
+  );
+}
+
+// 历史 drill-down 专用:批次不必处于当次工作流的终态门槛(running 批次的结果
+// 也在增量落库),其余校验与当次守卫完全一致。
+export function isExternalImportHistoryBatchResultPage(
+  value: unknown,
+  expectedBatchId: string,
+): value is ExternalImportBatchResultPageDto {
+  return isBatchResultPageShape(
+    value,
+    expectedBatchId,
+    allScanStatuses,
+    allBatchImportStatuses,
+  );
 }
 
 export function toExternalImportResultViewModel(

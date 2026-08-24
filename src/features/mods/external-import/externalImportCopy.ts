@@ -135,6 +135,49 @@ export type ExternalImportCopy = {
     importIncompleteTitle: string;
     cancelImportFailedTitle: string;
   };
+  history: {
+    tabCurrent: string;
+    tabHistory: string;
+    tablistAria: string;
+    historyTriggerAria: string;
+    title: string;
+    loading: string;
+    loadedCount: (loaded: string, total: string) => string;
+    emptyTitle: string;
+    emptyHint: string;
+    adapters: Record<string, string>;
+    unknownAdapter: string;
+    states: {
+      running: string;
+      scanning: string;
+      scanOnly: string;
+      scanFailed: string;
+      completed: string;
+      completedWithErrors: string;
+      incomplete: string;
+      cancelled: string;
+    };
+    candidateCount: (count: string) => string;
+    noResults: string;
+    viewDetails: string;
+    hideDetails: string;
+    detailLoading: string;
+    reloadDetail: string;
+    loadMoreDetails: string;
+    loadingMore: string;
+    loadMore: string;
+    reload: string;
+    retryHint: string;
+    retentionHint: string;
+    time: {
+      justNow: string;
+      minutesAgo: (count: string) => string;
+      hoursAgo: (count: string) => string;
+      daysAgo: (count: string) => string;
+    };
+    errors: Record<string, string>;
+    fallbackError: string;
+  };
 };
 
 export const externalImportCopy = {
@@ -372,6 +415,58 @@ export const externalImportCopy = {
       importCancelledMessage: "正在读取已保留的权威结果。",
       importIncompleteTitle: "批量导入未完成",
       cancelImportFailedTitle: "无法取消批量导入",
+    },
+    history: {
+      tabCurrent: "本次导入",
+      tabHistory: "导入记录",
+      tablistAria: "迁移第三方 Mod 视图切换",
+      historyTriggerAria: "查看第三方导入记录",
+      title: "导入记录",
+      loading: "正在读取导入记录…",
+      loadedCount: (loaded: string, total: string) => `已载入 ${loaded} / ${total} 个批次`,
+      emptyTitle: "还没有导入记录",
+      emptyHint: "从狩技盒子完成一次迁移后，批次记录会显示在这里。",
+      adapters: {
+        hunting_box_directory_v1: "狩技盒子",
+      },
+      unknownAdapter: "未知来源",
+      states: {
+        running: "导入进行中",
+        scanning: "扫描中",
+        scanOnly: "仅扫描未导入",
+        scanFailed: "扫描失败",
+        completed: "已完成",
+        completedWithErrors: "部分完成",
+        incomplete: "未完成",
+        cancelled: "已取消",
+      },
+      candidateCount: (count: string) => `候选 ${count} 项`,
+      noResults: "该批次没有结果明细",
+      viewDetails: "展开明细",
+      hideDetails: "收起明细",
+      detailLoading: "正在读取批次明细…",
+      reloadDetail: "重新读取明细",
+      loadMoreDetails: "加载更多明细",
+      loadingMore: "正在加载…",
+      loadMore: "加载更多记录",
+      reload: "重新读取记录",
+      retryHint: "历史批次不支持直接重试；如需重试，请重新选择来源目录发起导入。",
+      retentionHint: "仅保留最近 50 个已导入批次；仅扫描未导入的批次保留 10 个且不超过 7 天。",
+      time: {
+        justNow: "刚刚",
+        minutesAgo: (count: string) => `${count} 分钟前`,
+        hoursAgo: (count: string) => `${count} 小时前`,
+        daysAgo: (count: string) => `${count} 天前`,
+      },
+      errors: {
+        external_import_history_cursor_invalid: "导入记录分页游标无效，请重新读取",
+        external_import_history_limit_invalid: "导入记录分页大小无效，请重新读取",
+        external_import_history_request_invalid: "导入记录请求无效，请重新读取",
+        external_import_batch_unavailable: "导入记录暂时不可用，请稍后重试",
+        external_import_history_invalid: "导入记录数据校验未通过，请重新读取",
+        external_import_result_invalid: "批次明细数据校验未通过，请重新读取",
+      },
+      fallbackError: "无法读取导入记录，请稍后重试",
     },
   },
   en: {
@@ -615,6 +710,60 @@ export const externalImportCopy = {
       importIncompleteTitle: "Batch import incomplete",
       cancelImportFailedTitle: "Cannot cancel the batch import",
     },
+    history: {
+      tabCurrent: "Current import",
+      tabHistory: "Import history",
+      tablistAria: "Third-party mod migration views",
+      historyTriggerAria: "View third-party import history",
+      title: "Import history",
+      loading: "Reading import history…",
+      loadedCount: (loaded: string, total: string) => `Loaded ${loaded} / ${total} batches`,
+      emptyTitle: "No import history yet",
+      emptyHint: "Batch records appear here after a migration from the hunting box.",
+      adapters: {
+        hunting_box_directory_v1: "Hunting box",
+      },
+      unknownAdapter: "Unknown source",
+      states: {
+        running: "Import running",
+        scanning: "Scanning",
+        scanOnly: "Scanned, not imported",
+        scanFailed: "Scan failed",
+        completed: "Completed",
+        completedWithErrors: "Partially completed",
+        incomplete: "Incomplete",
+        cancelled: "Cancelled",
+      },
+      candidateCount: (count: string) => `${count} candidates`,
+      noResults: "This batch has no result details",
+      viewDetails: "Show details",
+      hideDetails: "Hide details",
+      detailLoading: "Reading batch details…",
+      reloadDetail: "Reload details",
+      loadMoreDetails: "Load more details",
+      loadingMore: "Loading…",
+      loadMore: "Load more batches",
+      reload: "Reload history",
+      retryHint:
+        "History batches cannot be retried directly; reselect the source directory to start a new import.",
+      retentionHint:
+        "Only the latest 50 imported batches are kept; scan-only batches keep 10 for up to 7 days.",
+      time: {
+        justNow: "Just now",
+        minutesAgo: (count: string) => `${count} min ago`,
+        hoursAgo: (count: string) => `${count} h ago`,
+        daysAgo: (count: string) => `${count} d ago`,
+      },
+      errors: {
+        external_import_history_cursor_invalid: "The history cursor is invalid; reload the list",
+        external_import_history_limit_invalid: "The history page size is invalid; reload the list",
+        external_import_history_request_invalid: "The history request is invalid; reload the list",
+        external_import_batch_unavailable: "Import history is unavailable; try again later",
+        external_import_history_invalid: "History data failed validation; reload the list",
+        external_import_result_invalid: "Batch details failed validation; reload the details",
+      },
+      fallbackError: "Cannot read the import history; try again later",
+    },
   },
   ja: {
     scan: {
@@ -853,6 +1002,64 @@ export const externalImportCopy = {
       importCancelledMessage: "保持された確定結果を読み込んでいます。",
       importIncompleteTitle: "一括インポートが未完了",
       cancelImportFailedTitle: "一括インポートをキャンセルできません",
+    },
+    history: {
+      tabCurrent: "今回のインポート",
+      tabHistory: "インポート履歴",
+      tablistAria: "サードパーティ Mod 移行ビューの切り替え",
+      historyTriggerAria: "サードパーティのインポート履歴を表示",
+      title: "インポート履歴",
+      loading: "インポート履歴を読み込んでいます…",
+      loadedCount: (loaded: string, total: string) =>
+        `${loaded} / ${total} 件のバッチを読み込み済み`,
+      emptyTitle: "インポート履歴はまだありません",
+      emptyHint: "狩技ボックスからの移行が完了すると、バッチ記録がここに表示されます。",
+      adapters: {
+        hunting_box_directory_v1: "狩技ボックス",
+      },
+      unknownAdapter: "不明なソース",
+      states: {
+        running: "インポート実行中",
+        scanning: "スキャン中",
+        scanOnly: "スキャンのみ・未インポート",
+        scanFailed: "スキャン失敗",
+        completed: "完了",
+        completedWithErrors: "一部完了",
+        incomplete: "未完了",
+        cancelled: "キャンセル済み",
+      },
+      candidateCount: (count: string) => `候補 ${count} 件`,
+      noResults: "このバッチには結果明細がありません",
+      viewDetails: "明細を表示",
+      hideDetails: "明細を閉じる",
+      detailLoading: "バッチ明細を読み込んでいます…",
+      reloadDetail: "明細を再読み込み",
+      loadMoreDetails: "明細をさらに読み込む",
+      loadingMore: "読み込み中…",
+      loadMore: "さらに読み込む",
+      reload: "履歴を再読み込み",
+      retryHint:
+        "履歴バッチから直接再試行はできません。再試行するにはソースフォルダーを選び直してください。",
+      retentionHint:
+        "インポート済みバッチは直近 50 件のみ保持されます。スキャンのみのバッチは 10 件・最長 7 日間です。",
+      time: {
+        justNow: "たった今",
+        minutesAgo: (count: string) => `${count} 分前`,
+        hoursAgo: (count: string) => `${count} 時間前`,
+        daysAgo: (count: string) => `${count} 日前`,
+      },
+      errors: {
+        external_import_history_cursor_invalid:
+          "履歴のページカーソルが無効です。再読み込みしてください",
+        external_import_history_limit_invalid:
+          "履歴のページサイズが無効です。再読み込みしてください",
+        external_import_history_request_invalid:
+          "履歴リクエストが無効です。再読み込みしてください",
+        external_import_batch_unavailable: "インポート履歴を利用できません。後でもう一度お試しください",
+        external_import_history_invalid: "履歴データの検証に失敗しました。再読み込みしてください",
+        external_import_result_invalid: "バッチ明細の検証に失敗しました。再読み込みしてください",
+      },
+      fallbackError: "インポート履歴を読み込めません。後でもう一度お試しください",
     },
   },
 } satisfies LocaleDictionary<ExternalImportCopy>;

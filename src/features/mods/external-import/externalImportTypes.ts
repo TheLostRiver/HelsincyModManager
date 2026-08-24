@@ -183,3 +183,32 @@ export type ExternalImportBatchResultPageDto = {
   totalCount: number;
   nextCursor: string | null;
 };
+
+export const EXTERNAL_IMPORT_HISTORY_PAGE_SIZE = 20;
+export const EXTERNAL_IMPORT_HISTORY_PAGE_MAX_SIZE = 50;
+
+export type ExternalImportItemStatusCountsDto = {
+  total: number;
+  imported: number;
+  alreadyImported: number;
+  skipped: number;
+  blocked: number;
+  failed: number;
+  cancelled: number;
+};
+
+export type ExternalImportHistoryEntryDto = {
+  batchId: string;
+  adapterId: string;
+  scanStatus: ExternalImportScanStatus;
+  importStatus: ExternalImportBatchImportStatus;
+  createdAtUnixMillis: number;
+  candidateCount: number;
+  counts: ExternalImportItemStatusCountsDto;
+};
+
+export type ExternalImportHistoryPageDto = {
+  batches: ExternalImportHistoryEntryDto[];
+  totalCount: number;
+  nextCursor: string | null;
+};

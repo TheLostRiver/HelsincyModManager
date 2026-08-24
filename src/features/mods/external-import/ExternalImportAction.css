@@ -529,3 +529,135 @@
     animation-duration: 0.01ms;
   }
 }
+
+.external-import__badge.is-progress {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+}
+
+.external-import__tabs {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.external-import__tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.external-import__tabs button:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+}
+
+.external-import__tabs button.is-active {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  border-color: var(--color-accent-alpha-25);
+}
+
+.external-import__tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.external-import__history {
+  display: grid;
+  gap: 12px;
+}
+
+.external-import__history-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 2px 0 0;
+  margin: 0;
+  list-style: none;
+  /* 记录多时在弹窗内部滚动,不撑高整个 Dialog(与备份历史列表同一策略)。 */
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.external-import__history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.external-import__history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.external-import__history-list::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  border-radius: var(--radius-pill);
+}
+
+.external-import__history-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+.external-import__history-item {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+}
+
+.external-import__history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.external-import__history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.external-import__history-meta strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.external-import__history-meta span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.external-import__history-empty-note {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.external-import__history-detail {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border-muted);
+}
+
+.external-import__history-hints {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

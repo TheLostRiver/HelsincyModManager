@@ -120,6 +120,15 @@ test("external import action composes selection, result, and retry without a fro
     /<strong>\{result\.displayName \?\? extCopy\.preview\.unnamed\}<\/strong>/,
   );
   assert.doesNotMatch(resultPanel, /<strong>\{extCopy\.resultPanel\.candidateResult\}<\/strong>/);
+  // 弹窗内「本次导入 / 导入记录」页签;记录模式打开绝不拉起原生目录选择器。
+  assert.match(source, /role="tablist"/);
+  assert.match(source, /view === "history"/);
+  assert.match(source, /<ExternalImportHistoryPanel workflow=\{historyWorkflow\} \/>/);
+  assert.match(source, /function openHistory\(\) \{[\s\S]{0,220}ensureLoaded\(\);[\s\S]{0,20}\}/);
+  assert.doesNotMatch(source, /function openHistory\(\) \{[\s\S]{0,300}chooseSource/);
+  // 工具栏记录直达入口只打开记录视图,不承担导入职责。
+  assert.match(source, /external-import-action__history-trigger/);
+  assert.match(source, /onClick=\{openHistory\}/);
   assert.doesNotMatch(
     `${source}\n${selectionPanel}\n${candidateSelection}\n${resultPanel}\n${selectionWorkflow}`,
     /readFile|writeFile|removeFile|convertFileSrc|asset:|thumbnail:|sandbox|cache|archivePath/i,
