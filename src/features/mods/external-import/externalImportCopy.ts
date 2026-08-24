@@ -114,7 +114,6 @@ export type ExternalImportCopy = {
     blocked: (count: string) => string;
     failed: (count: string) => string;
     cancelled: (count: string) => string;
-    candidateResult: string;
     modId: (id: string) => string;
     retryableBadge: string;
     loadingMore: string;
@@ -353,7 +352,6 @@ export const externalImportCopy = {
       blocked: (count) => `已阻断 ${count}`,
       failed: (count) => `失败 ${count}`,
       cancelled: (count) => `取消 ${count}`,
-      candidateResult: "候选结果",
       modId: (id) => `Mod ID：${id}`,
       retryableBadge: "可重试",
       loadingMore: "正在载入",
@@ -596,7 +594,6 @@ export const externalImportCopy = {
       blocked: (count) => `Blocked ${count}`,
       failed: (count) => `Failed ${count}`,
       cancelled: (count) => `Cancelled ${count}`,
-      candidateResult: "Candidate result",
       modId: (id) => `Mod ID: ${id}`,
       retryableBadge: "Retryable",
       loadingMore: "Loading",
@@ -836,7 +833,6 @@ export const externalImportCopy = {
       blocked: (count) => `ブロック ${count}`,
       failed: (count) => `失敗 ${count}`,
       cancelled: (count) => `キャンセル ${count}`,
-      candidateResult: "候補結果",
       modId: (id) => `Mod ID：${id}`,
       retryableBadge: "再試行可能",
       loadingMore: "読み込み中",

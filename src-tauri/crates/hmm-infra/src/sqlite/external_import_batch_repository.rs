@@ -8,7 +8,8 @@ use hmm_core::{
 use hmm_ports::{
     ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage, ExternalImportBatchRepository,
     ExternalImportBatchRetentionOutcome, ExternalImportBatchRetentionRequest,
-    ExternalImportCandidatePage, ExternalImportItemResultPage, ExternalImportSealAndStartRequest,
+    ExternalImportCandidatePage, ExternalImportItemResultDetailPage, ExternalImportItemResultPage,
+    ExternalImportItemResultRecord, ExternalImportSealAndStartRequest,
     ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
     ExternalImportSelectionCompareAndSwapResult,
 };
@@ -579,6 +580,79 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
 
         Ok(ExternalImportItemResultPage {
             results,
+            total_count,
+            next_offset,
+        })
+    }
+
+    fn list_item_result_details_page(
+        &self,
+        batch_id: &ExternalImportBatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportItemResultDetailPage> {
+        ensure!(
+            limit > 0,
+            "external import result detail page limit must be positive"
+        );
+        let offset_param = i64::try_from(offset)
+            .context("external import result detail page offset is too large")?;
+        let limit_param = i64::try_from(limit)
+            .context("external import result detail page limit is too large")?;
+        let conn = self.lock_db()?;
+        let total_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM external_import_item_results WHERE batch_id = ?1",
+                rusqlite::params![batch_id.as_str()],
+                |row| row.get(0),
+            )
+            .context("failed to count external import item results")?;
+        let total_count =
+            usize::try_from(total_count).context("external import item result count is invalid")?;
+        // LEFT JOIN:候选行意外缺失时该结果仍在页内(显示名降级为空),
+        // 保证页覆盖与 total_count 一致,不静默丢行。
+        let mut statement = conn
+            .prepare(
+                "SELECT r.result_json, c.candidate_json
+                 FROM external_import_item_results r
+                 LEFT JOIN external_import_candidates c
+                   ON c.batch_id = r.batch_id AND c.candidate_id = r.candidate_id
+                 WHERE r.batch_id = ?1
+                 ORDER BY r.ordinal ASC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .context("failed to prepare external import result detail page")?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![batch_id.as_str(), limit_param, offset_param],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+            )
+            .context("failed to query external import result detail page")?;
+        let mut records = Vec::new();
+        for row in rows {
+            let (result_json, candidate_json) =
+                row.context("failed to read external import result detail row")?;
+            let result: ExternalImportItemResult =
+                deserialize(&result_json, "external import item result")?;
+            // 只携带受限显示名;候选整体(含 digest/key)不出仓储层。
+            let display_name = candidate_json
+                .as_deref()
+                .map(|value| {
+                    deserialize::<ExternalImportCandidate>(value, "external import candidate")
+                })
+                .transpose()?
+                .and_then(|candidate| candidate.metadata_hint.display_name);
+            records.push(ExternalImportItemResultRecord {
+                result,
+                display_name,
+            });
+        }
+        let next_offset = offset
+            .checked_add(records.len())
+            .filter(|next| *next < total_count);
+
+        Ok(ExternalImportItemResultDetailPage {
+            records,
             total_count,
             next_offset,
         })
@@ -1495,6 +1569,74 @@ mod tests {
         assert_eq!(page.entries[0].result_counts.failed, 0);
         assert_eq!(page.entries[0].result_counts.imported, 1);
         assert_eq!(page.entries[0].result_counts.total(), 1);
+    }
+
+    #[test]
+    fn result_detail_page_joins_candidate_display_names_in_scan_order() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(Arc::clone(&db));
+        let mut batch = batch("batch-detail-names");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let mut first = candidate(&batch.batch_id, "candidate-1");
+        first.metadata_hint.display_name = Some("第一项".to_owned());
+        let second = candidate(&batch.batch_id, "candidate-2");
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, &[first, second])
+            .expect("save scan result");
+        // 乱序落库,明细页仍须按候选扫描序返回。
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[item_result("candidate-2", ExternalImportItemStatus::Failed)],
+            )
+            .expect("append second result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[item_result(
+                    "candidate-1",
+                    ExternalImportItemStatus::Imported,
+                )],
+            )
+            .expect("append first result");
+
+        let page = repository
+            .list_item_result_details_page(&batch.batch_id, 0, 10)
+            .expect("result detail page");
+
+        assert_eq!(page.total_count, 2);
+        assert_eq!(
+            page.records
+                .iter()
+                .map(|record| {
+                    (
+                        record.result.candidate_id.as_str(),
+                        record.display_name.as_deref(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            [("candidate-1", Some("第一项")), ("candidate-2", None)]
+        );
+
+        // 候选行意外缺失时结果行不得静默消失,显示名降级为空。
+        db.lock()
+            .expect("database lock")
+            .execute(
+                "DELETE FROM external_import_candidates
+                 WHERE batch_id = ?1 AND candidate_id = 'candidate-1'",
+                rusqlite::params![batch.batch_id.as_str()],
+            )
+            .expect("drop candidate row");
+        let degraded = repository
+            .list_item_result_details_page(&batch.batch_id, 0, 10)
+            .expect("degraded result detail page");
+        assert_eq!(degraded.total_count, 2);
+        assert_eq!(degraded.records.len(), 2);
+        assert_eq!(degraded.records[0].display_name, None);
     }
 
     #[test]

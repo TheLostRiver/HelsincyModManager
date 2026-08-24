@@ -6,12 +6,13 @@ use hmm_app::{
 };
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchImportStatus, ExternalImportCandidateStatus,
-    ExternalImportConflictKind, ExternalImportConflictResolution, ExternalImportItemResult,
-    ExternalImportItemStatus, ExternalImportItemStatusCounts, ExternalImportMetadataHint,
-    ExternalImportReasonCode, ExternalImportResourceUsage, ExternalImportScanStatus,
-    ExternalImportSelection, ExternalImportSelectionDecision,
-    ExternalImportSelectionMutationResult, ExternalImportSelectionStatus, ExternalImportSource,
+    ExternalImportConflictKind, ExternalImportConflictResolution, ExternalImportItemStatus,
+    ExternalImportItemStatusCounts, ExternalImportMetadataHint, ExternalImportReasonCode,
+    ExternalImportResourceUsage, ExternalImportScanStatus, ExternalImportSelection,
+    ExternalImportSelectionDecision, ExternalImportSelectionMutationResult,
+    ExternalImportSelectionStatus, ExternalImportSource,
 };
+use hmm_ports::ExternalImportItemResultRecord;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -255,16 +256,19 @@ impl From<ExternalImportResultPage> for ExternalImportBatchResultPageDto {
 #[serde(rename_all = "camelCase")]
 pub struct ExternalImportItemResultDto {
     pub candidate_id: String,
+    pub display_name: Option<String>,
     pub status: ExternalImportItemStatusDto,
     pub reason_code: Option<String>,
     pub imported_mod_id: Option<String>,
     pub retryable: bool,
 }
 
-impl From<ExternalImportItemResult> for ExternalImportItemResultDto {
-    fn from(result: ExternalImportItemResult) -> Self {
+impl From<ExternalImportItemResultRecord> for ExternalImportItemResultDto {
+    fn from(record: ExternalImportItemResultRecord) -> Self {
+        let result = record.result;
         Self {
             candidate_id: result.candidate_id.as_str().to_owned(),
+            display_name: record.display_name,
             status: result.status.into(),
             reason_code: result
                 .reason_code
@@ -707,26 +711,44 @@ mod tests {
                 import_status: ExternalImportBatchImportStatus::CompletedWithErrors,
                 created_at_unix_millis: 1,
             },
-            results: vec![ExternalImportItemResult {
-                candidate_id: ExternalImportCandidateId::new("external-import-candidate-1"),
-                status: ExternalImportItemStatus::Blocked,
-                reason_code: Some(ExternalImportReasonCode::SourceChanged),
-                imported_mod_id: Some(ModId::new("imported-mod-1")),
-                retryable: false,
-            }],
-            total_count: 1,
+            results: vec![
+                ExternalImportItemResultRecord {
+                    result: ExternalImportItemResult {
+                        candidate_id: ExternalImportCandidateId::new("external-import-candidate-1"),
+                        status: ExternalImportItemStatus::Blocked,
+                        reason_code: Some(ExternalImportReasonCode::SourceChanged),
+                        imported_mod_id: Some(ModId::new("imported-mod-1")),
+                        retryable: false,
+                    },
+                    display_name: Some("候选显示名".to_owned()),
+                },
+                ExternalImportItemResultRecord {
+                    result: ExternalImportItemResult {
+                        candidate_id: ExternalImportCandidateId::new("external-import-candidate-2"),
+                        status: ExternalImportItemStatus::Imported,
+                        reason_code: None,
+                        imported_mod_id: None,
+                        retryable: false,
+                    },
+                    display_name: None,
+                },
+            ],
+            total_count: 2,
             next_offset: None,
         };
 
-        let value = serde_json::to_string(&ExternalImportBatchResultPageDto::from(page))
+        let value = serde_json::to_value(ExternalImportBatchResultPageDto::from(page))
             .expect("serialize external import result dto");
+        let serialized = value.to_string();
 
-        assert!(value.contains("external-import-candidate-1"));
-        assert!(value.contains("imported-mod-1"));
-        assert!(!value.contains("C:/private"));
-        assert!(!value.contains("private-source-id"));
-        assert!(!value.contains("sourceFingerprint"));
-        assert!(!value.contains("sourceItemKeyHash"));
-        assert!(!value.contains("contentFingerprint"));
+        assert_eq!(value["results"][0]["displayName"], "候选显示名");
+        assert_eq!(value["results"][1]["displayName"], serde_json::Value::Null);
+        assert!(serialized.contains("external-import-candidate-1"));
+        assert!(serialized.contains("imported-mod-1"));
+        assert!(!serialized.contains("C:/private"));
+        assert!(!serialized.contains("private-source-id"));
+        assert!(!serialized.contains("sourceFingerprint"));
+        assert!(!serialized.contains("sourceItemKeyHash"));
+        assert!(!serialized.contains("contentFingerprint"));
     }
 }
