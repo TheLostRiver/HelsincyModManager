@@ -41,6 +41,7 @@ const previewStatusTones: Readonly<
   unsupported_entry: "danger",
   resource_limit_exceeded: "danger",
   source_unreadable: "danger",
+  payload_missing: "warning",
 };
 
 

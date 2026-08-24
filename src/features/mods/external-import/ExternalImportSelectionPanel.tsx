@@ -281,6 +281,21 @@ export function ExternalImportSelectionPanel({
             ))}
           </ul>
 
+          {/* 页内近似判断即可:误选目录的典型场景(如狩技盒子安装根)候选只有个位数,
+              首页就能覆盖;这是引导文案而非文件系统规则判定。 */}
+          {workflow.previewState.candidates.length > 0 &&
+          !workflow.previewState.candidates.some(
+            (candidate) =>
+              candidate.previewStatus === "ready" ||
+              candidate.previewStatus === "name_collision" ||
+              candidate.previewStatus === "metadata_invalid",
+          ) ? (
+            <div className="external-import__state is-muted" role="status" aria-live="polite">
+              <CircleAlert size={18} aria-hidden="true" />
+              <span>{extCopy.selectionPanel.noImportableHint}</span>
+            </div>
+          ) : null}
+
           {workflow.previewState.loadMoreError ? (
             <div className="external-import__load-error" role="alert">
               <CircleAlert size={15} aria-hidden="true" />

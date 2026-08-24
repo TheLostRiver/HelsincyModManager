@@ -512,6 +512,7 @@ pub enum ExternalImportCandidateStatusDto {
     UnsupportedEntry,
     ResourceLimitExceeded,
     SourceUnreadable,
+    PayloadMissing,
 }
 
 impl From<ExternalImportCandidateStatus> for ExternalImportCandidateStatusDto {
@@ -526,6 +527,7 @@ impl From<ExternalImportCandidateStatus> for ExternalImportCandidateStatusDto {
             ExternalImportCandidateStatus::UnsupportedEntry => Self::UnsupportedEntry,
             ExternalImportCandidateStatus::ResourceLimitExceeded => Self::ResourceLimitExceeded,
             ExternalImportCandidateStatus::SourceUnreadable => Self::SourceUnreadable,
+            ExternalImportCandidateStatus::PayloadMissing => Self::PayloadMissing,
         }
     }
 }
