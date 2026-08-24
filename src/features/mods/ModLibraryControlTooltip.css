@@ -171,3 +171,17 @@
     transition: none;
   }
 }
+
+/* 贴容器左缘的导入类按钮：居中气泡会向左溢出被裁（用户截图），改为左对齐。
+   :has() 在 WebView2/Chromium 生效，覆盖默认态与两种显示/退场态的位移。 */
+.mod-library-control-tooltip:has(.compact-import-action) .mod-library-control-tooltip__bubble {
+  inset-inline-start: 0;
+  transform: translate(0, 4px) scale(0.98);
+  transform-origin: 0 100%;
+  text-align: start;
+}
+
+.mod-library-control-tooltip:has(.compact-import-action):hover .mod-library-control-tooltip__bubble,
+.mod-library-control-tooltip:has(.compact-import-action):focus-within .mod-library-control-tooltip__bubble {
+  transform: translate(0, 0) scale(1);
+}
