@@ -1,35 +1,9 @@
-.profile-save-directory-candidates {
-  display: grid;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 14px;
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-inner);
-}
-
-.profile-save-directory-candidates__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.profile-save-directory-candidates__header h3 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 15px;
-  line-height: 1.2;
-}
-
-.profile-save-directory-candidates__header span {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
+/* 候选选择自 2026-08-24 起为悬浮层（共享 Dialog 基元）：外壳与标题由
+   ModalSurface 提供，这里只保留候选列表与卡片样式。 */
 .profile-save-directory-candidates__list {
   display: grid;
   gap: 10px;
+  min-width: min(560px, 78vw);
 }
 
 .profile-save-directory-candidate {
