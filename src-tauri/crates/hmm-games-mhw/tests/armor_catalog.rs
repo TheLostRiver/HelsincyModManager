@@ -57,7 +57,9 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
         );
     }
 
-    // v3 起全部 269 条覆盖中英日三语（v2 时 5 条活动/联动装缺 en/ja，已从 kiranico 补齐）。
+    // v3 起 268/269 条覆盖中英日三语展示名（v2 时 5 条活动/联动装缺 en/ja）。
+    // 唯一例外 pl057_0010：官方英文名与 pl019_0000 重名，按治理规则 en 走 alias，
+    // 键集细节由 catalog 单元测试锁定。
     let with_three_locales = catalog
         .targets()
         .iter()
@@ -67,7 +69,7 @@ fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
                 .all(|locale| target.display_name().get(locale).is_some())
         })
         .count();
-    assert_eq!(with_three_locales, 269, "中英日三语覆盖数量变了");
+    assert_eq!(with_three_locales, 268, "中英日三语覆盖数量变了");
 }
 
 #[test]
@@ -88,6 +90,26 @@ fn armor_catalog_normalizes_nfc_middle_dots_width_and_case() {
     assert_eq!(u2027, u00b7);
     assert_eq!(u2027.len(), 1);
     assert_eq!(u2027[0].internal_id(), "pl129_0000");
+}
+
+#[test]
+fn official_english_duplicate_name_stays_searchable_for_both_butterfly_models() {
+    // pl057_0010（男版燕尾蝶）的官方英文名与女版逐字同为 "Butterfly β"，
+    // 按治理规则走 alias。这里用公开搜索 API 锁定可达性：alias 或搜索归一化
+    // 逻辑回归时，英文检索会静默丢失男版条目——原始 JSON 断言拦不住这种回归。
+    let provider = MhwArmorCatalog;
+    let hits = provider
+        .search_replacement_targets("Butterfly β")
+        .expect("english duplicate-name search");
+
+    let internal_ids: BTreeSet<_> = hits
+        .iter()
+        .map(|target| target.internal_id().to_owned())
+        .collect();
+    assert!(
+        internal_ids.contains("pl019_0000") && internal_ids.contains("pl057_0010"),
+        "英文官方名必须同时命中女版与男版燕尾蝶，实际命中: {internal_ids:?}"
+    );
 }
 
 #[test]
