@@ -114,6 +114,20 @@ pub struct ModDetail {
     pub description: Option<String>,
     pub nexus_mod_id: Option<u64>,
     pub preview_image: ImportPreviewImage,
+    pub origin: ModOriginSummary,
+}
+
+/// 面向展示的脱敏来源摘要。只携带 adapter/batch 的稳定 ID 与导入时间;
+/// `source_item_key_hash` / `content_fingerprint` 等私有摘要绝不进入该类型。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModOriginSummary {
+    Imported,
+    ExternalImport {
+        adapter_id: String,
+        batch_id: String,
+        imported_at_unix_millis: u64,
+    },
+    MigratedV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -680,6 +694,11 @@ impl ModLibraryService {
         match record {
             Some(record) => {
                 let mut detail = detail_from_stored(record);
+                // 来源事实在权威 catalog 的 logical mod 上;缺失时保持默认 Imported,
+                // 这是展示字段,不做存在性硬校验。
+                if let Some(logical_mod) = self.result_repository.get_mod(&ModId::new(mod_id))? {
+                    detail.origin = origin_summary_from_stored(logical_mod.origin_provenance);
+                }
                 if let Some(o) = self.metadata_repository.get(mod_id)? {
                     if let Some(name) = &o.display_name {
                         detail.name = name.clone();
@@ -873,6 +892,21 @@ fn detail_from_stored(record: StoredModImportAnalysis) -> ModDetail {
         description: None,
         nexus_mod_id: None,
         preview_image: import_preview_from_stored(record.preview_image),
+        origin: ModOriginSummary::Imported,
+    }
+}
+
+fn origin_summary_from_stored(provenance: StoredModOriginProvenance) -> ModOriginSummary {
+    match provenance {
+        StoredModOriginProvenance::Imported => ModOriginSummary::Imported,
+        StoredModOriginProvenance::ExternalImport { provenance } => {
+            ModOriginSummary::ExternalImport {
+                adapter_id: provenance.adapter_id.as_str().to_owned(),
+                batch_id: provenance.batch_id.as_str().to_owned(),
+                imported_at_unix_millis: provenance.imported_at_unix_millis,
+            }
+        }
+        StoredModOriginProvenance::MigratedV1 { .. } => ModOriginSummary::MigratedV1,
     }
 }
 
