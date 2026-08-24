@@ -1,13 +1,16 @@
 use anyhow::{anyhow, ensure, Context, Result};
 use hmm_core::{
     ExternalImportBatch, ExternalImportBatchId, ExternalImportBatchImportStatus,
-    ExternalImportCandidate, ExternalImportItemResult, ExternalImportScanStatus,
-    ExternalImportSelection, ExternalImportSelectionId,
+    ExternalImportCandidate, ExternalImportItemResult, ExternalImportItemStatus,
+    ExternalImportItemStatusCounts, ExternalImportScanStatus, ExternalImportSelection,
+    ExternalImportSelectionId,
 };
 use hmm_ports::{
-    ExternalImportBatchRepository, ExternalImportCandidatePage, ExternalImportItemResultPage,
-    ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
-    ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
+    ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage, ExternalImportBatchRepository,
+    ExternalImportBatchRetentionOutcome, ExternalImportBatchRetentionRequest,
+    ExternalImportCandidatePage, ExternalImportItemResultPage, ExternalImportSealAndStartRequest,
+    ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
+    ExternalImportSelectionCompareAndSwapResult,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde::de::DeserializeOwned;
@@ -35,8 +38,13 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         let batch_json = serialize(batch, "external import batch")?;
         let conn = self.lock_db()?;
         conn.execute(
-            "INSERT INTO external_import_batches (batch_id, batch_json) VALUES (?1, ?2)",
-            rusqlite::params![batch.batch_id.as_str(), batch_json],
+            "INSERT INTO external_import_batches (batch_id, batch_json, created_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                batch.batch_id.as_str(),
+                batch_json,
+                batch_created_at(batch)?
+            ],
         )
         .context("failed to create external import batch")?;
         Ok(())
@@ -63,8 +71,14 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         let conn = self.lock_db()?;
         let changed = conn
             .execute(
-                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
-                rusqlite::params![batch.batch_id.as_str(), batch_json],
+                "UPDATE external_import_batches
+                 SET batch_json = ?2, created_at = ?3
+                 WHERE batch_id = ?1",
+                rusqlite::params![
+                    batch.batch_id.as_str(),
+                    batch_json,
+                    batch_created_at(batch)?
+                ],
             )
             .context("failed to update external import batch")?;
         ensure!(changed == 1, "external import batch is unavailable");
@@ -84,8 +98,14 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
             .context("failed to begin external import scan result transaction")?;
         let changed = transaction
             .execute(
-                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
-                rusqlite::params![batch.batch_id.as_str(), batch_json],
+                "UPDATE external_import_batches
+                 SET batch_json = ?2, created_at = ?3
+                 WHERE batch_id = ?1",
+                rusqlite::params![
+                    batch.batch_id.as_str(),
+                    batch_json,
+                    batch_created_at(batch)?
+                ],
             )
             .context("failed to update external import scan batch")?;
         ensure!(changed == 1, "external import batch is unavailable");
@@ -329,8 +349,14 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         );
         let batch_changed = transaction
             .execute(
-                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
-                rusqlite::params![batch.batch_id.as_str(), batch_json],
+                "UPDATE external_import_batches
+                 SET batch_json = ?2, created_at = ?3
+                 WHERE batch_id = ?1",
+                rusqlite::params![
+                    batch.batch_id.as_str(),
+                    batch_json,
+                    batch_created_at(&batch)?
+                ],
             )
             .context("failed to write external import running batch")?;
         ensure!(batch_changed == 1, "external import batch is unavailable");
@@ -376,8 +402,14 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         let batch_json = serialize(&batch, "external import retried batch")?;
         let changed = transaction
             .execute(
-                "UPDATE external_import_batches SET batch_json = ?2 WHERE batch_id = ?1",
-                rusqlite::params![batch.batch_id.as_str(), batch_json],
+                "UPDATE external_import_batches
+                 SET batch_json = ?2, created_at = ?3
+                 WHERE batch_id = ?1",
+                rusqlite::params![
+                    batch.batch_id.as_str(),
+                    batch_json,
+                    batch_created_at(&batch)?
+                ],
             )
             .context("failed to write external import retried batch")?;
         ensure!(changed == 1, "external import batch is unavailable");
@@ -442,11 +474,12 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         let mut statement = transaction
             .prepare(
                 "INSERT INTO external_import_item_results
-                    (batch_id, candidate_id, ordinal, result_json)
-                 VALUES (?1, ?2, ?3, ?4)
+                    (batch_id, candidate_id, ordinal, result_json, status)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(batch_id, candidate_id) DO UPDATE SET
                     ordinal = excluded.ordinal,
-                    result_json = excluded.result_json",
+                    result_json = excluded.result_json,
+                    status = excluded.status",
             )
             .context("failed to prepare external import item result write")?;
         for result in results {
@@ -468,6 +501,7 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
                     result.candidate_id.as_str(),
                     ordinal,
                     result_json,
+                    result.status.as_str(),
                 ])
                 .context("failed to append external import item result")?;
         }
@@ -549,6 +583,280 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
             next_offset,
         })
     }
+
+    fn list_batch_history_page(
+        &self,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportBatchHistoryPage> {
+        ensure!(
+            limit > 0,
+            "external import history page limit must be positive"
+        );
+        let offset_param =
+            i64::try_from(offset).context("external import history page offset is too large")?;
+        let limit_param =
+            i64::try_from(limit).context("external import history page limit is too large")?;
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin external import history transaction")?;
+        let total_count: i64 = transaction
+            .query_row("SELECT COUNT(*) FROM external_import_batches", [], |row| {
+                row.get(0)
+            })
+            .context("failed to count external import batches")?;
+        let total_count =
+            usize::try_from(total_count).context("external import batch count is invalid")?;
+        let mut statement = transaction
+            .prepare(
+                "SELECT batch_json
+                 FROM external_import_batches
+                 ORDER BY created_at IS NULL ASC, created_at DESC, batch_id ASC
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .context("failed to prepare external import history page")?;
+        let rows = statement
+            .query_map(rusqlite::params![limit_param, offset_param], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("failed to query external import history page")?;
+        let batches: Vec<ExternalImportBatch> = deserialize_rows(rows, "external import batch")?;
+        drop(statement);
+
+        let batch_ids: Vec<&str> = batches
+            .iter()
+            .map(|batch| batch.batch_id.as_str())
+            .collect();
+        let candidate_counts = candidate_counts_by_batch(&transaction, &batch_ids)?;
+        let result_counts = item_result_counts_by_batch(&transaction, &batch_ids)?;
+        transaction
+            .commit()
+            .context("failed to commit external import history read")?;
+
+        let next_offset = offset
+            .checked_add(batches.len())
+            .filter(|next| *next < total_count);
+        let entries = batches
+            .into_iter()
+            .map(|batch| {
+                let candidate_count = candidate_counts
+                    .get(batch.batch_id.as_str())
+                    .copied()
+                    .unwrap_or(0);
+                let result_counts = result_counts
+                    .get(batch.batch_id.as_str())
+                    .copied()
+                    .unwrap_or_default();
+                ExternalImportBatchHistoryEntry {
+                    batch,
+                    candidate_count,
+                    result_counts,
+                }
+            })
+            .collect();
+
+        Ok(ExternalImportBatchHistoryPage {
+            entries,
+            total_count,
+            next_offset,
+        })
+    }
+
+    fn prune_batches(
+        &self,
+        request: ExternalImportBatchRetentionRequest,
+    ) -> Result<ExternalImportBatchRetentionOutcome> {
+        let conn = self.lock_db()?;
+        let transaction = conn
+            .unchecked_transaction()
+            .context("failed to begin external import retention transaction")?;
+        let mut statement = transaction
+            .prepare(
+                "SELECT batch_json
+                 FROM external_import_batches
+                 ORDER BY created_at IS NULL ASC, created_at DESC, batch_id ASC",
+            )
+            .context("failed to prepare external import retention query")?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .context("failed to query external import retention batches")?;
+        let batches: Vec<ExternalImportBatch> = deserialize_rows(rows, "external import batch")?;
+        drop(statement);
+
+        let mut imported_kept = 0_usize;
+        let mut scan_only_kept = 0_usize;
+        let mut removable: Vec<String> = Vec::new();
+        for batch in batches {
+            match batch.import_status {
+                // 进行中的批次永不清理:结果仍在增量落库。
+                ExternalImportBatchImportStatus::Running => {}
+                ExternalImportBatchImportStatus::Completed
+                | ExternalImportBatchImportStatus::CompletedWithErrors
+                | ExternalImportBatchImportStatus::Failed
+                | ExternalImportBatchImportStatus::Cancelled => {
+                    if imported_kept < request.max_imported_batches {
+                        imported_kept += 1;
+                    } else {
+                        removable.push(batch.batch_id.as_str().to_owned());
+                    }
+                }
+                ExternalImportBatchImportStatus::Pending => {
+                    let expired =
+                        batch.created_at_unix_millis < request.scan_only_expires_before_unix_millis;
+                    if !expired && scan_only_kept < request.max_scan_only_batches {
+                        scan_only_kept += 1;
+                    } else {
+                        removable.push(batch.batch_id.as_str().to_owned());
+                    }
+                }
+            }
+        }
+
+        let mut removed_batches = 0_usize;
+        for chunk in removable.chunks(RETENTION_DELETE_CHUNK) {
+            let sql = format!(
+                "DELETE FROM external_import_batches WHERE batch_id IN ({})",
+                vec!["?"; chunk.len()].join(", ")
+            );
+            let removed = transaction
+                .execute(&sql, rusqlite::params_from_iter(chunk.iter()))
+                .context("failed to delete external import retention batches")?;
+            ensure!(
+                removed == chunk.len(),
+                "external import retention delete count mismatch"
+            );
+            removed_batches = removed_batches
+                .checked_add(removed)
+                .ok_or_else(|| anyhow!("external import retention count overflow"))?;
+        }
+        transaction
+            .commit()
+            .context("failed to commit external import retention")?;
+
+        Ok(ExternalImportBatchRetentionOutcome { removed_batches })
+    }
+}
+
+/// IN 子句删除的分块上限,远低于 SQLite 变量数限制。
+const RETENTION_DELETE_CHUNK: usize = 500;
+
+fn batch_created_at(batch: &ExternalImportBatch) -> Result<i64> {
+    i64::try_from(batch.created_at_unix_millis)
+        .context("external import batch creation time is invalid")
+}
+
+fn candidate_counts_by_batch(
+    transaction: &Transaction<'_>,
+    batch_ids: &[&str],
+) -> Result<std::collections::BTreeMap<String, usize>> {
+    let mut counts = std::collections::BTreeMap::new();
+    if batch_ids.is_empty() {
+        return Ok(counts);
+    }
+    let sql = format!(
+        "SELECT batch_id, COUNT(*)
+         FROM external_import_candidates
+         WHERE batch_id IN ({})
+         GROUP BY batch_id",
+        vec!["?"; batch_ids.len()].join(", ")
+    );
+    let mut statement = transaction
+        .prepare(&sql)
+        .context("failed to prepare external import candidate count query")?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(batch_ids.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .context("failed to query external import candidate counts")?;
+    for row in rows {
+        let (batch_id, count) =
+            row.context("failed to read external import candidate count row")?;
+        let count = usize::try_from(count).context("external import candidate count is invalid")?;
+        counts.insert(batch_id, count);
+    }
+    Ok(counts)
+}
+
+fn item_result_counts_by_batch(
+    transaction: &Transaction<'_>,
+    batch_ids: &[&str],
+) -> Result<std::collections::BTreeMap<String, ExternalImportItemStatusCounts>> {
+    let mut counts: std::collections::BTreeMap<String, ExternalImportItemStatusCounts> =
+        std::collections::BTreeMap::new();
+    if batch_ids.is_empty() {
+        return Ok(counts);
+    }
+    let sql = format!(
+        "SELECT batch_id, status, COUNT(*)
+         FROM external_import_item_results
+         WHERE batch_id IN ({})
+         GROUP BY batch_id, status",
+        vec!["?"; batch_ids.len()].join(", ")
+    );
+    let mut statement = transaction
+        .prepare(&sql)
+        .context("failed to prepare external import result count query")?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(batch_ids.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .context("failed to query external import result counts")?;
+    let mut null_status_batches: Vec<String> = Vec::new();
+    for row in rows {
+        let (batch_id, status, count) =
+            row.context("failed to read external import result count row")?;
+        let Some(status) = status else {
+            null_status_batches.push(batch_id);
+            continue;
+        };
+        // 无法映射的状态字符串整体报错:静默漏计会伪造「计数与明细一致」的信任基础。
+        let status = ExternalImportItemStatus::parse(&status)
+            .ok_or_else(|| anyhow!("external import item result status is invalid"))?;
+        let count = u64::try_from(count).context("external import result count is invalid")?;
+        counts
+            .entry(batch_id)
+            .or_default()
+            .add(status, count)
+            .ok_or_else(|| anyhow!("external import result count overflow"))?;
+    }
+    drop(statement);
+    for batch_id in null_status_batches {
+        add_null_status_results_from_json(transaction, &batch_id, &mut counts)?;
+    }
+    Ok(counts)
+}
+
+/// 派生 status 列残留 NULL 的行(预期为零)按 result_json 权威事实归类,不静默丢弃。
+fn add_null_status_results_from_json(
+    transaction: &Transaction<'_>,
+    batch_id: &str,
+    counts: &mut std::collections::BTreeMap<String, ExternalImportItemStatusCounts>,
+) -> Result<()> {
+    let mut statement = transaction
+        .prepare(
+            "SELECT result_json
+             FROM external_import_item_results
+             WHERE batch_id = ?1 AND status IS NULL",
+        )
+        .context("failed to prepare external import result fallback query")?;
+    let rows = statement
+        .query_map(rusqlite::params![batch_id], |row| row.get::<_, String>(0))
+        .context("failed to query external import result fallback rows")?;
+    let results: Vec<ExternalImportItemResult> =
+        deserialize_rows(rows, "external import item result")?;
+    for result in results {
+        counts
+            .entry(batch_id.to_owned())
+            .or_default()
+            .add(result.status, 1)
+            .ok_or_else(|| anyhow!("external import result count overflow"))?;
+    }
+    Ok(())
 }
 
 fn batch_exists(transaction: &Transaction<'_>, batch_id: &ExternalImportBatchId) -> Result<bool> {
@@ -1005,6 +1313,318 @@ mod tests {
         assert_eq!(page.total_count, 2);
         assert_eq!(page.next_offset, Some(1));
         assert_eq!(page.results[0].candidate_id, first.candidate_id);
+    }
+
+    #[test]
+    fn history_page_orders_by_creation_time_and_breaks_ties_by_batch_id() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut tie_b = batch("batch-b");
+        tie_b.created_at_unix_millis = 100;
+        let mut tie_a = batch("batch-a");
+        tie_a.created_at_unix_millis = 100;
+        let mut newest = batch("batch-c");
+        newest.created_at_unix_millis = 200;
+        for seeded in [&tie_b, &tie_a, &newest] {
+            repository.create_batch(seeded).expect("create batch");
+        }
+
+        let first_page = repository
+            .list_batch_history_page(0, 2)
+            .expect("first history page");
+        let second_page = repository
+            .list_batch_history_page(2, 2)
+            .expect("second history page");
+
+        assert_eq!(first_page.total_count, 3);
+        assert_eq!(first_page.next_offset, Some(2));
+        assert_eq!(
+            first_page
+                .entries
+                .iter()
+                .map(|entry| entry.batch.batch_id.as_str())
+                .collect::<Vec<_>>(),
+            ["batch-c", "batch-a"]
+        );
+        assert_eq!(second_page.next_offset, None);
+        assert_eq!(
+            second_page
+                .entries
+                .iter()
+                .map(|entry| entry.batch.batch_id.as_str())
+                .collect::<Vec<_>>(),
+            ["batch-b"]
+        );
+    }
+
+    #[test]
+    fn history_page_counts_match_a_rust_recount_of_item_results() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut batch = batch("batch-counts");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let candidates = vec![
+            candidate(&batch.batch_id, "candidate-1"),
+            candidate(&batch.batch_id, "candidate-2"),
+            candidate(&batch.batch_id, "candidate-3"),
+        ];
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, &candidates)
+            .expect("save scan result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[
+                    item_result("candidate-1", ExternalImportItemStatus::Imported),
+                    item_result("candidate-2", ExternalImportItemStatus::Failed),
+                ],
+            )
+            .expect("append first chunk");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[item_result(
+                    "candidate-3",
+                    ExternalImportItemStatus::Skipped,
+                )],
+            )
+            .expect("append second chunk");
+
+        let page = repository
+            .list_batch_history_page(0, 10)
+            .expect("history page");
+
+        // 这条断言是「允许 migration 用 json_extract」的对价:派生列聚合必须与
+        // result_json 权威事实的逐行重算完全一致,serde 字段名一旦漂移立即翻红。
+        let mut recounted = ExternalImportItemStatusCounts::default();
+        for result in repository
+            .list_item_results(&batch.batch_id)
+            .expect("list item results")
+        {
+            recounted.add(result.status, 1).expect("recount");
+        }
+        assert_eq!(page.entries[0].result_counts, recounted);
+        assert_eq!(page.entries[0].result_counts.total(), 3);
+        assert_eq!(page.entries[0].candidate_count, 3);
+    }
+
+    #[test]
+    fn history_counts_fall_back_to_result_json_when_the_status_column_is_null() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(Arc::clone(&db));
+        let mut batch = batch("batch-null-status");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let candidates = vec![
+            candidate(&batch.batch_id, "candidate-1"),
+            candidate(&batch.batch_id, "candidate-2"),
+        ];
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, &candidates)
+            .expect("save scan result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[
+                    item_result("candidate-1", ExternalImportItemStatus::Imported),
+                    item_result("candidate-2", ExternalImportItemStatus::Blocked),
+                ],
+            )
+            .expect("append results");
+        db.lock()
+            .expect("database lock")
+            .execute(
+                "UPDATE external_import_item_results SET status = NULL WHERE batch_id = ?1",
+                rusqlite::params![batch.batch_id.as_str()],
+            )
+            .expect("null out derived status");
+
+        let page = repository
+            .list_batch_history_page(0, 10)
+            .expect("history page");
+
+        assert_eq!(page.entries[0].result_counts.imported, 1);
+        assert_eq!(page.entries[0].result_counts.blocked, 1);
+        assert_eq!(page.entries[0].result_counts.total(), 2);
+    }
+
+    #[test]
+    fn retry_upsert_moves_the_result_between_status_buckets() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        let mut batch = batch("batch-retry-buckets");
+        batch.scan_status = ExternalImportScanStatus::Completed;
+        let candidate = candidate(&batch.batch_id, "candidate-1");
+        repository.create_batch(&batch).expect("create batch");
+        repository
+            .save_scan_result(&batch, std::slice::from_ref(&candidate))
+            .expect("save scan result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[item_result("candidate-1", ExternalImportItemStatus::Failed)],
+            )
+            .expect("append failed result");
+        repository
+            .append_item_results(
+                &batch.batch_id,
+                &[item_result(
+                    "candidate-1",
+                    ExternalImportItemStatus::Imported,
+                )],
+            )
+            .expect("upsert retried result");
+
+        let page = repository
+            .list_batch_history_page(0, 10)
+            .expect("history page");
+
+        assert_eq!(page.entries[0].result_counts.failed, 0);
+        assert_eq!(page.entries[0].result_counts.imported, 1);
+        assert_eq!(page.entries[0].result_counts.total(), 1);
+    }
+
+    #[test]
+    fn retention_keeps_running_batches_and_leaves_no_orphans() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(Arc::clone(&db));
+        let mut running = batch("batch-running");
+        running.created_at_unix_millis = 10;
+        running.import_status = ExternalImportBatchImportStatus::Running;
+        let mut kept_imported = batch("batch-imported-kept");
+        kept_imported.created_at_unix_millis = 300;
+        kept_imported.import_status = ExternalImportBatchImportStatus::Completed;
+        let mut removed_imported = batch("batch-imported-removed");
+        removed_imported.created_at_unix_millis = 200;
+        removed_imported.scan_status = ExternalImportScanStatus::Completed;
+        removed_imported.import_status = ExternalImportBatchImportStatus::CompletedWithErrors;
+        let mut expired_scan_only = batch("batch-scan-only-expired");
+        expired_scan_only.created_at_unix_millis = 1;
+        for seeded in [
+            &running,
+            &kept_imported,
+            &removed_imported,
+            &expired_scan_only,
+        ] {
+            repository.create_batch(seeded).expect("create batch");
+        }
+        let removed_candidate = candidate(&removed_imported.batch_id, "candidate-1");
+        repository
+            .save_scan_result(&removed_imported, std::slice::from_ref(&removed_candidate))
+            .expect("save scan result");
+        repository
+            .create_selection(&ExternalImportSelection::new(
+                ExternalImportSelectionId::new("selection-removed"),
+                removed_imported.batch_id.clone(),
+                1000,
+            ))
+            .expect("create selection");
+        repository
+            .append_item_results(
+                &removed_imported.batch_id,
+                &[item_result("candidate-1", ExternalImportItemStatus::Failed)],
+            )
+            .expect("append result");
+
+        let outcome = repository
+            .prune_batches(ExternalImportBatchRetentionRequest {
+                max_imported_batches: 1,
+                max_scan_only_batches: 10,
+                scan_only_expires_before_unix_millis: 5,
+            })
+            .expect("prune batches");
+
+        assert_eq!(outcome.removed_batches, 2);
+        assert!(repository
+            .get_batch(&running.batch_id)
+            .expect("read running batch")
+            .is_some());
+        assert!(repository
+            .get_batch(&kept_imported.batch_id)
+            .expect("read kept batch")
+            .is_some());
+        assert!(repository
+            .get_batch(&removed_imported.batch_id)
+            .expect("read removed batch")
+            .is_none());
+        assert!(repository
+            .get_batch(&expired_scan_only.batch_id)
+            .expect("read expired batch")
+            .is_none());
+        // 级联必须把候选/selection/结果一并清掉,不留孤儿行。
+        let orphan_rows: (i64, i64, i64) = db
+            .lock()
+            .expect("database lock")
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM external_import_candidates WHERE batch_id = ?1),
+                        (SELECT COUNT(*) FROM external_import_selections WHERE batch_id = ?1),
+                        (SELECT COUNT(*) FROM external_import_item_results WHERE batch_id = ?1)",
+                rusqlite::params![removed_imported.batch_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("count orphan rows");
+        assert_eq!(orphan_rows, (0, 0, 0));
+    }
+
+    #[test]
+    fn retention_never_removes_within_the_imported_batch_cap() {
+        let temporary = tempfile::tempdir().expect("temporary database directory");
+        let db = Arc::new(Mutex::new(
+            crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
+        ));
+        let repository = SqliteExternalImportBatchRepository::new(db);
+        for (index, id) in ["batch-1", "batch-2", "batch-3"].iter().enumerate() {
+            let mut seeded = batch(id);
+            seeded.created_at_unix_millis = 100 + index as u64;
+            seeded.import_status = ExternalImportBatchImportStatus::Completed;
+            repository.create_batch(&seeded).expect("create batch");
+        }
+
+        let outcome = repository
+            .prune_batches(ExternalImportBatchRetentionRequest {
+                max_imported_batches: 50,
+                max_scan_only_batches: 10,
+                scan_only_expires_before_unix_millis: u64::MAX,
+            })
+            .expect("prune batches");
+
+        assert_eq!(outcome.removed_batches, 0);
+        assert_eq!(
+            repository
+                .list_batch_history_page(0, 10)
+                .expect("history page")
+                .total_count,
+            3
+        );
+    }
+
+    fn item_result(
+        candidate_id: &str,
+        status: ExternalImportItemStatus,
+    ) -> ExternalImportItemResult {
+        ExternalImportItemResult {
+            candidate_id: ExternalImportCandidateId::new(candidate_id),
+            status,
+            reason_code: None,
+            imported_mod_id: None,
+            retryable: false,
+        }
     }
 
     fn batch(id: &str) -> ExternalImportBatch {

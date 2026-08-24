@@ -2,9 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod external_import_catalog;
+mod external_import_history;
 mod external_import_preview;
 use external_import_catalog::{
     merge_external_metadata_hint, normalize_display_name, CatalogIndex, PendingCatalogImport,
+};
+pub use external_import_history::{
+    ExternalImportHistoryEntry, ExternalImportHistoryPage, DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT,
+    MAX_EXTERNAL_IMPORT_HISTORY_LIMIT,
 };
 pub use external_import_preview::{ExternalImportPreviewCandidate, ExternalImportPreviewPage};
 
@@ -435,6 +440,8 @@ pub enum ExternalImportBatchError {
     PreviewPageInvalid,
     #[error("external import result page is invalid")]
     ResultPageInvalid,
+    #[error("external import history page is invalid")]
+    HistoryPageInvalid,
     #[error("external import clock is unavailable")]
     ClockUnavailable,
 }
@@ -452,6 +459,7 @@ impl ExternalImportBatchError {
             Self::CategoryUnavailable => "external_import_category_unavailable",
             Self::PreviewPageInvalid => "external_import_preview_request_invalid",
             Self::ResultPageInvalid => "external_import_result_request_invalid",
+            Self::HistoryPageInvalid => "external_import_history_request_invalid",
             Self::ClockUnavailable => "external_import_clock_unavailable",
         }
     }
