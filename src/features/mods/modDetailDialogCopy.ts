@@ -12,6 +12,11 @@ export type ModDetailDialogCopy = {
   previewAria: string;
   noPreview: string;
   packageIdLabel: string;
+  originLabel: string;
+  originImported: string;
+  originExternalImport: (sourceLabel: string, importedAt: string) => string;
+  originUnknownSource: string;
+  originMigrated: string;
   selectedCategoriesLabel: string;
   noCategoriesSelected: string;
   sectionInfo: string;
@@ -46,6 +51,12 @@ export const modDetailDialogCopy = {
     previewAria: "Mod 预览图",
     noPreview: "暂无预览图",
     packageIdLabel: "Package ID",
+    originLabel: "来源",
+    originImported: "手动导入",
+    originExternalImport: (sourceLabel: string, importedAt: string) =>
+      `第三方导入 · ${sourceLabel} · ${importedAt}`,
+    originUnknownSource: "第三方来源",
+    originMigrated: "旧版本迁移",
     selectedCategoriesLabel: "已选分类",
     noCategoriesSelected: "未关联",
     sectionInfo: "信息编辑",
@@ -78,6 +89,12 @@ export const modDetailDialogCopy = {
     previewAria: "Mod preview image",
     noPreview: "No preview image",
     packageIdLabel: "Package ID",
+    originLabel: "Origin",
+    originImported: "Manual import",
+    originExternalImport: (sourceLabel: string, importedAt: string) =>
+      `Third-party import · ${sourceLabel} · ${importedAt}`,
+    originUnknownSource: "Third-party source",
+    originMigrated: "Legacy migration",
     selectedCategoriesLabel: "Categories",
     noCategoriesSelected: "None",
     sectionInfo: "Edit Info",
@@ -110,6 +127,12 @@ export const modDetailDialogCopy = {
     previewAria: "Mod プレビュー画像",
     noPreview: "プレビュー画像なし",
     packageIdLabel: "Package ID",
+    originLabel: "由来",
+    originImported: "手動インポート",
+    originExternalImport: (sourceLabel: string, importedAt: string) =>
+      `サードパーティ移行 · ${sourceLabel} · ${importedAt}`,
+    originUnknownSource: "サードパーティソース",
+    originMigrated: "旧バージョンからの移行",
     selectedCategoriesLabel: "選択中のカテゴリ",
     noCategoriesSelected: "未設定",
     sectionInfo: "情報を編集",

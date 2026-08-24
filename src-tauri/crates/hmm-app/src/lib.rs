@@ -133,8 +133,8 @@ pub use mod_import::{
     ImportPreviewImage, ImportPreviewImageProcessor, ModDetail, ModImportAnalysisRequest,
     ModImportAnalysisResult, ModImportAnalysisService, ModImportPrepareRequest,
     ModImportPrepareResult, ModImportPrepareService, ModImportTaskRunError, ModImportTaskRunner,
-    ModLibraryItem, ModLibraryService, ModLibraryStatus, ModPackageMetadataSummary,
-    ModRevisionList, ThumbnailCacheMaintenanceScheduler,
+    ModLibraryItem, ModLibraryService, ModLibraryStatus, ModOriginSummary,
+    ModPackageMetadataSummary, ModRevisionList, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 pub use mod_import_diagnostics::{
