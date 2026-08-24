@@ -535,7 +535,8 @@ EQUIPMENT_CATALOG_GOVERNANCE.md），601 个唯一目标根（14 family、中英
 
 - `MhwReplacementCatalog` 的 Production 分支装载 WR-02B 全量 14 分片（`parse_sharded`，
   Active 目标 601 条），聚合版本号 `mhw-replacement-v1`；armor 部分与独立
-  `mhw-armor-v2` catalog 完全一致（269 条不变）。
+  armor catalog 完全一致（269 条不变；2026-08-24 起该 catalog 为 `mhw-armor-v3`，
+  补齐 5 条 en/ja 名）。
 - Production 武器目标携带 `family`/`path_family` metadata（`list_compatible_targets` 的
   过滤键，缺失等于目标不可见），不携带 `catalog_scope` 标记（DTO 侧默认 `production`）。
 - Sandbox 聚合 catalog 刻意保持 WR-04 认证形态（armor + 2 条人工 seed，
