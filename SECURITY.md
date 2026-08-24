@@ -89,7 +89,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   production 环境签发的 5 分钟 opaque token、显式 `--commit --yes`、CLI-3A `game-profile-write`
   跨进程 admission，以及 game/profile 写锁内的 token/事实/游戏根一致性重验；production 与
   sandbox token 的环境标签参与 digest，跨环境重放必然失效。install batch 在 automation 边界继续
-  拒绝 Production（前置 per-installation secret，属后续切片）；backup create/restore/background
+  开放 Production（CLI-3C：token 由 per-installation secret 签名，纯语法预检在触达数据根前
+  拒绝非法/过期 token，锁外 register 记录已保存配置游戏根、锁内重载一致性重验）；
+  backup create/restore/background
   enable|disable 和 diagnostics export 继续在 parser 边界不可达。
 - Production 写侧没有 sandbox marker；对应的根事实是 prepare 阶段从已保存配置读取的游戏根，
   锁内重载配置并要求与锁外记录一致且仍然存在为目录，配置漂移 fail closed。CLI 不接受任何
@@ -145,9 +147,9 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
 - T13-05 的 Sandbox `install batch plan|apply|result|retry` 通过批次级 operation 支持 install、
   uninstall 和 reinstall。Preview 在构造写 runtime 前只读校验，same-revision retarget 不创建 staging、
   DB、journal、Audit 或 projection；apply 才能在 capability、token、SQLite scope admission 和共享
-  game/profile 写锁全部通过后复用单项事务。batch 的 Production 请求在 automation 边界拒绝
-  （`sandbox_batch_production_forbidden`）；开放前置 per-installation secret，不随 CLI-3B
-  单项命令解禁。
+  game/profile 写锁全部通过后复用单项事务。Production batch token 由 per-installation secret
+  （app data `secrets/` 下的随机 key，损坏即轮换）签名，跨环境互不通用；secret 不进日志、
+  机器输出或诊断导出。
 - Batch result 只读取显式 batch/attempt。非终态查询返回 `0` 以保留诊断能力；terminal 状态复用
   apply/retry 的稳定退出码，其中 `completed_with_errors` 返回 partial exit `5`。遗留 active attempt
   继续使 apply/retry/new apply 对同 scope fail closed。

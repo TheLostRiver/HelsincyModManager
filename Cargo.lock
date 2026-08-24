@@ -1873,6 +1873,7 @@ dependencies = [
  "cap-fs-ext",
  "cap-std",
  "dirs",
+ "getrandom 0.3.4",
  "hmm-app",
  "hmm-core",
  "hmm-games-mhw",

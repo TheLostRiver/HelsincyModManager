@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 
 mod backup_automation;
 mod batch_automation;
+mod batch_token_secret;
 mod composition;
 mod diagnostics_automation;
 mod external_import;
@@ -18,8 +19,8 @@ pub use backup_automation::{
     ReadOnlyBackupAutomation, ReadOnlyBackupAutomationError,
 };
 pub use batch_automation::{
-    BatchAttemptSnapshot, SandboxBatchAutomationError, SandboxBatchAutomationErrorClass,
-    SandboxBatchInstallAutomation, SandboxBatchPlanRequest,
+    BatchAttemptSnapshot, BatchAutomationError, BatchAutomationErrorClass,
+    BatchLifecycleAutomation, BatchLifecyclePlanRequest,
 };
 pub use composition::{
     ConfiguredInstallRecoveryActionPreviewer, ConfiguredInstallRecoveryScanner,

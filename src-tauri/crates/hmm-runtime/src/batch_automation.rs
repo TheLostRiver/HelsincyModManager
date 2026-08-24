@@ -1,6 +1,6 @@
 use crate::{
     lifecycle_automation::revalidate_sandbox_write_roots, HmmRuntime, ReadOnlyInstallAutomation,
-    RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability,
+    RuntimeEnvironment, SandboxWriteCapability,
 };
 use hmm_app::{
     BatchInstallItemExecutor, BatchInstallRetryError, BatchInstallRetryResult,
@@ -30,35 +30,36 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 // This deterministic Sandbox tag binds previews to a fixture root and detects stale input. It is
-// not an authentication secret. Production batch writes remain unavailable until they can use a
-// per-installation secret and cross-process admission.
+// not an authentication secret; sandbox isolation carries its safety. Production tokens are keyed
+// by the per-installation random secret instead (CLI-3C, see batch_token_secret.rs), so they
+// cannot be forged offline, and cross-process admission still guards every item write.
 const BATCH_TOKEN_TAG_PREFIX: &str = "hmm-sandbox-batch-token-v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SandboxBatchAutomationErrorClass {
+pub enum BatchAutomationErrorClass {
     DataSafetyRisk,
     UserActionRequired,
     Recoverable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SandboxBatchAutomationError {
+pub struct BatchAutomationError {
     code: &'static str,
 }
 
-impl SandboxBatchAutomationError {
+impl BatchAutomationError {
     pub const fn code(&self) -> &'static str {
         self.code
     }
 
-    pub fn class(&self) -> SandboxBatchAutomationErrorClass {
+    pub fn class(&self) -> BatchAutomationErrorClass {
         match self.code {
             "sandbox_batch_production_forbidden"
             | "batch_write_admission_unavailable"
             | "batch_runtime_unavailable"
             | "batch_attempt_reconciliation_required"
             | "batch_operation_mismatch"
-            | "batch_admission_rejected" => SandboxBatchAutomationErrorClass::DataSafetyRisk,
+            | "batch_admission_rejected" => BatchAutomationErrorClass::DataSafetyRisk,
             "batch_input_invalid"
             | "batch_duplicate_item"
             | "batch_resource_limit_exceeded"
@@ -68,21 +69,22 @@ impl SandboxBatchAutomationError {
             | "batch_plan_expired"
             | "batch_retry_unavailable"
             | "batch_attempt_stale"
-            | "batch_id_invalid" => SandboxBatchAutomationErrorClass::UserActionRequired,
+            | "batch_id_invalid" => BatchAutomationErrorClass::UserActionRequired,
             "sandbox_data_dir_required"
+            | "batch_secret_unavailable"
             | "batch_token_unavailable"
             | "batch_unavailable"
             | "batch_journal_unavailable"
             | "batch_result_unavailable"
             | "batch_task_unavailable"
             | "batch_evidence_unavailable"
-            | "batch_internal_error" => SandboxBatchAutomationErrorClass::Recoverable,
-            _ => SandboxBatchAutomationErrorClass::DataSafetyRisk,
+            | "batch_internal_error" => BatchAutomationErrorClass::Recoverable,
+            _ => BatchAutomationErrorClass::DataSafetyRisk,
         }
     }
 
     pub fn retryable(&self) -> bool {
-        matches!(self.class(), SandboxBatchAutomationErrorClass::Recoverable)
+        matches!(self.class(), BatchAutomationErrorClass::Recoverable)
     }
 
     const fn new(code: &'static str) -> Self {
@@ -90,13 +92,13 @@ impl SandboxBatchAutomationError {
     }
 }
 
-impl fmt::Display for SandboxBatchAutomationError {
+impl fmt::Display for BatchAutomationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.code)
     }
 }
 
-impl std::error::Error for SandboxBatchAutomationError {}
+impl std::error::Error for BatchAutomationError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchAttemptSnapshot {
@@ -111,12 +113,12 @@ pub struct BatchAttemptSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SandboxBatchPlanRequest {
+pub struct BatchLifecyclePlanRequest {
     pub plan: BatchPlanRequest,
     pub replacement_targets: BTreeMap<ModId, ReplacementTargetId>,
 }
 
-impl From<BatchPlanRequest> for SandboxBatchPlanRequest {
+impl From<BatchPlanRequest> for BatchLifecyclePlanRequest {
     fn from(plan: BatchPlanRequest) -> Self {
         Self {
             plan,
@@ -131,11 +133,11 @@ struct AllowedBatchPlan {
     digest: String,
 }
 
-struct SandboxBatchFactsProvider {
+struct BatchFactsProvider {
     environment: RuntimeEnvironment,
 }
 
-impl BatchPlanFactsProvider for SandboxBatchFactsProvider {
+impl BatchPlanFactsProvider for BatchFactsProvider {
     fn read_batch_plan_facts(
         &self,
         request: &NormalizedBatchPlanRequest,
@@ -340,9 +342,19 @@ impl BatchSealRepository for ReadOnlyBatchSealRepository {
     }
 }
 
-struct SandboxBatchWriteAdmission {
-    capability: Arc<SandboxWriteCapability>,
-    sandbox_root: PathBuf,
+/// 写根守卫：Sandbox 重验 marker/containment capability；Production 的根事实是
+/// register 时（锁外）从已保存配置读取的游戏根，锁内重载比较，配置漂移 fail closed
+/// （与 CLI-3B 单项 lifecycle 的 Production 语义一致）。
+enum BatchRootGuard {
+    Sandbox {
+        capability: Arc<SandboxWriteCapability>,
+        sandbox_root: PathBuf,
+    },
+    Production,
+}
+
+struct BatchWriteAdmission {
+    root_guard: BatchRootGuard,
     game_config_repository: Arc<dyn hmm_ports::GameConfigRepository>,
     expected: Mutex<Option<ExpectedBatchPlans>>,
 }
@@ -351,10 +363,30 @@ type ExpectedBatchPlans = (
     hmm_core::GameId,
     hmm_core::ProfileId,
     BTreeMap<hmm_core::ModId, AllowedBatchPlan>,
+    Option<PathBuf>,
 );
 
-impl SandboxBatchWriteAdmission {
-    fn register_batch(&self, batch: &SealedBatch) {
+impl BatchWriteAdmission {
+    fn register_batch(&self, batch: &SealedBatch) -> Result<(), BatchAutomationError> {
+        // Production：锁外记录已保存配置的游戏根，供锁内一致性重验。
+        let expected_game_root = match &self.root_guard {
+            BatchRootGuard::Production => {
+                let instance = self
+                    .game_config_repository
+                    .load_game_instance(&batch.plan.game_id)
+                    .map_err(|_| BatchAutomationError::new("batch_write_admission_unavailable"))?
+                    .ok_or_else(|| {
+                        BatchAutomationError::new("batch_write_admission_unavailable")
+                    })?;
+                if !instance.root_dir.is_dir() {
+                    return Err(BatchAutomationError::new(
+                        "batch_write_admission_unavailable",
+                    ));
+                }
+                Some(instance.root_dir)
+            }
+            BatchRootGuard::Sandbox { .. } => None,
+        };
         let allowed = batch
             .plan
             .items
@@ -370,17 +402,61 @@ impl SandboxBatchWriteAdmission {
                 _ => None,
             })
             .collect::<BTreeMap<_, _>>();
-        if let Ok(mut expected) = self.expected.lock() {
-            *expected = Some((
-                batch.plan.game_id.clone(),
-                batch.plan.profile_id.clone(),
-                allowed,
-            ));
+        let mut expected = self
+            .expected
+            .lock()
+            .map_err(|_| BatchAutomationError::new("batch_write_admission_unavailable"))?;
+        *expected = Some((
+            batch.plan.game_id.clone(),
+            batch.plan.profile_id.clone(),
+            allowed,
+            expected_game_root,
+        ));
+        Ok(())
+    }
+
+    fn revalidate_roots(
+        &self,
+        expected_game: &hmm_core::GameId,
+        expected_profile: &hmm_core::ProfileId,
+        expected_game_root: Option<&PathBuf>,
+        game_id: &hmm_core::GameId,
+        profile_id: &hmm_core::ProfileId,
+    ) -> Result<(), hmm_app::InstallWriteAdmissionError> {
+        match &self.root_guard {
+            BatchRootGuard::Sandbox {
+                capability,
+                sandbox_root,
+            } => revalidate_sandbox_write_roots(
+                capability.as_ref(),
+                sandbox_root,
+                self.game_config_repository.as_ref(),
+                expected_game,
+                expected_profile,
+                game_id,
+                profile_id,
+            ),
+            BatchRootGuard::Production => {
+                if game_id != expected_game || profile_id != expected_profile {
+                    return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
+                }
+                let expected_root = expected_game_root
+                    .ok_or(hmm_app::InstallWriteAdmissionError::SafetyRejected)?;
+                let instance = self
+                    .game_config_repository
+                    .load_game_instance(game_id)
+                    .map_err(|_| hmm_app::InstallWriteAdmissionError::SafetyRejected)?
+                    .ok_or(hmm_app::InstallWriteAdmissionError::SafetyRejected)?;
+                if &instance.root_dir != expected_root || !instance.root_dir.is_dir() {
+                    return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
+                }
+                Ok(())
+            }
         }
     }
 }
 
-impl InstallWriteAdmission for SandboxBatchWriteAdmission {
+impl InstallWriteAdmission for BatchWriteAdmission {
     fn ensure_write_allowed(
         &self,
         game_id: &hmm_core::GameId,
@@ -390,15 +466,13 @@ impl InstallWriteAdmission for SandboxBatchWriteAdmission {
             .expected
             .lock()
             .map_err(|_| hmm_app::InstallWriteAdmissionError::SafetyRejected)?;
-        let Some((expected_game, expected_profile, _)) = expected.as_ref() else {
+        let Some((expected_game, expected_profile, _, expected_root)) = expected.as_ref() else {
             return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
         };
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
-            self.game_config_repository.as_ref(),
+        self.revalidate_roots(
             expected_game,
             expected_profile,
+            expected_root.as_ref(),
             game_id,
             profile_id,
         )
@@ -419,7 +493,8 @@ impl InstallWriteAdmission for SandboxBatchWriteAdmission {
             .expected
             .lock()
             .map_err(|_| hmm_app::InstallWriteAdmissionError::SafetyRejected)?;
-        let Some((expected_game, expected_profile, allowed)) = expected.as_ref() else {
+        let Some((expected_game, expected_profile, allowed, expected_root)) = expected.as_ref()
+        else {
             return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
         };
         let Some(item) = allowed.get(mod_id) else {
@@ -435,12 +510,10 @@ impl InstallWriteAdmission for SandboxBatchWriteAdmission {
         if digest != item.digest {
             return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
         }
-        revalidate_sandbox_write_roots(
-            self.capability.as_ref(),
-            &self.sandbox_root,
-            self.game_config_repository.as_ref(),
+        self.revalidate_roots(
             expected_game,
             expected_profile,
+            expected_root.as_ref(),
             game_id,
             profile_id,
         )
@@ -452,16 +525,16 @@ struct WriteContext {
     plan_service: BatchPlanService,
     runner: BatchInstallTaskRunner,
     retry: BatchInstallRetryService,
-    admission: Arc<SandboxBatchWriteAdmission>,
+    admission: Arc<BatchWriteAdmission>,
 }
 
-pub struct SandboxBatchInstallAutomation;
+pub struct BatchLifecycleAutomation;
 
-impl SandboxBatchInstallAutomation {
+impl BatchLifecycleAutomation {
     pub fn preview_request(
         environment: &RuntimeEnvironment,
-        request: SandboxBatchPlanRequest,
-    ) -> Result<BatchPlanPreview, SandboxBatchAutomationError> {
+        request: BatchLifecyclePlanRequest,
+    ) -> Result<BatchPlanPreview, BatchAutomationError> {
         let request = resolve_batch_plan_request(environment, request, "batch_input_invalid")?;
         Self::preview(environment, request)
     }
@@ -469,7 +542,7 @@ impl SandboxBatchInstallAutomation {
     pub fn preview(
         environment: &RuntimeEnvironment,
         request: BatchPlanRequest,
-    ) -> Result<BatchPlanPreview, SandboxBatchAutomationError> {
+    ) -> Result<BatchPlanPreview, BatchAutomationError> {
         build_read_only_plan_service(environment)?
             .preview(request)
             .map_err(map_preview_error)
@@ -479,10 +552,11 @@ impl SandboxBatchInstallAutomation {
         environment: &RuntimeEnvironment,
         request: BatchPlanRequest,
         preview_token: &str,
-    ) -> Result<(BatchPlanSealResult, BatchInstallRunResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchPlanSealResult, BatchInstallRunResult), BatchAutomationError> {
         // Reject stale input before constructing HmmRuntime, whose initialization creates the
         // sandbox journal. The write path repeats this validation inside `seal` to close the
         // validation-to-persistence TOCTOU window.
+        precheck_batch_token(preview_token, "preview")?;
         build_read_only_plan_service(environment)?
             .validate_preview(request.clone(), preview_token)
             .map_err(map_seal_error)?;
@@ -496,9 +570,9 @@ impl SandboxBatchInstallAutomation {
         let batch = context
             .repository
             .load_batch(&batch_id)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
-        context.admission.register_batch(&batch);
+            .map_err(|_| BatchAutomationError::new("batch_journal_unavailable"))?
+            .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
+        context.admission.register_batch(&batch)?;
         let run = context
             .runner
             .run(&batch_id, &sealed.plan_token)
@@ -508,12 +582,11 @@ impl SandboxBatchInstallAutomation {
 
     pub fn apply_request(
         environment: &RuntimeEnvironment,
-        request: SandboxBatchPlanRequest,
+        request: BatchLifecyclePlanRequest,
         preview_token: &str,
-    ) -> Result<
-        (BatchOperation, BatchPlanSealResult, BatchInstallRunResult),
-        SandboxBatchAutomationError,
-    > {
+    ) -> Result<(BatchOperation, BatchPlanSealResult, BatchInstallRunResult), BatchAutomationError>
+    {
+        precheck_batch_token(preview_token, "preview")?;
         let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
         let operation = request.operation;
         Self::apply(environment, request, preview_token)
@@ -525,9 +598,9 @@ impl SandboxBatchInstallAutomation {
     /// persists the sealed batch journal (attempt 0) and returns the opaque `planToken`.
     pub fn seal_request(
         environment: &RuntimeEnvironment,
-        request: SandboxBatchPlanRequest,
+        request: BatchLifecyclePlanRequest,
         preview_token: &str,
-    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchPlanSealResult), BatchAutomationError> {
         Self::seal_request_internal(environment, request, preview_token, None)
     }
 
@@ -536,19 +609,20 @@ impl SandboxBatchInstallAutomation {
     /// path and its fail-closed WAL checks.
     pub fn seal_request_with_database(
         environment: &RuntimeEnvironment,
-        request: SandboxBatchPlanRequest,
+        request: BatchLifecyclePlanRequest,
         preview_token: &str,
         database: Arc<Mutex<rusqlite::Connection>>,
-    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchPlanSealResult), BatchAutomationError> {
         Self::seal_request_internal(environment, request, preview_token, Some(database))
     }
 
     fn seal_request_internal(
         environment: &RuntimeEnvironment,
-        request: SandboxBatchPlanRequest,
+        request: BatchLifecyclePlanRequest,
         preview_token: &str,
         database: Option<SharedBatchDatabase>,
-    ) -> Result<(BatchOperation, BatchPlanSealResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchPlanSealResult), BatchAutomationError> {
+        precheck_batch_token(preview_token, "preview")?;
         let request = resolve_batch_plan_request(environment, request, "batch_plan_stale")?;
         let operation = request.operation;
         build_read_only_plan_service(environment)?
@@ -575,7 +649,7 @@ impl SandboxBatchInstallAutomation {
         environment: &RuntimeEnvironment,
         batch_id: &str,
         plan_token: &str,
-    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
         Self::start_request_internal(environment, batch_id, plan_token, None)
     }
 
@@ -585,7 +659,7 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         plan_token: &str,
         database: Arc<Mutex<rusqlite::Connection>>,
-    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
         Self::start_request_internal(environment, batch_id, plan_token, Some(database))
     }
 
@@ -594,8 +668,9 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         plan_token: &str,
         database: Option<SharedBatchDatabase>,
-    ) -> Result<(BatchOperation, BatchInstallRunResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
+        precheck_batch_token(plan_token, "plan")?;
         let operation = {
             let repository = open_batch_repository_read_only(
                 environment,
@@ -603,23 +678,23 @@ impl SandboxBatchInstallAutomation {
                 "batch_unavailable",
                 database.as_ref(),
             )?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
             let batch = repository
                 .load_batch(&batch_id)
-                .map_err(|_| SandboxBatchAutomationError::new("batch_unavailable"))?
-                .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+                .map_err(|_| BatchAutomationError::new("batch_unavailable"))?
+                .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
             batch.plan.operation
         };
         let context = build_write_context(environment, operation)?;
         let batch = context
             .repository
             .load_batch(&batch_id)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            .map_err(|_| BatchAutomationError::new("batch_journal_unavailable"))?
+            .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
         if batch.plan.operation != operation {
-            return Err(SandboxBatchAutomationError::new("batch_operation_mismatch"));
+            return Err(BatchAutomationError::new("batch_operation_mismatch"));
         }
-        context.admission.register_batch(&batch);
+        context.admission.register_batch(&batch)?;
         let run = context
             .runner
             .run_attempt(&batch_id, 0, plan_token)
@@ -631,7 +706,7 @@ impl SandboxBatchInstallAutomation {
         environment: &RuntimeEnvironment,
         batch_id: &str,
         attempt_number: u32,
-    ) -> Result<(BatchInstallRetryResult, BatchInstallRunResult), SandboxBatchAutomationError> {
+    ) -> Result<(BatchInstallRetryResult, BatchInstallRunResult), BatchAutomationError> {
         Self::retry_with_operation(environment, batch_id, attempt_number)
             .map(|(_, retry, run)| (retry, run))
     }
@@ -646,7 +721,7 @@ impl SandboxBatchInstallAutomation {
             BatchInstallRetryResult,
             BatchInstallRunResult,
         ),
-        SandboxBatchAutomationError,
+        BatchAutomationError,
     > {
         Self::retry_with_operation_internal(environment, batch_id, attempt_number, None)
     }
@@ -663,7 +738,7 @@ impl SandboxBatchInstallAutomation {
             BatchInstallRetryResult,
             BatchInstallRunResult,
         ),
-        SandboxBatchAutomationError,
+        BatchAutomationError,
     > {
         Self::retry_with_operation_internal(environment, batch_id, attempt_number, Some(database))
     }
@@ -679,7 +754,7 @@ impl SandboxBatchInstallAutomation {
             BatchInstallRetryResult,
             BatchInstallRunResult,
         ),
-        SandboxBatchAutomationError,
+        BatchAutomationError,
     > {
         let batch_id = parse_batch_id(batch_id)?;
         let (_, reconciled_batch) = ensure_batch_reconciled(
@@ -697,12 +772,12 @@ impl SandboxBatchInstallAutomation {
         let batch = context
             .repository
             .load_batch(&batch_id)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_unavailable"))?;
+            .map_err(|_| BatchAutomationError::new("batch_journal_unavailable"))?
+            .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
         if batch.plan.operation != operation {
-            return Err(SandboxBatchAutomationError::new("batch_operation_mismatch"));
+            return Err(BatchAutomationError::new("batch_operation_mismatch"));
         }
-        context.admission.register_batch(&batch);
+        context.admission.register_batch(&batch)?;
         let run = context
             .runner
             .run_attempt(&batch_id, retry.attempt_number, &retry.plan_token)
@@ -714,7 +789,7 @@ impl SandboxBatchInstallAutomation {
         environment: &RuntimeEnvironment,
         batch_id: &str,
         attempt_number: u32,
-    ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
+    ) -> Result<BatchAttemptSnapshot, BatchAutomationError> {
         Self::result_internal(environment, batch_id, attempt_number, None)
     }
 
@@ -725,7 +800,7 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         attempt_number: u32,
         database: Arc<Mutex<rusqlite::Connection>>,
-    ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
+    ) -> Result<BatchAttemptSnapshot, BatchAutomationError> {
         Self::result_internal(environment, batch_id, attempt_number, Some(database))
     }
 
@@ -734,7 +809,7 @@ impl SandboxBatchInstallAutomation {
         batch_id: &str,
         attempt_number: u32,
         database: Option<SharedBatchDatabase>,
-    ) -> Result<BatchAttemptSnapshot, SandboxBatchAutomationError> {
+    ) -> Result<BatchAttemptSnapshot, BatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
         let repository = open_batch_repository_read_only(
             environment,
@@ -742,34 +817,33 @@ impl SandboxBatchInstallAutomation {
             "batch_result_unavailable",
             database.as_ref(),
         )?
-        .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+        .ok_or_else(|| BatchAutomationError::new("batch_result_unavailable"))?;
         let batch = repository
             .load_batch(&batch_id)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+            .map_err(|_| BatchAutomationError::new("batch_result_unavailable"))?
+            .ok_or_else(|| BatchAutomationError::new("batch_result_unavailable"))?;
         let attempt = repository
             .load_attempt(&batch_id, attempt_number)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?
-            .ok_or_else(|| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+            .map_err(|_| BatchAutomationError::new("batch_result_unavailable"))?
+            .ok_or_else(|| BatchAutomationError::new("batch_result_unavailable"))?;
         let items = repository
             .list_item_results(&batch_id, attempt_number)
-            .map_err(|_| SandboxBatchAutomationError::new("batch_result_unavailable"))?;
+            .map_err(|_| BatchAutomationError::new("batch_result_unavailable"))?;
         Ok(snapshot(batch, attempt, items))
     }
 }
 
 fn resolve_batch_plan_request(
     environment: &RuntimeEnvironment,
-    request: SandboxBatchPlanRequest,
+    request: BatchLifecyclePlanRequest,
     unavailable_code: &'static str,
-) -> Result<BatchPlanRequest, SandboxBatchAutomationError> {
-    ensure_sandbox(environment)?;
-    let SandboxBatchPlanRequest {
+) -> Result<BatchPlanRequest, BatchAutomationError> {
+    let BatchLifecyclePlanRequest {
         mut plan,
         mut replacement_targets,
     } = request;
     if plan.operation != BatchOperation::Reinstall && !replacement_targets.is_empty() {
-        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        return Err(BatchAutomationError::new("batch_input_invalid"));
     }
 
     let requires_resolution = plan.operation == BatchOperation::Install
@@ -783,13 +857,13 @@ fn resolve_batch_plan_request(
     let read_only = requires_resolution
         .then(|| ReadOnlyInstallAutomation::from_environment(environment))
         .transpose()
-        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+        .map_err(|_| BatchAutomationError::new(unavailable_code))?;
 
     for item in &mut plan.items {
         match item {
             BatchItemInput::Install(input) => {
                 if input.replacement_binding_snapshot.is_some() {
-                    return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                    return Err(BatchAutomationError::new("batch_input_invalid"));
                 }
                 let (_, _, _, _, install_plan, _) = read_only
                     .as_ref()
@@ -801,22 +875,22 @@ fn resolve_batch_plan_request(
                         input.revision_id.as_str(),
                         &input.layer,
                     )
-                    .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+                    .map_err(|_| BatchAutomationError::new(unavailable_code))?;
                 input.replacement_binding_snapshot =
                     match install_plan.replacement_bindings.as_slice() {
                         [] => None,
                         [binding] => Some(binding.clone()),
-                        _ => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+                        _ => return Err(BatchAutomationError::new(unavailable_code)),
                     };
             }
             BatchItemInput::Reinstall(input) => {
                 if input.installed_revision_id == input.candidate_revision_id {
                     if input.replacement_binding_snapshot.is_some() {
-                        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                        return Err(BatchAutomationError::new("batch_input_invalid"));
                     }
                     let target_id = replacement_targets
                         .remove(&input.mod_id)
-                        .ok_or_else(|| SandboxBatchAutomationError::new("batch_input_invalid"))?;
+                        .ok_or_else(|| BatchAutomationError::new("batch_input_invalid"))?;
                     let binding = read_only
                         .as_ref()
                         .expect("same-revision reinstall initialized read-only automation")
@@ -826,28 +900,27 @@ fn resolve_batch_plan_request(
                             input,
                             &target_id,
                         )
-                        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+                        .map_err(|_| BatchAutomationError::new(unavailable_code))?;
                     input.replacement_binding_snapshot = Some(binding);
                 } else if input.replacement_binding_snapshot.is_some()
                     || replacement_targets.contains_key(&input.mod_id)
                 {
-                    return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+                    return Err(BatchAutomationError::new("batch_input_invalid"));
                 }
             }
             BatchItemInput::Uninstall(_) => {}
         }
     }
     if !replacement_targets.is_empty() {
-        return Err(SandboxBatchAutomationError::new("batch_input_invalid"));
+        return Err(BatchAutomationError::new("batch_input_invalid"));
     }
     Ok(plan)
 }
 
 fn build_read_only_plan_service(
     environment: &RuntimeEnvironment,
-) -> Result<BatchPlanService, SandboxBatchAutomationError> {
-    ensure_sandbox(environment)?;
-    let facts = Arc::new(SandboxBatchFactsProvider {
+) -> Result<BatchPlanService, BatchAutomationError> {
+    let facts = Arc::new(BatchFactsProvider {
         environment: environment.clone(),
     });
     let token_codec = batch_token_codec(environment)?;
@@ -862,36 +935,37 @@ fn build_read_only_plan_service(
 fn build_write_context(
     environment: &RuntimeEnvironment,
     operation: BatchOperation,
-) -> Result<WriteContext, SandboxBatchAutomationError> {
-    ensure_sandbox(environment)?;
-    let sandbox_root = environment
-        .sandbox_data_dir()
-        .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?
-        .to_path_buf();
-    let capability = Arc::new(
-        environment
-            .acquire_sandbox_write_capability()
-            .map_err(|_| SandboxBatchAutomationError::new("batch_write_admission_unavailable"))?,
-    );
+) -> Result<WriteContext, BatchAutomationError> {
+    let context = BatchEnvironmentContext::resolve(environment)?;
+    let root_guard = match &context.sandbox_root {
+        Some(sandbox_root) => BatchRootGuard::Sandbox {
+            capability: Arc::new(
+                environment
+                    .acquire_sandbox_write_capability()
+                    .map_err(|_| BatchAutomationError::new("batch_write_admission_unavailable"))?,
+            ),
+            sandbox_root: sandbox_root.clone(),
+        },
+        None => BatchRootGuard::Production,
+    };
     let game_config_repository: Arc<dyn hmm_ports::GameConfigRepository> = Arc::new(
-        JsonGameConfigRepository::new(sandbox_root.join("config").join("games.json")),
+        JsonGameConfigRepository::new(context.data_root.join("config").join("games.json")),
     );
-    let admission = Arc::new(SandboxBatchWriteAdmission {
-        capability,
-        sandbox_root: sandbox_root.clone(),
+    let admission = Arc::new(BatchWriteAdmission {
+        root_guard,
         game_config_repository,
         expected: Mutex::new(None),
     });
-    let runtime = HmmRuntime::builder(sandbox_root.clone())
+    let runtime = HmmRuntime::builder(context.data_root.clone())
         .with_install_write_admission(admission.clone())
         .build()
-        .map_err(|_| SandboxBatchAutomationError::new("batch_runtime_unavailable"))?;
+        .map_err(|_| BatchAutomationError::new("batch_runtime_unavailable"))?;
     let repository_impl = Arc::new(SqliteBatchLifecycleRepository::new(
         runtime.database_handle(),
     ));
     let repository: Arc<dyn BatchLifecycleRepository> = repository_impl.clone();
     let seal_repository: Arc<dyn BatchSealRepository> = repository_impl;
-    let facts = Arc::new(SandboxBatchFactsProvider {
+    let facts = Arc::new(BatchFactsProvider {
         environment: environment.clone(),
     });
     let token_codec = batch_token_codec(environment)?;
@@ -940,29 +1014,67 @@ fn build_write_context(
     })
 }
 
-fn batch_token_codec(
-    environment: &RuntimeEnvironment,
-) -> Result<Arc<dyn BatchTokenCodec>, SandboxBatchAutomationError> {
-    let root = environment
-        .sandbox_data_dir()
-        .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
-    let sandbox_tag = format!("{BATCH_TOKEN_TAG_PREFIX}\0{}", root.display());
-    let codec = Sha256BatchTokenCodec::new(sandbox_tag)
-        .map_err(|_| SandboxBatchAutomationError::new("batch_token_unavailable"))?;
-    Ok(Arc::new(codec))
+/// 批量链路的环境事实：数据根与 Sandbox 根。Production 数据根仅由操作系统解析
+/// （或 crate 内测试注入），与单项 lifecycle 的 CLI-3B 约束一致，没有 CLI 注入面。
+struct BatchEnvironmentContext {
+    data_root: PathBuf,
+    sandbox_root: Option<PathBuf>,
 }
 
-fn ensure_sandbox(environment: &RuntimeEnvironment) -> Result<(), SandboxBatchAutomationError> {
-    if environment.kind() == RuntimeEnvironmentKind::Sandbox {
-        Ok(())
-    } else {
-        Err(SandboxBatchAutomationError::new(
-            "sandbox_batch_production_forbidden",
-        ))
+impl BatchEnvironmentContext {
+    fn resolve(environment: &RuntimeEnvironment) -> Result<Self, BatchAutomationError> {
+        match environment.sandbox_data_dir() {
+            Some(root) => Ok(Self {
+                data_root: root.to_path_buf(),
+                sandbox_root: Some(root.to_path_buf()),
+            }),
+            None => Ok(Self {
+                data_root: environment
+                    .resolved_production_app_data_dir()
+                    .ok_or_else(|| BatchAutomationError::new("batch_runtime_unavailable"))?,
+                sandbox_root: None,
+            }),
+        }
     }
 }
 
-fn parse_batch_id(value: &str) -> Result<BatchId, SandboxBatchAutomationError> {
+fn batch_token_codec(
+    environment: &RuntimeEnvironment,
+) -> Result<Arc<dyn BatchTokenCodec>, BatchAutomationError> {
+    let context = BatchEnvironmentContext::resolve(environment)?;
+    // Sandbox key 是隔离根派生的可推导 stale tag（其安全性由 sandbox 隔离承担）；
+    // Production key 是 per-installation 随机 secret，token 不可离线伪造（CLI-3C）。
+    let secret: Vec<u8> = match &context.sandbox_root {
+        Some(root) => format!("{BATCH_TOKEN_TAG_PREFIX}\0{}", root.display()).into_bytes(),
+        None => crate::batch_token_secret::load_or_create_batch_token_secret(&context.data_root)
+            .map_err(|_| BatchAutomationError::new("batch_secret_unavailable"))?,
+    };
+    let codec = Sha256BatchTokenCodec::new(secret)
+        .map_err(|_| BatchAutomationError::new("batch_token_unavailable"))?;
+    Ok(Arc::new(codec))
+}
+
+/// 纯语法 token 预检：格式与有效期，不读取任何数据根。放在会触达文件系统的
+/// 入口最前，让明显无效的 token 在 Production 下也不触发真实数据读取。
+fn precheck_batch_token(token: &str, expected_kind: &str) -> Result<(), BatchAutomationError> {
+    let parts = token.split('.').collect::<Vec<_>>();
+    if parts.len() != 5 || parts[0] != "hmm-batch-v2" || parts[1] != expected_kind {
+        return Err(BatchAutomationError::new("batch_token_invalid"));
+    }
+    let expires_at: u128 = parts[3]
+        .parse()
+        .map_err(|_| BatchAutomationError::new("batch_token_invalid"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| BatchAutomationError::new("batch_internal_error"))?
+        .as_millis();
+    if now >= expires_at {
+        return Err(BatchAutomationError::new("batch_plan_expired"));
+    }
+    Ok(())
+}
+
+fn parse_batch_id(value: &str) -> Result<BatchId, BatchAutomationError> {
     let value = value.trim();
     if value.len() > 128
         || value.is_empty()
@@ -970,7 +1082,7 @@ fn parse_batch_id(value: &str) -> Result<BatchId, SandboxBatchAutomationError> {
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
     {
-        return Err(SandboxBatchAutomationError::new("batch_id_invalid"));
+        return Err(BatchAutomationError::new("batch_id_invalid"));
     }
     Ok(BatchId::new(value))
 }
@@ -983,25 +1095,24 @@ fn open_batch_repository_read_only(
     missing_is_empty: bool,
     unavailable_code: &'static str,
     database: Option<&SharedBatchDatabase>,
-) -> Result<Option<ReadOnlyBatchRepository>, SandboxBatchAutomationError> {
-    ensure_sandbox(environment)?;
+) -> Result<Option<ReadOnlyBatchRepository>, BatchAutomationError> {
     if let Some(database) = database {
         return Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(
             Arc::clone(database),
         ))));
     }
-    let root = environment
-        .sandbox_data_dir()
-        .ok_or_else(|| SandboxBatchAutomationError::new("sandbox_data_dir_required"))?;
-    let database_path = root.join("hmm.db");
+    // Production 下 GUI 持有活跃 WAL 时，immutable 快照打开会 fail closed
+    // （与 backup 只读 facade 同一行为）：需要一致结果时先关闭桌面端。
+    let context = BatchEnvironmentContext::resolve(environment)?;
+    let database_path = context.data_root.join("hmm.db");
     match fs::symlink_metadata(&database_path) {
         Ok(metadata) if metadata.file_type().is_file() => {}
-        Ok(_) => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+        Ok(_) => return Err(BatchAutomationError::new(unavailable_code)),
         Err(error) if error.kind() == ErrorKind::NotFound && missing_is_empty => return Ok(None),
-        Err(_) => return Err(SandboxBatchAutomationError::new(unavailable_code)),
+        Err(_) => return Err(BatchAutomationError::new(unavailable_code)),
     }
     let connection = open_database_read_only(&database_path)
-        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+        .map_err(|_| BatchAutomationError::new(unavailable_code))?;
     Ok(Some(Arc::new(SqliteBatchLifecycleRepository::new(
         Arc::new(Mutex::new(connection)),
     ))))
@@ -1012,7 +1123,7 @@ fn ensure_scope_reconciled(
     game_id: &hmm_core::GameId,
     profile_id: &hmm_core::ProfileId,
     database: Option<&SharedBatchDatabase>,
-) -> Result<(), SandboxBatchAutomationError> {
+) -> Result<(), BatchAutomationError> {
     let Some(repository) =
         open_batch_repository_read_only(environment, true, "batch_journal_unavailable", database)?
     else {
@@ -1020,9 +1131,9 @@ fn ensure_scope_reconciled(
     };
     let active = repository
         .find_active_attempt_for_scope(game_id, profile_id)
-        .map_err(|_| SandboxBatchAutomationError::new("batch_journal_unavailable"))?;
+        .map_err(|_| BatchAutomationError::new("batch_journal_unavailable"))?;
     if active.is_some() {
-        return Err(SandboxBatchAutomationError::new(
+        return Err(BatchAutomationError::new(
             "batch_attempt_reconciliation_required",
         ));
     }
@@ -1034,19 +1145,19 @@ fn ensure_batch_reconciled(
     batch_id: &BatchId,
     unavailable_code: &'static str,
     database: Option<&SharedBatchDatabase>,
-) -> Result<(ReadOnlyBatchRepository, SealedBatch), SandboxBatchAutomationError> {
+) -> Result<(ReadOnlyBatchRepository, SealedBatch), BatchAutomationError> {
     let repository =
         open_batch_repository_read_only(environment, false, unavailable_code, database)?
-            .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
+            .ok_or_else(|| BatchAutomationError::new(unavailable_code))?;
     let batch = repository
         .load_batch(batch_id)
-        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?
-        .ok_or_else(|| SandboxBatchAutomationError::new(unavailable_code))?;
+        .map_err(|_| BatchAutomationError::new(unavailable_code))?
+        .ok_or_else(|| BatchAutomationError::new(unavailable_code))?;
     let active = repository
         .find_active_attempt_for_scope(&batch.plan.game_id, &batch.plan.profile_id)
-        .map_err(|_| SandboxBatchAutomationError::new(unavailable_code))?;
+        .map_err(|_| BatchAutomationError::new(unavailable_code))?;
     if active.is_some() {
-        return Err(SandboxBatchAutomationError::new(
+        return Err(BatchAutomationError::new(
             "batch_attempt_reconciliation_required",
         ));
     }
@@ -1070,15 +1181,15 @@ fn snapshot(
     }
 }
 
-fn map_preview_error(error: BatchPlanPreviewError) -> SandboxBatchAutomationError {
-    SandboxBatchAutomationError::new(error.code())
+fn map_preview_error(error: BatchPlanPreviewError) -> BatchAutomationError {
+    BatchAutomationError::new(error.code())
 }
 
-fn map_seal_error(error: BatchPlanSealError) -> SandboxBatchAutomationError {
-    SandboxBatchAutomationError::new(error.code())
+fn map_seal_error(error: BatchPlanSealError) -> BatchAutomationError {
+    BatchAutomationError::new(error.code())
 }
 
-fn map_run_error(error: BatchInstallRunError) -> SandboxBatchAutomationError {
+fn map_run_error(error: BatchInstallRunError) -> BatchAutomationError {
     let code = match error {
         BatchInstallRunError::BatchUnavailable => "batch_unavailable",
         BatchInstallRunError::InvalidToken => "batch_token_invalid",
@@ -1091,10 +1202,10 @@ fn map_run_error(error: BatchInstallRunError) -> SandboxBatchAutomationError {
         BatchInstallRunError::JournalUnavailable => "batch_journal_unavailable",
         BatchInstallRunError::TaskUnavailable => "batch_task_unavailable",
     };
-    SandboxBatchAutomationError::new(code)
+    BatchAutomationError::new(code)
 }
 
-fn map_retry_error(error: BatchInstallRetryError) -> SandboxBatchAutomationError {
+fn map_retry_error(error: BatchInstallRetryError) -> BatchAutomationError {
     let code = match error {
         BatchInstallRetryError::BatchUnavailable => "batch_unavailable",
         BatchInstallRetryError::RetryUnavailable => "batch_retry_unavailable",
@@ -1103,7 +1214,7 @@ fn map_retry_error(error: BatchInstallRetryError) -> SandboxBatchAutomationError
         BatchInstallRetryError::TokenIssueFailed => "batch_internal_error",
         BatchInstallRetryError::JournalUnavailable => "batch_journal_unavailable",
     };
-    SandboxBatchAutomationError::new(code)
+    BatchAutomationError::new(code)
 }
 
 #[cfg(test)]
@@ -1124,47 +1235,47 @@ mod tests {
         let cases = [
             (
                 "sandbox_batch_production_forbidden",
-                SandboxBatchAutomationErrorClass::DataSafetyRisk,
+                BatchAutomationErrorClass::DataSafetyRisk,
                 false,
             ),
             (
                 "batch_attempt_reconciliation_required",
-                SandboxBatchAutomationErrorClass::DataSafetyRisk,
+                BatchAutomationErrorClass::DataSafetyRisk,
                 false,
             ),
             (
                 "batch_token_invalid",
-                SandboxBatchAutomationErrorClass::UserActionRequired,
+                BatchAutomationErrorClass::UserActionRequired,
                 false,
             ),
             (
                 "batch_resource_limit_exceeded",
-                SandboxBatchAutomationErrorClass::UserActionRequired,
+                BatchAutomationErrorClass::UserActionRequired,
                 false,
             ),
             (
                 "batch_id_invalid",
-                SandboxBatchAutomationErrorClass::UserActionRequired,
+                BatchAutomationErrorClass::UserActionRequired,
                 false,
             ),
             (
                 "batch_result_unavailable",
-                SandboxBatchAutomationErrorClass::Recoverable,
+                BatchAutomationErrorClass::Recoverable,
                 true,
             ),
         ];
         for (code, class, retryable) in cases {
-            let error = SandboxBatchAutomationError::new(code);
+            let error = BatchAutomationError::new(code);
             assert_eq!(error.to_string(), code);
             assert_eq!(error.class(), class);
             assert_eq!(error.retryable(), retryable);
             fn assert_error<E: std::error::Error>() {}
-            assert_error::<SandboxBatchAutomationError>();
+            assert_error::<BatchAutomationError>();
         }
     }
 
-    fn batch_install_request() -> SandboxBatchPlanRequest {
-        SandboxBatchPlanRequest {
+    fn batch_install_request() -> BatchLifecyclePlanRequest {
+        BatchLifecyclePlanRequest {
             plan: BatchPlanRequest {
                 schema_version: BATCH_PLAN_SCHEMA_VERSION,
                 operation: BatchOperation::Install,
@@ -1206,8 +1317,8 @@ mod tests {
         game_root
     }
 
-    fn armor_install_request() -> SandboxBatchPlanRequest {
-        SandboxBatchPlanRequest {
+    fn armor_install_request() -> BatchLifecyclePlanRequest {
+        BatchLifecyclePlanRequest {
             plan: BatchPlanRequest {
                 schema_version: BATCH_PLAN_SCHEMA_VERSION,
                 operation: BatchOperation::Install,
@@ -1225,8 +1336,8 @@ mod tests {
         }
     }
 
-    fn armor_target_switch_request() -> SandboxBatchPlanRequest {
-        SandboxBatchPlanRequest {
+    fn armor_target_switch_request() -> BatchLifecyclePlanRequest {
+        BatchLifecyclePlanRequest {
             plan: BatchPlanRequest {
                 schema_version: BATCH_PLAN_SCHEMA_VERSION,
                 operation: BatchOperation::Reinstall,
@@ -1266,10 +1377,10 @@ mod tests {
         );
 
         let preview =
-            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+            BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
                 .expect("sandbox preview");
         let preview_token = preview.preview_token.expect("ready preview token");
-        let (_, sealed) = SandboxBatchInstallAutomation::seal_request_with_database(
+        let (_, sealed) = BatchLifecycleAutomation::seal_request_with_database(
             &environment,
             batch_install_request(),
             &preview_token,
@@ -1277,14 +1388,14 @@ mod tests {
         )
         .expect("sandbox seal through GUI database");
 
-        let (_, run) = SandboxBatchInstallAutomation::start_request_with_database(
+        let (_, run) = BatchLifecycleAutomation::start_request_with_database(
             &environment,
             &sealed.batch_id,
             &sealed.plan_token,
             Arc::clone(&gui_database),
         )
         .expect("sandbox start through GUI database");
-        let snapshot = SandboxBatchInstallAutomation::result_with_database(
+        let snapshot = BatchLifecycleAutomation::result_with_database(
             &environment,
             &sealed.batch_id,
             run.attempt_number,
@@ -1299,12 +1410,9 @@ mod tests {
             b"fixture"
         );
 
-        let snapshot_error = SandboxBatchInstallAutomation::result(
-            &environment,
-            &sealed.batch_id,
-            run.attempt_number,
-        )
-        .expect_err("immutable snapshot path must remain fail-closed while WAL is active");
+        let snapshot_error =
+            BatchLifecycleAutomation::result(&environment, &sealed.batch_id, run.attempt_number)
+                .expect_err("immutable snapshot path must remain fail-closed while WAL is active");
         assert_eq!(snapshot_error.code(), "batch_result_unavailable");
     }
 
@@ -1316,12 +1424,12 @@ mod tests {
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
 
         let preview =
-            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+            BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
                 .expect("sandbox preview");
         assert_eq!(preview.plan.status(), hmm_core::BatchPlanStatus::Ready);
         let preview_token = preview.preview_token.expect("ready preview token");
 
-        let (operation, sealed) = SandboxBatchInstallAutomation::seal_request(
+        let (operation, sealed) = BatchLifecycleAutomation::seal_request(
             &environment,
             batch_install_request(),
             &preview_token,
@@ -1332,7 +1440,7 @@ mod tests {
         assert!(!sealed.plan_token.is_empty());
         assert!(sealed.expires_at_unix_millis > 0);
 
-        let (operation, run) = SandboxBatchInstallAutomation::start_request(
+        let (operation, run) = BatchLifecycleAutomation::start_request(
             &environment,
             &sealed.batch_id,
             &sealed.plan_token,
@@ -1346,12 +1454,9 @@ mod tests {
             b"fixture"
         );
 
-        let snapshot = SandboxBatchInstallAutomation::result(
-            &environment,
-            &sealed.batch_id,
-            run.attempt_number,
-        )
-        .expect("attempt result");
+        let snapshot =
+            BatchLifecycleAutomation::result(&environment, &sealed.batch_id, run.attempt_number)
+                .expect("attempt result");
         assert_eq!(snapshot.status, BatchAttemptStatus::Completed);
         assert_eq!(snapshot.task_id.as_deref(), Some(run.task_id.as_str()));
         assert_eq!(snapshot.summary.succeeded_count, 1);
@@ -1361,7 +1466,7 @@ mod tests {
             hmm_core::BatchItemStatus::Succeeded
         );
 
-        let (_, repeated) = SandboxBatchInstallAutomation::start_request(
+        let (_, repeated) = BatchLifecycleAutomation::start_request(
             &environment,
             &sealed.batch_id,
             &sealed.plan_token,
@@ -1379,7 +1484,7 @@ mod tests {
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
 
         let install_preview =
-            SandboxBatchInstallAutomation::preview_request(&environment, armor_install_request())
+            BatchLifecycleAutomation::preview_request(&environment, armor_install_request())
                 .expect("armor batch install preview");
         let BatchItemInput::Install(install_input) = &install_preview.plan.items[0].input_snapshot
         else {
@@ -1405,7 +1510,7 @@ mod tests {
         assert_eq!(source_binding.source_internal_id(), "pl121_0000");
         assert_eq!(source_binding.target_internal_id(), "pl121_0000");
 
-        let (_, sealed_install) = SandboxBatchInstallAutomation::seal_request(
+        let (_, sealed_install) = BatchLifecycleAutomation::seal_request(
             &environment,
             armor_install_request(),
             install_preview
@@ -1414,7 +1519,7 @@ mod tests {
                 .expect("preview token"),
         )
         .expect("seal armor install");
-        let (_, install_run) = SandboxBatchInstallAutomation::start_request(
+        let (_, install_run) = BatchLifecycleAutomation::start_request(
             &environment,
             &sealed_install.batch_id,
             &sealed_install.plan_token,
@@ -1435,16 +1540,14 @@ mod tests {
             resolved_source_target.id()
         );
 
-        let switch_preview = SandboxBatchInstallAutomation::preview_request(
-            &environment,
-            armor_target_switch_request(),
-        )
-        .expect("same-revision target-switch preview");
+        let switch_preview =
+            BatchLifecycleAutomation::preview_request(&environment, armor_target_switch_request())
+                .expect("same-revision target-switch preview");
         assert_eq!(
             switch_preview.plan.status(),
             hmm_core::BatchPlanStatus::Ready
         );
-        let (_, sealed_switch) = SandboxBatchInstallAutomation::seal_request(
+        let (_, sealed_switch) = BatchLifecycleAutomation::seal_request(
             &environment,
             armor_target_switch_request(),
             switch_preview
@@ -1453,7 +1556,7 @@ mod tests {
                 .expect("switch token"),
         )
         .expect("seal target switch");
-        let (_, switch_run) = SandboxBatchInstallAutomation::start_request(
+        let (_, switch_run) = BatchLifecycleAutomation::start_request(
             &environment,
             &sealed_switch.batch_id,
             &sealed_switch.plan_token,
@@ -1496,17 +1599,17 @@ mod tests {
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
 
         let preview =
-            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
+            BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
                 .expect("sandbox preview");
         let preview_token = preview.preview_token.expect("ready preview token");
-        let (_, sealed) = SandboxBatchInstallAutomation::seal_request(
+        let (_, sealed) = BatchLifecycleAutomation::seal_request(
             &environment,
             batch_install_request(),
             &preview_token,
         )
         .expect("sandbox seal");
 
-        let error = SandboxBatchInstallAutomation::start_request(
+        let error = BatchLifecycleAutomation::start_request(
             &environment,
             &sealed.batch_id,
             "forged-plan-token",
@@ -1514,7 +1617,7 @@ mod tests {
         .expect_err("forged plan token must be rejected");
         assert_eq!(error.code(), "batch_token_invalid");
 
-        let snapshot = SandboxBatchInstallAutomation::result(&environment, &sealed.batch_id, 0)
+        let snapshot = BatchLifecycleAutomation::result(&environment, &sealed.batch_id, 0)
             .expect("attempt remains readable");
         assert_eq!(snapshot.status, BatchAttemptStatus::Sealed);
         assert_eq!(snapshot.task_id, None);
@@ -1526,22 +1629,133 @@ mod tests {
     }
 
     #[test]
-    fn production_environment_rejects_batch_preview_and_seal() {
-        let environment =
-            RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
-                .expect("production environment");
+    fn production_batch_runs_end_to_end_with_keyed_tokens_in_a_test_root() {
+        // CLI-3C：production batch 走 per-installation secret 签名的 token，
+        // 在 temp 根上完成 preview -> seal -> start -> result 全链路。
+        let data_root = tempfile::tempdir().expect("production app data root");
+        write_install_fixture(data_root.path());
+        // production 根不需要（也不该要求）sandbox marker。
+        fs::remove_file(data_root.path().join(crate::SANDBOX_MARKER_FILE_NAME))
+            .expect("remove sandbox marker");
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
+        );
 
-        let preview_error =
-            SandboxBatchInstallAutomation::preview_request(&environment, batch_install_request())
-                .expect_err("production preview must be rejected");
-        assert_eq!(preview_error.code(), "sandbox_batch_production_forbidden");
+        let preview =
+            BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
+                .expect("production preview");
+        let preview_token = preview
+            .preview_token
+            .expect("ready production preview token");
+        assert!(data_root
+            .path()
+            .join("secrets/batch-token-secret-v1")
+            .is_file());
 
-        let seal_error = SandboxBatchInstallAutomation::seal_request(
+        let (operation, sealed) = BatchLifecycleAutomation::seal_request(
             &environment,
+            batch_install_request(),
+            &preview_token,
+        )
+        .expect("production seal");
+        assert_eq!(operation, BatchOperation::Install);
+        let (_, run) = BatchLifecycleAutomation::start_request(
+            &environment,
+            &sealed.batch_id,
+            &sealed.plan_token,
+        )
+        .expect("production start");
+        assert_eq!(run.status, BatchAttemptStatus::Completed);
+
+        let snapshot = BatchLifecycleAutomation::result(&environment, &sealed.batch_id, 0)
+            .expect("production result");
+        assert_eq!(snapshot.status, BatchAttemptStatus::Completed);
+        assert_eq!(snapshot.summary.succeeded_count, 1);
+    }
+
+    #[test]
+    fn batch_tokens_do_not_cross_environments_and_forged_tokens_fail_before_io() {
+        // 同一份数据布局分别以两种环境读取：sandbox token 不能在 production
+        // seal，production token 也不能回流 sandbox；语法非法/过期 token 在
+        // 触达数据根之前拒绝。
+        let root = tempfile::tempdir().expect("shared root");
+        write_install_fixture(root.path());
+        let sandbox = RuntimeEnvironment::sandbox(root.path().to_path_buf()).expect("sandbox");
+        let production =
+            RuntimeEnvironment::production_with_app_data_root_for_tests(root.path().to_path_buf());
+
+        let sandbox_token =
+            BatchLifecycleAutomation::preview_request(&sandbox, batch_install_request())
+                .expect("sandbox preview")
+                .preview_token
+                .expect("sandbox preview token");
+        let production_token =
+            BatchLifecycleAutomation::preview_request(&production, batch_install_request())
+                .expect("production preview")
+                .preview_token
+                .expect("production preview token");
+        assert_ne!(sandbox_token, production_token);
+
+        let cross = BatchLifecycleAutomation::seal_request(
+            &production,
+            batch_install_request(),
+            &sandbox_token,
+        )
+        .expect_err("sandbox token must not seal a production batch");
+        assert_eq!(cross.code(), "batch_plan_stale");
+        let cross_back = BatchLifecycleAutomation::seal_request(
+            &sandbox,
+            batch_install_request(),
+            &production_token,
+        )
+        .expect_err("production token must not seal a sandbox batch");
+        assert_eq!(cross_back.code(), "batch_plan_stale");
+
+        // 纯语法预检：格式非法与已过期 token 不触达数据根。
+        let malformed = BatchLifecycleAutomation::seal_request(
+            &production,
             batch_install_request(),
             "forged-preview-token",
         )
-        .expect_err("production seal must be rejected");
-        assert_eq!(seal_error.code(), "sandbox_batch_production_forbidden");
+        .expect_err("malformed token fails before io");
+        assert_eq!(malformed.code(), "batch_token_invalid");
+        let expired = BatchLifecycleAutomation::seal_request(
+            &production,
+            batch_install_request(),
+            "hmm-batch-v2.preview.1.2.deadbeef",
+        )
+        .expect_err("expired token fails before io");
+        assert_eq!(expired.code(), "batch_plan_expired");
+    }
+
+    #[test]
+    fn production_secret_rotation_invalidates_previously_issued_tokens() {
+        let data_root = tempfile::tempdir().expect("production app data root");
+        write_install_fixture(data_root.path());
+        fs::remove_file(data_root.path().join(crate::SANDBOX_MARKER_FILE_NAME))
+            .expect("remove sandbox marker");
+        let environment = RuntimeEnvironment::production_with_app_data_root_for_tests(
+            data_root.path().to_path_buf(),
+        );
+
+        let preview_token =
+            BatchLifecycleAutomation::preview_request(&environment, batch_install_request())
+                .expect("production preview")
+                .preview_token
+                .expect("production preview token");
+
+        fs::write(
+            data_root.path().join("secrets/batch-token-secret-v1"),
+            "corrupted",
+        )
+        .expect("corrupt secret to force rotation");
+
+        let error = BatchLifecycleAutomation::seal_request(
+            &environment,
+            batch_install_request(),
+            &preview_token,
+        )
+        .expect_err("token issued under the old secret must fail after rotation");
+        assert_eq!(error.code(), "batch_plan_stale");
     }
 }
