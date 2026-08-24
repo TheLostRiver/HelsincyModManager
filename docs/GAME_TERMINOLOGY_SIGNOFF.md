@@ -111,13 +111,47 @@ NOTICE.md「MHW:I 装备与武器名称」一节内容与政策边界一致：�
 签核只对上表所列 artifact 版本有效。catalog 数据更新（新增条目或版本变更）时，本签核须
 重新执行——候选 source 声明、`--require-bundled` 复验与边界核对缺一不可。
 
-## 变更记录：mhw-armor-v3（2026-08-24，签核待重新执行）
+## 重签记录：mhw-armor-v3（2026-08-24）
 
-- 变更内容：防具 artifact 升至 `mhw-armor-v3`，仅补齐 5 条活动/联动装（pl019_0000、
-  pl057_0000、pl057_0010、pl133_0000、pl132_0010）缺失的 en/ja 展示名；条目数（269）、
-  stable ID、resource 语义、alias 与武器 artifact（`mhw-weapon-v1`）均未变化。
-- 名称来源：kiranico（mhworld.kiranico.com）zh/en/ja 系列页逐条对照（catalog 既有 zh_cn 名
-  与 kiranico zh 逐字一致），日文名另经 altema/game8 交叉验证；名称属于卡普空，
-  `game_terminology` 状态与第 4 节边界不变。
-- 按上文规则，2026-08-23 签核对防具 artifact 不再有效：防具部分须按第 5 节清单重新执行
-  签核（武器部分不受影响）。重签完成前，防具 catalog 相关发版判断以本记录为准。
+### 变更内容
+
+防具 artifact 升至 `mhw-armor-v3`，为 5 条活动/联动装补齐缺失的名称文本：其中 4 条
+（pl019_0000、pl057_0000、pl133_0000、pl132_0010）补齐 en/ja 展示名；pl057_0010
+（男版燕尾蝶）补齐 ja 展示名，其官方英文名与 pl019_0000（女版）逐字同为 "Butterfly β"，
+按本文档上游治理规则（同 locale display name 跨目标唯一；alias 可合理指向多目标）记为
+en alias。最终统计：268/269 条持有三语展示名，1 条为 zh_cn/ja 展示名 + en alias。
+条目数（269）、stable ID、resource 语义与武器 artifact（`mhw-weapon-v1`）均未变化。
+
+### 名称权利与转录渠道
+
+**名称权利人是 Capcom Co., Ltd.**（`game_terminology`，nominative use，与第 1 节候选 source
+声明同一条：`mhw-ingame-equipment-names`，指向游戏内名称文本本身）。kiranico
+（mhworld.kiranico.com）**仅为名称文本的转录/对照渠道，不是权利来源**——catalog 既有
+zh_cn 名与 kiranico zh 系列页逐字一致（同源核对），新增 en/ja 名按同一系列页逐条转录，
+冷僻日文名（パピメル/パピオム 系）另经 altema.jp/game8.jp 交叉验证。第 4 节四条边界不变。
+
+### 复验证据（2026-08-24 实测）
+
+- 候选 source 声明：从 v3 artifact 重建候选文档（269 条 resource_path 逐条经治理 Stable ID
+  算法回验，269/269 命中），source 声明沿用第 1 节同一条，`retrieved_at`/`reviewed_at`
+  更新为 2026-08-24。
+- `cargo run -p hmm-games-mhw --example validate_equipment_candidates -- --require-bundled
+  <上一条重建出的候选 JSON（本地临时产物，按维护者决定不入库）>`：退出码 `0`，
+  `valid: true`，`bundled_eligible: true`，`issues: []`，`bundle_blockers: []`
+  （269 targets，269 active）。
+- 分发物字段清单：269 条全量扫描，target 键集恰为
+  `{id, target_type, display_name, aliases, internal_id, metadata}`，metadata 键并集不超出
+  第 3 节清单，`mhw:armor:<64 hex>` 格式 269/269 合规；不含名称文本、内部标识与派生
+  stable ID 之外的任何游戏资产。
+- 边界核对：第 4 节四条逐条复核成立（本变更仅改名称文本，前端与导出面零变更，
+  NOTICE.md 署名一节未动且与候选声明一致）。
+- 防回归：防具/武器 catalog 新增键集完备性测试（Butterfly β 重名例外单独锁定）。
+
+### 签核
+
+| 项 | 值 |
+| --- | --- |
+| Reviewer | Helsincy |
+| 签核日期 | 2026-08-24 |
+| 覆盖 artifact 版本 | 防具 `mhw-armor-v3`（269 条）；武器 `mhw-weapon-v1`（601 条，沿用 2026-08-23 签核） |
+| 决定 | ☑ 通过（reviewer 批复"准许通过"，声明/复验/核对由协作 agent 按上表执行并留证） |

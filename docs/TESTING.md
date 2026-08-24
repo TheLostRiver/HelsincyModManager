@@ -883,11 +883,14 @@ AR1 只覆盖纯领域模型、只读 port 与静态 MHW:I catalog，不读取�
 cargo test -p hmm-core --test replacement
 cargo test -p hmm-ports --test replacement_catalog
 cargo test -p hmm-games-mhw --test armor_catalog
+cargo test -p hmm-games-mhw --lib
 ```
 
 这些测试分别锁定 stable target/binding/source/catalog identity 与 serde 不变量、catalog list/find/search
-trait contract、`mhw-armor-v3` catalog（269 条全三语；防具与武器 catalog 均有键集完备性防回归断言）、
-MHW internal id/metadata schema，以及 NFC/中点/NFKC 搜索规范化和 Fatalis/Alatreon 精确隔离。
+trait contract、`mhw-armor-v3` catalog（268 条三语展示名 + 1 条官方英文重名走 alias，
+公开搜索 API 锁定两条 Butterfly β 均可达）、MHW internal id/metadata schema，以及
+NFC/中点/NFKC 搜索规范化和 Fatalis/Alatreon 精确隔离。`--lib` 一项运行 crate 内单元测试，
+含防具/武器 catalog 的键集完备性防回归断言（pl057_0010 的 alias 例外在此锁定）。
 
 ### CAT-01 装备 Catalog 候选数据治理
 

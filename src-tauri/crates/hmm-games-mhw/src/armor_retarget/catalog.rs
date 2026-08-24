@@ -328,19 +328,35 @@ mod tests {
         // 键集即 per-game locale 能力声明（I18N-08）：少一种语言，对应语言界面
         // 会 fallback 显示其他语言，且该语言的名称检索不命中。扩容或修名时必须保持齐全
         // （AR6 曾漏 5 条 en/ja，本测试防止回归）。
+        //
+        // 唯一记录在案的例外：pl057_0010（男版燕尾蝶）的官方英文名与 pl019_0000（女版）
+        // 逐字同为 "Butterfly β"。治理规则要求同 locale display_name 跨目标唯一、alias
+        // 允许重复指向多目标，故男版 en 官方名走 alias（检索可达），display_name 不占用重名。
         let raw: Value =
             serde_json::from_str(BUNDLED_ARMOR_CATALOG).expect("bundled armor catalog json");
         for target in raw["targets"].as_array().expect("targets array") {
+            let internal_id = target["internal_id"].as_str().expect("internal id");
             let names = target["display_name"]
                 .as_object()
                 .expect("display_name object");
             let mut keys: Vec<_> = names.keys().map(String::as_str).collect();
             keys.sort_unstable();
+            if internal_id == "pl057_0010" {
+                assert_eq!(keys, ["ja", "zh_cn"], "pl057_0010 keeps zh_cn/ja names");
+                assert!(
+                    target["aliases"]
+                        .as_array()
+                        .expect("aliases array")
+                        .iter()
+                        .any(|alias| alias == "Butterfly β"),
+                    "pl057_0010 must keep its official English name searchable via alias"
+                );
+                continue;
+            }
             assert_eq!(
                 keys,
                 ["en", "ja", "zh_cn"],
-                "armor target {} must carry the full locale set",
-                target["internal_id"]
+                "armor target {internal_id} must carry the full locale set"
             );
         }
     }
