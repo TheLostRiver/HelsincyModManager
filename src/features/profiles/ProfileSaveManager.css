@@ -118,7 +118,27 @@
   display: grid;
   gap: 10px;
   min-width: 0;
+  /* 备份数量多时在列表内部滚动，不撑长整页（与左侧配置档列表同一策略）。 */
+  max-height: 600px;
   padding: 0 24px 20px;
+  overflow-y: auto;
+}
+
+.profile-backup-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.profile-backup-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.profile-backup-list::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  border-radius: var(--radius-pill);
+}
+
+.profile-backup-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 .profile-backup-item {
@@ -824,9 +844,9 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-height: 100%;
-  padding: 24px;
+  padding: 18px;
   overflow: visible;
 }
 
