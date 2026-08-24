@@ -2059,10 +2059,11 @@
       "target_type": "armor",
       "display_name": {
         "zh_cn": "燕尾蝶男贝塔",
-        "en": "Butterfly β",
         "ja": "パピオムβ"
       },
-      "aliases": [],
+      "aliases": [
+        "Butterfly β"
+      ],
       "internal_id": "pl057_0010",
       "metadata": {
         "path_family": "pl/f_equip",

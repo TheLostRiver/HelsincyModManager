@@ -533,8 +533,9 @@ SQLite 中应持久化玩家状态：
 - 已定义 stable replacement target/binding/source/catalog identity；analysis/plan 模型留到 AR2。
 - 已为 MHW:I 建立 catalog：AR1 的 `mhw-armor-v1` 四条手工 seed 已于 2026-08-21 由 AR6
   扩容为 `mhw-armor-v2`，269 条目标、264 条覆盖中英日三语，旧 slug ID 经 `legacy_ids` 继续可解析；
-  2026-08-24 `mhw-armor-v3` 从 kiranico 补齐余下 5 条活动/联动装的 en/ja 名，269 条全三语，
-  并新增键集完备性防回归测试。
+  2026-08-24 `mhw-armor-v3` 补齐余下 5 条活动/联动装的 en/ja 名（权利人 Capcom，经 kiranico
+  转录对照），268 条三语展示名 + pl057_0010 官方英文重名走 alias（治理规则），并新增键集
+  完备性防回归测试；重签记录见 GAME_TERMINOLOGY_SIGNOFF.md。
 - 已提供 catalog list/find/search、serde 不变量、schema、Unicode 和精确搜索校验测试。
 
 ### 阶段 2：包分析与路径级 RetargetPlan（AR2，已实现）
