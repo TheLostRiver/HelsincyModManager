@@ -202,7 +202,8 @@ sealed selection 全部整体拒绝，不截断、不部分应用。`select_all_
 “所有 ready 候选”谓词，不接受前端展开的 candidate ID 数组，并继续受 10,000 项和资源预算限制。
 `start_external_import_batch` 只消费 batch/selection/revision 三元组，并通过短 SQLite 事务封存 selection；
 retry 只可重放 sealed snapshot 中仍可重试的项。结果 cursor 与 preview cursor 一样是十进制 offset token，
-默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、状态、稳定 reason code、可选内部 `modId`、
+默认 `limit = 50`、最大 `100`，响应只返回 candidate ID、受限候选显示名 `displayName`(可空,与 preview
+metadata hint 同一净化口径:长度/控制字符受限,不含路径)、状态、稳定 reason code、可选内部 `modId`、
 `retryable`、总数和下一 cursor。
 
 `list_external_import_batches` 是 Slice 5 的跨批次导入记录查询:纯读取、不创建 task、不产生任务事件、

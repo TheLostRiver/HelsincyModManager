@@ -19,6 +19,7 @@ const zhResult = externalImportCopy.zh_cn.result;
 function item(overrides = {}) {
   return {
     candidateId: "candidate-a",
+    displayName: "候选A",
     status: "imported",
     reasonCode: null,
     importedModId: "mod-a",
@@ -72,6 +73,16 @@ test("result page accepts only the exact redacted terminal contract", () => {
     ),
     false,
   );
+  // 缺 displayName 键 = 旧后端形状,必须 fail closed,不得静默当 null。
+  const legacyItem = item();
+  delete legacyItem.displayName;
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
+      resultPage({ results: [legacyItem] }),
+      "batch-a",
+    ),
+    false,
+  );
 });
 
 test("result validation rejects unsafe identities, unknown status/reason, duplicates, and oversized pages", () => {
@@ -95,6 +106,27 @@ test("result validation rejects unsafe identities, unknown status/reason, duplic
       "batch-a",
     ),
     false,
+  );
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
+      resultPage({ results: [item({ displayName: "bad\u0000name" })] }),
+      "batch-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
+      resultPage({ results: [item({ displayName: "长".repeat(161) })] }),
+      "batch-a",
+    ),
+    false,
+  );
+  assert.equal(
+    isExternalImportBatchResultPageForBatch(
+      resultPage({ results: [item({ displayName: null })] }),
+      "batch-a",
+    ),
+    true,
   );
   assert.equal(
     isExternalImportBatchResultPageForBatch(
@@ -193,6 +225,16 @@ test("result presentation and summary distinguish partial success without event-
   assert.equal(failed.statusLabel, "导入失败");
   assert.equal(failed.reasonLabel, "可重试");
   assert.equal(failed.retryable, true);
+  assert.equal(failed.displayName, "候选A");
+  // 纯空白显示名归一为 null,由面板给未命名兜底文案,不渲染空 strong。
+  assert.equal(
+    toExternalImportResultViewModel(item({ displayName: "   " }), zhResult).displayName,
+    null,
+  );
+  assert.equal(
+    toExternalImportResultViewModel(item({ displayName: null }), zhResult).displayName,
+    null,
+  );
 
   const blocked = toExternalImportResultViewModel(results[3], zhResult);
   assert.equal(blocked.reasonLabel, "来源已变化");
