@@ -115,12 +115,12 @@ NOTICE.md「MHW:I 装备与武器名称」一节内容与政策边界一致：�
 
 ### 变更内容
 
-防具 artifact 升至 `mhw-armor-v3`，仅补齐 5 条活动/联动装（pl019_0000、pl057_0000、
-pl057_0010、pl133_0000、pl132_0010）缺失的 en/ja 名称文本；条目数（269）、stable ID、
-resource 语义与武器 artifact（`mhw-weapon-v1`）均未变化。其中 pl057_0010（男版燕尾蝶）
-的官方英文名与 pl019_0000（女版）逐字同为 "Butterfly β"：按本文档上游治理规则
-（同 locale display name 跨目标唯一；alias 可合理指向多目标），男版 en 官方名记为 alias，
-display_name 保留 zh_cn/ja。
+防具 artifact 升至 `mhw-armor-v3`，为 5 条活动/联动装补齐缺失的名称文本：其中 4 条
+（pl019_0000、pl057_0000、pl133_0000、pl132_0010）补齐 en/ja 展示名；pl057_0010
+（男版燕尾蝶）补齐 ja 展示名，其官方英文名与 pl019_0000（女版）逐字同为 "Butterfly β"，
+按本文档上游治理规则（同 locale display name 跨目标唯一；alias 可合理指向多目标）记为
+en alias。最终统计：268/269 条持有三语展示名，1 条为 zh_cn/ja 展示名 + en alias。
+条目数（269）、stable ID、resource 语义与武器 artifact（`mhw-weapon-v1`）均未变化。
 
 ### 名称权利与转录渠道
 
@@ -135,8 +135,9 @@ zh_cn 名与 kiranico zh 系列页逐字一致（同源核对），新增 en/ja 
 - 候选 source 声明：从 v3 artifact 重建候选文档（269 条 resource_path 逐条经治理 Stable ID
   算法回验，269/269 命中），source 声明沿用第 1 节同一条，`retrieved_at`/`reviewed_at`
   更新为 2026-08-24。
-- `cargo run -p hmm-games-mhw --example validate_equipment_candidates -- --require-bundled`：
-  退出码 `0`，`valid: true`，`bundled_eligible: true`，`issues: []`，`bundle_blockers: []`
+- `cargo run -p hmm-games-mhw --example validate_equipment_candidates -- --require-bundled
+  <上一条重建出的候选 JSON（本地临时产物，按维护者决定不入库）>`：退出码 `0`，
+  `valid: true`，`bundled_eligible: true`，`issues: []`，`bundle_blockers: []`
   （269 targets，269 active）。
 - 分发物字段清单：269 条全量扫描，target 键集恰为
   `{id, target_type, display_name, aliases, internal_id, metadata}`，metadata 键并集不超出
