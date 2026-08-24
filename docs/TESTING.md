@@ -478,8 +478,14 @@ CLI-2C 单项 lifecycle binary E2E 继续只使用 TEMP/artificial fixture，必
 - CLI JSONL 从 0 单调编号，每个已启动任务只有一个 terminal；Ctrl+C 首次协作式取消、确认后返回
   130，第二次中断不伪造 cancelled，不可抢占 commit 仍以真实 terminal 为准。
 - CLI-3B 起 Production 四条 lifecycle 写命令走 production token + `--commit --yes` + 跨进程
-  admission + 锁内重验；测试仍不得读取或写入真实 Steam、游戏、存档、AppData、Scheduled Task
-  或第三方 Mod（Production 行为测试用 crate 内临时根注入，真机验收走 disposable gate）。
+  admission + 锁内重验；CLI-3C 起 `install batch` 四条命令同样开放 Production（token 由
+  per-installation secret 签名，纯语法预检在触达数据根前拒绝非法/过期 token——进程级契约
+  测试只断言该零 IO 路径）。测试仍不得读取或写入真实 Steam、游戏、存档、AppData、
+  Scheduled Task 或第三方 Mod（Production 行为测试用 crate 内临时根注入，真机验收走
+  disposable gate）。
+- 执行真实 install item 的批量/单项测试会被本机运行中的 MonsterHunterWorld.exe 进程按
+  「游戏在跑不写玩家文件」安全设计拦截（`install_blocked_game_running`）：本地跑这类测试
+  前先关闭游戏；CI 无游戏进程不受影响。
 
 CLI-3A 跨进程写入 admission 的聚焦入口：
 

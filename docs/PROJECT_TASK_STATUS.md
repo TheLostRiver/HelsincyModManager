@@ -53,7 +53,9 @@ token（环境标签参与 digest，与 sandbox token 互不通用）+ `--commit
 桌面端与固定 `--once` worker 复用同一装配；独立只读 facade 已支持游戏状态、扫描、已保存目录
 校验、前置检查、安装计划/状态、恢复扫描/预览、备份历史、后台保护状态和诊断快照；单项安装、
 卸载、真正重装和恢复 apply 在 Sandbox 与 Production（CLI-3B 门禁）均可达。批量命令的
-Production 开放前置 per-installation secret；备份创建/恢复、后台启停、诊断导出仍不可达。
+Production 已由 CLI-3C（2026-08-24）开放：token 由 per-installation secret 签名、纯语法
+预检零 IO fail closed、锁外 register 游戏根 + 锁内一致性重验；备份创建/恢复、后台启停、
+诊断导出仍不可达。
 
 快照时：
 
@@ -95,7 +97,7 @@ Production 开放前置 per-installation secret；备份创建/恢复、后台�
 | T18 Mod 库分页 | 已完成 | 后端权威分页、projection、freshness gate 和 10,000 条性能门禁已落地 |
 | T19 生命周期产品化加固 | 已完成 | A1-L3：headless acceptance、日志/诊断与反馈 UI 均已交付 |
 | T20 浮层动画共享基元 | 待评审 | 下次新增浮层前或出现第三处重复实现时再启动 |
-| CLI 自动化入口 | CLI-2C/CLI-3A Certified；CLI-3B 已实现（待 Windows gate） | 已有只读 game/install/backup/diagnostics 命令；单项 install/uninstall/reinstall/recovery apply 在 Sandbox 与 Production 均可达：5 分钟 token（环境标签参与 digest，跨环境重放失效）、双确认、写锁内 token/事实/游戏根重验、取消、失败恢复已覆盖。CLI-3A 三类跨进程 admission 与共享 GUI/CLI/worker composition 经 Ubuntu CI 与 disposable Windows synthetic gate 认证。CLI-3B 的 disposable Windows 真机 gate 未执行前不标记 certified；batch Production 前置 per-installation secret |
+| CLI 自动化入口 | CLI-2C/CLI-3A Certified；CLI-3B 已实现（待 Windows gate） | 已有只读 game/install/backup/diagnostics 命令；单项 install/uninstall/reinstall/recovery apply 在 Sandbox 与 Production 均可达：5 分钟 token（环境标签参与 digest，跨环境重放失效）、双确认、写锁内 token/事实/游戏根重验、取消、失败恢复已覆盖。CLI-3A 三类跨进程 admission 与共享 GUI/CLI/worker composition 经 Ubuntu CI 与 disposable Windows synthetic gate 认证。CLI-3B/CLI-3C 的 disposable Windows 真机 gate 未执行前不标记 certified；batch Production 已由 CLI-3C 开放（per-installation secret 签名 token） |
 | 工程治理 GOV-01 至 GOV-04 | 已完成 | DTO 测试外置、重装 lint 抑制清理、Tauri 契约防回归和治理检查加固已由 PR #211 至 #214 交付 |
 | LOG-01 Task/Audit retention | 已完成 | Task 30 天、Audit 90 天；共享 runtime composition、capability-relative no-follow 清理、稳定 health code/count 与 temp-root junction 负测已落地 |
 | LOG-02 日志总空间上限 | 已完成 | 128 MiB 默认/1 MiB 下限、Debug/Task -> App -> 30 天外 Audit 优先级、16 KiB Audit reserve、稳定 health/count 与 no-follow 复验已落地 |
@@ -363,7 +365,7 @@ retention 失败通过独立稳定 health/count 投影，不会改变安装或�
   写入并返回 `batch_attempt_reconciliation_required`，不会自动续跑或收敛。
 - CLI-3B 起四条单项 lifecycle 写命令在 Production 可达（production token + `--commit --yes` +
   跨进程 admission + 锁内重验）；batch 的 Production 请求在 automation 边界拒绝（前置
-  per-installation secret）；backup create/restore/background enable|disable 和
+  per-installation secret，已由 CLI-3C 于 2026-08-24 接入并开放）；backup create/restore/background enable|disable 和
   diagnostics export 仍未开放。
 
 ### 下一步
@@ -388,7 +390,8 @@ GUI 与 CLI 并行查询，应单独设计 snapshot/admission，而不是放宽 
 CLI-3B（2026-08-24）已按 command 复核并开放四条单项 lifecycle 命令的 Production 写入：
 production token（环境绑定）、`--commit --yes`、`game-profile-write` 跨进程 admission 与锁内
 token/事实/游戏根一致性重验缺一不可；disposable Windows 真机 gate 完成前不标记 `certified`。
-CLI-3A/3B 的基础不自动解锁 batch（前置 per-installation secret）、backup、restore、
+CLI-3A/3B 的基础不自动解锁其他写命令；batch 已由 CLI-3C 按 command 复核开放（per-installation
+secret + 预检 + 锁内根重验），backup、restore、
 background registration 或 diagnostics export；后续每个 command 仍须独立复核。
 
 ## 验证证据
