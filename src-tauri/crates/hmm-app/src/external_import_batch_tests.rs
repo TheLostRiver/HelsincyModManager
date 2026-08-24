@@ -18,13 +18,15 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, CategoryRepository, ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage,
     ExternalImportBatchRepository, ExternalImportBatchRetentionOutcome,
-    ExternalImportBatchRetentionRequest, ExternalImportCandidatePage, ExternalImportItemResultPage,
-    ExternalImportMaterializationOutcome, ExternalImportMaterializeRequest,
-    ExternalImportMaterializedPackage, ExternalImportMaterializer,
-    ExternalImportSealAndStartRequest, ExternalImportSealAndStartResult,
-    ExternalImportSelectionCompareAndSwapRequest, ExternalImportSelectionCompareAndSwapResult,
-    ExternalImportSourceRegistration, ExternalImportSourceRegistry, ModImportCatalogSnapshot,
-    ModImportCatalogUpsert, ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
+    ExternalImportBatchRetentionRequest, ExternalImportCandidatePage,
+    ExternalImportItemResultDetailPage, ExternalImportItemResultPage,
+    ExternalImportItemResultRecord, ExternalImportMaterializationOutcome,
+    ExternalImportMaterializeRequest, ExternalImportMaterializedPackage,
+    ExternalImportMaterializer, ExternalImportSealAndStartRequest,
+    ExternalImportSealAndStartResult, ExternalImportSelectionCompareAndSwapRequest,
+    ExternalImportSelectionCompareAndSwapResult, ExternalImportSourceRegistration,
+    ExternalImportSourceRegistry, ModImportCatalogSnapshot, ModImportCatalogUpsert,
+    ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
     PreviewImageProcessingResult, StoredLogicalMod, StoredModImportAnalysis,
@@ -1094,6 +1096,73 @@ fn result_page_limits_are_rejected_before_repository_access() {
 }
 
 #[test]
+fn result_page_joins_candidate_display_names_in_scan_order() {
+    let repository = Arc::new(FixtureBatchRepository::default());
+    let batch = fixture_batch(
+        "batch-result-names",
+        "source-current",
+        ExternalImportBatchImportStatus::CompletedWithErrors,
+    );
+    repository.create_batch(&batch).expect("seed batch");
+    repository
+        .replace_candidates(
+            &batch.batch_id,
+            &[
+                fixture_candidate(&batch, "candidate-a", 1),
+                fixture_candidate(&batch, "candidate-b", 2),
+            ],
+        )
+        .expect("seed candidates");
+    repository.seed_results(
+        &batch.batch_id,
+        &[
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-a"),
+                status: ExternalImportItemStatus::Imported,
+                reason_code: None,
+                imported_mod_id: Some(ModId::new("mod-1")),
+                retryable: false,
+            },
+            ExternalImportItemResult {
+                candidate_id: ExternalImportCandidateId::new("candidate-b"),
+                status: ExternalImportItemStatus::Failed,
+                reason_code: Some(ExternalImportReasonCode::SourceChanged),
+                imported_mod_id: None,
+                retryable: true,
+            },
+        ],
+    );
+    let (service, _task_manager) = fixture_service(
+        Arc::clone(&repository),
+        fixture_registry(None, None),
+        Arc::new(FixtureMaterializer::default()),
+        Arc::new(FixtureCatalog::succeeds()),
+        Arc::new(FixtureCategoryRepository::new(0)),
+        Arc::new(FixtureClock::available()),
+    );
+
+    let page = service
+        .get_results(&batch.batch_id, 0, 50)
+        .expect("result page");
+
+    assert_eq!(
+        page.results
+            .iter()
+            .map(|record| {
+                (
+                    record.result.candidate_id.as_str(),
+                    record.display_name.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        [
+            ("candidate-a", Some("Fixture candidate-a")),
+            ("candidate-b", Some("Fixture candidate-b")),
+        ]
+    );
+}
+
+#[test]
 fn history_limit_bounds_are_rejected_before_repository_access() {
     let repository = Arc::new(FixtureBatchRepository::default());
     // 若校验失守而触达仓储,fail_history 会把错误变成 BatchUnavailable,断言就会失败。
@@ -1823,6 +1892,40 @@ impl ExternalImportBatchRepository for FixtureBatchRepository {
             results,
             total_count,
             next_offset,
+        })
+    }
+
+    fn list_item_result_details_page(
+        &self,
+        batch_id: &ExternalImportBatchId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<ExternalImportItemResultDetailPage> {
+        let page = self.list_item_results_page(batch_id, offset, limit)?;
+        let state = self.state.lock().expect("fixture repository lock");
+        let candidates = state
+            .candidates
+            .get(batch_id.as_str())
+            .cloned()
+            .unwrap_or_default();
+        let records = page
+            .results
+            .into_iter()
+            .map(|result| {
+                let display_name = candidates
+                    .iter()
+                    .find(|candidate| candidate.candidate_id == result.candidate_id)
+                    .and_then(|candidate| candidate.metadata_hint.display_name.clone());
+                ExternalImportItemResultRecord {
+                    result,
+                    display_name,
+                }
+            })
+            .collect();
+        Ok(ExternalImportItemResultDetailPage {
+            records,
+            total_count: page.total_count,
+            next_offset: page.next_offset,
         })
     }
 

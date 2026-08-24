@@ -2,6 +2,7 @@ import {
   EXTERNAL_IMPORT_RESULT_PAGE_MAX_SIZE,
   EXTERNAL_IMPORT_RESULT_TOTAL_MAX_SIZE,
   isExternalImportOpaqueId,
+  isOptionalDisplayText,
   isPlainRecord,
   isSafeNonNegativeInteger,
   type ExternalImportBatchImportStatus,
@@ -52,6 +53,7 @@ type ResultTone = "ready" | "warning" | "danger" | "neutral";
 
 export type ExternalImportResultViewModel = {
   candidateId: string;
+  displayName: string | null;
   status: ExternalImportItemStatus;
   statusLabel: string;
   statusTone: ResultTone;
@@ -94,6 +96,7 @@ function isResultItem(value: unknown): value is ExternalImportItemResultDto {
     !isPlainRecord(value) ||
     !hasExactKeys(value, [
       "candidateId",
+      "displayName",
       "status",
       "reasonCode",
       "importedModId",
@@ -105,6 +108,7 @@ function isResultItem(value: unknown): value is ExternalImportItemResultDto {
 
   return (
     isExternalImportOpaqueId(value.candidateId) &&
+    isOptionalDisplayText(value.displayName) &&
     typeof value.status === "string" &&
     itemStatuses.has(value.status) &&
     (value.reasonCode === null ||
@@ -175,8 +179,11 @@ export function toExternalImportResultViewModel(
   result: ExternalImportItemResultDto,
   resultCopy: ExternalImportCopy["result"],
 ): ExternalImportResultViewModel {
+  // 守卫已拦截控制字符与超长;这里只把纯空白名归一为 null,由面板给未命名兜底文案。
+  const displayName = result.displayName?.trim() || null;
   return {
     candidateId: result.candidateId,
+    displayName,
     status: result.status,
     statusLabel: resultCopy.status[result.status] ?? resultCopy.unknownBatchStatus,
     statusTone: itemStatusTones[result.status],
