@@ -93,6 +93,26 @@ fn armor_catalog_normalizes_nfc_middle_dots_width_and_case() {
 }
 
 #[test]
+fn official_english_duplicate_name_stays_searchable_for_both_butterfly_models() {
+    // pl057_0010（男版燕尾蝶）的官方英文名与女版逐字同为 "Butterfly β"，
+    // 按治理规则走 alias。这里用公开搜索 API 锁定可达性：alias 或搜索归一化
+    // 逻辑回归时，英文检索会静默丢失男版条目——原始 JSON 断言拦不住这种回归。
+    let provider = MhwArmorCatalog;
+    let hits = provider
+        .search_replacement_targets("Butterfly β")
+        .expect("english duplicate-name search");
+
+    let internal_ids: BTreeSet<_> = hits
+        .iter()
+        .map(|target| target.internal_id().to_owned())
+        .collect();
+    assert!(
+        internal_ids.contains("pl019_0000") && internal_ids.contains("pl057_0010"),
+        "英文官方名必须同时命中女版与男版燕尾蝶，实际命中: {internal_ids:?}"
+    );
+}
+
+#[test]
 fn armor_catalog_search_distinguishes_fatalis_from_alatreon() {
     let provider = MhwArmorCatalog;
 

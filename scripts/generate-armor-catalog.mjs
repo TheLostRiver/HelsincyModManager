@@ -12,10 +12,11 @@
  * Stable ID 严格按 docs/EQUIPMENT_CATALOG_GOVERNANCE.md 的算法计算，
  * 与 Rust 侧 generate_mhw_equipment_stable_id 必须逐字节一致。
  *
- * 注意：v3 在生成产物上手工补入了 5 条活动/联动装的 en/ja 名（权利人 Capcom，经
- * kiranico 转录对照；pl057_0010 官方英文重名按治理规则走 alias，重签记录见
- * GAME_TERMINOLOGY_SIGNOFF.md）。重新运行本脚本前必须先把这 5 条并入候选 CSV，
- * 否则会回退语言覆盖（catalog 键集完备性由 hmm-games-mhw 的测试把关）。
+ * 注意：v3 在生成产物上手工补入了 5 条活动/联动装缺失的名称（权利人 Capcom，经
+ * kiranico 转录对照）：4 条补 en/ja 展示名；pl057_0010 只补 ja 展示名，其官方英文名
+ * 与女版重名，按治理规则记为 en alias（重签记录见 GAME_TERMINOLOGY_SIGNOFF.md）。
+ * 重新运行本脚本前必须先把这 5 条并入候选 CSV（pl057_0010 的英文名并入 alias 列而非
+ * display name），否则会回退语言覆盖（catalog 键集完备性由 hmm-games-mhw 的测试把关）。
  *
  * 许可：名称属于卡普空，按 game_terminology 状态如实声明，不主张任何权利。
  * 政策依据见 EQUIPMENT_CATALOG_GOVERNANCE.md 的「关于 game_terminology 的政策决定」。
