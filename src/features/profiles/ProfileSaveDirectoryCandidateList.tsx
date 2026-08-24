@@ -1,4 +1,5 @@
 import { User, UserCheck } from "lucide-react";
+import { Dialog } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useProfileSaveDirectoryDiscovery } from "./ProfileSaveDirectoryDiscoveryProvider";
 import { saveDirectoryCopy, type SaveDirectoryCopy } from "./saveDirectoryCopy";
@@ -6,26 +7,29 @@ import { saveDirectoryCopy, type SaveDirectoryCopy } from "./saveDirectoryCopy";
 export function ProfileSaveDirectoryCandidateList() {
   const { locale } = useI18n();
   const copy = resolveCopy(saveDirectoryCopy, locale).candidates;
-  const { latestDiscovery, isDiscovering, confirmCandidate } = useProfileSaveDirectoryDiscovery();
+  const {
+    latestDiscovery,
+    isDiscovering,
+    confirmCandidate,
+    isCandidateSelectionOpen,
+    dismissCandidateSelection,
+  } = useProfileSaveDirectoryDiscovery();
 
-  if (latestDiscovery?.outcome !== "confirmation_required") {
+  // 确认成功后 outcome 变为 auto_saved：保持挂载让浮层播完退场动画，
+  // 由 open=false 驱动 ModalSurface 的两段式关闭。
+  if (!latestDiscovery || latestDiscovery.candidates.length === 0) {
     return null;
   }
 
   return (
-    <section
-      id="profile-save-directory-candidates"
-      className="profile-save-directory-candidates"
-      aria-labelledby="profile-save-directory-candidates-title"
+    <Dialog
+      open={isCandidateSelectionOpen}
+      title={copy.title}
+      description={copy.hint}
+      icon={<UserCheck size={18} />}
+      busy={isDiscovering}
+      onClose={dismissCandidateSelection}
     >
-      <div className="profile-save-directory-candidates__header">
-        <div>
-          <h3 id="profile-save-directory-candidates-title">{copy.title}</h3>
-          <span>{copy.hint}</span>
-        </div>
-        <UserCheck size={18} aria-hidden="true" />
-      </div>
-
       <div className="profile-save-directory-candidates__list">
         {latestDiscovery.candidates.map((candidate) => (
           <article
@@ -68,7 +72,7 @@ export function ProfileSaveDirectoryCandidateList() {
           </article>
         ))}
       </div>
-    </section>
+    </Dialog>
   );
 }
 

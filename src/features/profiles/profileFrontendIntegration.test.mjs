@@ -499,3 +499,50 @@ test("profile save discovery guards stale async results and scopes busy state pe
   assert.match(page, /autoDetecting=\{isDiscovering\s*&&\s*discoveringTarget\?\.profileId === selectedProfileId/);
   assert.match(panel, /profile-directory-row__button \$\{hasDiscoveryCandidates \? "is-primary" : ""\}/);
 });
+
+test("browser preview serves mock steam candidates so the selection ui stays reviewable", () => {
+  const provider = readSource("src/features/profiles/ProfileSaveDirectoryDiscoveryProvider.tsx");
+  const previewData = readSource("src/features/profiles/profilesPreviewData.ts");
+
+  // 预览分支：手动检测注入 mock 发现结果（候选 UI 可见），确认走本地推进，
+  // 两条路径都不触达真实 invoke。
+  const previewDiscoveryBranch = provider.slice(
+    provider.indexOf("if (!isTauriRuntime()) {"),
+    provider.indexOf("const requestSeq"),
+  );
+  assert.match(
+    previewDiscoveryBranch,
+    /if \(input\.reason === "manual"\) \{[\s\S]*?setLatestDiscovery\(createPreviewSaveDirectoryDiscovery\(input\.gameId, input\.profileId\)\)/,
+  );
+  assert.match(
+    provider,
+    /const confirmCandidate = useCallback\([\s\S]*?if \(!isTauriRuntime\(\)\) \{[\s\S]*?createPreviewSaveDirectoryConfirmation\(latestDiscovery, candidateId\)[\s\S]*?noticeForDiscovery\(confirmed, "manual"\)[\s\S]*?return;/,
+  );
+
+  // mock 数据形态：confirmation_required、恰一个推荐候选、推荐 ID 一致、
+  // 覆盖 accountName 缺失分支（公开资料补全失败的展示路径）。
+  assert.match(previewData, /outcome: "confirmation_required"/);
+  assert.equal((previewData.match(/recommended: true/g) ?? []).length, 1);
+  assert.match(
+    previewData,
+    /recommendedCandidateId: "preview-candidate-recent"[\s\S]*?candidateId: "preview-candidate-recent"[\s\S]*?recommended: true/,
+  );
+  assert.match(previewData, /accountName: null/);
+  assert.match(previewData, /outcome: "auto_saved"/);
+
+  // 悬浮层形态：候选选择走共享 Dialog 基元（不新增第三套浮层实现，守住 T20 边界）；
+  // 打开条件与"暂时关闭后可经 toast 重新打开"的语义由 Provider 单一持有。
+  const candidateList = readSource("src/features/profiles/ProfileSaveDirectoryCandidateList.tsx");
+  assert.match(candidateList, /import \{ Dialog \} from "\.\.\/\.\.\/shared\/feedback"/);
+  assert.match(candidateList, /open=\{isCandidateSelectionOpen\}/);
+  assert.match(candidateList, /onClose=\{dismissCandidateSelection\}/);
+  assert.doesNotMatch(candidateList, /createPortal/);
+  assert.match(
+    provider,
+    /const isCandidateSelectionOpen =[\s\S]*?"confirmation_required"[\s\S]*?dismissedDiscoveryId/,
+  );
+  assert.match(
+    provider,
+    /const reviewCandidates = useCallback\(\(\) => \{[\s\S]*?setDismissedDiscoveryId\(null\)/,
+  );
+});
