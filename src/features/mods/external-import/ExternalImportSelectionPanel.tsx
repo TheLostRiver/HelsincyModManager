@@ -3,6 +3,7 @@ import { externalImportCopy } from "./externalImportCopy";
 import {
   CheckCircle2,
   CircleAlert,
+  CircleSlash,
   FileSearch,
   LoaderCircle,
   RefreshCcw,
@@ -239,19 +240,39 @@ export function ExternalImportSelectionPanel({
                 formatCount(workflow.previewState.totalCount),
               )}
             </span>
-            <button
-              type="button"
-              className="external-import__button is-secondary"
-              disabled={!workflow.selectionEditable || selectionBusy}
-              onClick={workflow.selectAll}
-            >
-              {workflow.pendingAction === "select-all" ? (
-                <LoaderCircle className="external-import__spinner" size={15} />
-              ) : (
-                <CheckCircle2 size={15} />
-              )}
-              {extCopy.selectionPanel.selectAllImportable}
-            </button>
+            <div className="external-import__toolbar-actions">
+              <button
+                type="button"
+                className="external-import__button is-secondary"
+                disabled={!workflow.selectionEditable || selectionBusy}
+                onClick={workflow.selectAll}
+              >
+                {workflow.pendingAction === "select-all" ? (
+                  <LoaderCircle className="external-import__spinner" size={15} />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                {extCopy.selectionPanel.selectAllImportable}
+              </button>
+              {/* 已选为 0 时禁用而不是隐藏:按钮位置固定,不会在勾选过程中跳来跳去。 */}
+              <button
+                type="button"
+                className="external-import__button is-secondary"
+                disabled={
+                  !workflow.selectionEditable ||
+                  selectionBusy ||
+                  (workflow.selection?.selectedCount ?? 0) === 0
+                }
+                onClick={workflow.deselectLoaded}
+              >
+                {workflow.pendingAction === "deselect-loaded" ? (
+                  <LoaderCircle className="external-import__spinner" size={15} />
+                ) : (
+                  <CircleSlash size={15} />
+                )}
+                {extCopy.selectionPanel.deselectLoaded}
+              </button>
+            </div>
           </div>
 
           <ul className="external-import__candidate-list">
@@ -327,29 +348,14 @@ export function ExternalImportSelectionPanel({
         </>
       ) : null}
 
+      {/* 只留说明文字:开始导入按钮已上移到 Dialog 常驻底栏。
+          候选列表可以很长,把主操作留在滚动区意味着玩家必须滚到底才能导入。 */}
       {workflow.selectionEditable && workflow.selection ? (
         <div className="external-import__start-row">
           <div>
             <strong>{extCopy.selectionPanel.importOnlyTitle}</strong>
             <span>{extCopy.selectionPanel.importOnlyDescription}</span>
           </div>
-          <button
-            type="button"
-            className="external-import__button is-primary"
-            disabled={
-              selectionBusy ||
-              workflow.listenerStatus !== "ready" ||
-              workflow.selection.selectedCount === 0
-            }
-            onClick={workflow.startImport}
-          >
-            {workflow.pendingAction === "start" ? (
-              <LoaderCircle className="external-import__spinner" size={15} />
-            ) : (
-              <CheckCircle2 size={15} />
-            )}
-            {extCopy.selectionPanel.startBatchImport}
-          </button>
         </div>
       ) : null}
 

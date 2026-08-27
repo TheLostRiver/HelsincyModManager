@@ -52,6 +52,8 @@ export type ExternalImportCopy = {
     cancelScan: string;
     retryListener: string;
     chooseSource: string;
+    /** 常驻底栏的主操作:带上已选数量,玩家不必滚回列表顶部确认选了多少。 */
+    startImportWithCount: (count: string) => string;
     sourceEyebrow: string;
     sourceNotChosen: string;
     connectingScanStatus: string;
@@ -94,6 +96,7 @@ export type ExternalImportCopy = {
     scanReturned: (total: string) => string;
     loadedCount: (loaded: string, total: string) => string;
     selectAllImportable: string;
+    deselectLoaded: string;
     loadingMore: string;
     loadMoreCandidates: string;
     importOnlyTitle: string;
@@ -337,6 +340,7 @@ export const externalImportCopy = {
       cancelScan: "取消扫描",
       retryListener: "重试状态监听",
       chooseSource: "选择来源",
+      startImportWithCount: (count) => `开始导入 ${count} 项`,
       sourceEyebrow: "来源",
       sourceNotChosen: "尚未选择",
       connectingScanStatus: "正在连接扫描状态",
@@ -379,7 +383,8 @@ export const externalImportCopy = {
         "没有可导入项。请选择直接包含数字编号 Mod 文件夹的目录(狩技盒子通常是安装目录下的 Mods_582010);标注「载荷不在盒子库中」的 Mod 需要用原始压缩包重新导入。",
       scanReturned: (total) => `扫描共返回 ${total} 项。`,
       loadedCount: (loaded, total) => `已加载 ${loaded} / ${total} 项`,
-      selectAllImportable: "选择全部可直接导入项",
+      selectAllImportable: "全选可导入",
+      deselectLoaded: "取消选择",
       loadingMore: "正在载入",
       loadMoreCandidates: "载入更多候选",
       importOnlyTitle: "仅导入到 HMM Mod 库",
@@ -630,6 +635,7 @@ export const externalImportCopy = {
       cancelScan: "Cancel scan",
       retryListener: "Retry status listener",
       chooseSource: "Choose source",
+      startImportWithCount: (count) => `Import ${count} item(s)`,
       sourceEyebrow: "Source",
       sourceNotChosen: "Not chosen yet",
       connectingScanStatus: "Connecting to scan status",
@@ -677,7 +683,8 @@ export const externalImportCopy = {
         "Nothing can be imported. Pick the folder that directly contains the numbered mod folders (usually Mods_582010 under the hunting box install directory); mods marked \"payload not in the box library\" must be re-imported from their original archives.",
       scanReturned: (total) => `The scan returned ${total} items.`,
       loadedCount: (loaded, total) => `Loaded ${loaded} / ${total}`,
-      selectAllImportable: "Select all directly importable items",
+      selectAllImportable: "Select all importable",
+      deselectLoaded: "Clear selection",
       loadingMore: "Loading",
       loadMoreCandidates: "Load more candidates",
       importOnlyTitle: "Imports into the HMM mod library only",
@@ -931,6 +938,7 @@ export const externalImportCopy = {
       cancelScan: "スキャンをキャンセル",
       retryListener: "状態リスナーを再試行",
       chooseSource: "ソースを選択",
+      startImportWithCount: (count) => `${count} 件をインポート`,
       sourceEyebrow: "ソース",
       sourceNotChosen: "未選択",
       connectingScanStatus: "スキャン状態に接続中",
@@ -975,7 +983,8 @@ export const externalImportCopy = {
         "インポート可能な項目がありません。番号付き Mod フォルダーを直接含むフォルダー(通常は狩技ボックスのインストール先の Mods_582010)を選択してください。「ペイロードがボックス内にありません」と表示された Mod は元のアーカイブからの再インポートが必要です。",
       scanReturned: (total) => `スキャンは ${total} 件を返しました。`,
       loadedCount: (loaded, total) => `${loaded} / ${total} 件を読み込み済み`,
-      selectAllImportable: "直接インポート可能な項目をすべて選択",
+      selectAllImportable: "インポート可能をすべて選択",
+      deselectLoaded: "選択を解除",
       loadingMore: "読み込み中",
       loadMoreCandidates: "さらに候補を読み込む",
       importOnlyTitle: "HMM Mod ライブラリへのインポートのみ",
