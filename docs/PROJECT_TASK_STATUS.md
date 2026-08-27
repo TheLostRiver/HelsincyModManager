@@ -61,7 +61,8 @@ Production 已由 CLI-3C（2026-08-24）开放：token 由 per-installation secr
 
 - Slice A 基线为 `main@f60f29d`；后续任务以最新 `main` 创建独立 branch/worktree。
 - PR #196 已合并；其 review 遗漏由 PR #197 补齐。
-- PR #199 已完成 T17 Slice 4C，T17 全部切片已交付。
+- PR #199 已完成 T17 Slice 4C；Slice 5 由 PR #256/#257（5A/5B）与收口 PR #263（5C–5F）交付，
+  PR #264 收口该批 review 反馈。T17 Slice 1–5 全部已交付。
 - PR #210 已合并并交付 CLI-0B/1A/1B；PR #211 至 #214 已完成 GOV-01 至 GOV-04。
 - QG-01 已由 PR #215 完成 CI、review、评论处理和合并；统一 frontend tests/workspace clippy
   门禁已经成为主干基线。
@@ -129,7 +130,9 @@ analyze
 ### T17 与 T13 的边界
 
 T17 已实现第三方 Mod 管理器的批量迁移，包括只读来源扫描、分页预览、sealed selection、显式决定、
-安全物化、partial success、服务端重试和按 `taskId` 的进度/结果。它默认只把 Mod 导入 HMM，
+安全物化、partial success、服务端重试和按 `taskId` 的进度/结果。Slice 5 另开放了跨批次导入记录：
+只读历史查询与分页明细、保留期（已导入批次 50 个 / 只扫描批次 10 个且不超过 7 天 / running 永不
+清理）、Mod 详情脱敏来源行。历史只读，不提供从历史重试。它默认只把 Mod 导入 HMM，
 不会安装、启用或写游戏目录。
 
 T13 才是批量安装/卸载/真正重装。T17 完成不代表 T13 产品能力已完成，也不能借 T17 的批处理编排绕过单项安装的

@@ -41,6 +41,8 @@
 - `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`(权威边界:命名治理、脱敏口径、
   audit 不扩张、来源契约与 Slice 5 导入记录/保留期)
 - `docs/FRONTEND_BACKEND_CONTRACT.md` 的 T17 章节(command 表、错误码全集、cursor 约定)
+- `docs/EXTERNAL_MOD_IMPORT_REAL_SOURCE_SMOKE.md`(真实来源人工 smoke 清单与脱敏记录纪律;
+  **尚未执行**——真实来源兼容性目前只有合成 fixture 证据)
 - 涉及 SQLite 批次表或保留期时同时读 `docs/PERSISTENCE_DECISION.md`
 - 涉及不可信来源目录、解压或 staging 时改用 `hmm-install-safety`
 
