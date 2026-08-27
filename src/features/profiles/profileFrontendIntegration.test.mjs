@@ -165,6 +165,16 @@ test("save directory picker catches dialog and validation failures consistently"
   assert.match(chooseDirectoryBlock, /finally \{[\s\S]*setBusyKind\(null\)/);
 });
 
+test("open folder entry covers the defaulted backup directory and stays disabled in preview", () => {
+  const source = readSource("src/features/profiles/SaveDirectoryPanel.tsx");
+
+  // defaulted 的托管默认备份目录由后端解析并按需补建,按钮必须随 valid 一起渲染。
+  assert.match(source, /selection\.status === "valid" \|\| selection\.status === "defaulted"/);
+  // 预览环境没有后端,打开又是无法造假的真实 OS 动作:两行的打开按钮都要禁用。
+  assert.equal(source.match(/openFolderDisabled=\{previewMode\}/g)?.length, 2);
+  assert.match(source, /disabled=\{disabled \|\| openFolderDisabled\}/);
+});
+
 test("auto backup controls stay interactive when persistence is unavailable", () => {
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
   const pickerSource = readSource("src/features/profiles/BackupSchedulePicker.tsx");
