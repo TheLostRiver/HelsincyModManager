@@ -97,7 +97,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use reinstall::JsonReinstallRecoveryTransactionRepository;
-pub use save_backup::FileSystemSaveBackupWriter;
+pub use save_backup::{FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter};
 #[cfg(windows)]
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
 pub use save_backup_background_registry::{
