@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use hmm_ports::SystemDirectoryOpener;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 /// 用系统文件管理器打开目录。
@@ -38,6 +38,8 @@ impl SystemDirectoryOpener for SystemShellDirectoryOpener {
 
 #[cfg(windows)]
 fn spawn_file_manager(path: &Path) -> Result<()> {
+    use std::path::PathBuf;
+
     // explorer 解析不了混合分隔符:持久化下来的路径可能形如
     // `D:\Steam\userdata\405331074\582010/remote`(Rust 的 fs API 不在乎,
     // 所以校验会通过),但 explorer 拿到后无法定位,会静默回退到打开默认位置——
