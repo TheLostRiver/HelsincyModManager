@@ -1,6 +1,7 @@
 use crate::controlled_fs::{
     ensure_regular_file_metadata, is_not_found, open_existing_directory_chain,
-    open_existing_directory_nofollow, open_regular_file_nofollow,
+    open_existing_directory_nofollow, open_or_create_directory_chain,
+    open_or_create_directory_nofollow, open_regular_file_nofollow,
 };
 use crate::save_path::{normalize_save_relative_path, MAX_SAVE_DIRECTORY_COUNT};
 use anyhow::{anyhow, bail, Context, Result};
@@ -9,8 +10,8 @@ use hmm_core::{
     SaveBackupManifestSource, SaveBackupStatus, SaveBackupSummary,
 };
 use hmm_ports::{
-    SaveBackupDeleteReport, SaveBackupFileDeleteDisposition, SaveBackupFileDeleteResult,
-    SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
+    SaveBackupDeleteReport, SaveBackupDirectoryLocator, SaveBackupFileDeleteDisposition,
+    SaveBackupFileDeleteResult, SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -290,6 +291,48 @@ fn managed_backup_profile_layout(
             ],
         ),
     })
+}
+
+/// 「打开文件夹」入口的备份目录定位器：与写入/整理路径共享同一份托管布局。
+pub struct FileSystemSaveBackupDirectoryLocator {
+    save_backup_root: PathBuf,
+}
+
+impl FileSystemSaveBackupDirectoryLocator {
+    pub fn new(save_backup_root: PathBuf) -> Self {
+        Self { save_backup_root }
+    }
+}
+
+impl SaveBackupDirectoryLocator for FileSystemSaveBackupDirectoryLocator {
+    fn backup_directory_for_profile(
+        &self,
+        selection: &ProfileDirectorySelection,
+        game_id: &str,
+        profile_id: &str,
+    ) -> Result<PathBuf> {
+        let (root_path, components) =
+            managed_backup_profile_layout(&self.save_backup_root, selection, game_id, profile_id)?;
+        // 根的归属决定能否补建:默认根(<文档>/HelsincyModManager)是应用自有目录,
+        // 缺最后一段可以补;Custom 根是玩家自选目录,必须已存在。根的父级(如文档
+        // 目录本身)缺失时直接报错——打开失败优于静默造出一棵树,这与 write_backup
+        // 里 create_dir_all 的取舍不同,是有意的。
+        let root = match selection.mode {
+            ProfileDirectoryMode::Custom => {
+                open_existing_directory_nofollow(&root_path, "save backup custom root")?
+            }
+            ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => {
+                open_or_create_directory_nofollow(&root_path, "save backup root")?
+            }
+        };
+        // 根以下全部是应用自有布局,逐级 nofollow 补建。不用 create_dir_all:
+        // 它会跟随中间层的 symlink/junction,与 retention 整理走的强度不一致。
+        let component_refs = components.iter().map(String::as_str).collect::<Vec<_>>();
+        open_or_create_directory_chain(&root, &component_refs, "save backup profile directory")?;
+        Ok(components
+            .into_iter()
+            .fold(root_path, |path, component| path.join(component)))
+    }
 }
 
 fn backup_directory_for_trigger(
@@ -970,5 +1013,116 @@ mod tests {
             scan_save_files(&source_root).expect_err("directory node budget must be enforced");
 
         assert!(error.to_string().contains("directory count limit exceeded"));
+    }
+
+    fn defaulted_backup_selection() -> ProfileDirectorySelection {
+        ProfileDirectorySelection {
+            mode: ProfileDirectoryMode::Default,
+            status: hmm_core::ProfileDirectoryStatus::Defaulted,
+            directory: None,
+            path_label: None,
+            messages: Vec::new(),
+        }
+    }
+
+    fn custom_backup_selection(directory: Option<String>) -> ProfileDirectorySelection {
+        ProfileDirectorySelection {
+            mode: ProfileDirectoryMode::Custom,
+            status: hmm_core::ProfileDirectoryStatus::Valid,
+            directory,
+            path_label: None,
+            messages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn locator_creates_the_managed_default_layout() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        // 根的最后一段(应用自有目录)刻意不预建,验证 locator 能补出整棵托管子树。
+        let root = temp.path().join("HelsincyModManager");
+        let locator = FileSystemSaveBackupDirectoryLocator::new(root.clone());
+
+        let directory = locator
+            .backup_directory_for_profile(&defaulted_backup_selection(), "mhw", "p1")
+            .expect("locate defaulted backup directory");
+
+        assert_eq!(directory, root.join("saves").join("mhw").join("profile-p1"));
+        assert!(directory.is_dir());
+    }
+
+    #[test]
+    fn locator_is_idempotent_for_an_existing_directory() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let locator = FileSystemSaveBackupDirectoryLocator::new(temp.path().join("root"));
+
+        let first = locator
+            .backup_directory_for_profile(&defaulted_backup_selection(), "mhw", "p1")
+            .expect("first locate");
+        let second = locator
+            .backup_directory_for_profile(&defaulted_backup_selection(), "mhw", "p1")
+            .expect("second locate");
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn locator_matches_the_write_backup_layout() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = temp.path().join("root");
+        let selection = defaulted_backup_selection();
+        let locator = FileSystemSaveBackupDirectoryLocator::new(root.clone());
+
+        let located = locator
+            .backup_directory_for_profile(&selection, "mhw", "p1")
+            .expect("locate defaulted backup directory");
+        let managed = managed_backup_profile_directory(&root, &selection, "mhw", "p1")
+            .expect("managed backup directory");
+
+        // 打开入口与写入路径必须落在同一个目录,布局不允许分叉。
+        assert_eq!(located, managed);
+    }
+
+    #[test]
+    fn locator_refuses_a_custom_selection_without_a_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let locator = FileSystemSaveBackupDirectoryLocator::new(temp.path().join("root"));
+
+        let error = locator
+            .backup_directory_for_profile(&custom_backup_selection(None), "mhw", "p1")
+            .expect_err("custom selection without a root must be refused");
+
+        assert!(error.to_string().contains("custom save backup root is missing"));
+    }
+
+    #[test]
+    fn locator_refuses_a_missing_custom_root_without_creating_it() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let player_root = temp.path().join("player-chosen");
+        let locator = FileSystemSaveBackupDirectoryLocator::new(temp.path().join("root"));
+
+        let selection =
+            custom_backup_selection(Some(player_root.to_string_lossy().into_owned()));
+        locator
+            .backup_directory_for_profile(&selection, "mhw", "p1")
+            .expect_err("a missing player-chosen root must not be created");
+
+        // 玩家自选的根目录绝不因打开动作被补建。
+        assert!(!player_root.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn locator_refuses_to_traverse_a_linked_component() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let root = temp.path().join("root");
+        fs::create_dir_all(&root).expect("create root");
+        let elsewhere = temp.path().join("elsewhere");
+        fs::create_dir_all(&elsewhere).expect("create link target");
+        std::os::unix::fs::symlink(&elsewhere, root.join("saves")).expect("create symlink");
+        let locator = FileSystemSaveBackupDirectoryLocator::new(root);
+
+        locator
+            .backup_directory_for_profile(&defaulted_backup_selection(), "mhw", "p1")
+            .expect_err("a linked middle component must be refused, not followed");
     }
 }
