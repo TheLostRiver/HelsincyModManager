@@ -47,10 +47,12 @@ const FIXTURE_CASES: &[FixtureCase] = &[
         expected_reason: Some(ExternalImportReasonCode::StructureInvalid),
     },
     FixtureCase {
+        // 元数据在、载荷不在盒子库中(狩技盒子「无操作」安装方式的残留):
+        // 单独归为缺载荷,预览可以带 mod 名明确标注,不与结构无效混同。
         name: "missing_files",
         layout: FixtureLayout::MissingFilesDirectory,
-        expected_status: ExternalImportCandidateStatus::StructureInvalid,
-        expected_reason: Some(ExternalImportReasonCode::StructureInvalid),
+        expected_status: ExternalImportCandidateStatus::PayloadMissing,
+        expected_reason: Some(ExternalImportReasonCode::PayloadMissing),
     },
     FixtureCase {
         name: "missing_info_xml",
@@ -102,6 +104,7 @@ fn external_import_fixture_matrix_covers_handcrafted_rejection_contracts() {
     assert!(reasons.contains(&ExternalImportReasonCode::UnsupportedEntry));
     assert!(reasons.contains(&ExternalImportReasonCode::ResourceLimitExceeded));
     assert!(reasons.contains(&ExternalImportReasonCode::SourceUnreadable));
+    assert!(reasons.contains(&ExternalImportReasonCode::PayloadMissing));
     for case in FIXTURE_CASES {
         assert_eq!(case.expected_status.reason_code(), case.expected_reason);
         assert!(!case.name.contains("hunting-box"));

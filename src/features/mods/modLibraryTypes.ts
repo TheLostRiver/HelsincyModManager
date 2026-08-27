@@ -67,6 +67,16 @@ export type ModPackageMetadata = {
   dependencies: string[];
 };
 
+export type ModOriginKind = "imported" | "external_import" | "migrated_v1";
+
+/** 脱敏来源摘要:只携带稳定 ID 与导入时间,后端保证不含任何私有摘要。 */
+export type ModOrigin = {
+  kind: ModOriginKind;
+  adapterId: string | null;
+  batchId: string | null;
+  importedAtUnixMillis: number | null;
+};
+
 export type ModDetail = {
   id: string;
   name: string;
@@ -80,6 +90,7 @@ export type ModDetail = {
    */
   nexusModId?: number | null;
   previewImage: PreviewImage;
+  origin: ModOrigin;
 };
 
 export type GetModDetailInput = {

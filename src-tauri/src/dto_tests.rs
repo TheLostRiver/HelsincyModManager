@@ -512,6 +512,7 @@ mod preview_image_tests {
             preview_image: ImportPreviewImage::Fallback {
                 reason: PreviewImageRejectionReason::Missing,
             },
+            origin: hmm_app::ModOriginSummary::Imported,
         }
         .into();
 
@@ -526,6 +527,34 @@ mod preview_image_tests {
         assert_eq!(value["metadata"]["dependencies"][0], "stracker-loader");
         assert_eq!(value["previewImage"]["kind"], "fallback");
         assert_eq!(value["previewImage"]["reason"], "missing");
+        assert_eq!(value["origin"]["kind"], "imported");
+    }
+
+    #[test]
+    fn serializes_mod_detail_external_import_origin_without_private_digests() {
+        let dto: ModOriginDto = hmm_app::ModOriginSummary::ExternalImport {
+            adapter_id: "hunting_box_directory_v1".to_owned(),
+            batch_id: "external-import-batch-1".to_owned(),
+            imported_at_unix_millis: 1_724_000_000_000,
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize origin dto");
+        let serialized = value.to_string();
+
+        assert_eq!(value["kind"], "external_import");
+        assert_eq!(value["adapterId"], "hunting_box_directory_v1");
+        assert_eq!(value["batchId"], "external-import-batch-1");
+        assert_eq!(value["importedAtUnixMillis"], 1_724_000_000_000_u64);
+        // 脱敏不变式:来源摘要只允许 kind/adapterId/batchId/importedAt 四个键。
+        assert_eq!(
+            value.as_object().expect("origin object").len(),
+            4,
+            "origin dto must stay a strict four-key whitelist"
+        );
+        assert!(!serialized.contains("sourceItemKeyHash"));
+        assert!(!serialized.contains("contentFingerprint"));
+        assert!(!serialized.contains("sourceFingerprint"));
     }
 
     #[test]
