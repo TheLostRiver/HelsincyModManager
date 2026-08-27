@@ -1,8 +1,9 @@
 use anyhow::Result;
-use hmm_app::{CreateProfileRequest, ProfileService, UpdateProfileRequest};
+use hmm_app::{CreateProfileRequest, ProfileDirectoryKind, ProfileService, UpdateProfileRequest};
 use hmm_core::{
-    Profile, ProfileDirectoryMode, ProfileDirectorySelection, ProfileDirectoryStatus,
-    ProfileSaveSettings, SteamAccountDisplaySummary,
+    Profile, ProfileBackupRetention, ProfileBackupSchedule, ProfileDirectoryMode,
+    ProfileDirectorySelection, ProfileDirectoryStatus, ProfileSaveSettings,
+    SteamAccountDisplaySummary,
 };
 use hmm_ports::{
     AppClock, ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
@@ -68,6 +69,23 @@ impl ProfileRepository for FakeProfileRepository {
     }
 }
 
+/// 记录被请求打开的路径,不真的启动文件管理器——测试断言的是「选了哪个目录」,
+/// 不是系统行为。
+#[derive(Default)]
+struct RecordingDirectoryOpener {
+    opened: Mutex<Vec<String>>,
+}
+
+impl hmm_ports::SystemDirectoryOpener for RecordingDirectoryOpener {
+    fn open_directory(&self, path: &std::path::Path) -> Result<()> {
+        self.opened
+            .lock()
+            .unwrap()
+            .push(path.to_string_lossy().into_owned());
+        Ok(())
+    }
+}
+
 struct FixedClock(u128);
 
 impl AppClock for FixedClock {
@@ -86,21 +104,57 @@ fn make_service_with_settings() -> (
     Arc<FakeProfileRepository>,
     Arc<FakeProfileSaveSettingsRepository>,
 ) {
+    let (service, repo, settings, _) = make_service_with_opener();
+    (service, repo, settings)
+}
+
+fn make_service_with_opener() -> (
+    ProfileService,
+    Arc<FakeProfileRepository>,
+    Arc<FakeProfileSaveSettingsRepository>,
+    Arc<RecordingDirectoryOpener>,
+) {
     let repo = Arc::new(FakeProfileRepository::default());
     let settings_repo = Arc::new(FakeProfileSaveSettingsRepository::default());
     let validator = Arc::new(FakeProfileSaveDirectoryValidator);
+    let opener = Arc::new(RecordingDirectoryOpener::default());
     let service = ProfileService::new(
         Arc::clone(&repo) as _,
         Arc::clone(&settings_repo) as _,
         validator,
+        Arc::clone(&opener) as _,
         Arc::new(FixedClock(7000)),
     );
-    (service, repo, settings_repo)
+    (service, repo, settings_repo, opener)
 }
 
 #[derive(Default)]
 struct FakeProfileSaveSettingsRepository {
     settings: Mutex<Vec<ProfileSaveSettings>>,
+}
+
+impl FakeProfileSaveSettingsRepository {
+    /// 直接塞入已配置好两个目录的 settings,跳过校验器——本测试关心的是
+    /// 「按 kind 取对目录」,不是目录校验本身。
+    fn seed_directories(&self, profile_id: &str, save: &str, backup: &str) {
+        let selection = |directory: &str| ProfileDirectorySelection {
+            mode: ProfileDirectoryMode::Custom,
+            status: ProfileDirectoryStatus::Valid,
+            directory: Some(directory.to_owned()),
+            path_label: None,
+            messages: Vec::new(),
+        };
+        self.settings.lock().unwrap().push(ProfileSaveSettings {
+            profile_id: profile_id.to_owned(),
+            save_directory: selection(save),
+            backup_directory: selection(backup),
+            schedule: ProfileBackupSchedule::manual(),
+            retention: ProfileBackupRetention::default(),
+            steam_account: None,
+            pre_restore_backup_enabled: true,
+            updated_at: 0,
+        });
+    }
 }
 
 impl ProfileSaveSettingsRepository for FakeProfileSaveSettingsRepository {
@@ -564,4 +618,46 @@ fn profile_save_settings_preserve_account_for_same_directory_and_clear_it_for_a_
         .set_profile_save_settings(request(different_directory))
         .expect("save different directory");
     assert_eq!(cleared.steam_account, None);
+}
+
+#[test]
+fn open_profile_directory_picks_the_configured_directory_for_each_kind() {
+    let (service, _repo, settings_repo, opener) = make_service_with_opener();
+    let profile_id = service
+        .create_profile(CreateProfileRequest {
+            name: "profile".to_owned(),
+            description: None,
+        })
+        .expect("create profile");
+    settings_repo.seed_directories(&profile_id, "D:/saves", "D:/backups");
+
+    service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Save)
+        .expect("open save directory");
+    service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Backup)
+        .expect("open backup directory");
+
+    // 两个种类必须各自解析到自己的目录,不能串。
+    assert_eq!(
+        opener.opened.lock().unwrap().as_slice(),
+        ["D:/saves".to_owned(), "D:/backups".to_owned()]
+    );
+}
+
+#[test]
+fn open_profile_directory_refuses_when_the_directory_is_unset() {
+    let (service, _repo, _settings_repo, opener) = make_service_with_opener();
+    let profile_id = service
+        .create_profile(CreateProfileRequest {
+            name: "profile".to_owned(),
+            description: None,
+        })
+        .expect("create profile");
+
+    // 未配置时报稳定错误,绝不退化成打开某个默认位置。
+    assert!(service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Save)
+        .is_err());
+    assert!(opener.opened.lock().unwrap().is_empty());
 }

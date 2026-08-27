@@ -3,7 +3,9 @@ use crate::dto::{
     SetProfileSaveSettingsRequestDto,
 };
 use crate::state::AppState;
-use hmm_app::{CreateProfileRequest, SetProfileSaveSettingsRequest, UpdateProfileRequest};
+use hmm_app::{
+    CreateProfileRequest, ProfileDirectoryKind, SetProfileSaveSettingsRequest, UpdateProfileRequest,
+};
 use tauri::State;
 
 fn profile_error(error: impl std::fmt::Display) -> CommandErrorDto {
@@ -92,6 +94,33 @@ pub fn get_profile_save_settings(
         .profiles
         .get_profile_save_settings(&game_id, &profile_id)
         .map(ProfileSaveSettingsDto::from)
+        .map_err(profile_error)
+}
+
+/// 在系统文件管理器中打开该 profile 已配置的存档或备份目录。
+///
+/// 前端只能传 profile 与 `"save"` / `"backup"`,**不传路径**——真实路径由 app 层从
+/// 持久化事实解析,因此这个入口无法被用来打开任意位置。未知 kind 整体拒绝。
+#[tauri::command]
+pub fn open_profile_directory(
+    game_id: String,
+    profile_id: String,
+    kind: String,
+    state: State<'_, AppState>,
+) -> Result<(), CommandErrorDto> {
+    let kind = match kind.as_str() {
+        "save" => ProfileDirectoryKind::Save,
+        "backup" => ProfileDirectoryKind::Backup,
+        _ => {
+            return Err(CommandErrorDto {
+                code: "profile_directory_kind_invalid".to_owned(),
+                message: "unsupported profile directory kind".to_owned(),
+            })
+        }
+    };
+    state
+        .profiles
+        .open_profile_directory(&game_id, &profile_id, kind)
         .map_err(profile_error)
 }
 
