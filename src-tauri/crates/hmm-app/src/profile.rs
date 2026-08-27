@@ -196,7 +196,6 @@ impl ProfileService {
         let directory = match selection.mode {
             ProfileDirectoryMode::Custom => selection
                 .directory
-                .clone()
                 .map(std::path::PathBuf::from)
                 .ok_or_else(|| anyhow::anyhow!("profile directory is not configured"))?,
             ProfileDirectoryMode::Default => match kind {
