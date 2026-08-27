@@ -903,7 +903,7 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - 响应 DTO 只暴露 `pathLabel`、状态、计划值和稳定校验 code；不暴露 `manifestPath`、`backupRoot`、`backupRef`、sandbox/cache 路径、原始存档内容或第三方 Mod 内容。
 - `validate_profile_save_directory` 按游戏/应用规则校验存档源目录，并返回可安全展示的标签。
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
-- `open_profile_directory` 在系统文件管理器中打开该 Profile 已配置的存档或备份目录。`kind` 只接受 `save` 与 `backup`，未知值返回 `profile_directory_kind_invalid`。**前端不传路径**：真实路径由后端从持久化事实解析，并在打开前复核仍是普通目录（拒绝 symlink、junction、重解析点与非目录），因此该命令无法被用于打开任意位置。目录未配置时返回错误，不退化成打开默认位置。
+- `open_profile_directory` 在系统文件管理器中打开该 Profile 已配置的存档或备份目录。`kind` 只接受 `save` 与 `backup`，未知值返回 `profile_directory_kind_invalid`。**前端不传路径**：真实路径由后端从持久化事实解析，并在打开前复核仍是普通目录（拒绝 symlink、junction、重解析点与非目录），因此该命令无法被用于打开任意位置。自定义目录按玩家所选原样打开，打开动作不向玩家目录写入；`backup` 使用托管默认目录（`defaulted`）时，后端按 `mode` 解析默认备份根下该 Profile 的受控子目录，缺失时逐级 nofollow 补建（只补应用自有托管树）后打开。目录未配置（`unset`）时返回错误，不退化成打开任意其他位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
 - `retention.maxCount` 范围为 0..=999，其中 `0` 表示不按数量限制。`retention.maxAgeDays` 与
   `retention.maxTotalBytes` 的 `null` 表示不限制；为支持数字输入 UI，Tauri DTO 边界也接受数值 `0`
