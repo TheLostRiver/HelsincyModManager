@@ -187,35 +187,10 @@ fn open_retention_backup_directory(
     profile_id: &str,
     trigger: hmm_core::SaveBackupTrigger,
 ) -> Result<cap_std::fs::Dir> {
-    let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
-    // 逐级 nofollow 打开，因此必须把布局拆成 component 列表，不能直接 join。
-    // 这里的层级要与 managed_backup_profile_directory 保持一致，否则整理会去错目录、
-    // 把该删的留下而误判成"目录不可用"。
-    let (root_path, mut components) = match selection.mode {
-        ProfileDirectoryMode::Custom => {
-            let root = selection
-                .directory
-                .as_deref()
-                .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
-            (
-                PathBuf::from(root),
-                vec![
-                    CUSTOM_BACKUP_DIRECTORY_NAME.to_owned(),
-                    SAVE_BACKUP_SEGMENT.to_owned(),
-                    game_id.to_owned(),
-                    profile_dir,
-                ],
-            )
-        }
-        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => (
-            save_backup_root.to_path_buf(),
-            vec![
-                SAVE_BACKUP_SEGMENT.to_owned(),
-                game_id.to_owned(),
-                profile_dir,
-            ],
-        ),
-    };
+    // 逐级 nofollow 打开，因此布局必须是 component 列表；列表由
+    // managed_backup_profile_layout 单点提供，与写入/打开路径共享同一份真相。
+    let (root_path, mut components) =
+        managed_backup_profile_layout(save_backup_root, selection, game_id, profile_id)?;
     if trigger == hmm_core::SaveBackupTrigger::PreRestore {
         components.push("pre-restore".to_owned());
     }
@@ -270,27 +245,51 @@ fn managed_backup_profile_directory(
     game_id: &str,
     profile_id: &str,
 ) -> Result<PathBuf> {
+    let (root, components) =
+        managed_backup_profile_layout(save_backup_root, selection, game_id, profile_id)?;
+    Ok(components
+        .iter()
+        .fold(root, |path, component| path.join(component)))
+}
+
+/// 备份目录布局的单一来源：返回「capability 根 + 根下逐级 component」。
+/// join 消费方折叠成完整路径；nofollow 消费方（retention 整理、打开入口的按需创建）
+/// 逐级走 component。两类消费方共享同一份布局，不再靠注释约定保持一致。
+fn managed_backup_profile_layout(
+    save_backup_root: &Path,
+    selection: &ProfileDirectorySelection,
+    game_id: &str,
+    profile_id: &str,
+) -> Result<(PathBuf, Vec<String>)> {
     let profile_dir = format!("profile-{}", safe_id_fragment(profile_id));
     // 两种模式布局完全一致，只有根目录不同：默认根由运行时解析到文档目录下，
     // 自定义根是玩家选的目录再套一层应用名。保持同构可以让玩家在两者之间搬迁
     // 备份时不需要重排目录结构。
-    let root = match selection.mode {
+    Ok(match selection.mode {
         ProfileDirectoryMode::Custom => {
             let root = selection
                 .directory
                 .as_deref()
                 .ok_or_else(|| anyhow!("custom save backup root is missing"))?;
-            PathBuf::from(root).join(CUSTOM_BACKUP_DIRECTORY_NAME)
+            (
+                PathBuf::from(root),
+                vec![
+                    CUSTOM_BACKUP_DIRECTORY_NAME.to_owned(),
+                    SAVE_BACKUP_SEGMENT.to_owned(),
+                    game_id.to_owned(),
+                    profile_dir,
+                ],
+            )
         }
-        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => {
-            save_backup_root.to_path_buf()
-        }
-    };
-
-    Ok(root
-        .join(SAVE_BACKUP_SEGMENT)
-        .join(game_id)
-        .join(profile_dir))
+        ProfileDirectoryMode::Default | ProfileDirectoryMode::Unset => (
+            save_backup_root.to_path_buf(),
+            vec![
+                SAVE_BACKUP_SEGMENT.to_owned(),
+                game_id.to_owned(),
+                profile_dir,
+            ],
+        ),
+    })
 }
 
 fn backup_directory_for_trigger(
