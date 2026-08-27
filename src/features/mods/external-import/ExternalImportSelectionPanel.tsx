@@ -281,9 +281,11 @@ export function ExternalImportSelectionPanel({
             ))}
           </ul>
 
-          {/* 页内近似判断即可:误选目录的典型场景(如狩技盒子安装根)候选只有个位数,
-              首页就能覆盖;这是引导文案而非文件系统规则判定。 */}
+          {/* 只在候选取完后才敢下结论:误选目录的典型场景(如狩技盒子安装根)候选只有
+              个位数,首页即完整,引导照常出现;但分页未取完时「本页没有可导入项」不等于
+              「整个来源没有可导入项」——第 2 页才出现的 ready 候选会把玩家误导去重选目录。 */}
           {workflow.previewState.candidates.length > 0 &&
+          workflow.previewState.nextCursor === null &&
           !workflow.previewState.candidates.some(
             (candidate) =>
               candidate.previewStatus === "ready" ||

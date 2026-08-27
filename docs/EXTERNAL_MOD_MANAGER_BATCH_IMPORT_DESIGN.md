@@ -1,6 +1,6 @@
 # 第三方 Mod 管理器批量迁移设计（狩技盒子兼容）
 
-> 状态：Slice 1–4C 已完成(Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”、PR #198 的 Slice 4B“选择、决定与批量启动”、PR #199 的 Slice 4C“结果、重试与最终加固”);Slice 5“跨批次导入记录与保留期”进行中(见同名章节)。
+> 状态：Slice 1–4C 已完成(Slice 1、Slice 2“只读来源扫描与分页预览”、Slice 3“安全物化与批量导入编排”、Slice 4A“外部来源与只读预览”、PR #198 的 Slice 4B“选择、决定与批量启动”、PR #199 的 Slice 4C“结果、重试与最终加固”);Slice 5“跨批次导入记录与保留期”已完成(5A/5B 由 PR #256/#257 交付,5C–5F 由收口 PR #263 落地 main;见同名章节)。
 >
 > 本文定义产品、架构、安全和验收边界并记录分 Slice 状态；实际可用性仍以对应 PR 与验证证据为准。
 
@@ -232,6 +232,7 @@ materializer 必须：
 - `duplicate_in_batch`
 - `name_collision`
 - `structure_invalid`
+- `payload_missing`
 - `metadata_invalid`
 - `unsupported_entry`
 - `resource_limit_exceeded`
@@ -246,6 +247,7 @@ materializer 必须：
 | 名称相同、内容不同 | 阻止静默覆盖 | `keep_both` 或跳过 |
 | 来源类型无法映射 | 不分配分类 | 映射到一个已有分类 |
 | XML 损坏、文件内容安全 | 默认不选 | 明确忽略 metadata 后继续 |
+| 编号目录缺 `files/` 载荷 | 归为 `payload_missing`，不可选择；仍解析 `info.xml` 让预览带上名称 | 不允许 override |
 | 路径、链接或资源预算不安全 | 阻断 | 不允许 override |
 
 `keep_both` 的新 `modId` 由后端分配，不能由前端通过改名或路径拼接生成。替换已有只读导入快照不属于首版；未来若需要，必须单独设计对现有安装、Profile 和 metadata overlay 的影响。
@@ -433,7 +435,7 @@ cancel_task(taskId)
   result、5 次 warmup、40 次 sample，本机 p95=`3.937 ms`，低于固定 `250 ms` 同机预算。
 - 默认继续 import-only，不安装、启用、获取 game/profile 写锁或写游戏目录。
 
-### Slice 5：跨批次导入记录与保留期（进行中）
+### Slice 5：跨批次导入记录与保留期（已完成，PR #256/#257 交付 5A/5B，收口 PR #263 落地 5C–5F）
 
 Slice 1–4C 的批次事实只服务当次工作流:关闭 Dialog 后 batchId 丢失,玩家无法回看「导入了哪些、
 成功/失败了哪些」。Slice 5 把已持久化的 SQLite 批次事实开放为跨批次只读查询,并补齐配套体验。

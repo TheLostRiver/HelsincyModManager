@@ -171,9 +171,9 @@ fn validate_source_root(root_directory: &Path) -> Result<()> {
 }
 
 /// 玩家常会选狩技盒子安装根而不是 `Mods_582010`。规则是确定性的:
-/// 所选目录已有直接数字子目录 → 以所选目录为准;没有数字子目录但存在常规的
-/// `Mods_582010` 子目录 → 下潜一层;其余情况(含探测超限、子目录是链接/重解析点)
-/// 原样注册,交给扫描与预览文案兜底。
+/// 所选目录已有直接数字子目录 → 以所选目录为准;没有数字子目录但存在唯一一个常规的
+/// `Mods_582010` 子目录 → 下潜一层;其余情况(含探测超限、子目录是链接/重解析点、
+/// 存在多个大小写等价的库目录)原样注册,交给扫描与预览文案兜底。
 fn resolve_effective_library_root(canonical_root: PathBuf) -> PathBuf {
     let Ok(entries) = fs::read_dir(&canonical_root) else {
         return canonical_root;
@@ -201,6 +201,13 @@ fn resolve_effective_library_root(canonical_root: PathBuf) -> PathBuf {
         }
         // Windows 大小写不敏感,按 ASCII 忽略大小写匹配库目录名。
         if name.eq_ignore_ascii_case(HUNTING_BOX_MHW_LIBRARY_DIRECTORY) {
+            if library_child.is_some() {
+                // 大小写敏感的文件系统上 `Mods_582010` 与 `mods_582010` 可以并存:
+                // 下潜哪个取决于 read_dir 顺序,而 normalize_source_identity 会把两者
+                // 折叠成同一 fingerprint——同一 identity 对上不同内容。冲突时保持所选
+                // 根不下潜,由空预览把选目录这件事交回玩家。
+                return canonical_root;
+            }
             library_child = Some(entry.path());
         }
     }
@@ -469,6 +476,42 @@ mod tests {
             .expect("resolve source")
             .expect("source exists");
 
+        assert_eq!(
+            registration.root_directory,
+            source_root
+                .path()
+                .canonicalize()
+                .expect("canonical source path")
+        );
+    }
+
+    #[test]
+    fn root_with_case_equivalent_library_directories_stays_as_selected() {
+        let app_data = tempfile::tempdir().expect("app data directory");
+        let source_root = tempfile::tempdir().expect("source directory");
+        fs::create_dir_all(source_root.path().join("Mods_582010").join("1001"))
+            .expect("create library candidate");
+        match fs::create_dir(source_root.path().join("mods_582010")) {
+            Ok(()) => {}
+            // 大小写不敏感的文件系统(NTFS 默认)造不出该冲突;CI 的 Linux runner 会真正跑到断言。
+            // 只放过 AlreadyExists:其他 I/O 失败必须炸,否则这个用例会静默假绿。
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return,
+            Err(error) => panic!("failed to probe case sensitivity: {error}"),
+        }
+        fs::create_dir_all(source_root.path().join("mods_582010").join("2001"))
+            .expect("create case-equivalent library candidate");
+        let registry = HuntingBoxDirectorySourceRegistry::new(app_data.path()).expect("registry");
+
+        let source = registry
+            .register_directory(source_root.path().to_path_buf())
+            .expect("register source");
+        let registration = registry
+            .resolve_directory(&source.source_id)
+            .expect("resolve source")
+            .expect("source exists");
+
+        // 两个等价目录内容不同却会折叠成同一 fingerprint,下潜哪个又取决于 read_dir
+        // 顺序:必须保持所选根,让同一个所选目录始终得到同一 identity。
         assert_eq!(
             registration.root_directory,
             source_root

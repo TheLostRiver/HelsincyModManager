@@ -101,6 +101,17 @@ test("history page accepts only the exact redacted contract", () => {
     isExternalImportHistoryPage(historyPage({ totalCount: 0 })),
     false,
   );
+  // 声明有批次却给空页:后端 COUNT(*) 与分页在同一事务内取,这只可能是契约漂移。
+  // 放行的话 refresh 会把它显示成「没有导入记录」,比报错更伤信任。
+  assert.equal(
+    isExternalImportHistoryPage(historyPage({ batches: [], totalCount: 1 })),
+    false,
+  );
+  // 真正的空历史仍然合法,不能被上面的守卫连带拒掉。
+  assert.equal(
+    isExternalImportHistoryPage(historyPage({ batches: [], totalCount: 0 })),
+    true,
+  );
   assert.equal(
     isExternalImportHistoryPage(historyPage({ nextCursor: "next/page" })),
     false,
