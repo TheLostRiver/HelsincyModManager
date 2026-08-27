@@ -13,7 +13,7 @@ use hmm_core::{
     ExternalImportSelection, ExternalImportSelectionDecision, ExternalImportSelectionEntry,
     ExternalImportSelectionId, ExternalImportSelectionStatus, ExternalImportSource,
     ExternalImportSourceId, ModId, PreviewImageRejectionReason,
-    EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES, EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
+    EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
 };
 use hmm_ports::{
     AppClock, CategoryRepository, ExternalImportBatchHistoryEntry, ExternalImportBatchHistoryPage,
@@ -1281,7 +1281,7 @@ fn history_repository_failure_maps_to_batch_unavailable() {
 }
 
 #[test]
-fn retention_pruning_passes_documented_limits_and_scan_only_ttl() {
+fn retention_pruning_only_bounds_scan_only_batches_and_needs_no_clock() {
     let repository = Arc::new(FixtureBatchRepository::default());
     let (service, _task_manager) = fixture_service(
         Arc::clone(&repository),
@@ -1289,20 +1289,21 @@ fn retention_pruning_passes_documented_limits_and_scan_only_ttl() {
         Arc::new(FixtureMaterializer::default()),
         Arc::new(FixtureCatalog::succeeds()),
         Arc::new(FixtureCategoryRepository::new(0)),
-        // now = 1,早于 scan-only TTL,过期阈值必须饱和到 0 而不是回绕。
         Arc::new(FixtureClock::available()),
     );
 
     assert_eq!(service.prune_batch_history().expect("prune history"), 3);
+    // 请求里刻意只剩「只扫描批次上限」这一个字段:已导入批次永久保留,
+    // 不给调用方留下删除导入事实的入口。
     assert_eq!(
         repository.retention_request(),
         Some(ExternalImportBatchRetentionRequest {
-            max_imported_batches: EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES,
             max_scan_only_batches: EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
-            scan_only_expires_before_unix_millis: 0,
         })
     );
 
+    // 去掉时间过期后,清理不再依赖时钟:时钟不可用也照常执行,
+    // 不会因为读不到时间就把启动期清理整体跳过。
     let unavailable_repository = Arc::new(FixtureBatchRepository::default());
     let (unavailable_service, _unavailable_task_manager) = fixture_service(
         Arc::clone(&unavailable_repository),
@@ -1314,10 +1315,17 @@ fn retention_pruning_passes_documented_limits_and_scan_only_ttl() {
     );
 
     assert_eq!(
-        unavailable_service.prune_batch_history(),
-        Err(ExternalImportBatchError::ClockUnavailable)
+        unavailable_service
+            .prune_batch_history()
+            .expect("prune without a clock"),
+        3
     );
-    assert_eq!(unavailable_repository.retention_request(), None);
+    assert_eq!(
+        unavailable_repository.retention_request(),
+        Some(ExternalImportBatchRetentionRequest {
+            max_scan_only_batches: EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
+        })
+    );
 }
 
 fn fixture_service(

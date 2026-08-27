@@ -149,7 +149,7 @@
 - `cancel_task` 立即把 task 状态标记为 `cancelled`，并发送 `mod_import.cancelled` 事件。
 - prepare runner 在 prepare 返回后的检查点读取 task 状态；如果已经取消，则不保存导入分析结果，不发送 `mod_import.prepare.completed`，也不发送 failed 覆盖事件，并按当前已持久化导入结果的引用 best-effort 触发一次缩略图缓存维护。
 - `ModImportPackagePreparer` 现在接收后端 cancellation token；`ZipModImportPackagePreparer` 在 zip entry 循环和文件 chunk 复制前检查取消，检测到取消后返回 cancelled error，并沿用失败清理路径删除本次 task sandbox。
-- zip 解包当前默认限制最多 `16384` 个 entry、单个普通文件解压后最大 `1 GiB`、单个包总解压后普通文件大小最大 `4 GiB`；超过上限属于包级安全拒绝，失败后清理本次 task sandbox。
+- zip 解包当前默认限制最多 `65536` 个 entry、单个普通文件解压后最大 `4 GiB`、单个包总解压后普通文件大小最大 `16 GiB`；超过上限属于包级安全拒绝，失败后清理本次 task sandbox。这三个值与第三方迁移的单项物化预算一致，修改需同步（依据见 [批量迁移设计](EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md) 的「单项预算修订」）。
 - `PreviewImageService` 会把同一个 cancellation token 下传到 `PackagePreviewScanner` 和 `PreviewImageProcessor`；scanner 在目录遍历期间检查取消，processor 在路径校验、文件读取、图片尺寸读取、完整解码前后、缩略图编码后和缓存写入后检查取消。
 - 当前实现不强制抢占 `image` crate 的单次解码/编码调用；取消会在这些调用前后的检查点生效。若取消发生在缩略图缓存写入后、导入结果保存前，runner 仍不会保存导入结果，并会触发同一条 best-effort 缓存维护链路，使未引用的派生缩略图更早具备清理机会。
 

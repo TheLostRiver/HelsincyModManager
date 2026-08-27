@@ -758,27 +758,22 @@ impl ExternalImportBatchRepository for SqliteExternalImportBatchRepository {
         let batches: Vec<ExternalImportBatch> = deserialize_rows(rows, "external import batch")?;
         drop(statement);
 
-        let mut imported_kept = 0_usize;
         let mut scan_only_kept = 0_usize;
         let mut removable: Vec<String> = Vec::new();
         for batch in batches {
             match batch.import_status {
                 // 进行中的批次永不清理:结果仍在增量落库。
                 ExternalImportBatchImportStatus::Running => {}
+                // 已执行过导入的批次永不清理:它们是长期可追溯的导入事实,
+                // 且迁移本身是低频动作,不会把这张表撑大。
                 ExternalImportBatchImportStatus::Completed
                 | ExternalImportBatchImportStatus::CompletedWithErrors
                 | ExternalImportBatchImportStatus::Failed
-                | ExternalImportBatchImportStatus::Cancelled => {
-                    if imported_kept < request.max_imported_batches {
-                        imported_kept += 1;
-                    } else {
-                        removable.push(batch.batch_id.as_str().to_owned());
-                    }
-                }
+                | ExternalImportBatchImportStatus::Cancelled => {}
+                // 只扫描、从未导入:不含导入事实,却可能各带上万行候选。只按数量封顶,
+                // 不按时间过期。批次已按 created_at DESC 排序,所以保留的是最近的。
                 ExternalImportBatchImportStatus::Pending => {
-                    let expired =
-                        batch.created_at_unix_millis < request.scan_only_expires_before_unix_millis;
-                    if !expired && scan_only_kept < request.max_scan_only_batches {
+                    if scan_only_kept < request.max_scan_only_batches {
                         scan_only_kept += 1;
                     } else {
                         removable.push(batch.batch_id.as_str().to_owned());
@@ -1652,47 +1647,57 @@ mod tests {
         let mut kept_imported = batch("batch-imported-kept");
         kept_imported.created_at_unix_millis = 300;
         kept_imported.import_status = ExternalImportBatchImportStatus::Completed;
-        let mut removed_imported = batch("batch-imported-removed");
-        removed_imported.created_at_unix_millis = 200;
-        removed_imported.scan_status = ExternalImportScanStatus::Completed;
-        removed_imported.import_status = ExternalImportBatchImportStatus::CompletedWithErrors;
-        let mut expired_scan_only = batch("batch-scan-only-expired");
-        expired_scan_only.created_at_unix_millis = 1;
+        // 已导入批次即使很旧、即使是 CompletedWithErrors,也永不清理。
+        let mut old_imported = batch("batch-imported-old");
+        old_imported.created_at_unix_millis = 2;
+        old_imported.scan_status = ExternalImportScanStatus::Completed;
+        old_imported.import_status = ExternalImportBatchImportStatus::CompletedWithErrors;
+        // 只扫描、从未导入:超出数量上限的最旧一个会被清掉。
+        let mut kept_scan_only = batch("batch-scan-only-kept");
+        kept_scan_only.created_at_unix_millis = 400;
+        let mut removed_scan_only = batch("batch-scan-only-removed");
+        removed_scan_only.created_at_unix_millis = 1;
+        removed_scan_only.scan_status = ExternalImportScanStatus::Completed;
         for seeded in [
             &running,
             &kept_imported,
-            &removed_imported,
-            &expired_scan_only,
+            &old_imported,
+            &kept_scan_only,
+            &removed_scan_only,
         ] {
             repository.create_batch(seeded).expect("create batch");
         }
-        let removed_candidate = candidate(&removed_imported.batch_id, "candidate-1");
+        let removed_candidate = candidate(&removed_scan_only.batch_id, "candidate-1");
         repository
-            .save_scan_result(&removed_imported, std::slice::from_ref(&removed_candidate))
+            .save_scan_result(&removed_scan_only, std::slice::from_ref(&removed_candidate))
             .expect("save scan result");
         repository
             .create_selection(&ExternalImportSelection::new(
                 ExternalImportSelectionId::new("selection-removed"),
-                removed_imported.batch_id.clone(),
+                removed_scan_only.batch_id.clone(),
                 1000,
             ))
             .expect("create selection");
+        // 已导入批次带完整的候选/selection/结果行,用来证明它整套都被保留。
+        let imported_candidate = candidate(&old_imported.batch_id, "candidate-1");
+        repository
+            .save_scan_result(&old_imported, std::slice::from_ref(&imported_candidate))
+            .expect("save imported scan result");
         repository
             .append_item_results(
-                &removed_imported.batch_id,
+                &old_imported.batch_id,
                 &[item_result("candidate-1", ExternalImportItemStatus::Failed)],
             )
             .expect("append result");
 
+        // 只扫描批次上限设为 1:kept_scan_only(较新)留下,removed_scan_only 被清。
         let outcome = repository
             .prune_batches(ExternalImportBatchRetentionRequest {
-                max_imported_batches: 1,
-                max_scan_only_batches: 10,
-                scan_only_expires_before_unix_millis: 5,
+                max_scan_only_batches: 1,
             })
             .expect("prune batches");
 
-        assert_eq!(outcome.removed_batches, 2);
+        assert_eq!(outcome.removed_batches, 1);
         assert!(repository
             .get_batch(&running.batch_id)
             .expect("read running batch")
@@ -1701,13 +1706,18 @@ mod tests {
             .get_batch(&kept_imported.batch_id)
             .expect("read kept batch")
             .is_some());
+        // 导入事实永久保留,不因为旧、不因为数量被删。
         assert!(repository
-            .get_batch(&removed_imported.batch_id)
-            .expect("read removed batch")
-            .is_none());
+            .get_batch(&old_imported.batch_id)
+            .expect("read old imported batch")
+            .is_some());
         assert!(repository
-            .get_batch(&expired_scan_only.batch_id)
-            .expect("read expired batch")
+            .get_batch(&kept_scan_only.batch_id)
+            .expect("read kept scan-only batch")
+            .is_some());
+        assert!(repository
+            .get_batch(&removed_scan_only.batch_id)
+            .expect("read removed scan-only batch")
             .is_none());
         // 级联必须把候选/selection/结果一并清掉,不留孤儿行。
         let orphan_rows: (i64, i64, i64) = db
@@ -1717,42 +1727,53 @@ mod tests {
                 "SELECT (SELECT COUNT(*) FROM external_import_candidates WHERE batch_id = ?1),
                         (SELECT COUNT(*) FROM external_import_selections WHERE batch_id = ?1),
                         (SELECT COUNT(*) FROM external_import_item_results WHERE batch_id = ?1)",
-                rusqlite::params![removed_imported.batch_id.as_str()],
+                rusqlite::params![removed_scan_only.batch_id.as_str()],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .expect("count orphan rows");
         assert_eq!(orphan_rows, (0, 0, 0));
+        // 保留下来的导入批次连同其候选/结果行都还在。
+        let kept_rows: (i64, i64) = db
+            .lock()
+            .expect("database lock")
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM external_import_candidates WHERE batch_id = ?1),
+                        (SELECT COUNT(*) FROM external_import_item_results WHERE batch_id = ?1)",
+                rusqlite::params![old_imported.batch_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("count kept rows");
+        assert_eq!(kept_rows, (1, 1));
     }
 
     #[test]
-    fn retention_never_removes_within_the_imported_batch_cap() {
+    fn retention_never_removes_imported_batches_regardless_of_count() {
         let temporary = tempfile::tempdir().expect("temporary database directory");
         let db = Arc::new(Mutex::new(
             crate::open_database(&temporary.path().join("hmm.db")).expect("open database"),
         ));
         let repository = SqliteExternalImportBatchRepository::new(db);
-        for (index, id) in ["batch-1", "batch-2", "batch-3"].iter().enumerate() {
-            let mut seeded = batch(id);
-            seeded.created_at_unix_millis = 100 + index as u64;
+        // 远超旧的 50 个上限:迁移是低频动作,但记录一旦产生就该一直在。
+        for index in 0..120_u64 {
+            let mut seeded = batch(&format!("batch-{index}"));
+            seeded.created_at_unix_millis = 100 + index;
             seeded.import_status = ExternalImportBatchImportStatus::Completed;
             repository.create_batch(&seeded).expect("create batch");
         }
 
         let outcome = repository
             .prune_batches(ExternalImportBatchRetentionRequest {
-                max_imported_batches: 50,
-                max_scan_only_batches: 10,
-                scan_only_expires_before_unix_millis: u64::MAX,
+                max_scan_only_batches: 1,
             })
             .expect("prune batches");
 
         assert_eq!(outcome.removed_batches, 0);
         assert_eq!(
             repository
-                .list_batch_history_page(0, 10)
+                .list_batch_history_page(0, 50)
                 .expect("history page")
                 .total_count,
-            3
+            120
         );
     }
 

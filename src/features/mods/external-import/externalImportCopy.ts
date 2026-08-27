@@ -459,7 +459,7 @@ export const externalImportCopy = {
       loadMore: "加载更多记录",
       reload: "重新读取记录",
       retryHint: "历史批次不支持直接重试；如需重试，请重新选择来源目录发起导入。",
-      retentionHint: "仅保留最近 50 个已导入批次；仅扫描未导入的批次保留 10 个且不超过 7 天。",
+      retentionHint: "导入过的批次永久保留；仅扫描、从未导入的批次只保留最近 50 个。",
       time: {
         justNow: "刚刚",
         minutesAgo: (count: string) => `${count} 分钟前`,
@@ -760,7 +760,7 @@ export const externalImportCopy = {
       retryHint:
         "History batches cannot be retried directly; reselect the source directory to start a new import.",
       retentionHint:
-        "Only the latest 50 imported batches are kept; scan-only batches keep 10 for up to 7 days.",
+        "Imported batches are kept permanently; scan-only batches keep the latest 50.",
       time: {
         justNow: "Just now",
         minutesAgo: (count: string) => `${count} min ago`,
@@ -1059,7 +1059,7 @@ export const externalImportCopy = {
       retryHint:
         "履歴バッチから直接再試行はできません。再試行するにはソースフォルダーを選び直してください。",
       retentionHint:
-        "インポート済みバッチは直近 50 件のみ保持されます。スキャンのみのバッチは 10 件・最長 7 日間です。",
+        "インポート済みバッチは永久に保持されます。スキャンのみのバッチは直近 50 件までです。",
       time: {
         justNow: "たった今",
         minutesAgo: (count: string) => `${count} 分前`,
