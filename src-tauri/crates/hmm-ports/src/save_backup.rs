@@ -6,6 +6,7 @@ use hmm_core::{
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerState, SaveBackupStatus, SaveBackupSummary,
     SaveBackupTrigger, SaveBackupWorkerHeartbeat,
 };
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveBackupWriteRequest {
@@ -189,6 +190,21 @@ pub trait SaveBackupWriter: Send + Sync {
             },
         })
     }
+}
+
+/// 解析某个 profile 的备份目录并按需创建缺失的受控子树。
+///
+/// 「打开文件夹」入口消费:defaulted 的备份目录在第一次成功备份前并不存在,
+/// 补建后上层才能打开。实现方必须逐级 nofollow 创建,且只隐式创建应用自有的
+/// 托管布局;Custom 模式的根是玩家自选目录,必须已存在——绝不因为一次打开
+/// 动作替玩家凭空造出他们选择的根目录。
+pub trait SaveBackupDirectoryLocator: Send + Sync {
+    fn backup_directory_for_profile(
+        &self,
+        selection: &ProfileDirectorySelection,
+        game_id: &str,
+        profile_id: &str,
+    ) -> Result<PathBuf>;
 }
 
 pub trait SaveBackupRepository: Send + Sync {
