@@ -20,9 +20,12 @@ use std::path::{Component, Path, PathBuf};
 
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METADATA_MAX_SCAN_DEPTH: usize = 2;
-const DEFAULT_ZIP_MAX_ENTRIES: usize = 16 * 1024;
-const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
-const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+// 必须与 hmm-core 的 DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_* 保持一致:
+// 同一个 Mod 不能走第三方迁移能进、打包成 zip 手动导入反而被拒。
+// 2026-08-27 依真实库实测放宽,依据见设计文档 Slice 1 定稿。
+const DEFAULT_ZIP_MAX_ENTRIES: usize = 64 * 1024;
+const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const DIAGNOSTIC_PACKAGE_DIR: &str = "diagnostics";
 const MOD_IMPORT_APP_DATA_DIRECTORY: &str = "mod-import";
 const MOD_IMPORT_SANDBOX_DIRECTORY: &str = "sandboxes";

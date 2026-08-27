@@ -69,8 +69,14 @@ function Get-HmmSourceDigest {
     $lines = Get-ChildItem -LiteralPath $full -Recurse -Force |
         ForEach-Object {
             $rel = $_.FullName.Substring($full.Length).TrimStart([IO.Path]::DirectorySeparatorChar)
-            $len = if ($_.PSIsContainer) { -1 } else { $_.Length }
-            "{0}|{1}|{2}" -f $rel, $len, $_.LastWriteTimeUtc.ToString('o')
+            if ($_.PSIsContainer) {
+                "{0}|dir" -f $rel
+            } else {
+                # 必须纳入内容 hash:仅凭长度与 mtime 无法证明内容未变——
+                # 等长原地改写并回写 mtime 就能骗过前两者,而设计要求断言的是「内容未被修改」。
+                $content = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                "{0}|{1}|{2}|{3}" -f $rel, $_.Length, $_.LastWriteTimeUtc.ToString('o'), $content
+            }
         } | Sort-Object
     $sha = [Security.Cryptography.SHA256]::Create()
     $hash = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))
@@ -84,8 +90,10 @@ $before = Get-HmmSourceDigest -Root '<狩技盒子库根>'
 $before   # 只把这两个数字记进结论
 ```
 
-摘要**刻意只含相对路径、字节长度和 mtime**，不含 atime —— 设计文档明确 atime 可能被读取更新，
-不作为可保证字段。
+摘要**刻意逐文件计算内容 SHA-256**，因此对整库跑一次需要读完全部字节（参考量级：约 7,700 个文件 / 0.7 GiB 需数十秒）。这是必要代价——本节的判定标准是「来源内容未被修改」，只比对长度与 mtime 支撑不了这个结论。
+
+摘要含相对路径、字节长度、mtime 和内容 hash，但**刻意不含 atime** —— 设计文档明确 atime 可能被
+读取更新，不作为可保证字段；把它纳入会让「只读扫描」本身就制造出差异。
 
 ### 5.2 执行步骤
 
@@ -128,8 +136,11 @@ $before   # 只把这两个数字记进结论
 ### 6.2 执行步骤
 
 1. 扫描 → 选中 3–5 个 `ready` 候选 → 启动导入 → 记录结果分页的逐状态计数。
-2. **取消**：重新扫描同一来源，选中全部，启动后立即取消。记录已成功项是否保留、未开始项是否
-   为 cancelled、来源摘要是否仍与基线一致。
+2. **取消**：重新扫描同一来源，**只选中步骤 1 那同一组 3–5 个候选**（绝不用「全选」），
+   启动后立即取消。记录已成功项是否保留、未开始项是否为 cancelled、来源摘要是否仍与基线一致。
+
+   > 这里必须限定范围。在真实安装上执行时「全选」等于整个来源库，取消一旦没赶上就是一次
+   > 非预期的全库导入；而已导入批次现在是**永久保留**的，产生的记录清不掉。
 3. **幂等**：再次扫描同一来源。预期先前成功的候选变为 `already_imported` 而非 `ready`。
 4. **重试**：若出现任何 `failed` 且 `retryable`，执行重试，记录新 task id 与最终计数。
 5. 打开被导入 Mod 的详情面板，检查「来源」行。
