@@ -166,9 +166,9 @@ pub struct ExternalImportBatchHistoryPage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExternalImportBatchRetentionRequest {
-    pub max_imported_batches: usize,
+    /// 只约束「只扫描、从未导入」的批次。已导入批次和 running 批次永不清理,
+    /// 因此这里刻意没有对应字段——不给调用方留下删除导入事实的入口。
     pub max_scan_only_batches: usize,
-    pub scan_only_expires_before_unix_millis: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
