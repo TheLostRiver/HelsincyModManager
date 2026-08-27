@@ -2,6 +2,7 @@ import { resolveCopy, useI18n } from "../../../shared/i18n";
 import { externalImportCopy } from "./externalImportCopy";
 import { listen } from "@tauri-apps/api/event";
 import {
+  CheckCircle2,
   CircleAlert,
   FolderInput,
   History,
@@ -90,6 +91,8 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
   const pendingProgressEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const displayedTaskNoticeIdRef = useRef<string | null>(null);
   const terminalNoticeKeysRef = useRef(new Set<string>());
+  const formatSelectedCount = (value: number) =>
+    new Intl.NumberFormat("zh-CN").format(value);
   const selectionWorkflow = useExternalImportSelectionWorkflow(
     scanState.status === "completed" ? batchId : null,
     onImported,
@@ -103,6 +106,11 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
       selectionWorkflow.previewState.status === "ready" &&
       selectionWorkflow.previewState.loadingMore
     );
+  // 底栏的开始导入按钮:只在选择快照可编辑时出现,与面板内旧按钮的显示条件一致。
+  const selectionBusy = selectionWorkflowBusy;
+  const importActionVisible =
+    selectionWorkflow.selectionEditable && selectionWorkflow.selection !== null;
+  const selectedCount = selectionWorkflow.selection?.selectedCount ?? 0;
 
   const setTrackedScanState = useCallback((next: ExternalImportScanTaskState) => {
     scanStateRef.current = next;
@@ -490,16 +498,43 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
                 {extCopy.action.retryListener}
               </button>
             ) : null}
+            {/* 扫描完成后「选择来源」不再是主操作,降为次要按钮;
+                主操作换成开始导入,常驻底栏保证它不会被候选列表推到滚动区外。 */}
             <button
               ref={chooseSourceButtonRef}
               type="button"
-              className="external-import__button is-primary"
+              className={
+                importActionVisible
+                  ? "external-import__button is-secondary"
+                  : "external-import__button is-primary"
+              }
               disabled={sourceButtonDisabled}
               onClick={() => void chooseSource()}
             >
               {sourcePickerActive ? <LoaderCircle className="external-import__spinner" size={15} /> : <FolderInput size={15} />}
               {extCopy.action.chooseSource}
             </button>
+            {importActionVisible ? (
+              <button
+                type="button"
+                className="external-import__button is-primary"
+                disabled={
+                  selectionBusy ||
+                  selectionWorkflow.listenerStatus !== "ready" ||
+                  selectedCount === 0
+                }
+                onClick={selectionWorkflow.startImport}
+              >
+                {selectionWorkflow.pendingAction === "start" ? (
+                  <LoaderCircle className="external-import__spinner" size={15} />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                {selectedCount > 0
+                  ? extCopy.action.startImportWithCount(formatSelectedCount(selectedCount))
+                  : extCopy.selectionPanel.startBatchImport}
+              </button>
+            ) : null}
           </>
           )
         }
@@ -534,10 +569,14 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
             </button>
           </div>
 
+          {/* 页签切换沿用 RouterOutlet 的进场模式(opacity + 轻微上移),
+              key 变化让 React 重建节点从而重放动画;降级偏好下由 CSS 关掉。 */}
           {view === "history" ? (
-            <ExternalImportHistoryPanel workflow={historyWorkflow} />
+            <div className="external-import__view" key="history">
+              <ExternalImportHistoryPanel workflow={historyWorkflow} />
+            </div>
           ) : (
-          <>
+          <div className="external-import__view" key="current">
           <div className="external-import__source-row">
             <span className="external-import__eyebrow">{extCopy.action.sourceEyebrow}</span>
             <strong>{source?.displayLabel ?? extCopy.action.sourceNotChosen}</strong>
@@ -589,7 +628,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
               onCloseDialog={() => setDialogOpen(false)}
             />
           ) : null}
-          </>
+          </div>
           )}
         </div>
       </Dialog>

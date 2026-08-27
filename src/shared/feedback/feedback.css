@@ -195,6 +195,51 @@
   overflow-y: auto;
 }
 
+/*
+ * 弹窗正文的滚动条要和 .app-surface 一致的细窄圆角风格,否则长内容(如第三方导入的
+ * 候选列表)会露出 Windows 原生粗滚动条,和弹窗其余部分完全不搭。
+ * 参数刻意与 AppFrame.css 的 .app-surface 保持一致;将来抽共享滚动条基元时一并迁走。
+ */
+.feedback-modal__body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.feedback-modal__body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.feedback-modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.feedback-modal__body::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+.feedback-modal__body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+
+:root[data-color-scheme="dark"] .feedback-modal__body {
+  scrollbar-color: var(--color-border-muted) transparent;
+}
+
+:root[data-color-scheme="dark"] .feedback-modal__body::-webkit-scrollbar-thumb {
+  background: var(--color-border-muted);
+  background-clip: padding-box;
+}
+
+:root[data-color-scheme="dark"] .feedback-modal__body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+
 .feedback-task-notice-viewport {
   position: fixed;
   right: 20px;
