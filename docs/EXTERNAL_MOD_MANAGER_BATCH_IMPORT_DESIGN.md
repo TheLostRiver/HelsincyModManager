@@ -538,6 +538,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
 ```
 
 真实狩技盒子目录只能作为用户主动执行的脱敏人工 smoke，不进入自动化、仓库 fixture、日志或诊断包。
+该 smoke 的前置、脱敏记录纪律、两趟执行步骤和判定标准见
+[真实来源人工 Smoke 清单](EXTERNAL_MOD_IMPORT_REAL_SOURCE_SMOKE.md)。它验证的是「真实库是否落在
+adapter 假设覆盖的形状里」——目录命名、`files/`+`info.xml` 结构、安装根自动下潜命中率、
+`payload_missing` 实际占比、`info.xml` 字段变体和候选规模；这些是自动化按设计无法回答的。
+**该清单尚未执行**，因此本设计的真实来源兼容性目前只有合成 fixture 证据。
 
 ## 验收标准
 
