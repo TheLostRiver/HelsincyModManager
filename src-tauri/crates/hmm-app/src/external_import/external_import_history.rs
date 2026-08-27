@@ -1,8 +1,5 @@
 use super::{ExternalImportBatch, ExternalImportBatchError, ExternalImportBatchService};
-use hmm_core::{
-    ExternalImportItemStatusCounts, EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES,
-    EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES, EXTERNAL_IMPORT_HISTORY_SCAN_ONLY_TTL_MILLIS,
-};
+use hmm_core::{ExternalImportItemStatusCounts, EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES};
 use hmm_ports::ExternalImportBatchRetentionRequest;
 
 pub const DEFAULT_EXTERNAL_IMPORT_HISTORY_LIMIT: usize = 20;
@@ -56,14 +53,10 @@ impl ExternalImportBatchService {
     /// 启动期一次性保留清理:不做来源 I/O、不创建任务、绝不触碰 running 批次。
     /// 失败由调用方降级处理,不得阻断启动。
     pub fn prune_batch_history(&self) -> Result<usize, ExternalImportBatchError> {
-        let now = self.now_unix_millis()?;
         let outcome = self
             .batch_repository
             .prune_batches(ExternalImportBatchRetentionRequest {
-                max_imported_batches: EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES,
                 max_scan_only_batches: EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES,
-                scan_only_expires_before_unix_millis: now
-                    .saturating_sub(EXTERNAL_IMPORT_HISTORY_SCAN_ONLY_TTL_MILLIS),
             })
             .map_err(|_| ExternalImportBatchError::BatchUnavailable)?;
         Ok(outcome.removed_batches)

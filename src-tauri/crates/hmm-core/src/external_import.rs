@@ -11,18 +11,27 @@ pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_CANDIDATES: u64 =
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_FILES: u64 = 1_000_000;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_MATERIALIZATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
-pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_FILES: u64 = 16 * 1024;
-pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_SINGLE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
-pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+// 单项物化预算。2026-08-27 依真实狩技盒子库实测放宽(见设计文档「单项预算修订」):
+// 一个普通 Mod 就用掉了旧上限 16,384 的 44.8%(7,339 文件),而它自身只占旧 4 GiB
+// 总量的 3.45%——对该候选而言文件数比字节紧 13 倍;全库峰值口径也有 7.6 倍。
+// 大型材质整合包会先撞文件数,不会先撞任何字节上限。
+// 这三个值必须与 hmm-infra 的 DEFAULT_ZIP_MAX_* 保持一致:同一个 Mod 不能走迁移能进、
+// 打包成 zip 反而被拒。
+pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_FILES: u64 = 64 * 1024;
+pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_SINGLE_FILE_BYTES: u64 =
+    4 * 1024 * 1024 * 1024;
+pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_TOTAL_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_DEPTH: u32 = 64;
 
-/// 已执行过导入的批次(终态 import_status)按数量保留,不按时间删除:
-/// 它们是「导入了哪些、成功/失败了哪些」的可追溯事实。
-pub const EXTERNAL_IMPORT_HISTORY_MAX_IMPORTED_BATCHES: usize = 50;
-/// 只扫描过、从未启动导入的批次追溯价值最低、体量最大(候选可达一万行),
-/// 按数量与时间双重上限清理。
-pub const EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES: usize = 10;
-pub const EXTERNAL_IMPORT_HISTORY_SCAN_ONLY_TTL_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+/// 已执行过导入的批次(终态 import_status)**永不清理**:从第三方盒子迁移是低频动作
+/// (一个玩家一生可能只做几次),而「导入了哪些、成功/失败了哪些」是长期可追溯事实。
+/// 它们的体量也小——每个批次只有实际候选数量的行。2026-08-27 从「保留最近 50 个」
+/// 改为永久保留,因此不再有对应常量:清理逻辑直接跳过这一类。
+///
+/// 只扫描过、从未启动导入的批次是另一回事:它们不含任何导入事实,却可能各带最多
+/// 10,000 行候选(打开弹窗扫一次就产生一个)。这类仍按数量封顶,但不再按时间过期
+/// ——记录因为「过了 7 天」凭空消失比没有记录更伤信任。
+pub const EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES: usize = 50;
 
 macro_rules! string_id {
     ($name:ident) => {
