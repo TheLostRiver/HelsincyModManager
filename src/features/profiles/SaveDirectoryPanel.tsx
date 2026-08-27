@@ -3,6 +3,7 @@ import { AlertTriangle, Archive, CheckCircle2, FolderOpen, HardDrive, Search } f
 import { useState, type ReactNode } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import {
+  openProfileDirectory,
   validateProfileBackupDirectory,
   validateProfileSaveDirectory,
 } from "./profileSaveSettingsApi";
@@ -43,6 +44,16 @@ export function SaveDirectoryPanel({
   const copy = resolveCopy(saveDirectoryCopy, locale);
   const [busyKind, setBusyKind] = useState<"saveDirectory" | "backupDirectory" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const openFolder = async (kind: "save" | "backup") => {
+    setError(null);
+    try {
+      await openProfileDirectory({ gameId, profileId, kind });
+    } catch (err) {
+      // 目录可能在配置之后被删除或替换成链接,后端会拒绝打开——这里给可恢复提示。
+      setError(getPanelErrorMessage(err, copy.panel.openFolderFailed));
+    }
+  };
 
   const chooseDirectory = async (kind: "saveDirectory" | "backupDirectory") => {
     if (disabled) return;
@@ -112,6 +123,8 @@ export function SaveDirectoryPanel({
               ) : null
             }
             onChoose={() => void chooseDirectory("saveDirectory")}
+            openFolderLabel={copy.panel.openFolder}
+            onOpenFolder={() => void openFolder("save")}
           />
           <DirectoryRow
             icon={<Archive size={15} />}
@@ -121,6 +134,8 @@ export function SaveDirectoryPanel({
             actionLabel={busyKind === "backupDirectory" ? copy.panel.validating : copy.panel.choose}
             disabled={disabled || busyKind !== null}
             onChoose={() => void chooseDirectory("backupDirectory")}
+            openFolderLabel={copy.panel.openFolder}
+            onOpenFolder={() => void openFolder("backup")}
           />
         </div>
       </div>
@@ -144,6 +159,8 @@ function DirectoryRow({
   disabled,
   extraAction,
   onChoose,
+  openFolderLabel,
+  onOpenFolder,
 }: {
   icon: ReactNode;
   label: string;
@@ -153,6 +170,8 @@ function DirectoryRow({
   disabled: boolean;
   extraAction?: ReactNode;
   onChoose: () => void;
+  openFolderLabel: string;
+  onOpenFolder: () => void;
 }) {
   const status = formatDirectoryStatus(selection, statusLabels);
 
@@ -173,6 +192,24 @@ function DirectoryRow({
           {status.tone === "success" ? <CheckCircle2 size={13} /> : null}
           {selection.status}
         </span>
+        {/* 只在目录确实可打开时渲染。前端 DTO 刻意不含真实路径,所以按状态判断:
+            - unset:没有可打开的东西
+            - invalid:打开必然失败
+            - defaulted:默认备份目录的真实路径由 infra 用 save_backup_root 组装,
+              目前还没有暴露给打开入口,渲染出来点了只会报错。支持它需要把 opener
+              的 port 改成接收 selection + game/profile 上下文,另行处理。 */}
+        {selection.status === "valid" ? (
+          <button
+            type="button"
+            className="profile-directory-row__button"
+            disabled={disabled}
+            onClick={onOpenFolder}
+            title={openFolderLabel}
+          >
+            <FolderOpen size={13} />
+            {openFolderLabel}
+          </button>
+        ) : null}
         <button
           type="button"
           className="profile-directory-row__button"

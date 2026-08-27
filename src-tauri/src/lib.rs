@@ -73,7 +73,7 @@ use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
-    set_active_profile, set_profile_save_settings, update_profile,
+    open_profile_directory, set_active_profile, set_profile_save_settings, update_profile,
     validate_profile_backup_directory, validate_profile_save_directory,
 };
 use reinstall_commands::{get_mod_revisions, preview_reinstall_plan, start_reinstall_task};
@@ -223,6 +223,7 @@ pub fn run() {
             delete_profile,
             set_active_profile,
             get_profile_save_settings,
+            open_profile_directory,
             validate_profile_save_directory,
             validate_profile_backup_directory,
             set_profile_save_settings,
