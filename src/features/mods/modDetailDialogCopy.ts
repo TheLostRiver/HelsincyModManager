@@ -130,7 +130,7 @@ export const modDetailDialogCopy = {
     originLabel: "由来",
     originImported: "手動インポート",
     originExternalImport: (sourceLabel: string, importedAt: string) =>
-      `サードパーティ移行 · ${sourceLabel} · ${importedAt}`,
+      `サードパーティインポート · ${sourceLabel} · ${importedAt}`,
     originUnknownSource: "サードパーティソース",
     originMigrated: "旧バージョンからの移行",
     selectedCategoriesLabel: "選択中のカテゴリ",

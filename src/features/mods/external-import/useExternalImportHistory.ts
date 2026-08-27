@@ -1,6 +1,6 @@
 import { resolveCopy, useI18n } from "../../../shared/i18n";
 import { externalImportCopy } from "./externalImportCopy";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getExternalImportBatchResult,
   listExternalImportBatches,
@@ -89,8 +89,12 @@ export function useExternalImportHistory(): ExternalImportHistoryWorkflow {
   const detailRequestRef = useRef(0);
   const extCopyRef = useRef(extCopy);
   const localeRef = useRef(locale);
-  extCopyRef.current = extCopy;
-  localeRef.current = locale;
+  // 渲染期写 ref 会让被丢弃的渲染泄漏未提交的语言:异步请求回来时可能拿到 UI 从未
+  // 展示过的 locale/文案。只在提交后同步,useRef 的初值已经覆盖首屏。
+  useEffect(() => {
+    extCopyRef.current = extCopy;
+    localeRef.current = locale;
+  }, [extCopy, locale]);
 
   const setTrackedListState = useCallback((next: ExternalImportHistoryListState) => {
     listStateRef.current = next;

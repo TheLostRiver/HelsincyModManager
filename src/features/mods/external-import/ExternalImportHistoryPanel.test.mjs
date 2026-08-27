@@ -45,6 +45,16 @@ test("history panel stays a pure read-only query surface", () => {
   assert.match(hook, /isExternalImportHistoryBatchResultPage/);
   assert.match(hook, /isExternalImportHistoryPage/);
 
+  // 渲染必须保持纯:locale/文案只在提交后同步进 ref。渲染期写 ref 会让被 React 丢弃的
+  // 渲染泄漏未提交的语言,异步请求回来时用上 UI 从未展示过的文案。
+  assert.match(
+    hook,
+    /useEffect\(\(\) => \{\s*extCopyRef\.current = extCopy;\s*localeRef\.current = locale;\s*\}, \[extCopy, locale\]\);/,
+  );
+  // 两处赋值各只允许出现一次,且只能是上面 effect 里那一次。
+  assert.equal(hook.match(/extCopyRef\.current = /g)?.length, 1);
+  assert.equal(hook.match(/localeRef\.current = /g)?.length, 1);
+
   // 记录多时在弹窗内部滚动,不撑高整个 Dialog。
   assert.match(styles, /\.external-import__history-list \{[\s\S]{0,240}max-height/);
 });
