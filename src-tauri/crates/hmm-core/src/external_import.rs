@@ -11,9 +11,10 @@ pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_CANDIDATES: u64 =
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_FILES: u64 = 1_000_000;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 pub const DEFAULT_EXTERNAL_IMPORT_BATCH_MAX_MATERIALIZATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
-// 单项物化预算。2026-08-27 依真实狩技盒子库实测放宽(见设计文档 Slice 1 定稿):
-// 一个普通 Mod 就用掉了旧上限 16,384 的 44.8%(7,339 文件),而同一候选的字节只占旧
-// 4 GiB 总量的 5.9%——文件数比字节紧约 7.6 倍,大型材质整合包会先撞文件数。
+// 单项物化预算。2026-08-27 依真实狩技盒子库实测放宽(见设计文档「单项预算修订」):
+// 一个普通 Mod 就用掉了旧上限 16,384 的 44.8%(7,339 文件),而它自身只占旧 4 GiB
+// 总量的 3.45%——对该候选而言文件数比字节紧 13 倍;全库峰值口径也有 7.6 倍。
+// 大型材质整合包会先撞文件数,不会先撞任何字节上限。
 // 这三个值必须与 hmm-infra 的 DEFAULT_ZIP_MAX_* 保持一致:同一个 Mod 不能走迁移能进、
 // 打包成 zip 反而被拒。
 pub const DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_FILES: u64 = 64 * 1024;
