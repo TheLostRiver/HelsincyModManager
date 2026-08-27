@@ -5,7 +5,7 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
-    SystemDirectoryOpener,
+    SaveBackupDirectoryLocator, SystemDirectoryOpener,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -43,6 +43,7 @@ pub struct ProfileService {
     profile_repository: Arc<dyn ProfileRepository>,
     save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
     save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator>,
+    backup_directory_locator: Arc<dyn SaveBackupDirectoryLocator>,
     directory_opener: Arc<dyn SystemDirectoryOpener>,
     clock: Arc<dyn AppClock>,
 }
@@ -52,6 +53,7 @@ impl ProfileService {
         profile_repository: Arc<dyn ProfileRepository>,
         save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
         save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator>,
+        backup_directory_locator: Arc<dyn SaveBackupDirectoryLocator>,
         directory_opener: Arc<dyn SystemDirectoryOpener>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
@@ -59,6 +61,7 @@ impl ProfileService {
             profile_repository,
             save_settings_repository,
             save_directory_validator,
+            backup_directory_locator,
             directory_opener,
             clock,
         }
@@ -173,7 +176,9 @@ impl ProfileService {
     /// 在系统文件管理器中打开该 profile 已配置的存档或备份目录。
     ///
     /// 路径只从后端持久化事实解析,调用方(Tauri command)只传 profile 与目录种类。
-    /// 目录未配置时返回稳定错误,而不是退化成打开某个默认位置。
+    /// 只有应用自有的托管默认备份目录会被按需补建;玩家自选的 Custom 目录一律
+    /// 按原样打开,绝不因为一次打开动作向玩家目录写入。未配置时返回稳定错误,
+    /// 而不是退化成打开某个默认位置。
     pub fn open_profile_directory(
         &self,
         game_id: &str,
@@ -185,11 +190,29 @@ impl ProfileService {
             ProfileDirectoryKind::Save => settings.save_directory,
             ProfileDirectoryKind::Backup => settings.backup_directory,
         };
-        let directory = selection
-            .directory
-            .ok_or_else(|| anyhow::anyhow!("profile directory is not configured"))?;
-        self.directory_opener
-            .open_directory(std::path::Path::new(&directory))
+        // 按 mode 穷尽分支:directory 的 Some/None 只是持久化编码(NULL=托管默认),
+        // 语义由 mode 承担。若按 Option 分支,理论上的 Unset 备份目录会被布局函数
+        // 静默解析到默认根并补建目录,穷尽 match 封死此路。
+        let directory = match selection.mode {
+            ProfileDirectoryMode::Custom => selection
+                .directory
+                .clone()
+                .map(std::path::PathBuf::from)
+                .ok_or_else(|| anyhow::anyhow!("profile directory is not configured"))?,
+            ProfileDirectoryMode::Default => match kind {
+                ProfileDirectoryKind::Backup => self
+                    .backup_directory_locator
+                    .backup_directory_for_profile(&selection, game_id, profile_id)?,
+                // save 目录没有托管默认;当前不可构造,显式封死。
+                ProfileDirectoryKind::Save => {
+                    bail!("save directory has no managed default location")
+                }
+            },
+            ProfileDirectoryMode::Unset => {
+                bail!("profile directory is not configured")
+            }
+        };
+        self.directory_opener.open_directory(&directory)
     }
 
     pub fn validate_profile_save_directory(
