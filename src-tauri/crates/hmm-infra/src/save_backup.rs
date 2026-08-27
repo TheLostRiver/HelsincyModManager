@@ -1091,7 +1091,9 @@ mod tests {
             .backup_directory_for_profile(&custom_backup_selection(None), "mhw", "p1")
             .expect_err("custom selection without a root must be refused");
 
-        assert!(error.to_string().contains("custom save backup root is missing"));
+        assert!(error
+            .to_string()
+            .contains("custom save backup root is missing"));
     }
 
     #[test]
@@ -1100,8 +1102,7 @@ mod tests {
         let player_root = temp.path().join("player-chosen");
         let locator = FileSystemSaveBackupDirectoryLocator::new(temp.path().join("root"));
 
-        let selection =
-            custom_backup_selection(Some(player_root.to_string_lossy().into_owned()));
+        let selection = custom_backup_selection(Some(player_root.to_string_lossy().into_owned()));
         locator
             .backup_directory_for_profile(&selection, "mhw", "p1")
             .expect_err("a missing player-chosen root must not be created");
