@@ -125,6 +125,7 @@ export function SaveDirectoryPanel({
             onChoose={() => void chooseDirectory("saveDirectory")}
             openFolderLabel={copy.panel.openFolder}
             openFolderDisabled={previewMode}
+            canOpenDefaulted={false}
             onOpenFolder={() => void openFolder("save")}
           />
           <DirectoryRow
@@ -137,6 +138,7 @@ export function SaveDirectoryPanel({
             onChoose={() => void chooseDirectory("backupDirectory")}
             openFolderLabel={copy.panel.openFolder}
             openFolderDisabled={previewMode}
+            canOpenDefaulted
             onOpenFolder={() => void openFolder("backup")}
           />
         </div>
@@ -163,6 +165,7 @@ function DirectoryRow({
   onChoose,
   openFolderLabel,
   openFolderDisabled,
+  canOpenDefaulted = false,
   onOpenFolder,
 }: {
   icon: ReactNode;
@@ -175,6 +178,7 @@ function DirectoryRow({
   onChoose: () => void;
   openFolderLabel: string;
   openFolderDisabled: boolean;
+  canOpenDefaulted?: boolean;
   onOpenFolder: () => void;
 }) {
   const status = formatDirectoryStatus(selection, statusLabels);
@@ -201,10 +205,12 @@ function DirectoryRow({
             - invalid:打开必然失败
             - valid:后端直接打开已配置的自定义目录
             - defaulted:后端按 selection.mode 解析托管默认布局,目录缺失时按需
-              补建(只补应用自有托管树)再打开,前端仍然不经手路径。
+              补建(只补应用自有托管树)再打开,前端仍然不经手路径。托管默认只
+            存在于备份目录,由调用处以 canOpenDefaulted 声明——存档行即使出现
+            defaulted 也不渲染入口,不给玩家一个必报错的按钮。
             预览环境没有后端,打开又是无法造假的真实 OS 动作,按钮禁用而非隐藏:
             保留可见形态,也不用新增文案。 */}
-        {selection.status === "valid" || selection.status === "defaulted" ? (
+        {selection.status === "valid" || (canOpenDefaulted && selection.status === "defaulted") ? (
           <button
             type="button"
             className="profile-directory-row__button"
