@@ -141,8 +141,13 @@ test("external import action composes selection, result, and retry without a fro
     source,
     /className="compact-import-action__sr-status"\s*role=\{listenerStatus === "failed" \? "alert" : "status"\}/,
   );
-  // 误选目录(如狩技盒子安装根的父级)引导:0 项可导入时给定向文案,页内近似判断。
+  // 误选目录(如狩技盒子安装根的父级)引导:0 项可导入时给定向文案。必须等分页取完
+  // (nextCursor === null)才敢下结论,否则第 2 页才出现的 ready 候选会把玩家误导去重选目录。
   assert.match(selectionPanel, /selectionPanel\.noImportableHint/);
+  assert.match(
+    selectionPanel,
+    /candidates\.length > 0 &&\s*workflow\.previewState\.nextCursor === null &&/,
+  );
   assert.match(
     selectionPanel,
     /previewStatus === "ready" \|\|[\s\S]{0,120}previewStatus === "metadata_invalid"/,

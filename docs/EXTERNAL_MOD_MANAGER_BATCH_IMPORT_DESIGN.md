@@ -232,6 +232,7 @@ materializer 必须：
 - `duplicate_in_batch`
 - `name_collision`
 - `structure_invalid`
+- `payload_missing`
 - `metadata_invalid`
 - `unsupported_entry`
 - `resource_limit_exceeded`
@@ -246,6 +247,7 @@ materializer 必须：
 | 名称相同、内容不同 | 阻止静默覆盖 | `keep_both` 或跳过 |
 | 来源类型无法映射 | 不分配分类 | 映射到一个已有分类 |
 | XML 损坏、文件内容安全 | 默认不选 | 明确忽略 metadata 后继续 |
+| 编号目录缺 `files/` 载荷 | 归为 `payload_missing`，不可选择；仍解析 `info.xml` 让预览带上名称 | 不允许 override |
 | 路径、链接或资源预算不安全 | 阻断 | 不允许 override |
 
 `keep_both` 的新 `modId` 由后端分配，不能由前端通过改名或路径拼接生成。替换已有只读导入快照不属于首版；未来若需要，必须单独设计对现有安装、Profile 和 metadata overlay 的影响。

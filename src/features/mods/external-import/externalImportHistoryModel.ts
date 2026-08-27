@@ -143,6 +143,9 @@ export function isExternalImportHistoryPage(
   if (
     !isSafeNonNegativeInteger(value.totalCount) ||
     value.totalCount < value.batches.length ||
+    // 后端的 COUNT(*) 与分页在同一事务内取,声明有批次却给空页只可能是契约漂移。
+    // 不 fail closed 的话 refresh 会把它显示成「没有导入记录」,比报错更伤信任。
+    (value.totalCount > 0 && value.batches.length === 0) ||
     value.batches.length > EXTERNAL_IMPORT_HISTORY_PAGE_MAX_SIZE ||
     !isValidHistoryNextCursor(value.nextCursor, value.totalCount, value.batches.length)
   ) {
