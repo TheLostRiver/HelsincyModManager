@@ -313,7 +313,17 @@
   gap: 12px;
 }
 
+/*
+ * 吸顶:候选列表可以很长,「已加载 N/M」与全选按钮必须在滚动中始终可达,
+ * 否则玩家滚下去看候选时就再也找不到全选入口。
+ * 背景必须不透明,否则滚上来的候选行会从工具栏下方透出来。
+ */
 .external-import__selection-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px 2px;
+  background: var(--color-surface);
   color: var(--color-text-muted);
   font-size: 12px;
 }
@@ -660,4 +670,42 @@
   color: var(--color-text-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/*
+ * 页签切换进场动效。刻意照搬 RouterOutlet 的 route-layer-enter 参数
+ * (opacity + translateY(-6px), 180ms):这是仓库里已验证的「视图切换」手感,
+ * 复制参数而不是另发明一套,等 T20 收敛共享基元时一并迁走。
+ * key 变化让 React 重建 __view 节点,动画因此在每次切换时重放。
+ */
+.external-import__view {
+  animation: external-import-view-enter 180ms ease-out both;
+}
+
+@keyframes external-import-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 降级偏好下位移必须一并清零,只留瞬时呈现,不要在起始位移处渲染一帧。 */
+@media (prefers-reduced-motion: reduce) {
+  .external-import__view {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* 工具栏右侧的两个选择动作并排,窄屏下允许换行而不是把计数挤没。 */
+.external-import__toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }

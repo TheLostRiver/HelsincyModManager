@@ -57,7 +57,18 @@ export type ExternalImportCategoryState =
   | { status: "ready"; options: CategoryItem[] }
   | { status: "failed"; options: CategoryItem[]; message: string };
 
-type PendingSelectionAction = null | "select-all" | "start" | { candidateId: string };
+type PendingSelectionAction =
+  | null
+  | "select-all"
+  | "deselect-loaded"
+  | "start"
+  | { candidateId: string };
+
+/**
+ * 单次 selection mutation 的契约上限。后端超过即整体拒绝、不截断,
+ * 所以取消选择必须自己按这个尺寸分块,而不是指望后端宽容。
+ */
+const SELECTION_MUTATION_MAX_ENTRIES = 200;
 
 export type ExternalImportSelectionWorkflow = {
   previewState: ExternalImportSelectionPreviewState;
@@ -82,6 +93,8 @@ export type ExternalImportSelectionWorkflow = {
   ) => void;
   setCandidateSelected: (candidateId: string, selected: boolean) => void;
   selectAll: () => void;
+  /** 取消已加载候选的选择;跨多页时只作用于已加载部分。 */
+  deselectLoaded: () => void;
   startImport: () => void;
   cancelImport: () => void;
 };
@@ -724,6 +737,113 @@ export function useExternalImportSelectionWorkflow(
     setTrackedSelection,
   ]);
 
+  /**
+   * 取消已加载候选的选择。
+   *
+   * 后端没有「全选」的反向谓词 command,而设计明确禁止把全部候选 ID 展开到前端,
+   * 所以这里的作用域**只有当前已加载的候选**——对绝大多数库(候选数远小于一页)
+   * 等同于取消全选;跨多页时只取消看得见的那些,不谎称清空了整个 snapshot。
+   * 每块最多 200 项并串行推进 revision:后端对超限是整体拒绝而非截断。
+   */
+  const deselectLoaded = useCallback(async () => {
+    const currentSelection = selectionRef.current;
+    const currentPreview = previewStateRef.current;
+    const currentBatchId = batchIdRef.current;
+    const generation = workflowGenerationRef.current;
+    if (
+      pendingActionRef.current !== null ||
+      currentBatchId === null ||
+      currentSelection === null ||
+      currentSelection.status !== "editing" ||
+      currentPreview.status !== "ready" ||
+      currentPreview.loadingMore
+    ) {
+      return;
+    }
+    const targets = currentPreview.candidates
+      .filter((candidate) => candidate.selected)
+      .map((candidate) => candidate.candidateId);
+    if (targets.length === 0) {
+      return;
+    }
+
+    setTrackedPendingAction("deselect-loaded");
+    setSelectionError(null);
+    let revision = currentSelection.revision;
+    try {
+      for (let offset = 0; offset < targets.length; offset += SELECTION_MUTATION_MAX_ENTRIES) {
+        const chunk = targets.slice(offset, offset + SELECTION_MUTATION_MAX_ENTRIES);
+        const result = await updateExternalImportSelection({
+          selectionId: currentSelection.selectionId,
+          expectedRevision: revision,
+          entries: chunk.map((candidateId) => ({
+            candidateId,
+            selected: false,
+            decision: null,
+          })),
+        });
+        if (!isExternalImportSelectionMutationResultDto(result)) {
+          throw { code: "external_import_selection_invalid" };
+        }
+        if (
+          !isCurrentSelectionWorkflow(
+            currentBatchId,
+            currentSelection.selectionId,
+            generation,
+          )
+        ) {
+          return;
+        }
+        // 前一块已经推进了 revision,后一块必须带上新的,否则会撞 CAS 冲突。
+        revision = result.revision;
+        setTrackedSelection(
+          applyExternalImportSelectionMutationResult(
+            { ...currentSelection, revision },
+            result,
+          ),
+        );
+      }
+      await reloadAuthoritativeFirstPage();
+    } catch (error) {
+      if (
+        !isCurrentSelectionWorkflow(
+          currentBatchId,
+          currentSelection.selectionId,
+          generation,
+        )
+      ) {
+        return;
+      }
+      const code = errorCodeFrom(error, "external_import_selection_invalid");
+      if (code === "selection_revision_conflict") {
+        await reloadAuthoritativeFirstPage();
+      }
+      if (code === "selection_expired") {
+        const latestSelection = selectionRef.current;
+        if (latestSelection?.selectionId === currentSelection.selectionId) {
+          setTrackedSelection({ ...latestSelection, status: "expired" });
+        }
+      }
+      setSelectionError(getExternalImportSelectionErrorMessage(code, extCopy.selection));
+    } finally {
+      if (
+        isCurrentSelectionWorkflow(
+          currentBatchId,
+          currentSelection.selectionId,
+          generation,
+        )
+      ) {
+        setTrackedPendingAction(null);
+      }
+    }
+  }, [
+    extCopy,
+    isCurrentSelectionWorkflow,
+    reloadAuthoritativeFirstPage,
+    setTrackedPendingAction,
+    setTrackedSelection,
+  ]);
+
   const startImport = useCallback(async () => {
     const currentBatchId = batchIdRef.current;
     const currentSelection = selectionRef.current;
@@ -931,6 +1051,10 @@ export function useExternalImportSelectionWorkflow(
     void selectAll();
   }, [selectAll]);
 
+  const runDeselectLoaded = useCallback(() => {
+    void deselectLoaded();
+  }, [deselectLoaded]);
+
   const runStartImport = useCallback(() => {
     void startImport();
   }, [startImport]);
@@ -962,6 +1086,7 @@ export function useExternalImportSelectionWorkflow(
     setCandidateDecision,
     setCandidateSelected,
     selectAll: runSelectAll,
+    deselectLoaded: runDeselectLoaded,
     startImport: runStartImport,
     cancelImport,
   };
