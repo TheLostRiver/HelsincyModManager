@@ -110,6 +110,7 @@ pub use preview_image::{
 };
 pub use profile::{
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    SystemDirectoryOpener,
 };
 pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
 pub use replacement::{

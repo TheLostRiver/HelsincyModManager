@@ -75,7 +75,8 @@ use hmm_infra::{
     SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
     SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
-    TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer, DEFAULT_LOG_STORAGE_MAX_BYTES,
+    SystemShellDirectoryOpener, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
+    DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
 use hmm_ports::{
     AppClock, AppSettingsRepository, AuditLogEvent, AuditLogReader, AuditLogWriter,
@@ -917,6 +918,7 @@ impl HmmRuntime {
                 profile_repository_for_profiles,
                 profile_save_settings_repository,
                 profile_save_directory_validator,
+                Arc::new(SystemShellDirectoryOpener::new()),
                 Arc::new(SystemClock),
             )),
             save_directory_discovery,
