@@ -166,7 +166,8 @@ pub use preview_image::{
     PreviewImageService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
 };
 pub use profile::{
-    CreateProfileRequest, ProfileService, SetProfileSaveSettingsRequest, UpdateProfileRequest,
+    CreateProfileRequest, ProfileDirectoryKind, ProfileService, SetProfileSaveSettingsRequest,
+    UpdateProfileRequest,
 };
 pub use reinstall::{
     InstalledReplacementReinstallContext, InstalledReplacementReinstallResolution,

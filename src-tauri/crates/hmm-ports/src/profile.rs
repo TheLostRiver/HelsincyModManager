@@ -30,3 +30,12 @@ pub trait ProfileSaveDirectoryValidator: Send + Sync {
 
     fn default_backup_directory(&self, game_id: &str) -> Result<ProfileDirectorySelection>;
 }
+
+/// 在系统文件管理器中打开一个已配置的目录。
+///
+/// 刻意只接受 `&Path` 而不是前端传入的字符串:调用方(app 层)必须先从后端持久化事实里
+/// 解析出路径,前端全程不经手路径,也就无法借这个能力打开任意位置。
+/// 实现方负责在打开前拒绝 symlink、重解析点和非目录。
+pub trait SystemDirectoryOpener: Send + Sync {
+    fn open_directory(&self, path: &std::path::Path) -> Result<()>;
+}

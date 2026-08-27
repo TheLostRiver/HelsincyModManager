@@ -20,6 +20,8 @@ export type SaveDirectoryCopy = {
     backupRowLabel: string;
     validating: string;
     choose: string;
+    openFolder: string;
+    openFolderFailed: string;
     detecting: string;
     autoDetect: string;
     errorFallback: string;
@@ -57,6 +59,8 @@ export const saveDirectoryCopy = {
       backupRowLabel: "备份目录",
       validating: "校验中",
       choose: "选择",
+      openFolder: "打开文件夹",
+      openFolderFailed: "无法打开该文件夹,请确认目录仍然存在。",
       detecting: "检测中",
       autoDetect: "自动检测",
       errorFallback: "目录不可用",
@@ -143,6 +147,8 @@ export const saveDirectoryCopy = {
       backupRowLabel: "Backup directory",
       validating: "Validating",
       choose: "Choose",
+      openFolder: "Open folder",
+      openFolderFailed: "Could not open the folder. Check that the directory still exists.",
       detecting: "Detecting",
       autoDetect: "Auto detect",
       errorFallback: "Directory unavailable",
@@ -229,6 +235,8 @@ export const saveDirectoryCopy = {
       backupRowLabel: "バックアップディレクトリ",
       validating: "検証中",
       choose: "選択",
+      openFolder: "フォルダーを開く",
+      openFolderFailed: "フォルダーを開けませんでした。ディレクトリが存在するか確認してください。",
       detecting: "検出中",
       autoDetect: "自動検出",
       errorFallback: "ディレクトリ利用不可",

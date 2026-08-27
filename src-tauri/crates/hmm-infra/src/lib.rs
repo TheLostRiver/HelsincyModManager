@@ -38,6 +38,7 @@ pub mod sqlite;
 mod staging;
 pub mod steam_discovery;
 mod steam_profile;
+mod system_directory_opener;
 mod task_log;
 mod text_log;
 #[cfg(windows)]
@@ -122,6 +123,7 @@ pub use steam_profile::{
     parse_steam_profile_xml, ReqwestSteamProfileHttpTransport, SteamCommunityProfileClient,
     SteamProfileHttpTransport,
 };
+pub use system_directory_opener::SystemShellDirectoryOpener;
 pub use task_log::FileSystemTaskLogWriter;
 pub use text_log::FileSystemTextLogReader;
 

@@ -5,9 +5,18 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppClock, ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    SystemDirectoryOpener,
 };
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// 可被「打开文件夹」入口消费的 profile 目录种类。刻意用枚举而非字符串:
+/// 前端只能在这两个值里选,无法表达任意目录。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileDirectoryKind {
+    Save,
+    Backup,
+}
 
 pub struct CreateProfileRequest {
     pub name: String,
@@ -34,6 +43,7 @@ pub struct ProfileService {
     profile_repository: Arc<dyn ProfileRepository>,
     save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
     save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator>,
+    directory_opener: Arc<dyn SystemDirectoryOpener>,
     clock: Arc<dyn AppClock>,
 }
 
@@ -42,12 +52,14 @@ impl ProfileService {
         profile_repository: Arc<dyn ProfileRepository>,
         save_settings_repository: Arc<dyn ProfileSaveSettingsRepository>,
         save_directory_validator: Arc<dyn ProfileSaveDirectoryValidator>,
+        directory_opener: Arc<dyn SystemDirectoryOpener>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
             profile_repository,
             save_settings_repository,
             save_directory_validator,
+            directory_opener,
             clock,
         }
     }
@@ -156,6 +168,28 @@ impl ProfileService {
             pre_restore_backup_enabled: true,
             updated_at: 0,
         })
+    }
+
+    /// 在系统文件管理器中打开该 profile 已配置的存档或备份目录。
+    ///
+    /// 路径只从后端持久化事实解析,调用方(Tauri command)只传 profile 与目录种类。
+    /// 目录未配置时返回稳定错误,而不是退化成打开某个默认位置。
+    pub fn open_profile_directory(
+        &self,
+        game_id: &str,
+        profile_id: &str,
+        kind: ProfileDirectoryKind,
+    ) -> Result<()> {
+        let settings = self.get_profile_save_settings(game_id, profile_id)?;
+        let selection = match kind {
+            ProfileDirectoryKind::Save => settings.save_directory,
+            ProfileDirectoryKind::Backup => settings.backup_directory,
+        };
+        let directory = selection
+            .directory
+            .ok_or_else(|| anyhow::anyhow!("profile directory is not configured"))?;
+        self.directory_opener
+            .open_directory(std::path::Path::new(&directory))
     }
 
     pub fn validate_profile_save_directory(
