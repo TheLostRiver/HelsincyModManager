@@ -106,7 +106,7 @@ Windows gate 后 certified）；CLI-3C batch Production admission（per-installa
   -> T17 Slice 4A 外部来源与只读预览 [completed, PR #196；PR #197 补齐 review 遗漏]
   -> T17 Slice 4B selection/decision/start/progress [completed, PR #198]
   -> T17 Slice 4C result/retry/performance/hardening [completed, PR #199]
-  -> T17 Slice 5 跨批次导入记录与保留期 [in-progress, 2026-08-25 开工]
+  -> T17 Slice 5 跨批次导入记录与保留期 [completed, PR #256/#257 + 收口 PR #263]
   -> QG-01 CI 质量门禁 [completed, PR #215]
   -> T13-00 批量语义设计 [design-complete；后续实现已认证]
   -> Slice A：CLI-2A/2B/2C + CORE-PREF-01 [completed]
@@ -144,7 +144,7 @@ Windows gate 后 certified）；CLI-3C batch Production admission（per-installa
   - [x] Task 10：Windows Sandbox L3、诊断脱敏、containment cleanup 与 CL3 closeout
 - [x] CL4：Gate A 本地 review、完整验证和 `certified` 状态记录
 
-Gate A、Gate B、T19、T18 与 T17 Slice 1–4C 均已完成（T17 Slice 5 导入记录 in-progress）；P7.2c、批量操作、
+Gate A、Gate B、T19、T18 与 T17 Slice 1–5 均已完成；P7.2c、批量操作、
 任务队列和新的非阻断视觉工作仍按各自恢复门禁评审，不因前置能力完成自动开工。
 
 ---
@@ -466,7 +466,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 ### T17: 第三方 Mod 管理器批量迁移（狩技盒子兼容）
 
 **前置**: 单包安全导入链路 + TaskManager/取消 + Mod 导入结果持久化
-**状态**: Slice 1–4C 已完成（4C 由 PR #199 交付）；Slice 5「跨批次导入记录与保留期」进行中（2026-08-25 开工）
+**状态**: Slice 1–5 已完成（4C 由 PR #199 交付；5A/5B 由 PR #256/#257 交付；5C–5F 的 PR #258–#261 因 stacked base 未 retarget 未进 main，最终由收口 PR #263 一次落地）
 **预估**: 大，按独立 review 切片推进（Slice 4 拆为 4A/4B/4C；Slice 5 拆为 6 个小 PR）
 **独立文档**: **已创建** → `docs/EXTERNAL_MOD_MANAGER_BATCH_IMPORT_DESIGN.md`
 
@@ -478,12 +478,12 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 - [x] Slice 4A：来源选择、scan task 状态和只读分页预览（PR #196；PR #197 补齐 review 遗漏）
 - [x] Slice 4B：候选选择/服务端全选、分类映射、冲突决定、sealed batch start 与严格按 `taskId` 的导入进度（PR #198）
 - [x] Slice 4C：权威分页结果、partial success、sealed selection 重试、新 taskId 进度复用、10,000 条人工性能门禁与最终加固（PR #199）
-- [ ] Slice 5A：跨批次历史查询面（migration 015 派生列、`list_external_import_batches`、保留期启动清理）
-- [ ] Slice 5B：结果明细显示候选 `displayName`（后端 JOIN + 前端 exact-key 守卫同 PR 原子更新）
-- [ ] Slice 5C：导入 Dialog 内「导入记录」页签 + 工具栏 icon 直达（零路由改动，drill-down 复用结果查询）
-- [ ] Slice 5D：迁移入口按钮工具栏治理（tooltip/警示点）+ 导入完成引导
-- [ ] Slice 5E：来源易用性——所选目录含 `Mods_582010` 时注册层自动下潜、缺 `files/` 载荷标注、0 项可导入引导文案
-- [ ] Slice 5F：Mod 详情面板脱敏来源行（adapter 显示名 + 导入时间）
+- [x] Slice 5A：跨批次历史查询面（migration 015 派生列、`list_external_import_batches`、保留期启动清理）（PR #256）
+- [x] Slice 5B：结果明细显示候选 `displayName`（后端 JOIN + 前端 exact-key 守卫同 PR 原子更新）（PR #257）
+- [x] Slice 5C：导入 Dialog 内「导入记录」页签 + 工具栏 icon 直达（零路由改动，drill-down 复用结果查询）（PR #258，经收口 PR #263 落地 main）
+- [x] Slice 5D：迁移入口按钮工具栏治理（tooltip/警示点）+ 导入完成引导（PR #259，经收口 PR #263 落地 main）
+- [x] Slice 5E：来源易用性——所选目录含 `Mods_582010` 时注册层自动下潜、缺 `files/` 载荷标注、0 项可导入引导文案（PR #260，经收口 PR #263 落地 main）
+- [x] Slice 5F：Mod 详情面板脱敏来源行（adapter 显示名 + 导入时间）（PR #261，经收口 PR #263 落地 main）
 
 硬边界:
 - 默认只导入，不自动安装、启用或写游戏目录
@@ -636,7 +636,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
   -> 已完成: T17 第三方批量迁移 Slice 4A（PR #196；PR #197 补齐 review 遗漏）
   -> 已完成: T17 Slice 4B（selection/decision/start/progress，PR #198）
   -> 已完成: T17 Slice 4C（result/retry/performance/hardening，PR #199）
-  -> in-progress: T17 Slice 5（跨批次导入记录与保留期，2026-08-25 开工）
+  -> 已完成: T17 Slice 5（跨批次导入记录与保留期，PR #256/#257 + 收口 PR #263）
   -> 已完成: GOV-01/GOV-02/GOV-03/GOV-04（PR #211/#212/#213/#214）
   -> 已完成: QG-01 CI 质量门禁（PR #215）
   -> design-complete: T13-00 批量设计与契约同步（后续实现已认证）
@@ -681,7 +681,7 @@ T13 新增批量按钮时该断言会强制它们真正可用。
 | T12 Mod 详情完整版 | P3 | 最小替换目标 Tab 已实现；其余完整版范围暂停 | |
 | T13 批量操作 | P0 | T13-00 至 T13-07 已完成；T13-08 Gate C 已 certified | #222（Slice B）/ #225（T13-07） |
 | T14 任务队列 UI | P3 | 暂停 | |
-| T17 第三方管理器批量迁移 | P2 | Slice 1–4C 已完成（4C 由 PR #199 交付）；Slice 5 跨批次导入记录 in-progress（2026-08-25） | #194（Slice 2）/ #195（Slice 3）/ #196（Slice 4A）/ #197（4A review 补救）/ #198（Slice 4B）/ #199（Slice 4C） |
+| T17 第三方管理器批量迁移 | P2 | Slice 1–5 已完成（Slice 5 的 5C–5F 由收口 PR #263 落地 main） | #194（Slice 2）/ #195（Slice 3）/ #196（Slice 4A）/ #197（4A review 补救）/ #198（Slice 4B）/ #199（Slice 4C）/ #256（Slice 5A）/ #257（Slice 5B）/ #263（5C–5F 收口） |
 | T18 Mod 库分页 | P2 | 已完成（Slice 1/2/3/4A/4B/4C；最后切片 PR #192） | #186（Slice 1）/ #187（Slice 2）/ #190（Slice 4A）/ #191（Slice 4B）/ #192（Slice 4C） |
 | T19 核心生命周期产品化加固 | P0 发布加固 | 已完成（A1-L3 独立 review/合并与完成证据齐备） | #184（最终 L3 收尾） |
 | T20 浮层动画收敛到共享基元 | P3 | 待评审（下次新增浮层前处理，或出现第三处重复实现时立即处理；Profile 删除确认 inline 问题已记录） | |
