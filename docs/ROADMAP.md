@@ -27,6 +27,11 @@
    服务端 retryable 重试。4C 复用同一 task progress 状态机处理重试返回的新 taskId，并在每个终态 task
    的首屏权威结果验证后至多刷新一次 Mod 库；10,000 条人工脱敏 result 的本机 p95=`3.937 ms`，低于固定
    `250 ms` 预算。默认仍只导入，不安装、启用或写游戏目录。
+   Slice 5「跨批次导入记录与保留期」已由 PR #256/#257（5A/5B）与收口 PR #263（5C–5F）落地：
+   `list_external_import_batches` 只读历史查询、导入 Dialog 内「导入记录」页签与工具栏直达、
+   结果明细显示候选 mod 名、Mod 详情脱敏来源行、狩技盒子安装根自动下潜与缺载荷标注。历史只读、
+   不提供从历史重试；保留期为已导入批次留最近 50 个、只扫描批次留 10 个且不超过 7 天、running
+   永不清理。PR #264 收口了该批 review 反馈。
    T17 范围保持 Windows + MHW:I；Linux/Steam Deck 和更多游戏不进入本轮。T13 与 T17 继续正交，
    已在 2026-07-30 优先级复审后从独立设计任务 T13-00 恢复，不复用 T17 的 import-only 编排。
 6. QG-01 已由 PR #215 合并并补齐 CI 质量门禁。[批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)
@@ -153,7 +158,7 @@ partial failure/retry、recovery、批量卸载和 exact baseline，并于 2026-
 - 添加独立的任务型新手引导 overlay；顶部入口从当前页面启动，逐一说明各页面重要操作区，并引导用户亲自点击真实导航目标后继续；不替换工作台右栏，也不自动触发业务操作。详见 [精准锚定式新手引导设计](ONBOARDING_TOUR_DESIGN.md)。
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
-Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C 与 T13 Slice A-D 均已完成。批量破坏性操作继续
+Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C/5 与 T13 Slice A-D 均已完成。批量破坏性操作继续
 受 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 约束，只在显式 Sandbox capability
 下开放；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
 CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
