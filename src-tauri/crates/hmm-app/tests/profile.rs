@@ -86,6 +86,37 @@ impl hmm_ports::SystemDirectoryOpener for RecordingDirectoryOpener {
     }
 }
 
+/// 记录 locator 收到的 (game_id, profile_id) 并返回固定路径——测试断言的是
+/// 「defaulted 走 locator、custom 不走」,真实布局与补建在 hmm-infra 单测覆盖。
+struct RecordingBackupDirectoryLocator {
+    calls: Mutex<Vec<(String, String)>>,
+    directory: std::path::PathBuf,
+}
+
+impl RecordingBackupDirectoryLocator {
+    fn returning(directory: &str) -> Self {
+        Self {
+            calls: Mutex::new(Vec::new()),
+            directory: std::path::PathBuf::from(directory),
+        }
+    }
+}
+
+impl hmm_ports::SaveBackupDirectoryLocator for RecordingBackupDirectoryLocator {
+    fn backup_directory_for_profile(
+        &self,
+        _selection: &ProfileDirectorySelection,
+        game_id: &str,
+        profile_id: &str,
+    ) -> Result<std::path::PathBuf> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((game_id.to_owned(), profile_id.to_owned()));
+        Ok(self.directory.clone())
+    }
+}
+
 struct FixedClock(u128);
 
 impl AppClock for FixedClock {
@@ -104,7 +135,7 @@ fn make_service_with_settings() -> (
     Arc<FakeProfileRepository>,
     Arc<FakeProfileSaveSettingsRepository>,
 ) {
-    let (service, repo, settings, _) = make_service_with_opener();
+    let (service, repo, settings, _, _) = make_service_with_opener();
     (service, repo, settings)
 }
 
@@ -112,20 +143,25 @@ fn make_service_with_opener() -> (
     ProfileService,
     Arc<FakeProfileRepository>,
     Arc<FakeProfileSaveSettingsRepository>,
+    Arc<RecordingBackupDirectoryLocator>,
     Arc<RecordingDirectoryOpener>,
 ) {
     let repo = Arc::new(FakeProfileRepository::default());
     let settings_repo = Arc::new(FakeProfileSaveSettingsRepository::default());
     let validator = Arc::new(FakeProfileSaveDirectoryValidator);
+    let locator = Arc::new(RecordingBackupDirectoryLocator::returning(
+        "D:/managed/saves/mhw/profile-1",
+    ));
     let opener = Arc::new(RecordingDirectoryOpener::default());
     let service = ProfileService::new(
         Arc::clone(&repo) as _,
         Arc::clone(&settings_repo) as _,
         validator,
+        Arc::clone(&locator) as _,
         Arc::clone(&opener) as _,
         Arc::new(FixedClock(7000)),
     );
-    (service, repo, settings_repo, opener)
+    (service, repo, settings_repo, locator, opener)
 }
 
 #[derive(Default)]
@@ -148,6 +184,25 @@ impl FakeProfileSaveSettingsRepository {
             profile_id: profile_id.to_owned(),
             save_directory: selection(save),
             backup_directory: selection(backup),
+            schedule: ProfileBackupSchedule::manual(),
+            retention: ProfileBackupRetention::default(),
+            steam_account: None,
+            pre_restore_backup_enabled: true,
+            updated_at: 0,
+        });
+    }
+
+    /// 塞入任意组合的两个目录 selection,给 defaulted/数据破损分支的测试用。
+    fn seed_selections(
+        &self,
+        profile_id: &str,
+        save: ProfileDirectorySelection,
+        backup: ProfileDirectorySelection,
+    ) {
+        self.settings.lock().unwrap().push(ProfileSaveSettings {
+            profile_id: profile_id.to_owned(),
+            save_directory: save,
+            backup_directory: backup,
             schedule: ProfileBackupSchedule::manual(),
             retention: ProfileBackupRetention::default(),
             steam_account: None,
@@ -212,6 +267,16 @@ fn custom_directory_selection(directory: &str) -> ProfileDirectorySelection {
         status: ProfileDirectoryStatus::Valid,
         directory: Some(directory.to_owned()),
         path_label: Some(path_label(directory)),
+        messages: Vec::new(),
+    }
+}
+
+fn defaulted_directory_selection() -> ProfileDirectorySelection {
+    ProfileDirectorySelection {
+        mode: ProfileDirectoryMode::Default,
+        status: ProfileDirectoryStatus::Defaulted,
+        directory: None,
+        path_label: None,
         messages: Vec::new(),
     }
 }
@@ -622,7 +687,7 @@ fn profile_save_settings_preserve_account_for_same_directory_and_clear_it_for_a_
 
 #[test]
 fn open_profile_directory_picks_the_configured_directory_for_each_kind() {
-    let (service, _repo, settings_repo, opener) = make_service_with_opener();
+    let (service, _repo, settings_repo, locator, opener) = make_service_with_opener();
     let profile_id = service
         .create_profile(CreateProfileRequest {
             name: "profile".to_owned(),
@@ -643,11 +708,84 @@ fn open_profile_directory_picks_the_configured_directory_for_each_kind() {
         opener.opened.lock().unwrap().as_slice(),
         ["D:/saves".to_owned(), "D:/backups".to_owned()]
     );
+    // 自定义目录按玩家选的原样打开,不经过托管布局解析。
+    assert!(locator.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn open_profile_directory_resolves_the_managed_directory_for_a_defaulted_backup() {
+    let (service, _repo, _settings_repo, locator, opener) = make_service_with_opener();
+    let profile_id = service
+        .create_profile(CreateProfileRequest {
+            name: "profile".to_owned(),
+            description: None,
+        })
+        .expect("create profile");
+
+    // 刻意不 seed settings:从未配置过的 profile 走 validator 兜底,
+    // 备份目录即 defaulted——这正是「从未备份过就点按钮」的场景。
+    service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Backup)
+        .expect("open defaulted backup directory");
+
+    // 打开的必须是 locator 解析出的托管路径,且 locator 收到正确的上下文。
+    assert_eq!(
+        opener.opened.lock().unwrap().as_slice(),
+        ["D:/managed/saves/mhw/profile-1".to_owned()]
+    );
+    assert_eq!(
+        locator.calls.lock().unwrap().as_slice(),
+        [("mhw".to_owned(), profile_id.clone())]
+    );
+}
+
+#[test]
+fn open_profile_directory_refuses_a_defaulted_save_directory() {
+    let (service, _repo, settings_repo, locator, opener) = make_service_with_opener();
+    let profile_id = service
+        .create_profile(CreateProfileRequest {
+            name: "profile".to_owned(),
+            description: None,
+        })
+        .expect("create profile");
+    settings_repo.seed_selections(
+        &profile_id,
+        defaulted_directory_selection(),
+        custom_directory_selection("D:/backups"),
+    );
+
+    // save 目录没有托管默认;即使出现 defaulted 的 save selection 也不解析、不打开。
+    assert!(service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Save)
+        .is_err());
+    assert!(locator.calls.lock().unwrap().is_empty());
+    assert!(opener.opened.lock().unwrap().is_empty());
+}
+
+#[test]
+fn open_profile_directory_refuses_a_custom_selection_without_a_directory() {
+    let (service, _repo, settings_repo, locator, opener) = make_service_with_opener();
+    let profile_id = service
+        .create_profile(CreateProfileRequest {
+            name: "profile".to_owned(),
+            description: None,
+        })
+        .expect("create profile");
+    let mut broken = custom_directory_selection("D:/backups");
+    broken.directory = None;
+    settings_repo.seed_selections(&profile_id, custom_directory_selection("D:/saves"), broken);
+
+    // Custom 缺 directory 是数据破损,不得误当托管默认去解析。
+    assert!(service
+        .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Backup)
+        .is_err());
+    assert!(locator.calls.lock().unwrap().is_empty());
+    assert!(opener.opened.lock().unwrap().is_empty());
 }
 
 #[test]
 fn open_profile_directory_refuses_when_the_directory_is_unset() {
-    let (service, _repo, _settings_repo, opener) = make_service_with_opener();
+    let (service, _repo, _settings_repo, locator, opener) = make_service_with_opener();
     let profile_id = service
         .create_profile(CreateProfileRequest {
             name: "profile".to_owned(),
@@ -659,5 +797,6 @@ fn open_profile_directory_refuses_when_the_directory_is_unset() {
     assert!(service
         .open_profile_directory("mhw", &profile_id, ProfileDirectoryKind::Save)
         .is_err());
+    assert!(locator.calls.lock().unwrap().is_empty());
     assert!(opener.opened.lock().unwrap().is_empty());
 }

@@ -124,6 +124,8 @@ export function SaveDirectoryPanel({
             }
             onChoose={() => void chooseDirectory("saveDirectory")}
             openFolderLabel={copy.panel.openFolder}
+            openFolderDisabled={previewMode}
+            canOpenDefaulted={false}
             onOpenFolder={() => void openFolder("save")}
           />
           <DirectoryRow
@@ -135,6 +137,8 @@ export function SaveDirectoryPanel({
             disabled={disabled || busyKind !== null}
             onChoose={() => void chooseDirectory("backupDirectory")}
             openFolderLabel={copy.panel.openFolder}
+            openFolderDisabled={previewMode}
+            canOpenDefaulted
             onOpenFolder={() => void openFolder("backup")}
           />
         </div>
@@ -160,6 +164,8 @@ function DirectoryRow({
   extraAction,
   onChoose,
   openFolderLabel,
+  openFolderDisabled,
+  canOpenDefaulted = false,
   onOpenFolder,
 }: {
   icon: ReactNode;
@@ -171,6 +177,8 @@ function DirectoryRow({
   extraAction?: ReactNode;
   onChoose: () => void;
   openFolderLabel: string;
+  openFolderDisabled: boolean;
+  canOpenDefaulted?: boolean;
   onOpenFolder: () => void;
 }) {
   const status = formatDirectoryStatus(selection, statusLabels);
@@ -195,14 +203,18 @@ function DirectoryRow({
         {/* 只在目录确实可打开时渲染。前端 DTO 刻意不含真实路径,所以按状态判断:
             - unset:没有可打开的东西
             - invalid:打开必然失败
-            - defaulted:默认备份目录的真实路径由 infra 用 save_backup_root 组装,
-              目前还没有暴露给打开入口,渲染出来点了只会报错。支持它需要把 opener
-              的 port 改成接收 selection + game/profile 上下文,另行处理。 */}
-        {selection.status === "valid" ? (
+            - valid:后端直接打开已配置的自定义目录
+            - defaulted:后端按 selection.mode 解析托管默认布局,目录缺失时按需
+              补建(只补应用自有托管树)再打开,前端仍然不经手路径。托管默认只
+            存在于备份目录,由调用处以 canOpenDefaulted 声明——存档行即使出现
+            defaulted 也不渲染入口,不给玩家一个必报错的按钮。
+            预览环境没有后端,打开又是无法造假的真实 OS 动作,按钮禁用而非隐藏:
+            保留可见形态,也不用新增文案。 */}
+        {selection.status === "valid" || (canOpenDefaulted && selection.status === "defaulted") ? (
           <button
             type="button"
             className="profile-directory-row__button"
-            disabled={disabled}
+            disabled={disabled || openFolderDisabled}
             onClick={onOpenFolder}
             title={openFolderLabel}
           >

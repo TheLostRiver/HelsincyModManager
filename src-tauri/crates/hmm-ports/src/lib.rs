@@ -124,10 +124,10 @@ pub use save_backup::{
     SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,
     SaveBackupCenterRepositoryFacts, SaveBackupCenterRepositoryItem,
     SaveBackupCenterRepositoryPage, SaveBackupCenterRepositoryProfileFacts,
-    SaveBackupCenterRepositoryQuery, SaveBackupDeleteReport, SaveBackupFileDeleteDisposition,
-    SaveBackupFileDeleteResult, SaveBackupRepository, SaveBackupSchedulerStateRepository,
-    SaveBackupWriteRequest, SaveBackupWriteResult, SaveBackupWriter,
-    SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
+    SaveBackupCenterRepositoryQuery, SaveBackupDeleteReport, SaveBackupDirectoryLocator,
+    SaveBackupFileDeleteDisposition, SaveBackupFileDeleteResult, SaveBackupRepository,
+    SaveBackupSchedulerStateRepository, SaveBackupWriteRequest, SaveBackupWriteResult,
+    SaveBackupWriter, SAVE_BACKUP_BACKGROUND_REGISTRY_SCHEMA_VERSION,
 };
 pub use save_directory::{
     GameSaveDirectoryRule, PendingSaveDirectoryCandidate, PendingSaveDirectoryCandidateStore,
