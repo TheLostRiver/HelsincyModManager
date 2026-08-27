@@ -10,12 +10,13 @@ import {
 import { FilePenLine, ImageIcon, Info, Save, Tag, Target, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
-import { resolveCopy, useI18n } from "../../shared/i18n";
+import { localeMeta, resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
+import { externalImportCopy } from "./external-import/externalImportCopy";
 import { modDetailDialogCopy } from "./modDetailDialogCopy";
 import { getModDetail } from "./modLibraryApi";
-import type { ModDetail, ModLibraryItem } from "./modLibraryTypes";
+import type { ModDetail, ModLibraryItem, ModOrigin } from "./modLibraryTypes";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import {
   getModCategories,
@@ -71,6 +72,29 @@ export function ModDetailDialog({
   // 加载副作用经 ref 取词，避免语言切换重新拉取详情。
   const dialogCopyRef = useRef(dialogCopy);
   dialogCopyRef.current = dialogCopy;
+  // 来源 adapter 显示名复用批量迁移文案,保持「狩技盒子」单一出处。
+  const externalAdapterLabels: Record<string, string> = resolveCopy(
+    externalImportCopy,
+    locale,
+  ).history.adapters;
+  const originLabel = (origin: ModOrigin) => {
+    if (origin.kind === "external_import") {
+      const sourceLabel =
+        (origin.adapterId ? externalAdapterLabels[origin.adapterId] : undefined) ??
+        dialogCopy.originUnknownSource;
+      const importedAt =
+        origin.importedAtUnixMillis !== null
+          ? new Date(origin.importedAtUnixMillis).toLocaleDateString(localeMeta[locale].bcp47)
+          : "";
+      return importedAt
+        ? dialogCopy.originExternalImport(sourceLabel, importedAt)
+        : dialogCopy.originExternalImport(sourceLabel, "—");
+    }
+    if (origin.kind === "migrated_v1") {
+      return dialogCopy.originMigrated;
+    }
+    return dialogCopy.originImported;
+  };
   const fallbackSnapshotRef = useRef<{ modId: string; item: ModLibraryItem | null | undefined }>({
     modId,
     item: fallbackItem,
@@ -365,6 +389,12 @@ export function ModDetailDialog({
                 <dt>{dialogCopy.packageIdLabel}</dt>
                 <dd>{detail?.packageId ?? fallbackSnapshotItem?.id ?? modId}</dd>
               </div>
+              {detail?.origin ? (
+                <div>
+                  <dt>{dialogCopy.originLabel}</dt>
+                  <dd>{originLabel(detail.origin)}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>{dialogCopy.selectedCategoriesLabel}</dt>
                 <dd>{selectedCategoryNames.length > 0 ? selectedCategoryNames.join(" / ") : dialogCopy.noCategoriesSelected}</dd>

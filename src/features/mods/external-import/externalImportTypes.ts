@@ -81,7 +81,8 @@ export type ExternalImportCandidateStatus =
   | "metadata_invalid"
   | "unsupported_entry"
   | "resource_limit_exceeded"
-  | "source_unreadable";
+  | "source_unreadable"
+  | "payload_missing";
 
 export type ExternalImportConflictKind = "none" | "content_duplicate" | "name_collision";
 
@@ -180,6 +181,35 @@ export type ExternalImportItemResultDto = {
 export type ExternalImportBatchResultPageDto = {
   batch: ExternalImportPreviewBatchDto;
   results: ExternalImportItemResultDto[];
+  totalCount: number;
+  nextCursor: string | null;
+};
+
+export const EXTERNAL_IMPORT_HISTORY_PAGE_SIZE = 20;
+export const EXTERNAL_IMPORT_HISTORY_PAGE_MAX_SIZE = 50;
+
+export type ExternalImportItemStatusCountsDto = {
+  total: number;
+  imported: number;
+  alreadyImported: number;
+  skipped: number;
+  blocked: number;
+  failed: number;
+  cancelled: number;
+};
+
+export type ExternalImportHistoryEntryDto = {
+  batchId: string;
+  adapterId: string;
+  scanStatus: ExternalImportScanStatus;
+  importStatus: ExternalImportBatchImportStatus;
+  createdAtUnixMillis: number;
+  candidateCount: number;
+  counts: ExternalImportItemStatusCountsDto;
+};
+
+export type ExternalImportHistoryPageDto = {
+  batches: ExternalImportHistoryEntryDto[];
   totalCount: number;
   nextCursor: string | null;
 };
