@@ -491,9 +491,12 @@ mod tests {
         let source_root = tempfile::tempdir().expect("source directory");
         fs::create_dir_all(source_root.path().join("Mods_582010").join("1001"))
             .expect("create library candidate");
-        if fs::create_dir(source_root.path().join("mods_582010")).is_err() {
+        match fs::create_dir(source_root.path().join("mods_582010")) {
+            Ok(()) => {}
             // 大小写不敏感的文件系统(NTFS 默认)造不出该冲突;CI 的 Linux runner 会真正跑到断言。
-            return;
+            // 只放过 AlreadyExists:其他 I/O 失败必须炸,否则这个用例会静默假绿。
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return,
+            Err(error) => panic!("failed to probe case sensitivity: {error}"),
         }
         fs::create_dir_all(source_root.path().join("mods_582010").join("2001"))
             .expect("create case-equivalent library candidate");
