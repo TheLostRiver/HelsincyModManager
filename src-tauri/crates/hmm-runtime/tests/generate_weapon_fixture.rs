@@ -181,6 +181,20 @@ fn emit_fixture(out: &Path) {
         "nativePC/wp/one/one002/mod/one002.mrl3",
         &artificial_mrl3("wp\\one\\one002\\tex\\weapon_BM"),
     );
+    // ---- 前置桩：文件存在但签名必然与 mhw-prerequisites.default.json 不符 ----
+    // 完全缺失会给出 MissingRequiredFile → 前置决策 Blocked，真机验收走不下去；
+    // 存在但签名不符是 InstalledUnverified → Warning，不阻塞——这正是真实玩家
+    // （loader 版本与规则库签名不一致）最常见的前置状态。
+    write_file(&game, "dinput8.dll", b"stub-dinput8\n");
+    write_file(&game, "loader.dll", b"stub-loader\n");
+    write_file(
+        &game,
+        "loader-config.json",
+        br#"{"enablePluginLoader":true}"#,
+    );
+    write_file(&game, "nativePC/plugins/MonsterLoader.dll", b"stub-monster-loader\n");
+    write_file(&game, "nativePC/plugins/QuestLoader.dll", b"stub-quest-loader\n");
+    write_file(&game, "nativePC/plugins/!CRCBypass.dll", b"stub-crc-bypass\n");
 
     // ---- Mod 源目录：源武器 one001，并刻意携带真实 Mod 必然有的杂项文件 ----
     let package = out.join(WRAP);
