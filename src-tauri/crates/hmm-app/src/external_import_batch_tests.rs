@@ -28,9 +28,10 @@ use hmm_ports::{
     ExternalImportSourceRegistry, ModImportCatalogSnapshot, ModImportCatalogUpsert,
     ModImportExternalCatalogAdmissionError, ModImportExternalCatalogUpsert,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
-    PreviewImageProcessingResult, StoredLogicalMod, StoredModImportAnalysis,
-    StoredModOriginProvenance, StoredModRevision, ThumbnailRef, ThumbnailStore,
+    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalysis,
+    ModPackageMetadataAnalyzer, PreparedModPackage, PreviewImageProcessingResult, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModRevision, ThumbnailRef,
+    ThumbnailStore,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -2539,13 +2540,16 @@ impl ModPackageMetadataAnalyzer for FixtureMetadataAnalyzer {
         &self,
         package_id: &str,
         _sandbox_root: &Path,
-    ) -> Result<ModPackageMetadata> {
-        Ok(ModPackageMetadata {
-            display_name: self
-                .display_name
-                .clone()
-                .or_else(|| Some(format!("Fixture {package_id}"))),
-            ..ModPackageMetadata::default()
+    ) -> Result<ModPackageMetadataAnalysis> {
+        Ok(ModPackageMetadataAnalysis {
+            metadata: ModPackageMetadata {
+                display_name: self
+                    .display_name
+                    .clone()
+                    .or_else(|| Some(format!("Fixture {package_id}"))),
+                ..ModPackageMetadata::default()
+            },
+            manifest_display_name: None,
         })
     }
 }

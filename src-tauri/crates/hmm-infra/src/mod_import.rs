@@ -11,7 +11,7 @@ use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
     DiagnosticPackageExporter, ModImportPackagePrepareReaderRequest,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportSandboxLocator,
-    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
+    ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, PreparedModPackage,
 };
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -280,7 +280,7 @@ impl ModPackageMetadataAnalyzer for SandboxModPackageMetadataAnalyzer {
         &self,
         _package_id: &str,
         sandbox_root: &Path,
-    ) -> Result<ModPackageMetadata> {
+    ) -> Result<ModPackageMetadataAnalysis> {
         let mut manifest_candidates = Vec::new();
         let mut readme_candidates = Vec::new();
         collect_metadata_candidates(
@@ -298,6 +298,12 @@ impl ModPackageMetadataAnalyzer for SandboxModPackageMetadataAnalyzer {
             }
         }
 
+        // manifest 声明的展示名要在 readme 回填之前截获：metadata.display_name
+        // 保持"manifest ?? readme 首行"的既有语义，供上层做继承判定；
+        // manifest_display_name 只承载 manifest 显式声明，供上层把压缩包
+        // 文件名插到 readme 之前。
+        let manifest_display_name = metadata.display_name.clone();
+
         if metadata.display_name.is_none() {
             for path in readme_candidates {
                 if let Some(display_name) = read_readme_display_name(&path)? {
@@ -307,7 +313,10 @@ impl ModPackageMetadataAnalyzer for SandboxModPackageMetadataAnalyzer {
             }
         }
 
-        Ok(metadata)
+        Ok(ModPackageMetadataAnalysis {
+            metadata,
+            manifest_display_name,
+        })
     }
 }
 
@@ -1091,7 +1100,8 @@ mod tests {
 
         let metadata = SandboxModPackageMetadataAnalyzer
             .analyze_metadata("pkg-1", temp.path())
-            .expect("analyze metadata");
+            .expect("analyze metadata")
+            .metadata;
 
         assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
     }
@@ -1114,7 +1124,8 @@ mod tests {
 
         let metadata = SandboxModPackageMetadataAnalyzer
             .analyze_metadata("pkg-1", temp.path())
-            .expect("analyze metadata");
+            .expect("analyze metadata")
+            .metadata;
 
         assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
         assert_eq!(metadata.version.as_deref(), Some("1.2.3"));
@@ -1186,7 +1197,8 @@ mod tests {
 
         let metadata = SandboxModPackageMetadataAnalyzer
             .analyze_metadata("pkg-1", temp.path())
-            .expect("analyze metadata");
+            .expect("analyze metadata")
+            .metadata;
 
         assert_eq!(metadata.display_name.as_deref(), Some("Better Mod Name"));
         assert_eq!(metadata.version.as_deref(), Some("1.2.3"));
@@ -1205,7 +1217,8 @@ mod tests {
 
         let metadata = SandboxModPackageMetadataAnalyzer
             .analyze_metadata("pkg-1", temp.path())
-            .expect("analyze metadata");
+            .expect("analyze metadata")
+            .metadata;
 
         assert_eq!(metadata.display_name.as_deref(), Some("Better Readme Name"));
     }
@@ -1218,9 +1231,51 @@ mod tests {
 
         let metadata = SandboxModPackageMetadataAnalyzer
             .analyze_metadata("pkg-1", temp.path())
-            .expect("analyze metadata");
+            .expect("analyze metadata")
+            .metadata;
 
         assert_eq!(metadata.display_name.as_deref(), Some("Readme Name"));
+    }
+
+    #[test]
+    fn metadata_analyzer_exposes_manifest_declared_name_separately() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(
+            temp.path().join("manifest.json"),
+            r#"{"displayName":"Manifest Name"}"#,
+        )
+        .expect("write manifest");
+        fs::write(temp.path().join("README.md"), "# Readme Name").expect("write readme");
+
+        let analysis = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        // manifest 声明名单独携带，供上层把压缩包文件名插到 readme 之前。
+        assert_eq!(
+            analysis.manifest_display_name.as_deref(),
+            Some("Manifest Name")
+        );
+        assert_eq!(
+            analysis.metadata.display_name.as_deref(),
+            Some("Manifest Name")
+        );
+    }
+
+    #[test]
+    fn metadata_analyzer_leaves_manifest_declared_name_empty_when_only_readme_declares() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        fs::write(temp.path().join("README.md"), "# Readme Name").expect("write readme");
+
+        let analysis = SandboxModPackageMetadataAnalyzer
+            .analyze_metadata("pkg-1", temp.path())
+            .expect("analyze metadata");
+
+        assert_eq!(analysis.manifest_display_name, None);
+        assert_eq!(
+            analysis.metadata.display_name.as_deref(),
+            Some("Readme Name")
+        );
     }
 
     fn create_zip(path: &Path, entries: &[(&str, &[u8])]) {

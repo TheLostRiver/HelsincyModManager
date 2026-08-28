@@ -87,9 +87,10 @@ pub use mod_import::{
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileReadRequest,
     ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage, StoredImportPreviewImage,
-    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
-    StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
+    ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, PreparedModPackage,
+    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
+    StoredModPackageMetadata, StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE,
+    MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,

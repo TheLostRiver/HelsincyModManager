@@ -3,9 +3,10 @@ use hmm_core::{Category, ModId, ModMetadataOverlay, ModRevisionId, PreviewImageR
 use hmm_ports::{
     CategoryRepository, ModImportPackagePrepareRequest, ModImportPackagePreparer,
     ModImportResultRepository, ModMetadataRepository, ModPackageMetadata,
-    ModPackageMetadataAnalyzer, PreparedModPackage, PreviewImageProcessingResult,
-    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
-    StoredModPackageMetadata, StoredModRevision, ThumbnailRef, ThumbnailStore,
+    ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, PreparedModPackage,
+    PreviewImageProcessingResult, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, ThumbnailRef, ThumbnailStore,
 };
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -771,12 +772,15 @@ impl ModPackageMetadataAnalyzer for FixedMetadataAnalyzer {
         &self,
         _package_id: &str,
         _sandbox_root: &Path,
-    ) -> anyhow::Result<ModPackageMetadata> {
-        Ok(ModPackageMetadata {
-            display_name: Some("Candidate Revision".to_owned()),
-            version: Some("2.0".to_owned()),
-            category: Some("candidate-import".to_owned()),
-            ..ModPackageMetadata::default()
+    ) -> anyhow::Result<ModPackageMetadataAnalysis> {
+        Ok(ModPackageMetadataAnalysis {
+            metadata: ModPackageMetadata {
+                display_name: Some("Candidate Revision".to_owned()),
+                version: Some("2.0".to_owned()),
+                category: Some("candidate-import".to_owned()),
+                ..ModPackageMetadata::default()
+            },
+            manifest_display_name: None,
         })
     }
 }
@@ -788,10 +792,13 @@ impl ModPackageMetadataAnalyzer for MissingDisplayNameMetadataAnalyzer {
         &self,
         _package_id: &str,
         _sandbox_root: &Path,
-    ) -> anyhow::Result<ModPackageMetadata> {
-        Ok(ModPackageMetadata {
-            version: Some("2.0".to_owned()),
-            ..ModPackageMetadata::default()
+    ) -> anyhow::Result<ModPackageMetadataAnalysis> {
+        Ok(ModPackageMetadataAnalysis {
+            metadata: ModPackageMetadata {
+                version: Some("2.0".to_owned()),
+                ..ModPackageMetadata::default()
+            },
+            manifest_display_name: None,
         })
     }
 }

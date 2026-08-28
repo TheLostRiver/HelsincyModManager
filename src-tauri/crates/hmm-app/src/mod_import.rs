@@ -73,6 +73,10 @@ pub struct ModImportAnalysisResult {
 pub struct ModImportPrepareRequest {
     pub task_id: String,
     pub archive_path: PathBuf,
+    /// 压缩包文件名派生的展示名候选。只允许用于命名新建 logical Mod：
+    /// revision 导入必须传 `None`，否则压缩包文件名会覆盖既有 Mod 的既定
+    /// 名称乃至包内 manifest 声明，违背"revision 导入不重命名"的约定。
+    pub archive_display_name_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,9 +306,19 @@ impl ModImportTaskRunner {
             }
         }
 
+        // 文件名只用于命名新建 logical Mod。revision 导入传 None：既有 Mod
+        // 的既定名称不该被压缩包文件名覆盖，manifest 声明的作者意图也不该
+        // 被它压过——"revision 导入不重命名"的约定在 hint 层就要生效。
+        let archive_display_name_hint = match &target {
+            ModImportCatalogTarget::NewLogicalMod => {
+                mod_display_name_from_archive_path(&archive_path)
+            }
+            ModImportCatalogTarget::ExistingLogicalMod(_) => None,
+        };
         let request = ModImportPrepareRequest {
             task_id: task_id.to_owned(),
             archive_path,
+            archive_display_name_hint,
         };
         let cancellation_token = TaskManagerCancellationToken {
             task_manager: Arc::clone(&self.task_manager),
@@ -997,9 +1011,9 @@ impl ModImportPrepareService {
                 task_id: request.task_id.clone(),
                 package_id: prepared_package.package_id,
                 sandbox_root: prepared_package.sandbox_root,
-                archive_display_name_hint: mod_display_name_from_archive_path(
-                    &request.archive_path,
-                ),
+                // hint 由调用方按导入目标给出（只命名新建 logical Mod），
+                // 这里只透传，不再从归档路径自行推导。
+                archive_display_name_hint: request.archive_display_name_hint,
             },
             cancellation_token,
         )?;
@@ -1149,22 +1163,31 @@ impl ModImportAnalysisService {
         };
         ensure_not_cancelled(cancellation_token)?;
 
-        let metadata = self
+        let metadata_analysis = self
             .metadata_analyzer
             .analyze_metadata(&request.package_id, &request.sandbox_root)
             .unwrap_or_default();
-        // 三级优先：包内元数据声明的名称 → 压缩包文件名 → package_id。
+        let metadata = metadata_analysis.metadata;
+        // 四级优先：manifest 显式声明 → 压缩包文件名 → readme 首行 → package_id。
+        //
+        // 文件名排在 readme 之前：文件名是导入者导入前唯一亲自确认过的名称
+        // （自己下载、自己归档），readme 首行可能是教程、致谢或广告，拿它当
+        // 名字会得到"安装教程"这类毫无辨识度的条目。readme 只在文件名缺席时
+        // 兜底（外部导入等没有归档路径的入口）。
         //
         // 只写 analysis.display_name，绝不回填 metadata.display_name：后者是 revision
         // 继承的判据（见本文件 catalog 保存分支对 metadata.display_name.is_none() 的判断），
         // 把文件名写进去会让 revision 导入用新压缩包的文件名重命名既有 logical Mod。
         //
+        // metadata.display_name 在这一级只可能兜出 readme：manifest 声明已被
+        // manifest_display_name 吃掉，两个来源不会重复参与。
+        //
         // 末端必须是 package_id 而非空串：投影仓储在 display_name 为空时会硬失败
         // 整个写入，而文件名可能净化成 None（纯空白或非 UTF-8 的 stem）。
-        let display_name = metadata
-            .display_name
-            .clone()
+        let display_name = metadata_analysis
+            .manifest_display_name
             .or_else(|| request.archive_display_name_hint.clone())
+            .or_else(|| metadata.display_name.clone())
             .unwrap_or_else(|| request.package_id.clone());
 
         Ok(ModImportAnalysisResult {

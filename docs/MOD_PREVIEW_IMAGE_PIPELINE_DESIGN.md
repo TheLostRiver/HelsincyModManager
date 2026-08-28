@@ -465,7 +465,7 @@ duration_ms
 - 候选图片数量超过限制时保留 top N 继续处理，scanner 和 app 层服务都不能处理超过策略上限的候选。
 - 缩略图缓存写入失败时导入仍返回 fallback。
 - 缩略图缓存清理只删除未引用普通文件，保留当前引用，跳过 symlink 或异常 entry，不越过缓存根。
-- 包元数据展示名优先来自 sandbox manifest/readme，缺失或损坏时回退 package id，且不读取 sandbox 外路径。
+- 包元数据展示名优先级为：sandbox manifest 显式声明 → 压缩包文件名（仅新建 Mod 导入）→ readme 首行（末端兜底）→ 回退 package id，且不读取 sandbox 外路径。
 - zip 沙盒准备器拒绝路径穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限，且失败时清理本次 task sandbox。
 - protocol handler 拒绝 traversal、absolute path、symlinked `thumbnails` 根、package / 文件 symlink、未登记 package，并返回正确 content type。
 - 前端卡片在有图、无图、图片加载失败时比例不变。
