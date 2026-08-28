@@ -11,6 +11,7 @@ export type GameSetupCopy = {
     dialogTitle: string;
     scanSteam: string;
     manualSelect: string;
+    changeDirectory: string;
   };
   candidates: {
     listAria: string;
@@ -55,6 +56,7 @@ export const gameSetupCopy = {
       dialogTitle: "选择《怪物猎人：世界 冰原》游戏目录",
       scanSteam: "自动扫描 Steam",
       manualSelect: "手动选择游戏目录",
+      changeDirectory: "更改游戏目录",
     },
     candidates: {
       listAria: "Steam 候选目录",
@@ -97,6 +99,7 @@ export const gameSetupCopy = {
       dialogTitle: "Select the Monster Hunter World: Iceborne game directory",
       scanSteam: "Auto-scan Steam",
       manualSelect: "Select game directory manually",
+      changeDirectory: "Change game directory",
     },
     candidates: {
       listAria: "Steam candidate directories",
@@ -139,6 +142,7 @@ export const gameSetupCopy = {
       dialogTitle: "『モンスターハンターワールド：アイスボーン』のゲームディレクトリを選択",
       scanSteam: "Steam を自動スキャン",
       manualSelect: "ゲームディレクトリを手動選択",
+      changeDirectory: "ゲームディレクトリを変更",
     },
     candidates: {
       listAria: "Steam 候補ディレクトリ",

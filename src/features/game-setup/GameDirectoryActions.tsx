@@ -6,6 +6,12 @@ import { messageForError } from "./gameSetupViewModel";
 
 type GameDirectoryActionsProps = {
   isBusy: boolean;
+  /**
+   * setup：未配置时的完整动作（扫描 Steam + 手动选择）；
+   * change：已配置时的紧凑更改入口，只保留手动选择——已配置后不该再
+   * 用同等分量的扫描动作挤占启动卡片的注意力，但更改目录必须始终可达。
+   */
+  variant: "setup" | "change";
   onDirectorySelected: (directory: string) => Promise<void>;
   onActionError: (message: string) => void;
   onScanSteam: () => Promise<void>;
@@ -13,6 +19,7 @@ type GameDirectoryActionsProps = {
 
 export function GameDirectoryActions({
   isBusy,
+  variant,
   onDirectorySelected,
   onActionError,
   onScanSteam,
@@ -42,6 +49,23 @@ export function GameDirectoryActions({
     } catch {
       onActionError(messageForError("unknown", copy.errors));
     }
+  }
+
+  if (variant === "change") {
+    return (
+      <div className="setup-actions" data-tour-id="dashboard.directory-actions">
+        <button
+          type="button"
+          className="secondary-action"
+          disabled={isBusy}
+          data-tour-id="dashboard.manual-directory"
+          onClick={() => void handleManualSelect()}
+        >
+          <FolderOpen size={16} />
+          {copy.actions.changeDirectory}
+        </button>
+      </div>
+    );
   }
 
   return (

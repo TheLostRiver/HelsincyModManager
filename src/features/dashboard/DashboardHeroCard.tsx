@@ -71,14 +71,14 @@ export function DashboardHeroCard({
         <p>{copy.description}</p>
       </div>
 
-      {status.kind !== "configured" ? (
-        <GameDirectoryActions
-          isBusy={isBusy}
-          onDirectorySelected={onDirectorySelected}
-          onActionError={onActionError}
-          onScanSteam={onScanSteam}
-        />
-      ) : null}
+      {/* 已配置也保留更改入口：自动扫描可能选错目录，目录必须始终可改。 */}
+      <GameDirectoryActions
+        variant={status.kind === "configured" ? "change" : "setup"}
+        isBusy={isBusy}
+        onDirectorySelected={onDirectorySelected}
+        onActionError={onActionError}
+        onScanSteam={onScanSteam}
+      />
 
       <div
         className={`launch-action-card${isLaunchReady ? "" : " is-disabled"}`}
