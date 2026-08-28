@@ -678,10 +678,16 @@ export function ReplacementTargetPanel({
                     </div>
                   </dl>
                   {previewState.preview.installPlan.hasBlockingConflicts ? (
-                    <div className="replacement-panel__inline-state is-error">
-                      <ShieldAlert size={17} aria-hidden="true" />
-                      {rCopy.panel.blockingConflicts(previewState.preview.installPlan.conflicts.length)}
-                    </div>
+                    <>
+                      <div className="replacement-panel__inline-state is-error">
+                        <ShieldAlert size={17} aria-hidden="true" />
+                        {rCopy.panel.blockingConflicts(previewState.preview.installPlan.conflicts.length)}
+                      </div>
+                      <div className="replacement-panel__inline-state is-warning" role="status">
+                        <AlertTriangle size={17} aria-hidden="true" />
+                        {rCopy.panel.blockingConflictHint}
+                      </div>
+                    </>
                   ) : (
                     <div className="replacement-panel__inline-state is-success">
                       <CheckCircle2 size={17} aria-hidden="true" />

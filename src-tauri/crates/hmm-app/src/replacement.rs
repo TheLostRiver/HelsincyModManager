@@ -1,13 +1,14 @@
 use hmm_core::{
-    FileLayer, GameId, InstallFileProvider, InstallPlan, InstallPlanValidationError, ModId,
-    ModRevisionId, PackageFileId, ProfileId, ReplacementAnalysis, ReplacementBinding,
-    ReplacementBindingId, ReplacementBindingSnapshot, ReplacementTarget, ReplacementTargetId,
-    RetargetError, RetargetPlan,
+    FileLayer, GameId, InstallConflict, InstallFileProvider, InstallManifestStatusConsumption,
+    InstallPlan, InstallPlanValidationError, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
+    ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan,
 };
 use hmm_ports::{
-    AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReadRequest,
-    ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    ReplacementAdapter, ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
+    AppClock, InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ReplacementAdapter,
+    ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
     ReplacementAssetContentReader, ReplacementCatalogError, ReplacementCatalogProvider,
     RetargetPlanRequest, RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
 };
@@ -86,6 +87,8 @@ pub enum ReplacementWorkflowError {
     TargetAlreadySelected,
     #[error("retarget install plan is unavailable")]
     PlanUnavailable,
+    #[error("install manifest is unavailable")]
+    InstallManifestUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +218,7 @@ pub struct ReplacementWorkflowService {
     file_scanner: Arc<dyn ModPackageInstallFileScanner>,
     file_reader: Arc<dyn ModPackageInstallFileReader>,
     install_status: Arc<dyn InitialRetargetInstallStatusReader>,
+    install_manifests: Arc<dyn InstallManifestRepository>,
     clock: Arc<dyn AppClock>,
 }
 
@@ -355,6 +359,7 @@ impl ReplacementWorkflowService {
         file_scanner: Arc<dyn ModPackageInstallFileScanner>,
         file_reader: Arc<dyn ModPackageInstallFileReader>,
         install_status: Arc<dyn InitialRetargetInstallStatusReader>,
+        install_manifests: Arc<dyn InstallManifestRepository>,
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
@@ -365,6 +370,7 @@ impl ReplacementWorkflowService {
             file_scanner,
             file_reader,
             install_status,
+            install_manifests,
             clock,
         }
     }
@@ -484,11 +490,9 @@ impl ReplacementWorkflowService {
         &self,
         request: PreviewInitialRetargetInstallRequest,
     ) -> Result<PlannedInitialRetargetInstall, ReplacementWorkflowError> {
-        self.ensure_initial_install_allowed(
-            &request.game_id,
-            &request.profile_id,
-            &request.mod_id,
-        )?;
+        let profile_id = request.profile_id.clone();
+        let mod_id = request.mod_id.clone();
+        self.ensure_initial_install_allowed(&request.game_id, &profile_id, &mod_id)?;
         let resolved = self.resolve_imported_replacement(&request.game_id, &request.mod_id)?;
         let source = resolved
             .analysis
@@ -535,6 +539,8 @@ impl ReplacementWorkflowService {
                 Some(resolved.revision_id.clone()),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        let install_plan =
+            self.append_cross_mod_target_conflicts(install_plan, &profile_id, &mod_id)?;
 
         Ok(PlannedInitialRetargetInstall {
             package_id: resolved.package_id,
@@ -545,6 +551,56 @@ impl ReplacementWorkflowService {
             retarget_plan,
             install_plan,
         })
+    }
+
+    /// 初始重定向安装不得覆盖其他 Mod 已管理的目标文件。
+    ///
+    /// `InstallPlan::from_providers` 只能看见本计划内的 provider，跨 Mod 的目标
+    /// 占用记录在 profile 安装清单里；这里把外来 owner 以冲突 provider 的形式
+    /// 并入 plan.conflicts，使预览与任务期重建的计划都携带阻断冲突——前端按钮
+    /// 门禁与 commit 侧 `PlanHasBlockingConflicts` 因此同时生效。
+    /// 清单不存在视为干净目标；读取失败或状态不可信（提交中/待恢复）按
+    /// fail-closed 返回错误，绝不放行一次归属未知的写入。
+    fn append_cross_mod_target_conflicts(
+        &self,
+        mut install_plan: InstallPlan,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<InstallPlan, ReplacementWorkflowError> {
+        let manifest = match self.install_manifests.load_manifest(profile_id) {
+            Ok(Some(manifest))
+                if manifest.status.consumption()
+                    == InstallManifestStatusConsumption::TrustEntries =>
+            {
+                manifest
+            }
+            Ok(Some(_)) | Err(_) => {
+                return Err(ReplacementWorkflowError::InstallManifestUnavailable);
+            }
+            Ok(None) => return Ok(install_plan),
+        };
+
+        let foreign_conflicts = manifest
+            .entries
+            .iter()
+            .filter(|entry| &entry.mod_id != mod_id)
+            .filter(|entry| {
+                install_plan
+                    .actions
+                    .iter()
+                    .any(|action| action.target_path == entry.target_path)
+            })
+            .map(|entry| InstallConflict {
+                target_path: entry.target_path.clone(),
+                providers: vec![InstallFileProvider::new(
+                    entry.mod_id.clone(),
+                    entry.package_file_id.clone(),
+                    entry.target_path.clone(),
+                    entry.layer.clone(),
+                )],
+            });
+        install_plan.conflicts.extend(foreign_conflicts);
+        Ok(install_plan)
     }
 
     pub fn materialize_initial_install(

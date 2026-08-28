@@ -729,6 +729,7 @@ impl HmmRuntime {
             install_file_scanner,
             install_file_reader,
             initial_retarget_install_status,
+            Arc::clone(&install_manifest_repository),
             Arc::new(SystemClock),
         ));
         let content_transformers = Arc::new(

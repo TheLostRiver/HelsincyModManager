@@ -41,6 +41,10 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /previewInitialRetargetInstall/);
   assert.match(panel, /startRetargetInstallTask/);
   assert.match(panel, /previewRetargetReinstall/);
+  // 阻断冲突横幅 + 人性化提示（跨 Mod 同目标占用）必须同时渲染。
+  assert.match(panel, /installPlan\.hasBlockingConflicts \?/);
+  assert.match(panel, /rCopy\.panel\.blockingConflicts\(/);
+  assert.match(panel, /rCopy\.panel\.blockingConflictHint\}/);
   assert.match(panel, /startRetargetReinstallTask/);
   assert.match(panel, /cancelRetargetInstallTask/);
   assert.match(panel, /rCopy\.panel\.cancelTask/);

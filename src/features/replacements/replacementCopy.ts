@@ -67,6 +67,7 @@ export type ReplacementCopy = {
     factActions: string;
     blockingConflicts: (count: number) => string;
     noBlockingConflicts: string;
+    blockingConflictHint: string;
     prerequisiteResultsAria: string;
     countRetained: string;
     countReplaced: string;
@@ -246,6 +247,10 @@ export const replacementCopy = {
         },
         replacement_target_already_selected: { message: "当前目标已安装。" },
         replacement_preview_unavailable: { message: "替换预览暂不可用。" },
+        replacement_install_manifest_unavailable: {
+          message: "安装清单暂时不可用，无法确认写入是否安全。",
+          hint: "请稍后刷新重试；若持续出现，请先在恢复中心处理未完成的恢复项。",
+        },
         replacement_reinstall_preview_unavailable: {
           message: "无法读取目标切换预览的完整信息。",
           hint: "请刷新后重试；若持续出现，请连同当前 Mod 与目标一起反馈。",
@@ -306,6 +311,7 @@ export const replacementCopy = {
       factActions: "写入动作",
       blockingConflicts: (count: number) => `检测到 ${count} 个阻断冲突`,
       noBlockingConflicts: "未检测到阻断冲突",
+      blockingConflictHint: "目标文件可能已被其他 Mod 安装占用，请先卸载占用该目标的 Mod 后重试",
       prerequisiteResultsAria: "安装前置检查结果",
       countRetained: "保留",
       countReplaced: "替换",
@@ -483,6 +489,10 @@ export const replacementCopy = {
         },
         replacement_target_already_selected: { message: "The current target is already installed." },
         replacement_preview_unavailable: { message: "Replacement preview is temporarily unavailable." },
+        replacement_install_manifest_unavailable: {
+          message: "The install manifest is temporarily unavailable; write safety cannot be confirmed.",
+          hint: "Refresh and retry later; if it persists, resolve pending recovery items in the recovery center first.",
+        },
         replacement_reinstall_preview_unavailable: {
           message: "Complete target switch preview info could not be read.",
           hint: "Refresh and retry; if it persists, report it along with the current mod and target.",
@@ -543,6 +553,7 @@ export const replacementCopy = {
       factActions: "Write actions",
       blockingConflicts: (count: number) => `${count} blocking conflict${count === 1 ? "" : "s"} detected`,
       noBlockingConflicts: "No blocking conflicts detected",
+      blockingConflictHint: "The target files may already be occupied by another installed mod. Uninstall the mod that owns this target first, then retry.",
       prerequisiteResultsAria: "Install prerequisite check results",
       countRetained: "Retained",
       countReplaced: "Replaced",
@@ -720,6 +731,10 @@ export const replacementCopy = {
         },
         replacement_target_already_selected: { message: "現在のターゲットは既にインストール済みです。" },
         replacement_preview_unavailable: { message: "置換プレビューは一時的に利用できません。" },
+        replacement_install_manifest_unavailable: {
+          message: "インストールマニフェストが一時的に利用できず、書き込みの安全性を確認できません。",
+          hint: "しばらくしてから更新して再試行してください。継続する場合は先にリカバリーセンターで未完了の復旧を処理してください。",
+        },
         replacement_reinstall_preview_unavailable: {
           message: "ターゲット切替プレビューの完全な情報を読み取れませんでした。",
           hint: "更新して再試行してください。継続する場合は現在の Mod とターゲットと併せて報告してください。",
@@ -780,6 +795,7 @@ export const replacementCopy = {
       factActions: "書き込みアクション",
       blockingConflicts: (count: number) => `${count} 件のブロッキング競合を検出`,
       noBlockingConflicts: "ブロッキング競合は検出されませんでした",
+      blockingConflictHint: "対象ファイルは他のインストール済み Mod が使用中の可能性があります。先にその Mod をアンインストールしてから再試行してください。",
       prerequisiteResultsAria: "インストール前提チェック結果",
       countRetained: "保持",
       countReplaced: "置換",
