@@ -1,4 +1,4 @@
-use super::path::parse_safe_relative_path;
+use super::path::{parse_safe_relative_path, strip_leading_package_dirs};
 use super::{
     WeaponFamily, WeaponModelAssetKind, WeaponModelAssetPath, WeaponPartId, WeaponPartRole,
     WeaponPathError, WeaponResourceRoot,
@@ -35,6 +35,10 @@ pub enum WeaponAnalysisError {
     UnknownPart,
     #[error("weapon package contains an incomplete MOD3/MRL3 pair")]
     IncompleteBinaryPair,
+    /// 保留但不再产生：真实武器包几乎必然携带 readme、预览图等非武器文件，
+    /// 以"混合包"为由拒绝会让绝大多数 Mod 不可用。杂项文件现在被忽略，
+    /// 门禁下限收敛到 `SourceNotFound`（一件武器资源都没有）。
+    /// 错误码与前端文案保留，存量 manifest 与日志中的历史记录仍可解析。
     #[error("weapon package contains mixed install payload")]
     MixedInstallPayload,
     #[error("weapon package contains an unsupported resource")]
@@ -192,8 +196,16 @@ pub fn analyze_mhw_weapon_assets(
             return Err(WeaponAnalysisError::DuplicatePackageFileId);
         }
 
-        let relative_path = parse_safe_relative_path(asset.relative_path())
+        // 先做安全校验再剥离外层目录：顺序颠倒会让 `a/../../nativePC/...`
+        // 借剥离绕过父目录遍历检测。
+        let safe_path = parse_safe_relative_path(asset.relative_path())
             .map_err(|_| WeaponAnalysisError::UnsafePath)?;
+        // 与 nativePC 无关的文件（readme、预览图、可选贴图…）不参与武器闭包。
+        // 真机上这类文件几乎必然存在，过去会把整个 Mod 判成混合包而拒绝；
+        // 这里只忽略，若最后一件武器资源都没有再报 SourceNotFound。
+        let Some(relative_path) = strip_leading_package_dirs(&safe_path) else {
+            continue;
+        };
         let canonical_path = relative_path.as_str().to_owned();
         let path_key = canonical_path.to_ascii_lowercase();
         if let Some(previous_path) = path_keys.insert(path_key, canonical_path.clone()) {
@@ -229,18 +241,22 @@ pub fn analyze_mhw_weapon_assets(
     });
 
     let mut parsed_assets = Vec::new();
-    let mut mixed_payload_count = 0usize;
     for asset in prepared {
+        // 剥离外层目录后仍不是武器资源（防具、NPC 之类的 nativePC 子树）
+        // 同样只忽略。真正需要硬失败的是 `UnsupportedResource`——那是
+        // `nativePC/wp/` 底下出现了形态不对的东西，属于明确的包结构错误信号。
         match WeaponModelAssetPath::parse(asset.relative_path.as_str()) {
             Ok(model_path) => parsed_assets.push(WeaponSourceAsset {
                 package_file_id: asset.package_file_id,
                 model_path,
             }),
-            Err(WeaponPathError::NotWeaponPath) => mixed_payload_count += 1,
+            Err(WeaponPathError::NotWeaponPath) => continue,
             Err(error) => return Err(map_path_error(error)),
         }
     }
 
+    // 放宽 mixed payload 后的门禁下限：一件武器资源都没有就必须失败，
+    // 否则纯杂物包会被当成合法（空）武器包放过。
     if parsed_assets.is_empty() {
         return Err(WeaponAnalysisError::SourceNotFound);
     }
@@ -259,9 +275,6 @@ pub fn analyze_mhw_weapon_assets(
         .collect::<BTreeSet<_>>();
     if roots.len() > 1 {
         return Err(WeaponAnalysisError::MultipleSourceRoots);
-    }
-    if mixed_payload_count > 0 {
-        return Err(WeaponAnalysisError::MixedInstallPayload);
     }
 
     let root = roots

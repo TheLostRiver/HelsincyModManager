@@ -245,8 +245,22 @@ fn contains_weapon_plan_candidate(request: &RetargetPlanRequest) -> bool {
         .any(|asset| is_weapon_path(asset.relative_path()))
 }
 
+/// 判定是否含武器资源候选。
+///
+/// 这里只做粗筛，真正的语法校验在 `analyze_mhw_weapon_assets`。
+/// 不能要求 `nativePC` 是首段：绝大多数真实 Mod 压缩包在 `nativePC` 之外
+/// 还包了一层作者自建目录（`MyWeaponMod/nativePC/wp/...`），而上游解压与
+/// 扫描链路没有剥离公共根目录。过去用前缀匹配导致这类包整包被送去防具
+/// 适配器，最后报一个与武器无关的错误。
+///
+/// 注意这里**不会**把防具包误判成武器：防具路径是 `nativePC/pl/...`、
+/// `nativePC/ch/...` 等，`nativePC` 之后紧跟的分量不是 `wp`。
 fn is_weapon_path(path: &str) -> bool {
-    path.replace('\\', "/").starts_with("nativePC/wp/")
+    path.replace('\\', "/")
+        .split('/')
+        .skip_while(|segment| *segment != "nativePC")
+        .nth(1)
+        == Some("wp")
 }
 
 fn ensure_mhw(game_id: &GameId) -> ReplacementAdapterResult<()> {
@@ -610,6 +624,34 @@ mod tests {
                 assets: artificial_weapon_assets(),
             })
             .expect("weapon analysis must not require a developer gate");
+        let source = analysis.single_source().expect("single weapon source");
+        assert_eq!(source.source_type().as_str(), "weapon");
+    }
+
+    /// 真实压缩包在 `nativePC` 之外常包一层作者自建目录。过去 router 用前缀
+    /// 匹配，这类包整包被送去防具适配器、报一个与武器无关的错误——这是
+    /// 真机上第一个被击中的点。
+    #[test]
+    fn router_recognizes_weapon_candidate_under_an_author_package_root_directory() {
+        let analysis = MhwReplacementAdapter
+            .analyze_replacement_assets(ReplacementAnalysisRequest {
+                game_id: GameId::mhw(),
+                assets: vec![
+                    ReplacementAsset::new(
+                        hmm_core::PackageFileId::new("wrapped.mod3"),
+                        "Cool Greatsword v1.2/nativePC/wp/one/one001/mod/one001.mod3",
+                    ),
+                    ReplacementAsset::new(
+                        hmm_core::PackageFileId::new("wrapped.mrl3"),
+                        "Cool Greatsword v1.2/nativePC/wp/one/one001/mod/one001.mrl3",
+                    ),
+                    ReplacementAsset::new(
+                        hmm_core::PackageFileId::new("readme"),
+                        "Cool Greatsword v1.2/readme.txt",
+                    ),
+                ],
+            })
+            .expect("wrapped weapon package must route to the weapon adapter");
         let source = analysis.single_source().expect("single weapon source");
         assert_eq!(source.source_type().as_str(), "weapon");
     }
