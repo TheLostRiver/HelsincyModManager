@@ -138,6 +138,21 @@ impl RetargetInstallTaskRunner {
         let adapter_facts = unique_adapter_audit_facts(&plan.replacement_bindings);
         let cleanup_plan = plan.clone();
 
+        // 跨 Mod 同目标占用在预览阶段已并入计划冲突；任务期重建的计划若仍携带
+        // 阻断冲突（预览与安装之间状态变化，或前端门禁被绕过），在这里提前
+        // 失败，绝不进入 staging/commit。
+        if plan.has_blocking_conflicts() {
+            self.planner.discard_initial_retarget_install(&plan);
+            return Err(self.fail(
+                task_id,
+                &request,
+                events,
+                "planning",
+                action_count,
+                adapter_facts.as_deref(),
+            ));
+        }
+
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             self.planner.discard_initial_retarget_install(&plan);
             return Ok(events);

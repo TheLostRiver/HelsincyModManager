@@ -413,6 +413,10 @@ fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) 
             "replacement_preview_unavailable",
             "replacement preview is unavailable",
         ),
+        ReplacementWorkflowError::InstallManifestUnavailable => (
+            "replacement_install_manifest_unavailable",
+            "install manifest is unavailable; the write admission cannot be established",
+        ),
         ReplacementWorkflowError::InstalledBindingUnavailable => (
             "replacement_installed_binding_unavailable",
             "installed replacement binding is unavailable",

@@ -571,6 +571,7 @@ impl ReadOnlyInstallAutomation {
             file_scanner,
             file_reader,
             Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
+            Arc::clone(&manifest_repository),
             Arc::new(SystemClock),
         ));
 

@@ -5,15 +5,15 @@ use hmm_app::{
     ReplacementWorkflowError, ReplacementWorkflowService,
 };
 use hmm_core::{
-    FileLayer, GameId, InstallPlan, InstallTargetPath, LocalizedText, ModId, ModRevisionId,
-    PackageFileId, ProfileId, ReplacementAnalysis, ReplacementBinding, ReplacementBindingId,
-    ReplacementBindingSnapshot, ReplacementCatalog, ReplacementCatalogVersion, ReplacementSource,
-    ReplacementSourceId, ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
-    RetargetAction, RetargetPlan,
+    FileLayer, GameId, InstallManifest, InstallManifestEntry, InstallManifestStatus, InstallPlan,
+    InstallTargetPath, LocalizedText, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
+    ReplacementCatalog, ReplacementCatalogVersion, ReplacementSource, ReplacementSourceId,
+    ReplacementTarget, ReplacementTargetId, ReplacementTargetKind, RetargetAction, RetargetPlan,
 };
 use hmm_ports::{
-    AppClock, ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
-    ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
+    AppClock, InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
     ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ReplacementAdapter,
     ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
     ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
@@ -266,7 +266,29 @@ fn stored_analysis() -> StoredModImportAnalysis {
     }
 }
 
+struct FakeInstallManifestRepository {
+    manifest: Mutex<Option<InstallManifest>>,
+}
+
+impl InstallManifestRepository for FakeInstallManifestRepository {
+    fn load_manifest(&self, _profile_id: &ProfileId) -> anyhow::Result<Option<InstallManifest>> {
+        Ok(self.manifest.lock().expect("manifest lock").clone())
+    }
+
+    fn save_manifest(&self, manifest: &InstallManifest) -> anyhow::Result<()> {
+        *self.manifest.lock().expect("manifest lock") = Some(manifest.clone());
+        Ok(())
+    }
+}
+
 fn workflow(status: hmm_app::InstallRecoveryStatus) -> ReplacementWorkflowService {
+    workflow_with_manifest(status, None)
+}
+
+fn workflow_with_manifest(
+    status: hmm_app::InstallRecoveryStatus,
+    manifest: Option<InstallManifest>,
+) -> ReplacementWorkflowService {
     ReplacementWorkflowService::new(
         vec![Arc::new(FakeAdapter)],
         vec![Arc::new(FakeCatalog)],
@@ -275,6 +297,9 @@ fn workflow(status: hmm_app::InstallRecoveryStatus) -> ReplacementWorkflowServic
         Arc::new(FakeFileScanner),
         Arc::new(FakeFileScanner),
         Arc::new(FixedStatus(status)),
+        Arc::new(FakeInstallManifestRepository {
+            manifest: Mutex::new(manifest),
+        }),
         Arc::new(FixedClock),
     )
 }
@@ -416,6 +441,104 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
         Some(preview.revision_id()),
         "initial retarget entries stay bound to the resolved imported revision"
     );
+}
+
+fn manifest_with_entry(mod_id: &str, status: InstallManifestStatus) -> InstallManifest {
+    InstallManifest {
+        profile_id: ProfileId::new("profile-a"),
+        manifest_id: "manifest-v1".to_owned(),
+        schema_version: 1,
+        schema_migration: None,
+        backend: None,
+        status,
+        created_at: None,
+        completed_at: None,
+        plan_hash: None,
+        entries: vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse(
+                "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
+                ["nativePC"],
+            )
+            .expect("entry path"),
+            mod_id: ModId::new(mod_id),
+            revision_id: Some(ModRevisionId::new("revision-v1")),
+            package_file_id: PackageFileId::new("package-mod-b-body"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: None,
+        }],
+        replacement_bindings: Vec::new(),
+    }
+}
+
+#[test]
+fn preview_initial_install_blocks_when_another_mod_manages_the_target() {
+    let preview = workflow_with_manifest(
+        hmm_app::InstallRecoveryStatus::NotInstalled,
+        Some(manifest_with_entry(
+            "mod-b",
+            InstallManifestStatus::Completed,
+        )),
+    )
+    .preview_initial_install(PreviewInitialRetargetInstallRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("profile-a"),
+        mod_id: ModId::new("mod-a"),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        layer: FileLayer::new("base", 0),
+    })
+    .expect("preview still succeeds with conflict facts attached");
+
+    assert!(preview.install_plan().has_blocking_conflicts());
+    let conflict = &preview.install_plan().conflicts[0];
+    assert_eq!(
+        conflict.target_path.as_str(),
+        "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3"
+    );
+    assert_eq!(conflict.providers.len(), 1);
+    assert_eq!(conflict.providers[0].mod_id, ModId::new("mod-b"));
+}
+
+#[test]
+fn preview_initial_install_ignores_manifest_entries_from_the_same_mod() {
+    let preview = workflow_with_manifest(
+        hmm_app::InstallRecoveryStatus::NotInstalled,
+        Some(manifest_with_entry(
+            "mod-a",
+            InstallManifestStatus::Completed,
+        )),
+    )
+    .preview_initial_install(PreviewInitialRetargetInstallRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("profile-a"),
+        mod_id: ModId::new("mod-a"),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        layer: FileLayer::new("base", 0),
+    })
+    .expect("preview succeeds");
+
+    assert!(!preview.install_plan().has_blocking_conflicts());
+}
+
+#[test]
+fn preview_initial_install_fails_closed_when_manifest_status_is_not_trustworthy() {
+    let error = workflow_with_manifest(
+        hmm_app::InstallRecoveryStatus::NotInstalled,
+        Some(manifest_with_entry(
+            "mod-b",
+            InstallManifestStatus::Committing,
+        )),
+    )
+    .preview_initial_install(PreviewInitialRetargetInstallRequest {
+        game_id: GameId::mhw(),
+        profile_id: ProfileId::new("profile-a"),
+        mod_id: ModId::new("mod-a"),
+        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        layer: FileLayer::new("base", 0),
+    })
+    .expect_err("in-flight manifest must fail closed");
+
+    assert_eq!(error, ReplacementWorkflowError::InstallManifestUnavailable);
 }
 
 #[test]

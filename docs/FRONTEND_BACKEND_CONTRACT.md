@@ -528,6 +528,14 @@ display revision。target DTO 只返回展示名、alias、稳定 id/internal id
 `rollback_required`、`repair_required`、`unknown` 以及状态查询失败全部 fail closed。已安装 Mod 的
 target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 
+预览与任务期计划构建都会查询 profile 安装清单的跨 Mod 目标占用：若计划的目标文件已被
+**其他 Mod** 的清单条目管理，合成阻断冲突并入 `installPlan.conflicts`（provider 为占用方），
+`hasBlockingConflicts` 置真，前端据此禁用「安装到此目标」并展示人性化提示；任务期计划仍
+携带阻断冲突时在 `planning` 阶段提前失败，绝不进入 staging/commit。清单状态不可信
+（`planned`/`committing` 进行中）或读取失败同样 fail closed（`replacement_install_manifest_unavailable`）。
+commit 侧的 `PlanHasBlockingConflicts` 与安装清单归属检查保留为纵深防御最后防线。
+仅自查自身条目不构成冲突；跨 profile 的独立安装视图不在预览判定范围内。
+
 `preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 只用于 recovery status 严格为 `installed`
 的同 revision target switch。后端从 manifest 解析 installed revision，再由 repository 和 adapter 重建
 package/source/candidate binding/staging/InstallPlan；它不读取当前 display revision 来决定 candidate，
