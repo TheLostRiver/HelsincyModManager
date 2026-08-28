@@ -350,7 +350,7 @@ fn source_analysis_rejects_package_identity_and_path_collisions() {
 }
 
 #[test]
-fn source_analysis_rejects_multiple_mixed_and_non_weapon_payloads() {
+fn source_analysis_rejects_multiple_source_roots_and_mixed_families() {
     let mut multiple = pair_assets("one", "one001", "one001", "first");
     multiple.extend(pair_assets("one", "one002", "one002", "second"));
     assert_eq!(
@@ -364,19 +364,68 @@ fn source_analysis_rejects_multiple_mixed_and_non_weapon_payloads() {
         analyze_mhw_weapon_assets(&mixed_family),
         Err(WeaponAnalysisError::MixedFamily)
     );
+}
 
-    let mut mixed_payload = pair_assets("one", "one001", "one001", "main");
-    mixed_payload.push(asset(
+/// 真实武器 Mod 几乎必然携带 readme、预览图、甚至顺带一份防具。这类杂项
+/// 过去会触发 `MixedInstallPayload` 把整个 Mod 判死，现在只被忽略。
+#[test]
+fn source_analysis_ignores_non_weapon_payloads_but_requires_a_weapon_source() {
+    let mut with_extras = pair_assets("one", "one001", "one001", "main");
+    with_extras.push(asset("readme", "readme.txt"));
+    with_extras.push(asset("preview", "preview/preview.png"));
+    with_extras.push(asset(
         "armor",
         "nativePC/pl/f_equip/pl900_0000/arm/mod/body.mod3",
     ));
+
+    let closure = analyze_mhw_weapon_assets(&with_extras).expect("weapon closure alongside extras");
+    assert_eq!(closure.pairs().len(), 1);
+    assert_eq!(closure.asset_count(), 2);
     assert_eq!(
-        analyze_mhw_weapon_assets(&mixed_payload),
-        Err(WeaponAnalysisError::MixedInstallPayload)
+        closure.root().normalized_path().as_str(),
+        "nativePC/wp/one/one001"
     );
+
+    // 门禁下限：一件武器资源都没有仍然必须失败，否则纯杂物包会被放过。
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset("readme", "readme.txt")]),
         Err(WeaponAnalysisError::SourceNotFound)
+    );
+}
+
+/// 绝大多数真实压缩包在 `nativePC` 之外还包了一层作者自建目录，而上游
+/// 解压与扫描链路不会剥离它。武器 analysis 必须自己归一化，否则这类包
+/// 会被送去防具适配器、报一个与武器无关的错误。
+#[test]
+fn source_analysis_strips_author_package_root_directory() {
+    let wrapped = vec![
+        asset(
+            "mod3",
+            "MyWeaponMod v1.2/nativePC/wp/one/one001/mod/one001.mod3",
+        ),
+        asset(
+            "mrl3",
+            "MyWeaponMod v1.2/nativePC/wp/one/one001/mod/one001.mrl3",
+        ),
+        asset("readme", "MyWeaponMod v1.2/readme.txt"),
+    ];
+    let closure = analyze_mhw_weapon_assets(&wrapped).expect("wrapped weapon closure");
+    assert_eq!(
+        closure.root().normalized_path().as_str(),
+        "nativePC/wp/one/one001"
+    );
+    assert_eq!(closure.pairs().len(), 1);
+}
+
+/// 剥离不能成为绕过父目录遍历检测的旁路：安全校验必须先于剥离发生。
+#[test]
+fn source_analysis_still_rejects_parent_traversal_through_stripping() {
+    assert_eq!(
+        analyze_mhw_weapon_assets(&[asset(
+            "escape",
+            "outer/../../../escape/nativePC/wp/one/one001/mod/one001.mod3"
+        )]),
+        Err(WeaponAnalysisError::UnsafePath)
     );
 }
 
