@@ -25,6 +25,28 @@ pub struct ModPackageMetadata {
     pub dependencies: Vec<String>,
 }
 
+/// 包内元数据分析产物。
+///
+/// `metadata` 保持既有语义：`display_name` = manifest 声明 ?? readme 首行，
+/// 是"作者是否声明过名称"的判定依据（revision 继承分支依赖它，见导入服务的
+/// catalog 保存分支），调用方不得把派生名称（文件名等）回填进去。
+/// `manifest_display_name` 单独携带 manifest 显式声明的展示名，供上层把压缩包
+/// 文件名插到 readme 之前：文件名是导入者导入前唯一亲自确认过的名称，而
+/// readme 首行可能是教程、致谢或广告，只配作展示名的末端来源。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModPackageMetadataAnalysis {
+    pub metadata: ModPackageMetadata,
+    pub manifest_display_name: Option<String>,
+}
+
+pub trait ModPackageMetadataAnalyzer: Send + Sync {
+    fn analyze_metadata(
+        &self,
+        package_id: &str,
+        sandbox_root: &Path,
+    ) -> Result<ModPackageMetadataAnalysis>;
+}
+
 pub struct ModImportPackagePrepareRequest<'a> {
     pub task_id: &'a str,
     pub archive_path: &'a Path,
@@ -55,11 +77,6 @@ pub trait ModImportPackagePreparer: Send + Sync {
     ) -> Result<PreparedModPackage> {
         anyhow::bail!("preparing an already-open Mod import archive is not supported")
     }
-}
-
-pub trait ModPackageMetadataAnalyzer: Send + Sync {
-    fn analyze_metadata(&self, package_id: &str, sandbox_root: &Path)
-        -> Result<ModPackageMetadata>;
 }
 
 pub trait ModImportSandboxLocator: Send + Sync {

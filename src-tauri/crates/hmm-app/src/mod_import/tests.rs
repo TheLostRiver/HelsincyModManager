@@ -8,7 +8,7 @@ use hmm_core::{ModId, ModMetadataOverlay, PreviewImageRejectionReason};
 use hmm_ports::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryResult,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
-    ModPackageMetadata, ModPackageMetadataAnalyzer, PreparedModPackage,
+    ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, PreparedModPackage,
     PreviewImageProcessingResult, ProcessedPreviewImage, StoredImportPreviewImage,
     StoredModImportAnalysis, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest,
     ThumbnailRef, ThumbnailStore,
@@ -80,14 +80,14 @@ fn analyze_sandbox_uses_package_metadata_display_name() {
 }
 
 #[test]
-fn analyze_sandbox_prefers_package_metadata_over_archive_file_name() {
+fn analyze_sandbox_prefers_manifest_declared_name_over_archive_file_name() {
     let service = ModImportAnalysisService::new(
         Box::new(FakePreviewImageProcessor {
             result: PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::Missing),
         }),
         Box::new(FakeThumbnailStore::default()),
         Box::new(FakeMetadataAnalyzer {
-            display_name: Some("Manifest Name".to_owned()),
+            manifest_display_name: Some("Manifest Name".to_owned()),
             ..FakeMetadataAnalyzer::default()
         }),
     );
@@ -101,7 +101,66 @@ fn analyze_sandbox_prefers_package_metadata_over_archive_file_name() {
         })
         .expect("analysis succeeds");
 
-    // 包内声明的名称是作者意图，优先于文件名——玩家可能随意重命名压缩包。
+    // manifest 是作者在包内的结构化声明，表达作者意图，优先于文件名。
+    assert_eq!(result.display_name, "Manifest Name");
+}
+
+#[test]
+fn analyze_sandbox_prefers_archive_file_name_over_readme_display_name() {
+    let service = ModImportAnalysisService::new(
+        Box::new(FakePreviewImageProcessor {
+            result: PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::Missing),
+        }),
+        Box::new(FakeThumbnailStore::default()),
+        Box::new(FakeMetadataAnalyzer {
+            // 无 manifest 时 metadata.display_name 来自 readme 首行。
+            display_name: Some("安装教程：先解压到 nativePC".to_owned()),
+            ..FakeMetadataAnalyzer::default()
+        }),
+    );
+
+    let result = service
+        .analyze_sandbox(ModImportAnalysisRequest {
+            task_id: "task-1".to_owned(),
+            package_id: "pkg-1".to_owned(),
+            sandbox_root: Path::new("sandbox").to_path_buf(),
+            archive_display_name_hint: Some("黑骑士大剑".to_owned()),
+        })
+        .expect("analysis succeeds");
+
+    // 文件名是导入者导入前唯一亲自确认过的名称；readme 首行经常是教程、
+    // 致谢或广告，拿它当名字会得到毫无辨识度的条目，只配在文件名缺席时兜底。
+    assert_eq!(result.display_name, "黑骑士大剑");
+    // 文件名同样不得回填 metadata.display_name——继承判定语义保持不变。
+    assert_eq!(
+        result.metadata.display_name,
+        Some("安装教程：先解压到 nativePC".to_owned())
+    );
+}
+
+#[test]
+fn analyze_sandbox_prefers_manifest_declared_name_over_readme_display_name() {
+    let service = ModImportAnalysisService::new(
+        Box::new(FakePreviewImageProcessor {
+            result: PreviewImageProcessingResult::Fallback(PreviewImageRejectionReason::Missing),
+        }),
+        Box::new(FakeThumbnailStore::default()),
+        Box::new(FakeMetadataAnalyzer {
+            display_name: Some("Readme Name".to_owned()),
+            manifest_display_name: Some("Manifest Name".to_owned()),
+            ..FakeMetadataAnalyzer::default()
+        }),
+    );
+
+    let result = service
+        .analyze_sandbox(ModImportAnalysisRequest {
+            task_id: "task-1".to_owned(),
+            package_id: "pkg-1".to_owned(),
+            sandbox_root: Path::new("sandbox").to_path_buf(),
+            archive_display_name_hint: None,
+        })
+        .expect("analysis succeeds");
+
     assert_eq!(result.display_name, "Manifest Name");
 }
 
@@ -174,6 +233,7 @@ fn analyze_sandbox_persists_package_metadata_schema_fields() {
             category: Some("Visual".to_owned()),
             tags: vec!["armor".to_owned(), "hd".to_owned()],
             dependencies: vec!["stracker-loader".to_owned()],
+            ..FakeMetadataAnalyzer::default()
         }),
     );
 
@@ -323,6 +383,7 @@ fn prepare_import_runs_preparer_and_preview_analysis_with_task_events() {
         .prepare_import(ModImportPrepareRequest {
             task_id: "task-1".to_owned(),
             archive_path: Path::new("C:/mods/sample.zip").to_path_buf(),
+            archive_display_name_hint: None,
         })
         .expect("prepare succeeds");
 
@@ -375,6 +436,7 @@ fn prepare_import_emits_preview_fallback_event_when_preview_falls_back() {
         .prepare_import(ModImportPrepareRequest {
             task_id: "task-1".to_owned(),
             archive_path: Path::new("C:/mods/sample.zip").to_path_buf(),
+            archive_display_name_hint: None,
         })
         .expect("prepare succeeds");
 
@@ -501,8 +563,10 @@ fn task_runner_persists_prepare_analysis_for_library_queries() {
                     result: sample_thumbnail_result(),
                 }),
                 Box::new(FakeThumbnailStore::default()),
+                // manifest 声明名优于文件名，"sample.zip" 不应劫持展示名；
+                // 本测试关注的是分析结果的持久化，不是命名优先级。
                 Box::new(FakeMetadataAnalyzer {
-                    display_name: Some("Better Mod Name".to_owned()),
+                    manifest_display_name: Some("Better Mod Name".to_owned()),
                     ..FakeMetadataAnalyzer::default()
                 }),
             ),
@@ -1274,6 +1338,7 @@ impl CancellationToken for TestCancellationToken {
 #[derive(Default)]
 struct FakeMetadataAnalyzer {
     display_name: Option<String>,
+    manifest_display_name: Option<String>,
     version: Option<String>,
     author: Option<String>,
     category: Option<String>,
@@ -1286,14 +1351,17 @@ impl ModPackageMetadataAnalyzer for FakeMetadataAnalyzer {
         &self,
         _package_id: &str,
         _sandbox_root: &Path,
-    ) -> anyhow::Result<ModPackageMetadata> {
-        Ok(ModPackageMetadata {
-            display_name: self.display_name.clone(),
-            version: self.version.clone(),
-            author: self.author.clone(),
-            category: self.category.clone(),
-            tags: self.tags.clone(),
-            dependencies: self.dependencies.clone(),
+    ) -> anyhow::Result<ModPackageMetadataAnalysis> {
+        Ok(ModPackageMetadataAnalysis {
+            metadata: ModPackageMetadata {
+                display_name: self.display_name.clone(),
+                version: self.version.clone(),
+                author: self.author.clone(),
+                category: self.category.clone(),
+                tags: self.tags.clone(),
+                dependencies: self.dependencies.clone(),
+            },
+            manifest_display_name: self.manifest_display_name.clone(),
         })
     }
 }
