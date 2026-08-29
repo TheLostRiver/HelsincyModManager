@@ -19,6 +19,7 @@ mod preview_image;
 mod profile;
 mod reinstall;
 mod replacement;
+mod replacement_selection;
 mod save_backup;
 mod save_directory;
 mod save_restore;
@@ -120,6 +121,7 @@ pub use replacement::{
     ReplacementCatalogError, ReplacementCatalogProvider, ReplacementCatalogResult,
     RetargetPlanRequest,
 };
+pub use replacement_selection::ReplacementSelectionRepository;
 pub use save_backup::{
     SaveBackupBackgroundRegistry, SaveBackupBackgroundRegistryError,
     SaveBackupBackgroundRegistryResult, SaveBackupBackgroundSettingsRepository,

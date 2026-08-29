@@ -68,10 +68,11 @@ use hmm_infra::{
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
-    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
-    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
-    RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
-    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
+    JsonReplacementSelectionRepository, LogStorageBudgetOutcome, LogStorageBudgetReport,
+    PlatformCrossProcessWriteAdmission, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
+    ReqwestSteamProfileHttpTransport, RetargetStagingInstallSourceFileReader,
+    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
+    SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
@@ -88,7 +89,7 @@ use hmm_ports::{
     ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
     ModPackageInstallFileScanner, ProfileRepository, ProfileSaveDirectoryValidator,
     ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository, ReplacementAdapter,
-    ReplacementCatalogProvider, SaveBackupBackgroundRegistry,
+    ReplacementCatalogProvider, ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
     SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
@@ -788,6 +789,10 @@ impl HmmRuntime {
                 reinstall_write_admission,
                 Arc::clone(&sandbox_write_admission),
             ));
+        let replacement_selections: Arc<dyn ReplacementSelectionRepository> =
+            Arc::new(JsonReplacementSelectionRepository::new(
+                app_data_dir.join("install").join("replacement-selections"),
+            ));
         let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             install_preflight.clone(),
@@ -796,6 +801,7 @@ impl HmmRuntime {
             Arc::new(SystemClock),
             Arc::clone(&install_write_locks),
             Arc::clone(&lifecycle_write_admission),
+            Arc::clone(&replacement_selections),
         ));
         let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
             Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
@@ -815,6 +821,7 @@ impl HmmRuntime {
                 Arc::new(SystemClock),
                 Arc::clone(&install_write_locks),
                 Arc::clone(&lifecycle_write_admission),
+                Arc::clone(&replacement_selections),
             ));
         let recovery_action_task_runner =
             Arc::new(RecoveryActionTaskRunner::with_write_coordination(

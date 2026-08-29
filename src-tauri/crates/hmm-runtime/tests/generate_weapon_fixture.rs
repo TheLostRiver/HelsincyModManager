@@ -192,9 +192,21 @@ fn emit_fixture(out: &Path) {
         "loader-config.json",
         br#"{"enablePluginLoader":true}"#,
     );
-    write_file(&game, "nativePC/plugins/MonsterLoader.dll", b"stub-monster-loader\n");
-    write_file(&game, "nativePC/plugins/QuestLoader.dll", b"stub-quest-loader\n");
-    write_file(&game, "nativePC/plugins/!CRCBypass.dll", b"stub-crc-bypass\n");
+    write_file(
+        &game,
+        "nativePC/plugins/MonsterLoader.dll",
+        b"stub-monster-loader\n",
+    );
+    write_file(
+        &game,
+        "nativePC/plugins/QuestLoader.dll",
+        b"stub-quest-loader\n",
+    );
+    write_file(
+        &game,
+        "nativePC/plugins/!CRCBypass.dll",
+        b"stub-crc-bypass\n",
+    );
 
     // ---- Mod 源目录：源武器 one001，并刻意携带真实 Mod 必然有的杂项文件 ----
     let package = out.join(WRAP);
