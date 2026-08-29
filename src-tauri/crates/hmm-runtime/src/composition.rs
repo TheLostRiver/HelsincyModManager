@@ -31,17 +31,18 @@ use hmm_app::{
     ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
     ReinstallRecoveryWriteAdmission, ReinstallTargetCounts, ReinstallTaskAuditContext,
     ReinstallTaskExecutor, ReinstallTaskExecutorService, ReinstallTaskPrepareError,
-    ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementWorkflowError,
-    ReplacementWorkflowService, RetargetInstallTaskRunner, RetargetInstallTaskService,
-    RetargetReinstallRequest, RetargetReinstallTaskExecutor, SaveBackupAutoSchedulerService,
-    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
-    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
-    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
-    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
-    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
-    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementOccupancyService,
+    ReplacementWorkflowError, ReplacementWorkflowService, RetargetInstallTaskRunner,
+    RetargetInstallTaskService, RetargetReinstallRequest, RetargetReinstallTaskExecutor,
+    SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
+    SaveBackupCenterService, SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService,
+    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
+    SaveProfileMaintenanceScopeRegistry, SaveRestoreService, SaveRestoreTaskRunner,
+    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, Sha256SaveRestoreTokenCodec,
+    StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -170,6 +171,7 @@ pub struct HmmRuntime {
     pub install_planning: Arc<InstallPlanningService>,
     pub install_preflight: Arc<ImportedModInstallPreflightService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
+    pub replacement_occupancy: Arc<ReplacementOccupancyService>,
     pub install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
     pub reinstall_executor: Arc<ConfiguredReinstallExecutor>,
@@ -706,6 +708,10 @@ impl HmmRuntime {
         let install_manifest_query = Arc::new(InstallManifestQueryService::new(Arc::clone(
             &install_manifest_repository,
         )));
+        let replacement_occupancy = Arc::new(ReplacementOccupancyService::new(
+            Arc::clone(&install_manifest_query),
+            Arc::clone(&mod_import_result_repository),
+        ));
         let mod_library_query = mod_library_composition
             .query_service(Arc::clone(&mod_library), install_manifest_query.clone());
         let install_recovery_scanner = Arc::new(ConfiguredInstallRecoveryScanner::new(
@@ -890,6 +896,7 @@ impl HmmRuntime {
             install_planning,
             install_preflight,
             install_manifest_query,
+            replacement_occupancy,
             install_recovery_scanner,
             install_recovery_action_previewer,
             reinstall_executor,

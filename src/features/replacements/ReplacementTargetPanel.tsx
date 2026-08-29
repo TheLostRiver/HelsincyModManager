@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Eye,
   LoaderCircle,
   RefreshCw,
@@ -12,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { replacementTargetSearchValues, resolveReplacementTargetNames } from "./replacementTargetNames";
 import type { GameId } from "../game-setup/gameSetupTypes";
@@ -28,6 +30,7 @@ import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import {
   analyzeImportedModReplacement,
   cancelRetargetInstallTask,
+  listReplacementTargetOccupancy,
   listReplacementTargets,
   previewInitialRetargetInstall,
   previewRetargetReinstall,
@@ -38,6 +41,7 @@ import { replacementCopy, type ReplacementCopy } from "./replacementCopy";
 import { replacementErrorMessage } from "./replacementErrorText";
 import type {
   InitialRetargetInstallPreview,
+  OccupiedReplacementTarget,
   ReplacementAnalysis,
   ReplacementTarget,
 } from "./replacementTypes";
@@ -68,7 +72,12 @@ type ReplacementTargetPanelProps = {
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; analysis: ReplacementAnalysis; targets: ReplacementTarget[] }
+  | {
+      status: "ready";
+      analysis: ReplacementAnalysis;
+      targets: ReplacementTarget[];
+      occupancy: OccupiedReplacementTarget[];
+    }
   | { status: "error"; message: string };
 
 type PreviewState =
@@ -126,6 +135,23 @@ function targetSwitchBlockingLabel(
     : getReinstallBlockingReasonLabel(code, reinstallTask);
 }
 
+/**
+ * 占用查询只服务于提示，失败一律 fail-open 返回空列表。
+ *
+ * 硬门禁在预览、任务期计划构建和 commit 三层，不依赖这份数据；查询失败
+ * 只是少一条提示，不该让整个替换目标面板打不开。
+ */
+function loadOccupancy(
+  gameId: GameId,
+  profileId: string | null,
+  modId: string,
+): Promise<OccupiedReplacementTarget[]> {
+  if (profileId === null) {
+    return Promise.resolve([]);
+  }
+  return listReplacementTargetOccupancy({ gameId, profileId, modId }).catch(() => []);
+}
+
 export function ReplacementTargetPanel({
   gameId,
   modId,
@@ -136,6 +162,7 @@ export function ReplacementTargetPanel({
   onInstallCompleted,
 }: ReplacementTargetPanelProps) {
   const { locale } = useI18n();
+  const { pushToast } = useFeedback();
   const rCopy = resolveCopy(replacementCopy, locale);
   const reinstallTask = resolveCopy(modReinstallCopy, locale).task;
   const prerequisite = resolveCopy(modLifecycleCopy, locale).prerequisite;
@@ -199,13 +226,14 @@ export function ReplacementTargetPanel({
     void Promise.all([
       analyzeImportedModReplacement({ gameId, profileId, modId }),
       listReplacementTargets({ gameId, modId }),
+      loadOccupancy(gameId, profileId, modId),
     ])
-      .then(([analysis, targets]) => {
+      .then(([analysis, targets, occupancy]) => {
         if (!cancelled) {
           setSelectedTargetId(
             resolveInstalledReplacementTargetSelection(targets, analysis.installedTargetId),
           );
-          setLoadState({ status: "ready", analysis, targets });
+          setLoadState({ status: "ready", analysis, targets, occupancy });
           if (completionReloadPendingRef.current) {
             completionReloadPendingRef.current = false;
             setRefreshState({ status: "ready" });
@@ -313,6 +341,18 @@ export function ReplacementTargetPanel({
     );
   }, [query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
+  const occupancyByTarget = useMemo(
+    () =>
+      new Map(
+        (loadState.status === "ready" ? loadState.occupancy : []).map((item) => [
+          item.targetId,
+          item,
+        ]),
+      ),
+    [loadState],
+  );
+  const selectedOccupancy =
+    selectedTargetId === null ? null : (occupancyByTarget.get(selectedTargetId) ?? null);
   const installCompletedLocally = completedLocally || taskState.status === "completed";
   const blockMessage = installBlockMessage(
     profileId,
@@ -336,11 +376,34 @@ export function ReplacementTargetPanel({
     setTrackedTaskState({ status: "idle" });
   };
 
+  // 占用方名称要能被玩家复制去 Mod 库里搜索，所以复制失败也要有反馈。
+  const copyOccupantName = (occupancy: OccupiedReplacementTarget) => {
+    void navigator.clipboard
+      .writeText(occupancy.displayName)
+      .then(() =>
+        pushToast({
+          eventKey: `replacement.occupancy.copied.${occupancy.modId}`,
+          title: rCopy.panel.occupantNameCopiedTitle,
+          message: occupancy.displayName,
+          tone: "success",
+        }),
+      )
+      .catch(() =>
+        pushToast({
+          eventKey: "replacement.occupancy.copy.failed",
+          title: rCopy.panel.occupantNameCopyFailedTitle,
+          message: rCopy.panel.occupantNameCopyFailedMessage,
+          tone: "danger",
+        }),
+      );
+  };
+
   const createPreview = () => {
     if (
       !selectedTarget ||
       profileId === null ||
       blockMessage !== null ||
+      selectedOccupancy !== null ||
       isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId)
     ) {
       return;
@@ -407,6 +470,7 @@ export function ReplacementTargetPanel({
       selectedTarget === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
+      selectedOccupancy !== null ||
       !canStart
     ) {
       return;
@@ -589,6 +653,7 @@ export function ReplacementTargetPanel({
                 target.id,
                 installedTargetId,
               );
+              const occupied = occupancyByTarget.get(target.id) ?? null;
               return (
                 <label
                   className="replacement-panel__target-row"
@@ -619,6 +684,12 @@ export function ReplacementTargetPanel({
                       <span className="replacement-panel__target-status">
                         <CheckCircle2 size={13} aria-hidden="true" />
                         {rCopy.panel.currentInstalled}
+                      </span>
+                    ) : null}
+                    {occupied ? (
+                      <span className="replacement-panel__target-status is-occupied">
+                        <ShieldAlert size={13} aria-hidden="true" />
+                        {rCopy.panel.targetOccupiedTag}
                       </span>
                     ) : null}
                   </span>
@@ -869,6 +940,22 @@ export function ReplacementTargetPanel({
         </div>
       ) : null}
 
+      {selectedOccupancy ? (
+        <div className="replacement-panel__notice is-blocked" role="status">
+          <ShieldAlert size={18} aria-hidden="true" />
+          <span>{rCopy.panel.targetOccupied(selectedOccupancy.displayName)}</span>
+          <button
+            type="button"
+            className="replacement-panel__copy-name"
+            aria-label={rCopy.panel.copyOccupantName}
+            onClick={() => copyOccupantName(selectedOccupancy)}
+          >
+            <Copy size={14} aria-hidden="true" />
+            {rCopy.panel.copyOccupantName}
+          </button>
+        </div>
+      ) : null}
+
       <div className="replacement-panel__actions">
         <button
           type="button"
@@ -877,6 +964,7 @@ export function ReplacementTargetPanel({
           disabled={
             selectedTarget === null ||
             isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId) ||
+            selectedOccupancy !== null ||
             !analysis?.retargetable ||
             blockMessage !== null ||
             previewState.status === "loading" ||
@@ -893,6 +981,7 @@ export function ReplacementTargetPanel({
           disabled={
             previewState.status !== "ready" ||
             blockMessage !== null ||
+            selectedOccupancy !== null ||
             (previewState.mode === "switch"
               ? !canStartRetargetReinstall({
                   installStatus,

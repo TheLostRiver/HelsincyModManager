@@ -22,6 +22,9 @@ use crate::dto::{
 };
 use crate::reinstall_commands::{parse_plan_token, preview_error_to_command_error};
 use crate::reinstall_dto::ReinstallPlanPreviewDto;
+use crate::replacement_dto::{
+    ListReplacementTargetOccupancyRequestDto, ReplacementTargetOccupancyDto,
+};
 use crate::state::{AppState, ConfiguredRetargetReinstallError};
 use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
 
@@ -69,6 +72,32 @@ pub fn analyze_imported_mod_replacement(
         })?
         .flatten();
     Ok(replacement_analysis_to_dto(analysis, installed_target_id))
+}
+
+/// 列出该 profile 下**其他 Mod** 已占用的替换目标，供前端提示占用方并禁用写入。
+///
+/// 这是纯展示查询，不承担门禁职责：清单不可信或读取失败时返回空列表
+/// （fail-open），前端因此不提示、不禁用，但硬门禁仍在预览、任务期计划构建
+/// 和 commit 三层，冲突写入照样被拦。
+#[tauri::command]
+pub fn list_replacement_target_occupancy(
+    request: ListReplacementTargetOccupancyRequestDto,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReplacementTargetOccupancyDto>, CommandErrorDto> {
+    // game_id 只用于确认该游戏支持替换目标；占用事实按 profile 判定。
+    let _game_id = parse_game_id(request.game_id.clone())?;
+    let (profile_id, mod_id) = occupancy_request_from_dto(request)?;
+
+    Ok(state
+        .replacement_occupancy
+        .list_occupancy(&profile_id, &mod_id)
+        .into_iter()
+        .map(|occupancy| ReplacementTargetOccupancyDto {
+            target_id: occupancy.target_id.as_str().to_owned(),
+            mod_id: occupancy.mod_id.as_str().to_owned(),
+            display_name: occupancy.display_name,
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -230,6 +259,24 @@ fn analyze_request_from_dto(
             )?),
         },
         profile_id,
+    ))
+}
+
+/// 占用查询只接受稳定身份：profile 与 Mod 都必填，游戏 id 单独校验。
+fn occupancy_request_from_dto(
+    request: ListReplacementTargetOccupancyRequestDto,
+) -> Result<(ProfileId, ModId), CommandErrorDto> {
+    Ok((
+        ProfileId::new(required_id(
+            request.profile_id,
+            "replacement_profile_id_invalid",
+            "profile id is required",
+        )?),
+        ModId::new(required_id(
+            request.mod_id,
+            "replacement_mod_id_invalid",
+            "Mod id is required",
+        )?),
     ))
 }
 
@@ -626,6 +673,36 @@ mod tests {
 
         assert_eq!(request.mod_id.as_str(), "mod-a");
         assert_eq!(profile_id.expect("profile id").as_str(), "profile-a");
+    }
+
+    #[test]
+    fn occupancy_request_mapping_requires_profile_and_rejects_backend_paths() {
+        let (profile_id, mod_id) =
+            occupancy_request_from_dto(ListReplacementTargetOccupancyRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: "profile-a".to_owned(),
+                mod_id: "mod-a".to_owned(),
+            })
+            .expect("map occupancy request");
+        assert_eq!(profile_id.as_str(), "profile-a");
+        assert_eq!(mod_id.as_str(), "mod-a");
+
+        let without_profile =
+            occupancy_request_from_dto(ListReplacementTargetOccupancyRequestDto {
+                game_id: "mhw".to_owned(),
+                profile_id: "   ".to_owned(),
+                mod_id: "mod-a".to_owned(),
+            })
+            .expect_err("occupancy is a per-profile query");
+        assert_eq!(without_profile.code, "replacement_profile_id_invalid");
+
+        let without_mod = occupancy_request_from_dto(ListReplacementTargetOccupancyRequestDto {
+            game_id: "mhw".to_owned(),
+            profile_id: "profile-a".to_owned(),
+            mod_id: String::new(),
+        })
+        .expect_err("mod identity is required");
+        assert_eq!(without_mod.code, "replacement_mod_id_invalid");
     }
 
     #[test]

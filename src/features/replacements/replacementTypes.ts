@@ -18,6 +18,28 @@ export type AnalyzeImportedModReplacementInput = {
   modId: string;
 };
 
+export type ListReplacementTargetOccupancyInput = {
+  gameId: GameId;
+  profileId: string;
+  modId: string;
+};
+
+/**
+ * 跨 Mod 同目标占用的展示投影，只服务于 UI 提示。
+ *
+ * 前端展示层的 fail-open 是有意设计：清单不可信或读取失败时后端返回空列表，
+ * 玩家因此看不到占用提示、按钮也不禁用，但真正的硬门禁仍在预览、任务期计划
+ * 构建和 commit 三层（跨 Mod 目标占用会合成阻断冲突），不会放过冲突写入。
+ *
+ * 类型名刻意不以既有的目标类型名开头：两者前缀相同，会让按"到下一个目标类型
+ * 声明为止"切块的契约断言提前收尾（见 replacementApi.test.mjs）。
+ */
+export type OccupiedReplacementTarget = {
+  targetId: string;
+  modId: string;
+  displayName: string;
+};
+
 export type PreviewInitialRetargetInstallInput = {
   gameId: GameId;
   profileId: string;

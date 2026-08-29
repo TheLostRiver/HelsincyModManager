@@ -31,6 +31,7 @@ mod reinstall_commit;
 mod reinstall_task;
 mod replacement;
 mod replacement_audit;
+mod replacement_occupancy;
 mod replacement_task;
 mod save_backup;
 mod save_backup_background;
@@ -273,6 +274,7 @@ pub use replacement::{
     RetargetReinstallRequest,
 };
 pub use replacement_audit::ReplacementAdapterAuditFacts;
+pub use replacement_occupancy::{ReplacementOccupancyService, ReplacementTargetOccupancy};
 pub use replacement_task::{
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner, RetargetInstallTaskRunError,
     RetargetInstallTaskRunner, RetargetInstallTaskService, StartRetargetInstallTaskRequest,

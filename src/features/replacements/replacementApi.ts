@@ -4,11 +4,13 @@ import type {
   AnalyzeImportedModReplacementInput,
   CancelRetargetInstallTaskInput,
   InitialRetargetInstallPreview,
+  ListReplacementTargetOccupancyInput,
   ListReplacementTargetsInput,
   PreviewInitialRetargetInstallInput,
   PreviewRetargetReinstallInput,
   ReplacementAnalysis,
   ReplacementTarget,
+  OccupiedReplacementTarget,
   RetargetInstallTaskStarted,
   StartRetargetInstallTaskInput,
   StartRetargetReinstallTaskInput,
@@ -30,6 +32,25 @@ export function analyzeImportedModReplacement(
   input: AnalyzeImportedModReplacementInput,
 ): Promise<ReplacementAnalysis> {
   return invoke<ReplacementAnalysis>("analyze_imported_mod_replacement", {
+    request: {
+      gameId: input.gameId,
+      profileId: input.profileId,
+      modId: input.modId,
+    },
+  });
+}
+
+/**
+ * 跨 Mod 同目标占用查询，仅用于 UI 提示。
+ *
+ * 后端在清单不可信或读取失败时返回空列表（fail-open）；硬门禁不在这个
+ * command 上，而在预览、任务期计划构建与 commit 三层。调用失败不该打断
+ * 面板加载，因此这里不额外包装错误。
+ */
+export function listReplacementTargetOccupancy(
+  input: ListReplacementTargetOccupancyInput,
+): Promise<OccupiedReplacementTarget[]> {
+  return invoke<OccupiedReplacementTarget[]>("list_replacement_target_occupancy", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,

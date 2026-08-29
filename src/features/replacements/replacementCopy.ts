@@ -58,6 +58,13 @@ export type ReplacementCopy = {
     targetsAria: string;
     currentInstalled: string;
     noMatches: string;
+    // 跨 Mod 同目标占用：仅用于 UI 提示（硬门禁在预览/任务/commit 三层）。
+    targetOccupied: (name: string) => string;
+    targetOccupiedTag: string;
+    copyOccupantName: string;
+    occupantNameCopiedTitle: string;
+    occupantNameCopyFailedTitle: string;
+    occupantNameCopyFailedMessage: string;
     previewLoading: string;
     switchPreviewTitle: string;
     initialPreviewTitle: string;
@@ -302,6 +309,13 @@ export const replacementCopy = {
       targetsAria: "替换目标",
       currentInstalled: "当前已安装",
       noMatches: "没有匹配的替换目标。",
+      targetOccupied: (name: string) =>
+        `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
+      targetOccupiedTag: "已被占用",
+      copyOccupantName: "复制占用方名称",
+      occupantNameCopiedTitle: "已复制占用方 Mod 名称",
+      occupantNameCopyFailedTitle: "复制失败",
+      occupantNameCopyFailedMessage: "无法写入剪贴板，请手动记下占用方 Mod 名称。",
       previewLoading: "正在生成预览",
       switchPreviewTitle: "目标切换预览",
       initialPreviewTitle: "写入预览",
@@ -544,6 +558,14 @@ export const replacementCopy = {
       targetsAria: "Replacement targets",
       currentInstalled: "Currently installed",
       noMatches: "No matching replacement targets.",
+      targetOccupied: (name: string) =>
+        `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
+      targetOccupiedTag: "Occupied",
+      copyOccupantName: "Copy occupant name",
+      occupantNameCopiedTitle: "Occupant mod name copied",
+      occupantNameCopyFailedTitle: "Copy failed",
+      occupantNameCopyFailedMessage:
+        "Could not write to the clipboard. Note the occupant mod name manually.",
       previewLoading: "Generating preview",
       switchPreviewTitle: "Target Switch Preview",
       initialPreviewTitle: "Write Preview",
@@ -786,6 +808,14 @@ export const replacementCopy = {
       targetsAria: "置換ターゲット",
       currentInstalled: "インストール済み",
       noMatches: "一致する置換ターゲットがありません。",
+      targetOccupied: (name: string) =>
+        `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
+      targetOccupiedTag: "占有済み",
+      copyOccupantName: "占有元の名前をコピー",
+      occupantNameCopiedTitle: "占有元 Mod 名をコピーしました",
+      occupantNameCopyFailedTitle: "コピーに失敗",
+      occupantNameCopyFailedMessage:
+        "クリップボードに書き込めません。占有元 Mod 名を手動で控えてください。",
       previewLoading: "プレビューを生成中",
       switchPreviewTitle: "ターゲット切替プレビュー",
       initialPreviewTitle: "書き込みプレビュー",

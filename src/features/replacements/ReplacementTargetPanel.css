@@ -288,6 +288,26 @@
   font-weight: 600;
 }
 
+/*
+ * 占用标签与"当前已安装"渲染在同一位置。已安装是成功态（绿），占用是阻断态，
+ * 同色会把"被别人占着"读成"你装好了"，所以必须换色。
+ */
+.replacement-panel__target-status.is-occupied {
+  color: var(--color-warning-text);
+}
+
+/* 占用提示里的复制按钮：文案较长，靠右放并禁止压缩。 */
+.replacement-panel__copy-name {
+  flex: none;
+  margin-left: auto;
+}
+
+.replacement-panel__notice > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .replacement-panel__target-row code {
   overflow-wrap: anywhere;
   color: var(--color-text-soft);
