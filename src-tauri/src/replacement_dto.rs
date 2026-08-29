@@ -21,6 +21,27 @@ pub struct AnalyzeImportedModReplacementRequestDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListReplacementTargetOccupancyRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+}
+
+/// 跨 Mod 同目标占用的展示投影。
+///
+/// 只服务于前端提示（选中被占用目标时禁用预览/安装并提示占用方）。真正的硬
+/// 门禁在预览、任务期计划构建和 commit 三层，不依赖本查询，所以后端在清单
+/// 不可信或读取失败时返回空列表（fail-open），不返回错误码。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplacementTargetOccupancyDto {
+    pub target_id: String,
+    pub mod_id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreviewInitialRetargetInstallRequestDto {
     pub game_id: String,
     pub profile_id: String,
@@ -156,6 +177,65 @@ mod replacement_dto_tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn occupancy_request_requires_profile_and_rejects_backend_paths() {
+        let request: ListReplacementTargetOccupancyRequestDto = serde_json::from_value(json!({
+            "gameId": "mhw",
+            "profileId": "profile-a",
+            "modId": "mod-a"
+        }))
+        .expect("deserialize occupancy request");
+        assert_eq!(request.mod_id, "mod-a");
+        assert_eq!(request.profile_id, "profile-a");
+
+        assert!(
+            serde_json::from_value::<ListReplacementTargetOccupancyRequestDto>(json!({
+                "gameId": "mhw",
+                "profileId": "profile-a",
+                "modId": "mod-a",
+                "sandboxPath": "C:\\private\\package"
+            }))
+            .is_err()
+        );
+        // 占用按 profile 判定，缺 profile 的请求必须被拒。
+        assert!(
+            serde_json::from_value::<ListReplacementTargetOccupancyRequestDto>(json!({
+                "gameId": "mhw",
+                "modId": "mod-a"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn occupancy_projection_serializes_only_display_facts() {
+        let value = serde_json::to_value(ReplacementTargetOccupancyDto {
+            target_id: "mhw:weapon:one002".to_owned(),
+            mod_id: "mod-b".to_owned(),
+            display_name: "Weapon Mod B".to_owned(),
+        })
+        .expect("serialize occupancy");
+
+        assert_eq!(value["targetId"], "mhw:weapon:one002");
+        assert_eq!(value["modId"], "mod-b");
+        assert_eq!(value["displayName"], "Weapon Mod B");
+        for forbidden in [
+            "bindingId",
+            "revisionId",
+            "packageId",
+            "sourceId",
+            "sandboxPath",
+            "stagingPath",
+            "targetPath",
+        ] {
+            assert!(
+                value.get(forbidden).is_none(),
+                "forbidden field: {forbidden}"
+            );
+        }
+        assert!(!value.to_string().contains("nativePC"));
     }
 
     #[test]

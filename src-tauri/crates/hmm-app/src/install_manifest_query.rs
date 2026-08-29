@@ -49,6 +49,12 @@ pub struct InstallManifestStatusSummary {
     pub installed_revision_id: Option<ModRevisionId>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplacementTargetOccupancy {
+    pub target_id: ReplacementTargetId,
+    pub mod_id: ModId,
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InstallManifestQueryError {
     #[error("install manifest query failed")]
@@ -119,6 +125,54 @@ impl InstallManifestQueryService {
         }
 
         Ok(Some(binding.binding().target_id().clone()))
+    }
+
+    /// 列出该 profile 下**其他 Mod** 已占用的替换目标。
+    ///
+    /// 只用于前端提示（选中被占用目标时禁用预览/安装）。硬门禁在预览、任务、
+    /// commit 三层，不依赖本查询，所以这里对不可信状态一律 fail-open 返回空。
+    pub fn query_replacement_target_occupancy(
+        &self,
+        profile_id: &ProfileId,
+        exclude_mod_id: &ModId,
+    ) -> Result<Vec<ReplacementTargetOccupancy>, InstallManifestQueryError> {
+        let manifest = self
+            .manifest_repository
+            .load_manifest(profile_id)
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
+        let Some(manifest) = manifest else {
+            return Ok(Vec::new());
+        };
+        if manifest.profile_id != *profile_id {
+            return Err(InstallManifestQueryError::ManifestUnavailable);
+        }
+        manifest
+            .validate()
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
+
+        let mut occupancy: Vec<ReplacementTargetOccupancy> = Vec::new();
+        for snapshot in &manifest.replacement_bindings {
+            // 自身占用不算占用：用户重选自己已装的目标走的是 target switch。
+            if snapshot.mod_id() == exclude_mod_id || snapshot.profile_id() != profile_id {
+                continue;
+            }
+            // summary_for_mod 的 Installed 判定等价于清单状态为 TrustEntries：
+            // InFlight / RollbackRequired / RepairRequired 的清单不能作为占用依据。
+            if summary_for_mod(profile_id, snapshot.mod_id(), Some(&manifest)).status
+                != InstallManifestStatus::Installed
+            {
+                continue;
+            }
+            let target_id = snapshot.binding().target_id().clone();
+            if occupancy.iter().any(|item| item.target_id == target_id) {
+                continue;
+            }
+            occupancy.push(ReplacementTargetOccupancy {
+                target_id,
+                mod_id: snapshot.mod_id().clone(),
+            });
+        }
+        Ok(occupancy)
     }
 }
 

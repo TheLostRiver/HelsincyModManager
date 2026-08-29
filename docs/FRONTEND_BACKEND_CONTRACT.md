@@ -501,12 +501,13 @@ AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
-六个 command 的请求只使用稳定身份：
+七个 command 的请求只使用稳定身份：
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
 | `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
+| `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
 | `preview_retarget_reinstall` | `gameId`、`profileId`、`modId`、`targetId`、layer | `ReinstallPlanPreviewDto` 与 plan token |
@@ -535,6 +536,22 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 （`planned`/`committing` 进行中）或读取失败同样 fail closed（`replacement_install_manifest_unavailable`）。
 commit 侧的 `PlanHasBlockingConflicts` 与安装清单归属检查保留为纵深防御最后防线。
 仅自查自身条目不构成冲突；跨 profile 的独立安装视图不在预览判定范围内。
+
+`list_replacement_target_occupancy` 是上述硬门禁的**展示投影**，不参与门禁判定。它从 profile
+安装清单的 `replacement_bindings` 收集其他 Mod 已占用的 `targetId`，经 mod_import 结果仓储映射出
+占用方 `displayName`，返回 `[{ targetId, modId, displayName }]`。自身 binding 不算占用（重选自己
+已安装的目标属于 target switch）；同一目标被多个 Mod 占用时只保留先出现的一条。清单状态不可信
+（TrustEntries 之外）、校验失败或读取失败一律**返回空列表**（fail-open）；占用方展示名解析失败时
+退回稳定 `modId`，不丢掉这条占用。前端据此在目标列表打「已被占用」标记，并在选中被占用目标时
+禁用「生成预览」与「安装到此目标」，同时展示可复制的占用方名称 —— 前端展示层 fail-open 是有意
+设计：少一条提示不会放过冲突写入，硬门禁仍在上一段描述的预览/任务/commit 三层。
+
+替换目标面板发起的 retarget 安装会为该 (profile, Mod) 落一份**选择意图**（`install/replacement-selections/`
+下的 per-(profile,mod) JSON）。任务承接安装（计划构建成功且无阻断冲突）时写入，commit 成功后清除，
+失败/取消时保留以引导玩家回到面板重试；预览不落意图。持有未完成选择意图的 Mod 走普通安装会装出
+未重定向的原始 Mod（清单里的绑定与实际写入不符），因此标准安装与批量安装都 fail closed：标准安装
+返回 `install_failed:replacement_selection_pending`，批量安装该项以 `replacement_selection_pending`
+阻断。携带显式 `replacementBindingSnapshot` 的 target switch / 同版本重装不受影响。
 
 `preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 只用于 recovery status 严格为 `installed`
 的同 revision target switch。后端从 manifest 解析 installed revision，再由 repository 和 adapter 重建

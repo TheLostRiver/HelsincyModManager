@@ -78,8 +78,9 @@ use profile_commands::{
 };
 use reinstall_commands::{get_mod_revisions, preview_reinstall_plan, start_reinstall_task};
 use replacement_commands::{
-    analyze_imported_mod_replacement, list_replacement_targets, preview_initial_retarget_install,
-    preview_retarget_reinstall, start_retarget_install_task, start_retarget_reinstall_task,
+    analyze_imported_mod_replacement, list_replacement_target_occupancy, list_replacement_targets,
+    preview_initial_retarget_install, preview_retarget_reinstall, start_retarget_install_task,
+    start_retarget_reinstall_task,
 };
 use save_backup_center_commands::{
     query_save_backup_center, run_save_backup_retention, update_save_backup_note,
@@ -185,6 +186,7 @@ pub fn run() {
             start_reinstall_task,
             list_replacement_targets,
             analyze_imported_mod_replacement,
+            list_replacement_target_occupancy,
             preview_initial_retarget_install,
             start_retarget_install_task,
             preview_retarget_reinstall,

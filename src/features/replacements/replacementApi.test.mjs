@@ -119,3 +119,30 @@ test("replacement request types expose stable ids but no filesystem or package f
   assert.match(requestTypes[0], /planToken:\s*string/);
   assert.match(requestTypes[0], /taskId:\s*string/);
 });
+
+test("occupancy request type carries only stable identity", () => {
+  const source = readSource("src/features/replacements/replacementTypes.ts");
+  const block = source.match(
+    /export type ListReplacementTargetOccupancyInput[\s\S]*?export type OccupiedReplacementTarget/,
+  );
+  assert.ok(block, "expected occupancy request type block");
+  for (const field of ["gameId", "profileId", "modId"]) {
+    assert.match(block[0], new RegExp(`${field}`));
+  }
+  assert.doesNotMatch(
+    block[0],
+    /packageId|revisionId|sourceId|bindingId|sandbox|staging|targetPath|archivePath|rawPath/i,
+  );
+  // 占用投影只带展示事实，不得把路径/身份细节带回前端。
+  const projection = source.match(
+    /export type OccupiedReplacementTarget[\s\S]*?\n\};/,
+  );
+  assert.ok(projection, "expected occupancy projection type");
+  for (const field of ["targetId", "modId", "displayName"]) {
+    assert.match(projection[0], new RegExp(`${field}:\\s*string`));
+  }
+  assert.doesNotMatch(
+    projection[0],
+    /pathFamily|relativePath|bindingId|sandbox|staging|gameRoot/i,
+  );
+});
