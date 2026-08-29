@@ -681,14 +681,14 @@ export function ReplacementTargetPanel({
                     {resolveReplacementTargetNames(target.displayNames, locale).secondaryName ? (
                       <small>{resolveReplacementTargetNames(target.displayNames, locale).secondaryName}</small>
                     ) : null}
+                  </span>
+                  <span className="replacement-panel__target-facts">
                     {currentInstalled ? (
-                      <span className="replacement-panel__target-status">
+                      <span className="replacement-panel__target-status is-installed">
                         <CheckCircle2 size={13} aria-hidden="true" />
                         {rCopy.panel.currentInstalled}
                       </span>
                     ) : null}
-                  </span>
-                  <span className="replacement-panel__target-facts">
                     {occupied ? (
                       <span className="replacement-panel__target-status is-occupied">
                         <ShieldAlert size={13} aria-hidden="true" />
