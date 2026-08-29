@@ -4,7 +4,10 @@ use std::sync::Arc;
 use hmm_core::{
     FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
 };
-use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
+use hmm_ports::{
+    AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
+    ReplacementSelectionRepository,
+};
 
 use crate::replacement_audit::{
     append_adapter_audit_fields, unique_adapter_audit_facts, ReplacementAdapterAuditFacts,
@@ -64,6 +67,7 @@ pub struct RetargetInstallTaskRunner {
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
     write_admission: Arc<dyn InstallWriteAdmission>,
+    selections: Arc<dyn ReplacementSelectionRepository>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,6 +103,7 @@ impl RetargetInstallTaskRunner {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         write_admission: Arc<dyn InstallWriteAdmission>,
+        selections: Arc<dyn ReplacementSelectionRepository>,
     ) -> Self {
         Self {
             task_manager,
@@ -108,6 +113,7 @@ impl RetargetInstallTaskRunner {
             clock,
             write_locks,
             write_admission,
+            selections,
         }
     }
 
@@ -151,6 +157,24 @@ impl RetargetInstallTaskRunner {
                 action_count,
                 adapter_facts.as_deref(),
             ));
+        }
+
+        // 选择意图在任务承接安装时落盘：批量/标准安装据此 fail closed（避免
+        // 装出未重定向的原始 Mod），retarget 完成后清除；失败/取消时保留，
+        // 引导用户回到面板重试。
+        let selection_binding = plan.replacement_bindings.first().cloned();
+        if let Some(binding) = &selection_binding {
+            if self.selections.save_selection(binding).is_err() {
+                self.planner.discard_initial_retarget_install(&plan);
+                return Err(self.fail(
+                    task_id,
+                    &request,
+                    events,
+                    "planning",
+                    action_count,
+                    adapter_facts.as_deref(),
+                ));
+            }
         }
 
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
@@ -280,6 +304,12 @@ impl RetargetInstallTaskRunner {
                 action_count,
                 adapter_facts.as_deref(),
             ));
+        }
+        // 安装完成，选择意图使命完成；失败/取消时保留以引导用户回面板重试。
+        if let Some(binding) = &selection_binding {
+            let _ = self
+                .selections
+                .remove_selection(binding.binding().profile_id(), binding.binding().mod_id());
         }
         self.record_audit(
             task_id,
@@ -414,10 +444,14 @@ mod tests {
 
     use hmm_core::{
         ContentTransformerIdentity, InstallFileProvider, InstallManifest, InstallTargetPath,
-        PackageFileId, ReplacementAdapterFacts,
+        PackageFileId, ReplacementAdapterFacts, ReplacementBinding, ReplacementBindingId,
+        ReplacementBindingSnapshot, ReplacementSourceId, ReplacementTargetKind,
     };
 
-    use crate::{InstallCommitError, InstallCommitResult, InstallWriteAdmissionError};
+    use crate::replacement_selection_test_support::InMemoryReplacementSelectionRepository;
+    use crate::{
+        InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallWriteAdmissionError,
+    };
 
     struct RecordingPlanner {
         revalidate_result: Result<(), ReplacementWorkflowError>,
@@ -494,6 +528,126 @@ mod tests {
                 .push(request.revision_id);
             Ok(InstallCommitResult {
                 manifest: InstallManifest::completed(request.profile_id, Vec::new()),
+            })
+        }
+    }
+
+    /// 与生产一致：retarget 计划恰好携带一个替换绑定快照（`discard_initial_retarget_install`
+    /// 就是按这个形状解构的）。测试的 `RecordingPlanner` 产出空绑定，无法覆盖选择意图。
+    struct BindingPlanner {
+        preview_decision: GamePrerequisiteDecision,
+        revalidation_decision: GamePrerequisiteDecision,
+        build_count: Mutex<usize>,
+    }
+
+    impl BindingPlanner {
+        fn new(
+            preview_decision: GamePrerequisiteDecision,
+            revalidation_decision: GamePrerequisiteDecision,
+        ) -> Self {
+            Self {
+                preview_decision,
+                revalidation_decision,
+                build_count: Mutex::new(0),
+            }
+        }
+    }
+
+    impl InitialRetargetInstallPlanner for BindingPlanner {
+        fn build_initial_retarget_install_plan(
+            &self,
+            request: StartRetargetInstallTaskRequest,
+        ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
+            *self.build_count.lock().expect("build count") += 1;
+            let binding = ReplacementBinding::new(
+                ReplacementBindingId::parse("binding-a").expect("binding id"),
+                request.mod_id.clone(),
+                request.profile_id.clone(),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
+                request.target_id.clone(),
+                1,
+            )
+            .expect("binding");
+            let snapshot = ReplacementBindingSnapshot::new(
+                binding,
+                None,
+                "pl121_0000",
+                "pl129_0000",
+                "pl/f_equip",
+                "pl/f_equip",
+                ReplacementTargetKind::parse("armor").expect("target kind"),
+            )
+            .expect("replacement snapshot");
+            let plan = InstallPlan::from_providers([InstallFileProvider::new(
+                request.mod_id,
+                PackageFileId::new("body"),
+                InstallTargetPath::parse(
+                    "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3",
+                    ["nativePC"],
+                )
+                .expect("target path"),
+                request.layer,
+            )])
+            .with_replacement_bindings(vec![snapshot])
+            .expect("plan with binding");
+            Ok(InitialRetargetInstallPlan {
+                plan,
+                revision_id: ModRevisionId::new("revision-a"),
+            })
+        }
+
+        fn revalidate_initial_install(
+            &self,
+            _request: &StartRetargetInstallTaskRequest,
+        ) -> Result<(), ReplacementWorkflowError> {
+            Ok(())
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            if *self.build_count.lock().expect("build count") == 0 {
+                self.preview_decision.clone()
+            } else {
+                self.revalidation_decision.clone()
+            }
+        }
+
+        fn discard_initial_retarget_install(&self, _plan: &InstallPlan) {}
+    }
+
+    /// 在 commit 时刻观测选择意图是否已落盘，用于证明「先落意图、再提交」。
+    struct SelectionProbingCommitter {
+        selections: Arc<InMemoryReplacementSelectionRepository>,
+        selection_present_at_commit: Mutex<Option<bool>>,
+        commit_count: Mutex<usize>,
+    }
+
+    impl InstallPlanCommitter for SelectionProbingCommitter {
+        fn commit_install_plan(
+            &self,
+            request: ImportedModInstallCommitRequest,
+        ) -> Result<InstallCommitResult, InstallCommitError> {
+            *self.commit_count.lock().expect("commit count") += 1;
+            let present = self
+                .selections
+                .load_selection(&request.profile_id, &request.mod_id)
+                .expect("selection read")
+                .is_some();
+            *self.selection_present_at_commit.lock().expect("probe") = Some(present);
+            Ok(InstallCommitResult {
+                manifest: InstallManifest::completed(request.profile_id, Vec::new()),
+            })
+        }
+    }
+
+    struct FailingCommitter;
+
+    impl InstallPlanCommitter for FailingCommitter {
+        fn commit_install_plan(
+            &self,
+            _request: ImportedModInstallCommitRequest,
+        ) -> Result<InstallCommitResult, InstallCommitError> {
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::Write,
             })
         }
     }
@@ -576,6 +730,27 @@ mod tests {
             Arc::new(FixedClock),
             Arc::new(GameProfileWriteLockRegistry::default()),
             Arc::new(AllowWrites),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        )
+    }
+
+    /// 注入选择意图仓储，供断言「落盘 / 清除 / 失败保留」的时机。
+    fn runner_with_selections(
+        task_manager: Arc<TaskManager>,
+        planner: Arc<dyn InitialRetargetInstallPlanner>,
+        committer: Arc<dyn InstallPlanCommitter>,
+        audit: Arc<RecordingAudit>,
+        selections: Arc<InMemoryReplacementSelectionRepository>,
+    ) -> RetargetInstallTaskRunner {
+        RetargetInstallTaskRunner::with_write_coordination(
+            task_manager,
+            planner,
+            committer,
+            audit,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            Arc::new(AllowWrites),
+            selections,
         )
     }
 
@@ -618,6 +793,82 @@ mod tests {
         let audit = audit.events.lock().expect("audit events");
         assert_eq!(audit[0].operation, "commit_retargeted_mod");
         assert_eq!(audit[0].fields["target_id"], "mhw:armor:fatalis-alpha");
+    }
+
+    #[test]
+    fn retarget_install_holds_selection_until_commit_succeeds() {
+        let task_manager = Arc::new(TaskManager::new());
+        let planner: Arc<dyn InitialRetargetInstallPlanner> = Arc::new(BindingPlanner::new(
+            ready_prerequisite_decision(),
+            ready_prerequisite_decision(),
+        ));
+        let selections =
+            crate::replacement_selection_test_support::in_memory_selection_repository();
+        let committer = Arc::new(SelectionProbingCommitter {
+            selections: Arc::clone(&selections),
+            selection_present_at_commit: Mutex::new(None),
+            commit_count: Mutex::new(0),
+        });
+        let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
+            .start_retarget_install_task(request())
+            .expect("start task");
+        let runner = runner_with_selections(
+            Arc::clone(&task_manager),
+            planner,
+            Arc::clone(&committer) as Arc<dyn InstallPlanCommitter>,
+            Arc::new(RecordingAudit::default()),
+            Arc::clone(&selections),
+        );
+
+        runner
+            .run_retarget_install_task(&task.task_id, request())
+            .expect("run task");
+
+        // 提交时选择意图已落盘（普通安装据此 fail closed），提交成功后清除。
+        assert_eq!(
+            *committer.selection_present_at_commit.lock().expect("probe"),
+            Some(true)
+        );
+        assert_eq!(*committer.commit_count.lock().expect("commit count"), 1);
+        assert!(selections
+            .load_selection(&ProfileId::new("profile-a"), &ModId::new("mod-a"))
+            .expect("selection read")
+            .is_none());
+    }
+
+    #[test]
+    fn failed_retarget_install_retains_selection_for_panel_retry() {
+        let task_manager = Arc::new(TaskManager::new());
+        let planner: Arc<dyn InitialRetargetInstallPlanner> = Arc::new(BindingPlanner::new(
+            ready_prerequisite_decision(),
+            ready_prerequisite_decision(),
+        ));
+        let task = RetargetInstallTaskService::new(Arc::clone(&task_manager))
+            .start_retarget_install_task(request())
+            .expect("start task");
+        let selections =
+            crate::replacement_selection_test_support::in_memory_selection_repository();
+        let runner = runner_with_selections(
+            Arc::clone(&task_manager),
+            planner,
+            Arc::new(FailingCommitter),
+            Arc::new(RecordingAudit::default()),
+            Arc::clone(&selections),
+        );
+
+        let error = runner
+            .run_retarget_install_task(&task.task_id, request())
+            .expect_err("commit failure must fail the task");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_retarget_failed:commit")
+        );
+        // 失败后保留选择意图：用户回到面板重试前，普通安装仍然被拦住。
+        assert!(selections
+            .load_selection(&ProfileId::new("profile-a"), &ModId::new("mod-a"))
+            .expect("selection read")
+            .is_some());
     }
 
     #[test]
@@ -788,6 +1039,7 @@ mod tests {
             Arc::new(FixedClock),
             write_locks,
             Arc::new(AllowWrites),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
         )
         .run_retarget_install_task(&task.task_id, request())
         .expect_err("prerequisite drift must block retarget install");
@@ -831,6 +1083,7 @@ mod tests {
             Arc::new(FixedClock),
             Arc::new(GameProfileWriteLockRegistry::default()),
             Arc::new(AllowWrites),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
         );
 
         let events = runner

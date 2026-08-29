@@ -7,7 +7,7 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
     CrossProcessWriteAdmissionResult, CrossProcessWriteGuard, NeverCancelled,
-    ReinstallRecoveryTransactionRepository,
+    ReinstallRecoveryTransactionRepository, ReplacementSelectionRepository,
 };
 use thiserror::Error;
 
@@ -347,6 +347,7 @@ pub struct InstallTaskRunner {
     clock: Arc<dyn AppClock>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
     write_admission: Arc<dyn InstallWriteAdmission>,
+    selections: Arc<dyn ReplacementSelectionRepository>,
 }
 
 pub struct UninstallTaskRunner {
@@ -425,23 +426,7 @@ impl RecoveryActionTaskService {
 }
 
 impl InstallTaskRunner {
-    pub fn new(
-        task_manager: Arc<TaskManager>,
-        planner: Arc<dyn ImportedModInstallPlanner>,
-        committer: Arc<dyn InstallPlanCommitter>,
-        audit_log: Arc<dyn AuditLogWriter>,
-        clock: Arc<dyn AppClock>,
-    ) -> Self {
-        Self::with_write_locks(
-            task_manager,
-            planner,
-            committer,
-            audit_log,
-            clock,
-            Arc::new(GameProfileWriteLockRegistry::default()),
-        )
-    }
-
+    #[allow(clippy::too_many_arguments)]
     pub fn with_write_locks(
         task_manager: Arc<TaskManager>,
         planner: Arc<dyn ImportedModInstallPlanner>,
@@ -449,6 +434,7 @@ impl InstallTaskRunner {
         audit_log: Arc<dyn AuditLogWriter>,
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
+        selections: Arc<dyn ReplacementSelectionRepository>,
     ) -> Self {
         Self::with_write_coordination(
             task_manager,
@@ -458,6 +444,7 @@ impl InstallTaskRunner {
             clock,
             write_locks,
             Arc::new(AllowInstallWriteAdmission),
+            selections,
         )
     }
 
@@ -470,6 +457,7 @@ impl InstallTaskRunner {
         clock: Arc<dyn AppClock>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         write_admission: Arc<dyn InstallWriteAdmission>,
+        selections: Arc<dyn ReplacementSelectionRepository>,
     ) -> Self {
         Self {
             task_manager,
@@ -479,7 +467,21 @@ impl InstallTaskRunner {
             clock,
             write_locks,
             write_admission,
+            selections,
         }
+    }
+
+    /// 批量安装执行器的阻断预检：该 Mod 是否持有未完成的重定向选择意图。
+    pub fn has_pending_replacement_selection(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> bool {
+        self.selections
+            .load_selection(profile_id, mod_id)
+            .ok()
+            .flatten()
+            .is_some()
     }
 
     pub fn run_install_task(
@@ -556,6 +558,29 @@ impl InstallTaskRunner {
             observer,
             running_event(task_id, INSTALL_PLAN_BUILDING_PHASE),
         );
+        // 替换目标面板发起过 retarget 安装的 Mod 持有未完成的选择意图：
+        // 普通安装会装出未重定向的原始 Mod（绑定与实际写入不符），fail closed，
+        // 引导用户回到替换目标面板完成安装。携带显式绑定的请求（target switch /
+        // 同版本重装）不受影响。
+        if replacement_binding_snapshot.is_none() {
+            let selection = self
+                .selections
+                .load_selection(&request.profile_id, &request.mod_id)
+                .map_err(|_| InstallTaskOrchestrationError {
+                    events: std::mem::take(&mut events),
+                    commit_error: None,
+                })?;
+            if selection.is_some() {
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    "replacement_selection_pending",
+                    0,
+                ));
+            }
+        }
         let preflight = match revision_id.as_ref() {
             Some(revision_id) => self.planner.build_imported_mod_revision_install_plan(
                 &request.game_id,
@@ -1653,7 +1678,8 @@ mod tests {
     use hmm_core::{
         InstallFileProvider, InstallManifest, InstallManifestEntry, InstallPlan, InstallTargetPath,
         ModRevisionId, PackageFileId, ReinstallRecoveryTransaction,
-        ReinstallRecoveryTransactionStatus,
+        ReinstallRecoveryTransactionStatus, ReplacementBinding, ReplacementBindingId,
+        ReplacementSourceId, ReplacementTargetId, ReplacementTargetKind,
     };
     use hmm_ports::{
         AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmission,
@@ -1778,12 +1804,14 @@ mod tests {
             .cancel_task(&install_task.task_id)
             .expect("cancellation wins");
         let install_audit = Arc::new(RecordingAuditLogWriter::default());
-        let install_runner = InstallTaskRunner::new(
+        let install_runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             Arc::new(RecordingInstallPlanner::new(sample_plan())),
             Arc::new(RecordingInstallCommitter::new(sample_manifest())),
             install_audit.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let install_observer = noop_task_progress_observer();
@@ -1842,12 +1870,14 @@ mod tests {
         let planner = Arc::new(RecordingInstallPlanner::new(sample_plan()));
         let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
         let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             planner.clone(),
             committer.clone(),
             audit_log.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
         let request = sample_request();
 
@@ -1923,6 +1953,7 @@ mod tests {
             Arc::new(GameProfileWriteLockRegistry::with_cross_process_admission(
                 coordinator,
             )),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let error = runner
@@ -1954,12 +1985,14 @@ mod tests {
         let task = task_manager
             .create_task(crate::TaskKind::Install)
             .expect("task can be created");
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             Arc::new(RecordingInstallPlanner::new(sample_plan())),
             Arc::new(RecordingInstallCommitter::new(sample_manifest())),
             Arc::new(FailingAuditLogWriter),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let events = runner
@@ -2031,6 +2064,7 @@ mod tests {
                 expected_plan: plan,
                 expected_decision: prerequisite_decision,
             }),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let error = runner
@@ -2076,12 +2110,14 @@ mod tests {
             .create_task(crate::TaskKind::Install)
             .expect("install task can be created");
         let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             Arc::new(RecordingInstallPlanner::new(sample_plan())),
             committer.clone(),
             Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
         let observer = FailingObserver::default();
 
@@ -2483,6 +2519,7 @@ mod tests {
             Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
             Arc::clone(&write_locks),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
         let uninstall_runner = UninstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
@@ -2572,6 +2609,7 @@ mod tests {
             Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
             Arc::clone(&write_locks),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
         let recovery_runner = RecoveryActionTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
@@ -2643,7 +2681,7 @@ mod tests {
             Arc::clone(&task_manager),
             install_task.task_id.clone(),
         ));
-        let install_runner = InstallTaskRunner::new(
+        let install_runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             Arc::new(RecordingInstallPlanner::new(sample_plan())),
             Arc::new(CancellationProbingInstallCommitter {
@@ -2652,6 +2690,8 @@ mod tests {
             }),
             Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let install_events = install_runner
@@ -2775,12 +2815,14 @@ mod tests {
         });
         let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
         let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             planner,
             committer.clone(),
             audit_log.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let events = runner
@@ -2811,12 +2853,14 @@ mod tests {
         let planner = Arc::new(RecordingInstallPlanner::new(sample_plan()));
         let committer = Arc::new(FailingInstallCommitter);
         let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             planner,
             committer,
             audit_log.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let error = runner
@@ -2848,12 +2892,14 @@ mod tests {
             .create_task(crate::TaskKind::Install)
             .expect("task can be created");
         let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             Arc::new(RecordingInstallPlanner::new(sample_plan())),
             Arc::new(RollbackFailedInstallCommitter),
             audit_log.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         runner
@@ -2883,12 +2929,14 @@ mod tests {
         ));
         let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
         let audit_log = Arc::new(RecordingAuditLogWriter::default());
-        let runner = InstallTaskRunner::new(
+        let runner = InstallTaskRunner::with_write_locks(
             Arc::clone(&task_manager),
             planner,
             committer.clone(),
             audit_log.clone(),
             Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let error = runner
@@ -2936,6 +2984,7 @@ mod tests {
             Arc::new(RecordingAuditLogWriter::default()),
             Arc::new(FixedClock),
             write_locks,
+            crate::replacement_selection_test_support::noop_selection_repository(),
         );
 
         let error = runner
@@ -3006,6 +3055,164 @@ mod tests {
     fn sample_target() -> InstallTargetPath {
         InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
             .expect("sample target is valid")
+    }
+
+    fn sample_selection_snapshot() -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            ReplacementBinding::new(
+                ReplacementBindingId::parse("binding-a").expect("binding id"),
+                ModId::new("mod-a"),
+                ProfileId::new("default"),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
+                ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+                1,
+            )
+            .expect("binding"),
+            None,
+            "pl121_0000",
+            "pl129_0000",
+            "pl/f_equip",
+            "pl/f_equip",
+            ReplacementTargetKind::parse("armor").expect("target kind"),
+        )
+        .expect("replacement snapshot")
+    }
+
+    /// 能通过显式绑定校验的快照：revision 匹配、源目标同 internal id 与 path family、
+    /// created_at 为 0（identity 绑定，见 `is_identity_replacement_binding`）。
+    fn identity_selection_snapshot(revision_id: &ModRevisionId) -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            ReplacementBinding::new(
+                ReplacementBindingId::parse("binding-a").expect("binding id"),
+                ModId::new("mod-a"),
+                ProfileId::new("default"),
+                ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
+                ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+                0,
+            )
+            .expect("binding"),
+            Some(revision_id.clone()),
+            "pl121_0000",
+            "pl121_0000",
+            "pl/f_equip",
+            "pl/f_equip",
+            ReplacementTargetKind::parse("armor").expect("target kind"),
+        )
+        .expect("replacement snapshot")
+    }
+
+    #[test]
+    fn pending_replacement_selection_blocks_plain_install_before_planning() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let selections =
+            crate::replacement_selection_test_support::in_memory_selection_repository();
+        selections
+            .save_selection(&sample_selection_snapshot())
+            .expect("seed pending selection");
+        let planner = Arc::new(RecordingInstallPlanner::new(sample_plan()));
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        // runner 持有 trait object；测试保留具体类型以便事后断言规划/写入未被触达。
+        let planner_dep: Arc<dyn ImportedModInstallPlanner> = planner.clone();
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner_dep,
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            selections,
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("pending selection must block plain install");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:replacement_selection_pending")
+        );
+        assert_eq!(
+            audit_log.take_event().expect("failure audit").fields["error_code"],
+            "install_failed:replacement_selection_pending"
+        );
+        // 门禁在计划构建之前短路：既不规划也不写入，玩家文件保持原样。
+        assert!(planner.take_requests().is_empty());
+        assert!(committer.take_profiles().is_empty());
+    }
+
+    #[test]
+    fn explicit_replacement_binding_bypasses_pending_selection_gate() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let selections =
+            crate::replacement_selection_test_support::in_memory_selection_repository();
+        selections
+            .save_selection(&sample_selection_snapshot())
+            .expect("seed pending selection");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            committer_dep,
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            selections,
+        );
+
+        // target switch / 同版本重装携带显式绑定，是带重定向意图的合法路径。
+        let revision_id = ModRevisionId::new("revision-a");
+        runner
+            .run_install_revision_task_for_orchestration_with_observer(
+                &task.task_id,
+                sample_request(),
+                revision_id.clone(),
+                Some(identity_selection_snapshot(&revision_id)),
+                &noop_task_progress_observer(),
+            )
+            .expect("explicit binding must not be blocked by the pending selection gate");
+
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(crate::TaskStatus::Completed)
+        );
+        assert_eq!(committer.take_profiles(), vec!["default".to_owned()]);
+    }
+
+    #[test]
+    fn has_pending_replacement_selection_reflects_repository_state() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let selections =
+            crate::replacement_selection_test_support::in_memory_selection_repository();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            Arc::new(RecordingInstallCommitter::new(sample_manifest())),
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            selections.clone(),
+        );
+
+        assert!(!runner
+            .has_pending_replacement_selection(&ProfileId::new("default"), &ModId::new("mod-a")));
+        selections
+            .save_selection(&sample_selection_snapshot())
+            .expect("seed pending selection");
+        assert!(runner
+            .has_pending_replacement_selection(&ProfileId::new("default"), &ModId::new("mod-a")));
+        // 别的 Mod 不受影响：预检按 (profile, mod) 粒度命中。
+        assert!(!runner
+            .has_pending_replacement_selection(&ProfileId::new("default"), &ModId::new("mod-b")));
     }
 
     #[derive(Clone, Copy)]

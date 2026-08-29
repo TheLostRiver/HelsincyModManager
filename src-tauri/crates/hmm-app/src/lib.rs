@@ -47,6 +47,83 @@ mod support_diagnostics;
 mod task_manager;
 mod write_admission;
 
+#[cfg(test)]
+pub(crate) mod replacement_selection_test_support {
+    use anyhow::Result;
+    use hmm_core::{ModId, ProfileId, ReplacementBindingSnapshot};
+    use hmm_ports::ReplacementSelectionRepository;
+    use std::sync::{Arc, Mutex};
+
+    /// 测试专用：不持有任何选择意图的空仓储。
+    pub(crate) struct NoopReplacementSelectionRepository;
+
+    impl ReplacementSelectionRepository for NoopReplacementSelectionRepository {
+        fn load_selection(
+            &self,
+            _profile_id: &ProfileId,
+            _mod_id: &ModId,
+        ) -> Result<Option<ReplacementBindingSnapshot>> {
+            Ok(None)
+        }
+
+        fn save_selection(&self, _binding: &ReplacementBindingSnapshot) -> Result<()> {
+            Ok(())
+        }
+
+        fn remove_selection(&self, _profile_id: &ProfileId, _mod_id: &ModId) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// 测试专用：可配置返回结果的内存仓储，供门禁行为断言使用。
+    #[derive(Default)]
+    pub(crate) struct InMemoryReplacementSelectionRepository {
+        pub(crate) selections: Mutex<Vec<ReplacementBindingSnapshot>>,
+    }
+
+    impl ReplacementSelectionRepository for InMemoryReplacementSelectionRepository {
+        fn load_selection(
+            &self,
+            _profile_id: &ProfileId,
+            mod_id: &ModId,
+        ) -> Result<Option<ReplacementBindingSnapshot>> {
+            Ok(self
+                .selections
+                .lock()
+                .expect("selection lock")
+                .iter()
+                .find(|binding| binding.binding().mod_id() == mod_id)
+                .cloned())
+        }
+
+        fn save_selection(&self, binding: &ReplacementBindingSnapshot) -> Result<()> {
+            let mut selections = self.selections.lock().expect("selection lock");
+            selections.retain(|item| item.binding().mod_id() != binding.binding().mod_id());
+            selections.push(binding.clone());
+            Ok(())
+        }
+
+        fn remove_selection(&self, profile_id: &ProfileId, mod_id: &ModId) -> Result<()> {
+            self.selections
+                .lock()
+                .expect("selection lock")
+                .retain(|item| {
+                    !(item.binding().mod_id() == mod_id
+                        && item.binding().profile_id() == profile_id)
+                });
+            Ok(())
+        }
+    }
+
+    pub(crate) fn noop_selection_repository() -> Arc<dyn ReplacementSelectionRepository> {
+        Arc::new(NoopReplacementSelectionRepository)
+    }
+
+    pub(crate) fn in_memory_selection_repository() -> Arc<InMemoryReplacementSelectionRepository> {
+        Arc::new(InMemoryReplacementSelectionRepository::default())
+    }
+}
+
 pub use app_settings::{AppSettingsService, AppSettingsServiceError};
 pub use application_exit_guard::{
     ApplicationExitBeginDecision, ApplicationExitBlockReason, ApplicationExitDecision,

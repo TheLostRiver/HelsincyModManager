@@ -10,7 +10,7 @@ use hmm_ports::{
     BatchAttemptAdmission, BatchPlanFactsProvider, BatchRetryAttemptCreation,
     BatchRetryAttemptRequest, BatchSealRepository, BatchSealRequest, InstallBackupStore,
     InstallGameFileSystem, InstallManifestRepository, InstallRecoveryRecordRepository,
-    InstallSourceFileReader,
+    InstallSourceFileReader, ReplacementSelectionRepository,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -668,6 +668,27 @@ fn transaction_item_executor(
     Arc<TransactionRecoveryRepository>,
     Arc<TransactionManifestRepository>,
 ) {
+    transaction_item_executor_with_selections(
+        task_manager,
+        fail_manifest_save,
+        fail_rollback_remove,
+        item_audit,
+        crate::replacement_selection_test_support::noop_selection_repository(),
+    )
+}
+
+fn transaction_item_executor_with_selections(
+    task_manager: Arc<TaskManager>,
+    fail_manifest_save: bool,
+    fail_rollback_remove: bool,
+    item_audit: Arc<dyn AuditLogWriter>,
+    selections: Arc<dyn hmm_ports::ReplacementSelectionRepository>,
+) -> (
+    Arc<InstallTaskBatchItemExecutor>,
+    Arc<TransactionGameFiles>,
+    Arc<TransactionRecoveryRepository>,
+    Arc<TransactionManifestRepository>,
+) {
     let target = InstallTargetPath::parse("nativepc/a", ["nativepc"]).expect("transaction target");
     let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
         ModId::new("a"),
@@ -689,12 +710,15 @@ fn transaction_item_executor(
         manifests.clone(),
         recovery.clone(),
     );
-    let runner = Arc::new(InstallTaskRunner::new(
+    let runner = Arc::new(InstallTaskRunner::with_write_coordination(
         task_manager.clone(),
         Arc::new(StaticInstallPlanner { plan }),
         Arc::new(commit_service),
         item_audit,
         Arc::new(FixedClock),
+        Arc::new(crate::GameProfileWriteLockRegistry::default()),
+        Arc::new(crate::install_task::AllowInstallWriteAdmission),
+        selections,
     ));
     (
         Arc::new(InstallTaskBatchItemExecutor::new(runner, task_manager)),
@@ -1150,12 +1174,15 @@ fn install_adapter_preserves_cancelled_child_when_planning_also_fails() {
     task_manager
         .cancel_task(&parent_task_id)
         .expect("parent cancellation");
-    let runner = Arc::new(InstallTaskRunner::new(
+    let runner = Arc::new(InstallTaskRunner::with_write_coordination(
         task_manager.clone(),
         Arc::new(FailingInstallPlanner),
         Arc::new(UnreachableInstallCommitter),
         Arc::new(RecordingAuditLogWriter::default()),
         Arc::new(FixedClock),
+        Arc::new(crate::GameProfileWriteLockRegistry::default()),
+        Arc::new(crate::install_task::AllowInstallWriteAdmission),
+        crate::replacement_selection_test_support::noop_selection_repository(),
     ));
     let executor = InstallTaskBatchItemExecutor::new(runner, task_manager);
 
@@ -2398,6 +2425,33 @@ fn explicit_identity_snapshot_is_blocked_before_plain_install_execution() {
         .create_task(TaskKind::Install)
         .expect("next task");
     assert_eq!(next_task.task_id.rsplit('-').next(), Some("1"));
+}
+
+#[test]
+fn pending_replacement_selection_blocks_plain_batch_install() {
+    let (batch, _, _) = batch();
+    let task_manager = Arc::new(TaskManager::new());
+    let parent_task_id = start_parent_task(&task_manager);
+    let selections = crate::replacement_selection_test_support::in_memory_selection_repository();
+    selections
+        .save_selection(&replacement_snapshot("a"))
+        .expect("seed pending selection");
+    let (executor, game_files, recovery, _) = transaction_item_executor_with_selections(
+        task_manager,
+        false,
+        false,
+        Arc::new(RecordingAuditLogWriter::default()),
+        selections,
+    );
+
+    assert_eq!(
+        executor.execute(first_item_request(&batch, parent_task_id)),
+        BatchInstallItemExecution::Blocked {
+            reason_code: "replacement_selection_pending".to_owned(),
+        }
+    );
+    assert_eq!(game_files.file_bytes("nativepc/a"), None);
+    assert!(recovery.history().is_empty());
 }
 
 #[test]

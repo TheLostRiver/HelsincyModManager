@@ -1046,6 +1046,7 @@ fn install_uninstall_and_controlled_recovery_wait_for_reinstall_shared_lock() {
         Arc::new(RecordingAuditLog::default()),
         Arc::new(FixedClock),
         Arc::clone(&write_locks),
+        crate::replacement_selection_test_support::noop_selection_repository(),
     );
     let install_task_id = install_task.task_id.clone();
     let install_handle =
@@ -1443,6 +1444,7 @@ fn assert_write_admission_failure(error: crate::InstallWriteAdmissionError, suff
         Arc::new(FixedClock),
         Arc::clone(&write_locks),
         gate.clone(),
+        crate::replacement_selection_test_support::noop_selection_repository(),
     );
     let install_result = install_runner.run_install_task(&install_task.task_id, install_request());
     install_planned_rx

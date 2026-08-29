@@ -28,6 +28,7 @@ mod mod_revision_catalog_tests;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod reinstall;
+mod replacement_selection;
 mod save_backup;
 mod save_backup_background_registry;
 mod save_directory_pending_store;
@@ -97,6 +98,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use reinstall::JsonReinstallRecoveryTransactionRepository;
+pub use replacement_selection::JsonReplacementSelectionRepository;
 pub use save_backup::{FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter};
 #[cfg(windows)]
 pub use save_backup_background_registry::WindowsScheduledTaskRegistry;
