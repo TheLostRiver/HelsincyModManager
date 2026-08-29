@@ -658,6 +658,7 @@ export function ReplacementTargetPanel({
                 <label
                   className="replacement-panel__target-row"
                   data-installed={currentInstalled}
+                  data-occupied={occupied ? "true" : "false"}
                   data-selected={target.id === selectedTargetId}
                   key={target.id}
                 >
@@ -686,14 +687,14 @@ export function ReplacementTargetPanel({
                         {rCopy.panel.currentInstalled}
                       </span>
                     ) : null}
+                  </span>
+                  <span className="replacement-panel__target-facts">
                     {occupied ? (
                       <span className="replacement-panel__target-status is-occupied">
                         <ShieldAlert size={13} aria-hidden="true" />
                         {rCopy.panel.targetOccupiedTag}
                       </span>
                     ) : null}
-                  </span>
-                  <span className="replacement-panel__target-facts">
                     <code>{target.internalId}</code>
                   </span>
                 </label>
