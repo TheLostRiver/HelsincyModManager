@@ -74,3 +74,7 @@ lcov.info
 
 # Local agent task metadata
 .pi/
+
+# WorkBuddy / zcode 本地工具状态（绝不提交）
+.workbuddy-ai/
+.zcode/
