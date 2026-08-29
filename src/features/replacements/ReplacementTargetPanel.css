@@ -289,11 +289,20 @@
 }
 
 /*
- * 占用标签与"当前已安装"渲染在同一位置。已安装是成功态（绿），占用是阻断态，
- * 同色会把"被别人占着"读成"你装好了"，所以必须换色。
+ * 占用标签与"当前已安装"分列两处：已安装在名称下方（成功态，绿），占用标签
+ * 在右侧状态列（阻断态）。同色会把"被别人占着"读成"你装好了"，所以必须换色；
+ * 药丸底色让它是清晰的"状态标签"，而不是挤在名称下的一行刺眼红字。
  */
 .replacement-panel__target-status.is-occupied {
   color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* 被占用的行与"当前已安装"的绿色左条对称，改用警示色左条。 */
+.replacement-panel__target-row[data-occupied="true"] {
+  box-shadow: inset 3px 0 0 var(--color-warning-dot);
 }
 
 /* 占用提示里的复制按钮：文案较长，靠右放并禁止压缩。 */
