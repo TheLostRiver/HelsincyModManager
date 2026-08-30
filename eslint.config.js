@@ -33,7 +33,8 @@ export default tseslint.config(
     },
   },
   {
-    // armor-data 是本地候选数据与抓取工具，不纳入版本管理，也不该被 lint。
+    // armor-data 是本地候选数据与抓取工具，tmp 是临时诊断脚本与产物，
+    // 两者都不纳入版本管理，也不该被 lint。
     ignores: [
       ".claude",
       ".vite",
@@ -42,6 +43,7 @@ export default tseslint.config(
       "dist",
       "src-tauri/target",
       "target",
+      "tmp",
     ],
   },
 );
