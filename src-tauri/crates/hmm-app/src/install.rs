@@ -874,6 +874,11 @@ impl UninstallModService {
         }) {
             return Err(UninstallModError::ManifestStateMismatch);
         }
+        // 解构会 move manifest，先留一份副本：下面回收残留绑定时只需要改
+        // replacement_bindings，其余字段必须原样保留。
+        let binding_count_before = manifest.replacement_bindings.len();
+        let reclaim_base = manifest.clone();
+
         let InstallManifest {
             manifest_id,
             schema_version,
@@ -889,12 +894,22 @@ impl UninstallModService {
         let (uninstall_entries, kept_entries): (Vec<_>, Vec<_>) = entries
             .into_iter()
             .partition(|entry| entry.mod_id == request.mod_id);
-        let kept_replacement_bindings = replacement_bindings
+        let kept_replacement_bindings: Vec<ReplacementBindingSnapshot> = replacement_bindings
             .into_iter()
             .filter(|snapshot| snapshot.mod_id() != &request.mod_id)
             .collect();
 
         if uninstall_entries.is_empty() {
+            // 卸载失败或回滚残留会让条目先消失、绑定还留着。这里原先直接返回，
+            // 于是清单一直为「未安装」的 MOD 声称一个替换目标，下次安装就会拿
+            // 这份陈旧目标做比对（#278）。返回前先把残留回收掉。
+            if kept_replacement_bindings.len() != binding_count_before {
+                let mut reclaimed = reclaim_base.clone();
+                reclaimed.replacement_bindings = kept_replacement_bindings.clone();
+                // 尽力而为：无论回收是否成功，该 MOD 都处于未安装状态，
+                // 不能用回收失败的错误盖掉本来的 ModNotInstalled 语义。
+                let _ = self.manifest_repository.save_manifest(&reclaimed);
+            }
             return Err(UninstallModError::ModNotInstalled);
         }
         if let Some(expected_revision_id) = expected_installed_revision_id {
