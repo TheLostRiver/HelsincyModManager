@@ -626,6 +626,10 @@ Windows Sandbox Gate D 均已完成。
   `one001`/`one002` developer target。
 - `HMM_SANDBOX_DATA_DIR` 同时选择人工 seed 与 install/reinstall/uninstall/recovery root admission；marker、
   目录身份、link/reparse 和 app-data/game containment 在每次写入前 fail closed 重验。
+  **（#273 起 GUI 组合只重验 game containment）**：GUI 的 app-data 根由 Tauri 解析到系统位置、
+  不会随 sandbox environment 迁进沙箱根，要求它被包含会让 GUI 写入结构性不可通过（表现为
+  `install_retarget_failed:write_safety_rejected`）。批量/CLI 组合的数据根就是沙箱根本身，
+  app-data containment 语义不变。
 - `list_replacement_targets` 要求 `modId`，由后端分析 source 并按 target type/path-family 过滤；DTO
   移除原始 metadata，增加 `catalogScope`，UI 不展示 relative path 或 path-family。
 - content-aware plan 通过受限 reader 读取受控 revision 的人工 MOD3/MRL3 bytes，并生成 sealed transform

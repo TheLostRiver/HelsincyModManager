@@ -140,9 +140,13 @@ impl SandboxWriteCapability {
 
 /// Roots that a lifecycle operation may write. Optional roots are omitted when the operation does
 /// not use save or backup storage; omitted roots are not implicitly guessed.
+///
+/// `app_data` is optional because the GUI composition admits writes with the app-data root
+/// **exempt** from sandbox containment (see `game_root_only`). An omitted root is never
+/// guessed, so exempting it must be an explicit choice at the construction site.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxWriteRoots {
-    app_data: PathBuf,
+    app_data: Option<PathBuf>,
     game: PathBuf,
     save: Option<PathBuf>,
     backup: Option<PathBuf>,
@@ -151,7 +155,27 @@ pub struct SandboxWriteRoots {
 impl SandboxWriteRoots {
     pub fn new(app_data: PathBuf, game: PathBuf) -> Self {
         Self {
-            app_data,
+            app_data: Some(app_data),
+            game,
+            save: None,
+            backup: None,
+        }
+    }
+
+    /// Admits only the game root, leaving the app-data root outside the admission set.
+    ///
+    /// #273: the GUI resolves its app-data root through Tauri to the OS location
+    /// (`%APPDATA%\dev.helsincy.modmanager`) and never relocates it to the sandbox root, so
+    /// requiring it to be inside the sandbox made GUI writes structurally impossible — the
+    /// sandbox root and the app-data root are disjoint by construction.
+    ///
+    /// The app-data root holds manager metadata (database, import cache, config), not player
+    /// data, and it is the game root that sandbox mode exists to protect. This deliberately
+    /// weakens "every write inside sandbox mode goes through containment" and was accepted as
+    /// a trade-off over relocating the production data root (see issue #273).
+    pub fn game_root_only(game: PathBuf) -> Self {
+        Self {
+            app_data: None,
             game,
             save: None,
             backup: None,
@@ -168,8 +192,8 @@ impl SandboxWriteRoots {
         self
     }
 
-    pub fn app_data_root(&self) -> &Path {
-        &self.app_data
+    pub fn app_data_root(&self) -> Option<&Path> {
+        self.app_data.as_deref()
     }
 
     pub fn game_root(&self) -> &Path {
@@ -185,7 +209,9 @@ impl SandboxWriteRoots {
     }
 
     fn all_paths(&self) -> impl Iterator<Item = &Path> {
-        std::iter::once(self.app_data.as_path())
+        self.app_data
+            .as_deref()
+            .into_iter()
             .chain(std::iter::once(self.game.as_path()))
             .chain(self.save.as_deref())
             .chain(self.backup.as_deref())
@@ -698,6 +724,73 @@ mod tests {
                 lexical_escape,
             ))
             .expect_err("lexical escape must be rejected");
+        assert_eq!(error, SandboxWriteCapabilityError::WriteRootRejected);
+    }
+
+    #[test]
+    fn game_root_only_leaves_the_app_data_root_out_of_the_admitted_set() {
+        let sandbox = empty_sandbox();
+        let game = sandbox.path().join("game");
+        let roots = SandboxWriteRoots::game_root_only(game.clone());
+        assert_eq!(roots.app_data_root(), None);
+        assert_eq!(roots.game_root(), game.as_path());
+
+        let with_app_data = SandboxWriteRoots::new(sandbox.path().to_path_buf(), game);
+        assert_eq!(with_app_data.app_data_root(), Some(sandbox.path()));
+    }
+
+    #[test]
+    fn gui_composition_admission_survives_an_app_data_root_outside_the_sandbox() {
+        // #273: the GUI resolves its app-data root through Tauri to the OS location and never
+        // relocates it, so the sandbox root and the app-data root are disjoint by construction.
+        // Requiring the app-data root to be contained rejected every GUI install with
+        // `install_retarget_failed:write_safety_rejected`.
+        //
+        // The two shapes are compared against the same capability so the control group lives
+        // inside this test: the relaxation is exactly the difference between them, not a
+        // blanket disabling of the gate (see the next test for that).
+        let sandbox = empty_sandbox();
+        let capability = environment(sandbox.path())
+            .acquire_sandbox_write_capability()
+            .expect("capability");
+        let game = sandbox.path().join("game");
+        fs::create_dir_all(&game).expect("game");
+        let system_app_data = tempfile::tempdir().expect("system app data root");
+        assert!(
+            !system_app_data.path().starts_with(sandbox.path()),
+            "fixture must place the app-data root outside the sandbox"
+        );
+
+        let rejected = capability
+            .admit_roots(SandboxWriteRoots::new(
+                system_app_data.path().to_path_buf(),
+                game.clone(),
+            ))
+            .expect_err("the batch/CLI shape must still reject an outside app-data root");
+        assert_eq!(rejected, SandboxWriteCapabilityError::WriteRootRejected);
+
+        capability
+            .admit_roots(SandboxWriteRoots::game_root_only(game))
+            .expect("the GUI shape must not need the app-data root inside the sandbox")
+            .revalidate()
+            .expect("revalidation stays within the admitted set");
+    }
+
+    #[test]
+    fn game_root_only_admission_still_rejects_a_game_root_outside_the_sandbox() {
+        // Control group for the #273 relaxation: exempting the app-data root must not turn the
+        // gate off. The game root is what sandbox mode exists to protect.
+        let sandbox = empty_sandbox();
+        let capability = environment(sandbox.path())
+            .acquire_sandbox_write_capability()
+            .expect("capability");
+        let outside_game = tempfile::tempdir().expect("outside game root");
+
+        let error = capability
+            .admit_roots(SandboxWriteRoots::game_root_only(
+                outside_game.path().to_path_buf(),
+            ))
+            .expect_err("a game root outside the sandbox must still be rejected");
         assert_eq!(error, SandboxWriteCapabilityError::WriteRootRejected);
     }
 

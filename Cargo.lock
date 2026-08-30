@@ -1884,6 +1884,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "tracing",
  "uuid",
  "windows-sys 0.61.2",
  "zip",
