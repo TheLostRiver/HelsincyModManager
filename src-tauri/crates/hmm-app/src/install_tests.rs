@@ -739,7 +739,9 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
             InstallManifestEntry {
                 target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                     .expect("valid target"),
-                mod_id: ModId::new("mod-old"),
+                // 同 MOD 覆盖自己的目标：跨 MOD 抢占已被归属冲突挡住（见
+                // commit_plan_blocks_target_owned_by_another_mod）。
+                mod_id: ModId::new("mod-new"),
                 revision_id: None,
                 package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
                 layer: FileLayer::new("base", 0),
@@ -786,6 +788,75 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
             ),
         ]
     );
+}
+
+#[test]
+fn commit_plan_blocks_target_owned_by_another_mod() {
+    let target = InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+        .expect("valid target");
+    let plan = InstallPlan::from_providers(vec![InstallFileProvider::new(
+        ModId::new("mod-new"),
+        PackageFileId::new("nativePC/models/player.mod3"),
+        target,
+        FileLayer::new("base", 0),
+    )]);
+    let source_files = Arc::new(RecordingInstallSourceFileReader::new([(
+        "nativePC/models/player.mod3",
+        b"new model".as_slice(),
+    )]));
+    let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
+        "nativePC/models/player.mod3",
+        b"old managed model".as_slice(),
+    )]));
+    let backups = Arc::new(RecordingInstallBackupStore::default());
+    let existing_manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![InstallManifestEntry {
+            target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
+                .expect("valid target"),
+            mod_id: ModId::new("mod-old"),
+            revision_id: None,
+            package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
+            layer: FileLayer::new("base", 0),
+            backup_ref: Some("backup-original-player".to_owned()),
+            installed_file: Some(installed_file_summary(b"old managed model")),
+        }],
+    );
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let recovery_records = Arc::new(RecordingInstallRecoveryRecordRepository::default());
+    let service = InstallCommitService::new_with_recovery_records(
+        source_files,
+        game_files.clone(),
+        backups.clone(),
+        manifests.clone(),
+        recovery_records.clone(),
+    );
+
+    let error = service
+        .commit_plan(CommitInstallPlanRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            plan,
+        })
+        .expect_err("taking over another Mod's target must fail closed");
+
+    // 复用「计划冲突」这条既有通路：预览门禁、任务审计、批量分类都是现成的，
+    // 不新增错误码，也就不会出现前端认不出来的失败。
+    assert_eq!(error, InstallCommitError::PlanHasBlockingConflicts);
+    // 拒绝必须是无副作用的：占用者的游戏文件、备份、清单、恢复记录都原样留着，
+    // 否则玩家会在一次失败的安装之后发现别的 MOD 被改了一部分。
+    assert!(game_files.write_requests().is_empty());
+    assert_eq!(
+        game_files
+            .file_bytes("nativePC/models/player.mod3")
+            .as_deref(),
+        Some(b"old managed model".as_slice())
+    );
+    assert!(backups.records().is_empty());
+    assert!(manifests.take_manifest().is_none());
+    assert!(recovery_records.saved_records().is_empty());
 }
 
 #[test]
@@ -870,7 +941,7 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
         vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
-            mod_id: ModId::new("mod-old"),
+            mod_id: ModId::new("mod-new"),
             revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-old.mod3"),
             layer: FileLayer::new("base", 0),
@@ -939,7 +1010,7 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
         vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/new-file.mod3", ["nativePC"])
                 .expect("valid target"),
-            mod_id: ModId::new("mod-old"),
+            mod_id: ModId::new("mod-new"),
             revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/new-file-v1.mod3"),
             layer: FileLayer::new("base", 0),
@@ -1465,7 +1536,7 @@ fn commit_plan_rollback_record_retains_only_unresolved_changes() {
         vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
-            mod_id: ModId::new("mod-old"),
+            mod_id: ModId::new("mod-new"),
             revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
             layer: FileLayer::new("base", 0),
@@ -1553,7 +1624,7 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
         vec![InstallManifestEntry {
             target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
                 .expect("valid target"),
-            mod_id: ModId::new("mod-old"),
+            mod_id: ModId::new("mod-new"),
             revision_id: None,
             package_file_id: PackageFileId::new("nativePC/models/player-v1.mod3"),
             layer: FileLayer::new("base", 0),

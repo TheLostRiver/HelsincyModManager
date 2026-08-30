@@ -1,9 +1,9 @@
 use hmm_core::{
-    FileLayer, GameId, InstallAction, InstallFileProvider, InstallManifest, InstallManifestEntry,
-    InstallManifestStatus, InstallPlan, InstallRecoveryRecord, InstallRecoveryRecordEntry,
-    InstallRecoveryRecordStatus, InstallTargetPath, InstallTargetPathError, InstalledFileSummary,
-    ModId, ModRevisionId, PackageFileId, ProfileId, ReplacementBindingSnapshot,
-    INSTALL_MANIFEST_SCHEMA_VERSION_V2,
+    FileLayer, GameId, InstallAction, InstallConflict, InstallFileProvider, InstallManifest,
+    InstallManifestEntry, InstallManifestStatus, InstallPlan, InstallRecoveryRecord,
+    InstallRecoveryRecordEntry, InstallRecoveryRecordStatus, InstallTargetPath,
+    InstallTargetPathError, InstalledFileSummary, ModId, ModRevisionId, PackageFileId, ProfileId,
+    ReplacementBindingSnapshot, INSTALL_MANIFEST_SCHEMA_VERSION_V2,
 };
 use hmm_ports::{
     GameAdapter, GameRunningDetector, GameRunningStatus, InstallBackupStore, InstallGameFileSystem,
@@ -374,6 +374,22 @@ impl InstallCommitService {
             {
                 return Err(InstallCommitError::PlanHasInvalidRevisionIdentity);
             }
+        }
+        // 与 retarget 预览侧同一套归属语义（见
+        // `replacement::append_cross_mod_target_conflicts`）：清单里已被另一个 MOD
+        // 占用的 target_path 视为阻断冲突。原先这条路径不查占用，
+        // `merge_install_manifest` 直接按 target_path 静默剥离对方的条目——对方的
+        // 磁盘内容已经被覆盖、安装记录又被抹掉；多文件 MOD 被抢走一部分时剩下的
+        // 条目还在，库里会继续显示成「已安装」。
+        //
+        // 这里复用 `PlanHasBlockingConflicts` 而不是新增错误码：预览门禁、任务编排
+        // 审计、批量分类三处通路都是现成的，不存在前端认不出来的失败。
+        //
+        // 位置要点：必须在建 recovery 记录 / 存备份 / 写游戏文件之前，保证拒绝是
+        // 无副作用的；也必须放在 `expected_revision` 校验之后，避免为一次注定被
+        // revision 不一致拒掉的计划先报错。
+        if !cross_mod_target_conflicts(existing_manifest.as_ref(), &plan).is_empty() {
+            return Err(InstallCommitError::PlanHasBlockingConflicts);
         }
         let existing_backup_refs = manifest_backup_refs_by_target(existing_manifest.as_ref());
         let mut recovery_records = self
@@ -1083,6 +1099,47 @@ fn manifest_backup_refs_by_target(
     }
 
     backup_refs
+}
+
+/// 计划里每个将被别的 MOD 顶掉的目标，连同占用者的 provider 一起返回。
+///
+/// 这是「跨 Mod 同目标占用」的**唯一**判定实现：retarget 预览
+/// （`replacement::append_cross_mod_target_conflicts`）与常规安装 commit
+/// （`commit_plan_with_revision`）都走这里，避免预览门禁和写入防线各说一套——
+/// 门禁放行、commit 却放行另一套（或反之）比两边都漏更糟。
+///
+/// 判定只看 `target_path`：清单是「当前磁盘上这一路径归谁」的事实来源，
+/// 同一路径的两次写入后者必然覆盖前者，与 layer 无关。
+pub(crate) fn cross_mod_target_conflicts(
+    existing_manifest: Option<&InstallManifest>,
+    plan: &InstallPlan,
+) -> Vec<InstallConflict> {
+    let Some(manifest) = existing_manifest else {
+        return Vec::new();
+    };
+    let mut conflicts = BTreeMap::<InstallTargetPath, InstallConflict>::new();
+    for entry in &manifest.entries {
+        let occupied_by_other_mod = plan.actions.iter().any(|action| {
+            action.target_path == entry.target_path && action.provider.mod_id != entry.mod_id
+        });
+        if !occupied_by_other_mod {
+            continue;
+        }
+        // 同一路径只报一次；冲突里带上占用者的 provider，前端据此提示先卸载谁。
+        conflicts
+            .entry(entry.target_path.clone())
+            .or_insert_with(|| InstallConflict {
+                target_path: entry.target_path.clone(),
+                providers: vec![InstallFileProvider::new(
+                    entry.mod_id.clone(),
+                    entry.package_file_id.clone(),
+                    entry.target_path.clone(),
+                    entry.layer.clone(),
+                )],
+            });
+    }
+
+    conflicts.into_values().collect()
 }
 
 fn merge_install_manifest(

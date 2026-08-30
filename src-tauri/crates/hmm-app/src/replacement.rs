@@ -1,6 +1,6 @@
 use hmm_core::{
-    FileLayer, GameId, InstallConflict, InstallFileProvider, InstallManifestStatusConsumption,
-    InstallPlan, InstallPlanValidationError, ModId, ModRevisionId, PackageFileId, ProfileId,
+    FileLayer, GameId, InstallFileProvider, InstallManifestStatusConsumption, InstallPlan,
+    InstallPlanValidationError, ModId, ModRevisionId, PackageFileId, ProfileId,
     ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
     ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan,
 };
@@ -18,6 +18,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::install::cross_mod_target_conflicts;
 use crate::InstallRecoveryStatus;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -539,8 +540,7 @@ impl ReplacementWorkflowService {
                 Some(resolved.revision_id.clone()),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
-        let install_plan =
-            self.append_cross_mod_target_conflicts(install_plan, &profile_id, &mod_id)?;
+        let install_plan = self.append_cross_mod_target_conflicts(install_plan, &profile_id)?;
 
         Ok(PlannedInitialRetargetInstall {
             package_id: resolved.package_id,
@@ -561,11 +561,13 @@ impl ReplacementWorkflowService {
     /// 门禁与 commit 侧 `PlanHasBlockingConflicts` 因此同时生效。
     /// 清单不存在视为干净目标；读取失败或状态不可信（提交中/待恢复）按
     /// fail-closed 返回错误，绝不放行一次归属未知的写入。
+    ///
+    /// 占用判定本身在 `cross_mod_target_conflicts`，与常规安装 commit 共用，
+    /// 保证「预览说有冲突」和「commit 说有冲突」永远是同一件事。
     fn append_cross_mod_target_conflicts(
         &self,
         mut install_plan: InstallPlan,
         profile_id: &ProfileId,
-        mod_id: &ModId,
     ) -> Result<InstallPlan, ReplacementWorkflowError> {
         let manifest = match self.install_manifests.load_manifest(profile_id) {
             Ok(Some(manifest))
@@ -580,26 +582,9 @@ impl ReplacementWorkflowService {
             Ok(None) => return Ok(install_plan),
         };
 
-        let foreign_conflicts = manifest
-            .entries
-            .iter()
-            .filter(|entry| &entry.mod_id != mod_id)
-            .filter(|entry| {
-                install_plan
-                    .actions
-                    .iter()
-                    .any(|action| action.target_path == entry.target_path)
-            })
-            .map(|entry| InstallConflict {
-                target_path: entry.target_path.clone(),
-                providers: vec![InstallFileProvider::new(
-                    entry.mod_id.clone(),
-                    entry.package_file_id.clone(),
-                    entry.target_path.clone(),
-                    entry.layer.clone(),
-                )],
-            });
-        install_plan.conflicts.extend(foreign_conflicts);
+        install_plan
+            .conflicts
+            .extend(cross_mod_target_conflicts(Some(&manifest), &install_plan));
         Ok(install_plan)
     }
 

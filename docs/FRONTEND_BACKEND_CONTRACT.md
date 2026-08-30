@@ -535,8 +535,16 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 `hasBlockingConflicts` 置真，前端据此禁用「安装到此目标」并展示人性化提示；任务期计划仍
 携带阻断冲突时在 `planning` 阶段提前失败，绝不进入 staging/commit。清单状态不可信
 （`planned`/`committing` 进行中）或读取失败同样 fail closed（`replacement_install_manifest_unavailable`）。
-commit 侧的 `PlanHasBlockingConflicts` 与安装清单归属检查保留为纵深防御最后防线。
 仅自查自身条目不构成冲突；跨 profile 的独立安装视图不在预览判定范围内。
+
+**常规安装（非 retarget）走同一套判定**：`commit_plan` 在建恢复记录、存备份、写游戏文件之前，
+用与预览完全相同的 `cross_mod_target_conflicts` 重查一遍清单占用，命中即返回
+`PlanHasBlockingConflicts`（无副作用）。此前这条路径不查占用，会由 `merge_install_manifest`
+按 `target_path` 静默剥离对方条目，玩家在不知情的情况下丢掉另一个 Mod 的安装记录（#278）。
+判定只看 `target_path`，不看 layer：清单是「当前磁盘上这一路径归谁」的事实来源。
+错误码没有新增：标准安装仍返回 `install_failed:commit`（审计 `rollback_result` 为
+`not_attempted`——拒绝发生在任何写入之前），批量安装该项以 `install_plan_blocked` 阻断，
+与既有的计划冲突通路完全一致。
 
 `list_replacement_target_occupancy` 是上述硬门禁的**展示投影**，不参与门禁判定。它从 profile
 安装清单的 `replacement_bindings` 收集其他 Mod 已占用的 `targetId`，经 mod_import 结果仓储映射出
