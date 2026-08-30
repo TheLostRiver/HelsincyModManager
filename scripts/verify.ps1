@@ -72,6 +72,18 @@ try {
         exit $LASTEXITCODE
     }
 
+    Write-Host "Running storage reclaim checker tests..."
+    node --test scripts/check-storage-reclaim.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    Write-Host "Running thumbnail protocol checker tests..."
+    node --test scripts/check-thumbnail-protocol.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "node_modules"))) {
             Write-Host "node_modules is missing. Run: cmd /c corepack pnpm install --frozen-lockfile" -ForegroundColor Red
