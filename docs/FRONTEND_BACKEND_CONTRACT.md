@@ -738,7 +738,11 @@ TaskProgressEventDto
 
 所有真实文件写入必须由后端基于受控 id 解析，并经过安全校验、计划、备份、manifest 和回滚流程。
 
-预览图缩略图的 `thumbnailUrl` 一律走 custom protocol（见上文「Mod 预览图」），前端不直接持有缓存路径，也不通过 asset protocol 或 `convertFileSrc` 自行解析。
+预览图缩略图的 `thumbnailUrl` 由后端投影，前端不直接持有缓存路径，也不通过 asset protocol 或 `convertFileSrc` 自行解析，更不自行拼接或改写该 URL。
+
+- 内部（导入记录、投影、诊断）统一保存平台无关的 `thumbnail://<packageId>/<variant>/<contentHash>` 引用。
+- 只有 DTO 出口会把它改写成当前平台 webview 真正能加载的形态：Windows/WebView2 无法加载非标准 scheme，必须使用 wry 的 workaround origin `http://thumbnail.localhost/<packageId>/<variant>/<contentHash>`；其他平台保持 custom protocol 原样。
+- 协议处理器同时接受三种形态：custom protocol、Windows workaround origin，以及 wry 在 Windows 上回调时还原出的 `thumbnail://localhost/<...>`。
 
 ## 首批迁移对象
 

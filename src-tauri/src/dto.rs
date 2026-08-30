@@ -1,3 +1,4 @@
+use crate::thumbnail_protocol::to_loadable_thumbnail_url;
 use hmm_app::{
     AppSettingsServiceError, CategoryWithCount, GameAutoDetection, GameAutoDetectionOutcome,
     GameCandidateScan, GamePrerequisiteDecision, GamePrerequisiteDecisionCode,
@@ -1224,7 +1225,8 @@ impl From<ImportPreviewImage> for PreviewImageDto {
                 content_hash,
                 variant: _,
             } => Self::Thumbnail {
-                thumbnail_url,
+                // WebView2 cannot load `thumbnail://`; rewrite only on the way out.
+                thumbnail_url: to_loadable_thumbnail_url(&thumbnail_url),
                 width,
                 height,
                 content_hash,

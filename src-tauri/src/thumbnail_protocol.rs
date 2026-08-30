@@ -3,6 +3,12 @@ use tauri::{http, Manager, Runtime};
 
 const THUMBNAIL_SCHEME: &str = "thumbnail://";
 const WINDOWS_THUMBNAIL_ORIGIN: &str = "http://thumbnail.localhost/";
+/// Windows WebView2 rejects non-standard schemes outright, so wry routes custom
+/// protocols through `http://<scheme>.localhost/`. Before invoking this handler it
+/// rewrites the URI back by replacing the `http://thumbnail.` prefix with
+/// `thumbnail://`, which leaves a literal `localhost/` segment in front of the
+/// reference. That shape has to be accepted on Windows only.
+const WINDOWS_REVERTED_ORIGIN: &str = "thumbnail://localhost/";
 const CACHE_EXTENSIONS: [(&str, &str); 4] = [
     ("jpg", "image/jpeg"),
     ("jpeg", "image/jpeg"),
@@ -28,6 +34,26 @@ enum ThumbnailProtocolError {
     BadRequest,
     NotFound,
     Internal,
+}
+
+/// Converts the platform independent catalog URL into the shape the current
+/// platform's webview can actually load.
+///
+/// Catalog, projection and diagnostics keep the stable `thumbnail://` form; only
+/// the DTO handed to the renderer is rewritten. WebView2 cannot load a
+/// non-standard scheme at all (`ERR_UNKNOWN_URL_SCHEME`) and wry only intercepts
+/// requests whose URI starts with `http://thumbnail.`, so Windows needs the
+/// localhost origin form. Other platforms load the custom scheme directly and
+/// must keep it. Passing an already rewritten URL is a no-op.
+pub fn to_loadable_thumbnail_url(uri: &str) -> String {
+    if !cfg!(target_os = "windows") {
+        return uri.to_owned();
+    }
+
+    match uri.strip_prefix(THUMBNAIL_SCHEME) {
+        Some(path) => format!("{WINDOWS_THUMBNAIL_ORIGIN}{path}"),
+        None => uri.to_owned(),
+    }
 }
 
 pub fn register_thumbnail_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
@@ -67,9 +93,12 @@ fn empty_response(status: http::StatusCode) -> http::Response<Vec<u8>> {
 }
 
 fn parse_thumbnail_url(uri: &str) -> Result<ThumbnailReference, ThumbnailProtocolError> {
+    // `WINDOWS_REVERTED_ORIGIN` must be matched before `THUMBNAIL_SCHEME`:
+    // the former starts with the latter.
     let path = uri
-        .strip_prefix(THUMBNAIL_SCHEME)
+        .strip_prefix(WINDOWS_REVERTED_ORIGIN)
         .or_else(|| uri.strip_prefix(WINDOWS_THUMBNAIL_ORIGIN))
+        .or_else(|| uri.strip_prefix(THUMBNAIL_SCHEME))
         .ok_or(ThumbnailProtocolError::BadRequest)?;
     let mut segments = path.split('/');
     let package_id = segments.next().ok_or(ThumbnailProtocolError::BadRequest)?;
@@ -193,6 +222,58 @@ mod tests {
         assert_eq!(reference.package_id, "pkg-1");
         assert_eq!(reference.variant, "preview-768");
         assert_eq!(reference.content_hash, "abcdef");
+    }
+
+    #[test]
+    fn parses_windows_reverted_thumbnail_url() {
+        // wry rewrites `http://thumbnail.localhost/...` back to this shape on
+        // Windows before the handler runs, leaving a literal localhost segment.
+        let reference = parse_thumbnail_url("thumbnail://localhost/pkg-1/preview-768/abcdef")
+            .expect("valid thumbnail url");
+
+        assert_eq!(reference.package_id, "pkg-1");
+        assert_eq!(reference.variant, "preview-768");
+        assert_eq!(reference.content_hash, "abcdef");
+    }
+
+    #[test]
+    fn loadable_url_round_trips_through_parser() {
+        let expected = ThumbnailReference {
+            package_id: "pkg-1".to_owned(),
+            variant: "preview-768".to_owned(),
+            content_hash: "abcdef".to_owned(),
+        };
+        let loadable = to_loadable_thumbnail_url("thumbnail://pkg-1/preview-768/abcdef");
+
+        assert_eq!(parse_thumbnail_url(&loadable), Ok(expected));
+        // Rewriting twice must not change the loadable URL.
+        assert_eq!(to_loadable_thumbnail_url(&loadable), loadable);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn loadable_url_uses_windows_localhost_origin() {
+        assert_eq!(
+            to_loadable_thumbnail_url("thumbnail://pkg-1/preview-768/abcdef"),
+            "http://thumbnail.localhost/pkg-1/preview-768/abcdef"
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn loadable_url_keeps_custom_scheme_off_windows() {
+        assert_eq!(
+            to_loadable_thumbnail_url("thumbnail://pkg-1/preview-768/abcdef"),
+            "thumbnail://pkg-1/preview-768/abcdef"
+        );
+    }
+
+    #[test]
+    fn loadable_url_leaves_unrelated_urls_untouched() {
+        assert_eq!(
+            to_loadable_thumbnail_url("data:image/png;base64,AAAA"),
+            "data:image/png;base64,AAAA"
+        );
     }
 
     #[test]
