@@ -1692,7 +1692,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             canInstallSelection={canInstallSelected}
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
-            canDeleteSelection={selectionMode === "batch" && batchWriteUnavailableReason === undefined}
+            canDeleteSelection={selectionMode === "batch" && selectedIds.size > 0}
             onImportCompleted={refreshModLibraryAfterWrite}
             onAction={handleAction}
           />

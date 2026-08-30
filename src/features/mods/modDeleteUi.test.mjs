@@ -117,7 +117,7 @@ test("library page routes single, batch and context menu entries into one confir
   assert.match(page, /deleteAction=\{contextMenuDeleteAction\}/);
   assert.match(
     page,
-    /canDeleteSelection=\{selectionMode === "batch" && batchWriteUnavailableReason === undefined\}/,
+    /canDeleteSelection=\{selectionMode === "batch" && selectedIds\.size > 0\}/,
   );
   assert.match(page, /case "delete":\s*void promptDeleteMods\(\[modId\]\);/);
 
@@ -143,6 +143,11 @@ test("compact panel exposes delete as a batch-only action", () => {
   // Single deletion lives in the card context menu; rendering this button outside batch
   // selection would leave a permanently disabled control.
   assert.match(panel, /\.filter\(\(a\) => a\.id !== "delete" \|\| batchSelectionActive\)/);
+  // `batchWriteUnavailableReason` is set everywhere outside the sandbox, and batch delete
+  // never uses the batch lifecycle framework. Applying that gate here disabled the button
+  // in production even though deletion itself works.
+  assert.match(panel, /const batchCapabilityDisabledReason = \(actionId: string\) => \{/);
+  assert.match(panel, /if \(actionId === "delete"\) \{\s*return undefined;/);
 });
 
 test("delete copy covers every stable backend error code in all three locales", () => {
