@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.mjs\"",
     "generate:mods-mock": "node scripts/generate-mod-library-mock-data.mjs",
+    "check:storage-reclaim": "node scripts/check-storage-reclaim.mjs",
+    "check:thumbnail-protocol": "node scripts/check-thumbnail-protocol.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "prepare:windows-sidecars": "node scripts/prepare-windows-sidecars.mjs",
