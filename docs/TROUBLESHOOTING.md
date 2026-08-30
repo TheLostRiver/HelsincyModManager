@@ -14,6 +14,7 @@
 | 清理 dev 链后另一个项目 / IDE 会话异常 | 无差别 `Stop-Process -Name node` 误杀 | [1.3](#13-清理-dev-链时误杀其他进程) |
 | `corepack` 报 `d:\c\Users\...` 这类错乱路径 | Git Bash 下 corepack shim 路径解析 | [1.4](#14-git-bash-下-corepack-路径错误) |
 | `git commit -m` 多行中文消息报 `unexpected EOF` | Git Bash 引号解析，与消息内容有关 | [1.5](#15-git-commit-多行消息报-unexpected-eof) |
+| `pnpm` / `corepack` 报「禁止运行脚本」`PSSecurityException` | Windows 默认策略 Restricted，`.ps1` 全局 shim 全被拦 | [1.6](#16-powershell-禁止运行脚本pnpm-等全局-shim-报-pssecurityexception) |
 | 往 `tmp/` 放个脚本，`eslint .` 就报一堆 `no-undef` | gitignore 不影响 eslint 扫描范围 | [2.1](#21-tmp-下的脚本让-eslint-报-no-undef) |
 | 新写的 scripts 测试从没被执行 | `pnpm test` 的 glob 只覆盖 `src/**` | [2.2](#22-scripts-测试没被执行) |
 | 缩略图生成成功但界面不显示，协议请求无响应 | WebView2 不支持非标准 scheme | [3.1](#31-自定义协议请求无响应) |
@@ -125,6 +126,42 @@ git commit -F tmp/commit-message.txt
 
 同理，`gh` 写长文（issue 正文/评论）一律用 `--body-file`，不要用 `-b`；
 `gh -l "a, b"` 会把空格带进标签名，要写成 `-l a -l b`。
+
+### 1.6 PowerShell 禁止运行脚本：`pnpm` 等全局 shim 报 PSSecurityException
+
+**症状**（在 PowerShell 里执行 `pnpm tauri:dev`）：
+
+```
+pnpm : 无法加载文件 D:\DEV\HappyCode\npm-global\pnpm.ps1，因为在此系统上禁止运行脚本。
+FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+**根因**：`Get-ExecutionPolicy -List` 各 scope 全是 `Undefined`，Windows 客户端默认
+等效 `Restricted`，一切 `.ps1` 都跑不了。npm/pnpm 在 Windows 上的全局 shim 默认是
+`.ps1`，所以 `pnpm`、`corepack` 这类命令在 PowerShell 里直接被打回——
+**这不是仓库或依赖的问题**。
+
+**处理**（任选一）：
+
+1. **改当前用户策略，一劳永逸**（不需要管理员，`CurrentUser` 写在 HKCU）：
+
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+   之后 `pnpm tauri:dev`、`scripts\verify.ps1` 都恢复正常。
+2. **不改策略**：显式调用 `.cmd` 入口——它走 cmd.exe，不经 PowerShell 脚本引擎：
+
+   ```powershell
+   pnpm.cmd tauri:dev
+   ```
+
+**不要在 Git Bash 里跑 `pnpm tauri:dev` 绕开它。** 那里的 `pnpm` 是 sh shim，
+确实不受 PowerShell 策略影响，但 `tauri.conf.json` 的 `beforeDevCommand` 是
+`corepack pnpm dev`，而 Git Bash 下 corepack 会拼出 `d:\c\Users\...` 错乱路径
+（见 1.4），vite 起不来。
+
+`corepack.cmd pnpm --version` 在本机验证可用，走 cmd 的调用链是通的。
 
 ## 2. 前端与校验
 
