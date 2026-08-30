@@ -151,12 +151,10 @@ Tauri CLI 通过项目内的 `@tauri-apps/cli` devDependency 提供，不要求�
 赞助用于支持持续开发、测试环境、文档维护和发布相关成本，完全自愿，不影响软件功能、更新、
 问题处理顺序或开源协作。
 
-- **爱发电**：[afdian.com/a/Helsincy](https://afdian.com/a/Helsincy)
-- **Ko-fi**：[ko-fi.com/helsincy](https://ko-fi.com/helsincy)
-- **微信赞赏码**：扫码赞赏
+支持方式包括 **爱发电**、**Ko-fi** 与 **微信赞赏码**（可直接扫码）：
 
 <img src="docs/assets/support/wechat-reward-code.jpg" alt="微信赞赏码" width="240">
 
-完整的赞助说明、用途与其他支持项目的方式见 [赞助与支持](docs/SPONSOR.md)。问题反馈和功能建议请
+完整的赞助入口、用途说明与其他支持项目的方式见 [赞助与支持](docs/SPONSOR.md)。问题反馈和功能建议请
 使用 GitHub [Issues](https://github.com/TheLostRiver/HelsincyModManager/issues)，提交内容请遵守
 [安全策略](SECURITY.md) 中的脱敏要求。
