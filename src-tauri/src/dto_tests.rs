@@ -238,8 +238,14 @@ mod preview_image_tests {
 
         let value = serde_json::to_value(dto).expect("serialize dto");
 
+        let expected_url = if cfg!(target_os = "windows") {
+            "http://thumbnail.localhost/pkg-1/preview-768/hash"
+        } else {
+            "thumbnail://pkg-1/preview-768/hash"
+        };
+
         assert_eq!(value["kind"], "thumbnail");
-        assert_eq!(value["thumbnailUrl"], "thumbnail://pkg-1/preview-768/hash");
+        assert_eq!(value["thumbnailUrl"], expected_url);
         assert_eq!(value["width"], 320);
         assert_eq!(value["height"], 180);
         assert_eq!(value["contentHash"], "hash");
@@ -488,10 +494,12 @@ mod preview_image_tests {
         assert_eq!(value["status"], "disabled");
         assert!(value.get("installSummary").is_none());
         assert_eq!(value["previewImage"]["kind"], "thumbnail");
-        assert_eq!(
-            value["previewImage"]["thumbnailUrl"],
+        let expected_url = if cfg!(target_os = "windows") {
+            "http://thumbnail.localhost/pkg-1/preview/hash"
+        } else {
             "thumbnail://pkg-1/preview/hash"
-        );
+        };
+        assert_eq!(value["previewImage"]["thumbnailUrl"], expected_url);
     }
 
     #[test]
