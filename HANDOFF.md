@@ -1,0 +1,231 @@
+# HelsincyModManager 会话交接提示词
+
+新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
+`HANDOFF.md` 需要提交就提交，不需要就删掉。
+
+> 本文件最后更新：2026-08-30 22:10，HEAD = `1af44ab`。
+> **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
+> 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
+> 照旧文档接手会往错误方向做。
+
+---
+
+## 提示词正文
+
+````
+你接手 D:\DEV\HelsincyModManager 的 HelsincyModManager 项目。先读根目录 AGENTS.md
+（简体中文回复、小步提交、收尾必须跑 verify.ps1、不声称未执行的测试通过）和
+docs/ARCHITECTURE.md，再看根目录 HANDOFF.md（上一手交接文档）、
+docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先查这里）和
+.workbuddy-ai/memory/ 下最近几天的日志（有踩过的坑）。
+
+## 一、项目基本事实
+
+- Tauri 2 + React 19 + Vite 7 + TypeScript。Rust workspace 在 src-tauri/crates/
+  （hmm-core / ports / infra / app / runtime / games-mhw / cli / save-backup-sidecars），
+  前端在 src/。corepack pnpm。
+- 校验：`powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify.ps1`
+  （策略检查 ×7 → 前端 typecheck / lint / test / build → cargo fmt / test / check / clippy）
+  **必须全绿才能提交**。
+- 提交风格：中文 conventional commits。
+- `.workbuddy/`、`.workbuddy-ai/`、`.zcode/`、`tmp/`、`target/` 是本地状态，已 gitignore，
+  绝不提交。
+
+## 二、环境坑（这些是会咬人的，不是背景信息）
+
+1. **不要在会话里跑长耗时 cargo**。工具单条命令 10 分钟上限；而
+   `run_in_background` 的命令会被**强制沙箱化**（`dangerouslyDisableSandbox` 对后台无效，
+   同一个 `cargo check` 前台成功、后台失败，实测过）。沙箱化的 cargo 会在 `target/` 留下
+   **删不掉的 0 字节僵尸文件**，之后所有 cargo 都卡在
+   `failed to open: target/debug/.cargo-lock`（os error 5）。
+   绕过（同卷改名瞬时）：
+   `mv target/debug target/debug-pN && mkdir target/debug`，再把
+   `build deps examples incremental .fingerprint` 搬回去。
+   → **verify.ps1 交给用户在本地终端跑**，别自己死磕。
+   例外：`cargo check / clippy / test -p <crate>` 针对单个 crate 通常几十秒内完成
+   （hmm-runtime 约 20s），可以放心跑。
+2. **本机 `hmm-infra --lib` 曾稳定挂 16 个测试**（symlink 与目录删除相关），
+   而用户本机跑同一份代码全绿 → 已定性为工具使用方式造成的（见 issue #281，CLOSED），
+   两次 verify 全绿作证。**看到测试红先做证据链排除，别急着改代码。**
+3. `nohup ... & disown` 的进程会随工具调用结束被杀，别指望挂后台。
+4. Git Bash 下 `corepack` shim 路径解析坏了（拼出 `d:\c\Users\...`）。用
+   `"D:/Nodejs/node.exe" "D:/Nodejs/node_modules/corepack/dist/corepack.js" pnpm <script>`。
+   `verify.ps1` 内部走 `cmd /c corepack pnpm`，不受影响。
+   **另：Git Bash 下 `git commit -m` 多行中文会挂**（中文标点/反引号触发 EOF），
+   一律用 `git commit -F <file>`；`gh` 写长文用 `--body-file`。
+5. **PowerShell 执行策略各 scope 均 `Undefined` → 等效 `Restricted`**，全局 `.ps1` shim
+   （如 `pnpm`）跑不了，报 `PSSecurityException`。**一律用 `pnpm.cmd`**（走 cmd.exe）。
+   别改用 Git Bash 绕开（那里 corepack 拼错路径，`beforeDevCommand` 是
+   `corepack pnpm dev`，vite 起不来）。
+6. **清理 dev 链进程时不要无差别杀 node**。本机 `node.exe` 里混着 WorkBuddy 自身进程、
+   另一个项目 `E:\DEV\bolo-pi` 的进程和本项目 dev 链。必须按端口精确定位
+   （1420 / 9223），动手前先确认端口是否真在监听。
+7. dev 链：`$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9223"`
+   再 `pnpm.cmd tauri:dev`（PowerShell 语法，`VAR=x cmd` 是 bash 语法会报错）。
+   端口 1420 已保留，devUrl 与 vite 都钉死 127.0.0.1，不要改回 localhost。
+   冷启动可能白屏 1-2 分钟（#277），等 vite CPU 平息后 Ctrl+R。
+8. 应用日志按 UTC 日期滚动，根目录 `%APPDATA%\dev.helsincy.modmanager\logs\`。
+   **活数据在 `hmm.db-wal`（几 MB），不在 `hmm.db`（4KB）**。
+   **任务进度在 `logs/tasks/`，审计在 `logs/audit/`，二者都不是 `logs/app/`**——
+   判断安装是否真的提交，要看 `logs/tasks/` 里有没有走到 `commit.processing → completed`。
+9. 跑 verify 前先杀干净 dev 链（hmm-tauri + vite/tauri 的 node 进程），否则抢 cargo 锁。
+10. **读不到 `hmm-tauri` 进程的环境变量**（Windows 限制，PowerShell 的
+    `StartInfo.EnvironmentVariables` 为 null）。判断当前沙箱根靠反推，见第五节。
+
+## 三、仓库硬约束（违反了测试会红，但报错信息不会告诉你原因）
+
+- **`src/features/mods/modsLibraryData.ts` 是生成文件**。改快捷操作栏动作项等必须改
+  `scripts/generate-mod-library-mock-data.mjs`，再跑
+  `node scripts/generate-mod-library-mock-data.mjs --count 72` 重新生成。
+- **新增 Tauri command 必须登记 `docs/FRONTEND_BACKEND_CONTRACT.md`**。
+  `src/shared/api/tauriContractCoverage.test.mjs` 扫 `generate_handler!` 逐个比对。
+- **i18n「无硬编码中文」清单**含 `ModLibraryPage.tsx`、`ModLifecycleFeedback.tsx`、
+  `ModContextMenu.tsx`、`CompactActionPanel.tsx` 等。其 `stripComments` **只过滤整行 `//`
+  注释**——行尾注释里的中文一样会被抓。这些文件一律英文注释。
+- copy 字典新增 key 要三语齐备，并加进 `src/shared/i18n/i18n.test.mjs` 的字典清单。
+- `verify.ps1` 用 `git diff --check` 查空白，文件末尾多一个空行直接红。
+- **`pnpm test` 只跑 `src/**/*.test.mjs`**。scripts/ 下新增测试必须在
+  `scripts/verify.ps1` 逐条显式登记，否则等于没写。
+- **日志必须走 `emit_safe_app_log(AppLogEvent::warning(...).with_xxx())` 才会落盘**。
+  普通 `tracing::warn!` 不过 app 日志层（`app_log.rs` 的 `on_event` 只处理
+  target == `hmm.safe_app_log`），dev 终端看得到、`logs/app/app-*.log` 里没有。
+  且字段有白名单，未知字段会让**整条事件**被拒——自定义语义要映射到既有字段
+  （「阶段」放 `operation`，「子步骤」放 `phase`），别自己发明字段名。详见排障手册 6.1。
+- **Production vs Sandbox**：GUI 常态是 Production，`write_available` / `preview_available`
+  **只在 Sandbox 为 true**。任何不走批量生命周期框架的动作（如批量删除）
+  不要用 `batchWriteUnavailableReason` 做门禁，否则 Production 下恒为死按钮。
+  注意 `CompactActionPanel.batchCapabilityDisabledReason` 对批量模式下除 preview-plan 外的
+  所有动作统一套这个门，豁免要改在这一层。
+- **沙箱写入准入是两套语义，不要统一**（#273）：
+  `SandboxRuntimeWriteAdmission`（GUI）**只校验游戏根**；
+  `lifecycle_automation.rs`（批量/CLI）**仍校验 app-data + 游戏根**——
+  后者的数据根就是沙箱根本身，语义正确，别顺手改。
+- 既有测试用**字面量断言源码形状**（如 `batchSelectionActive && actionId === "preview-plan"`），
+  重构时保留原表达式形态，否则测试红得莫名其妙。
+- **路由切换会卸载页面组件**（`RouterOutlet` 退出动画后 `completeRouteExit` 移除 layer），
+  页面内 `useState` / `useReducer` 的工作态——选区、搜索词、筛选、视图模式——**全部重置**。
+  偏好落 localStorage、工作态不落，是既有区分（全页只有 `showCardCategoryLabels` 落盘）。
+  **别把「切侧边栏丢多选」当 bug 修。**
+
+## 四、当前进度（2026-08-30 22:10，HEAD = `1af44ab`）
+
+最近提交（由新到旧）：
+
+| commit | 说明 |
+|---|---|
+| `1af44ab` | chore(deps) Cargo.lock 撤掉 hmm-runtime 的 tracing 依赖 |
+| `8851a8d` | fix(runtime) 准入拒绝日志改用安全 app 日志通道（#273 补） |
+| `ef87ac9` | fix(runtime) 沙箱模式下 GUI 安装不再被写入准入结构性拒绝（**#273**） |
+| `57f32f9` | docs 排障手册补「边界不变量断言的方向陷阱」（#283） |
+| `3af7bf2` | fix(mods) 预览图平移：渲染尺寸 clamp + 拖动重锚（**#283**） |
+| `0362fbb` / `8ffce8a` | docs 排障手册补坑 |
+| `4c4d3c2` | fix(mods) 批量替换目标名称改为渲染时按语言投影（**#282**） |
+| `f17ebf1` | fix(install) 常规安装不得静默抢占其他 MOD 的安装目标（**#278**） |
+| `56d3070` | fix(install) 卸载时回收残留的替换绑定（#278 方向 a3） |
+
+Issue 状态：
+
+| # | 状态 | 说明 |
+|---|---|---|
+| 272, 276, 278, 280, 281 | CLOSED | — |
+| **282** | **CLOSED** | 根因不是 `useCallback` 漏依赖，而是**名称在载入时就解析成字符串存进 state**（违反 I18N-08）。修法是回到渲染时投影。当前 `pnpm lint` 全项目 **0 error / 0 warning** |
+| **283** | **CLOSED** | 6 项验收全部真机通过。判定「用的是 1024 还是 768」**不能看画质**——1024 是 upscale 出来的（356×768 → 474×1024），要看 URL 的 variant 段 + `naturalWidth` |
+| **273** | **CLOSED** | 方案 b：GUI 准入只校验游戏根，app-data 根豁免。已真机验证 + 控制组 + 日志通道三验 |
+| **275** | OPEN | Mod 存储目录可配置。**依赖 #273，现在可以开工**，但「存储目录必须落在沙箱根内」的校验语义要按新准入模型重新确认（app-data 根已豁免） |
+| 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
+| 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
+
+工作区：**干净**（只剩未跟踪的 `HANDOFF.md`）。
+
+## 五、沙箱模式与验收（#273 落地后的新常识）
+
+- 沙箱根取**游戏根的父目录**最省事，不用复制游戏目录、不用改游戏配置：
+
+```
+沙箱根   = %APPDATA%\dev.helsincy.modmanager\game   ← 非空，需手动放 marker
+游戏根   = ...\game\mhw-minimal                      ← 在沙箱内 ✓
+app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
+```
+
+- marker 内容必须**字节精确**为 `{"kind":"hmm.sandbox","schemaVersion":1}\n`（41 字节，
+  普通文件非空链接）。marker 只在首次获取 capability 时创建，非空目录无 marker →
+  `MarkerRequired`。
+- **判断当前沙箱根靠反推**：游戏目录（`config/games.json` 的 `root_dir`）没变 +
+  却出现 `sandbox_write_root_rejected` ⇒ 沙箱根不含游戏根。
+  配合 `logs/app/` 里 `application.started` 的时间戳可确认是否重启过。
+- **日志只证明「没被拒绝」，文件系统才证明「真写进去了」**——验收要两处都对上。
+
+## 六、待办（挑一个开工，别一次铺开）
+
+1. **#275 Mod 存储目录可配置**（推荐下一个）。开工前先跟用户确认：
+   app-data 根既已豁免，「存储目录必须落在沙箱根内」的 containment 该怎么算。
+2. **#274 catalog 武器目标别名**——依赖外部数据来源审计，先确认数据源。
+3. **#277 vite 冷启动卡死**——诊断型，复现不稳定，除非频繁打扰否则优先级最低。
+4. 可选的展示优化（非阻塞）：卡片缩略图 `object-fit: cover` +
+   `object-position: center top` 是**设计意图**（出自 `41d38a0` / #57），
+   代价是 356×768 这种竖图只显示顶部约 56%。若要改进，DTO 已带 `width`/`height`
+   而前端没消费，做「按图片比例自适应」成本最低，不必动后端。
+5. 待确认是否开 issue：安装 `action_count = 0`（空计划）时后端仍报 `completed`，
+   前端无提示，玩家看到的是「装了但没装上」。属于可诊断性缺口。
+
+## 七、行为纪律
+
+- 一切用户可见文案走 copy 字典三语（zh_cn/en/ja，`satisfies LocaleDictionary` 锁定）；
+  后端只出稳定错误码；组件不得硬编码中文。
+- 门禁事实一律来自后端，前端只做投影与按码取词，不复算状态。fail-closed 不可破。
+- 高风险区（安装清单、路径校验、存储删除、并发）改动必须带测试。
+- 破坏性操作必须二次确认：弹窗走 `shared/feedback` 的 `Dialog`，
+  `role="alertdialog"` + `closeOnBackdrop={false}` + `initialFocusRef` 指向取消按钮。
+- 用户重视：后端安全优先、中文交流、小步提交、**不接受把没跑过的测试说成已通过**。
+  交接文档里写「已完成」的项，动手前先扫一眼实体是否真的存在
+  （上一手就有 `DeleteConfirmationDialog` 只写了 import、组件本体没有的情况）。
+- **改行为后新增的回归用例必须跑控制组**：把修复退回去，**逐条**确认新用例会变红。
+  没红的就是假绿（恒真断言）。2026-08-30 靠这条抓出过自己写的假绿用例
+  （「图永不被拖出视口」只断言了右边缘，而往右拖时离开视口的是左边缘）。
+  **不要因为「别的红了」就判定整组有效。**
+- **关闭 issue 的门槛是验收标准逐条为真，不是「剩下的应该没问题」**。
+  验收标准里捆在一起的多个动作（如「双击重置 + Esc + 点背景关闭」）要拆开分别标注，
+  #283 就是这么收的尾。
+
+## 八、开工前先做
+
+1. `git log --oneline -5` 和 `git status` 确认工作区干净
+2. 读 `.workbuddy-ai/memory/` 最近两天的日志
+3. 跟用户确认要挑哪一条待办，不要自己假设
+````
+
+---
+
+## 附：真机验收环境（回归用）
+
+- fixture 生成：`HMM_FIXTURE_OUT_DIR=D:/DEV/HMM-WR-fixture cargo test -p hmm-runtime --test generate_weapon_fixture`
+- 应用游戏目录已配置：`%APPDATA%\dev.helsincy.modmanager\game\mhw-minimal`（含前置桩）
+- 库里现有：wrapped（已安装）、flat（`mod-import-1787939069837-0`，已安装，
+  2026-08-30 真机验收时重定向装到了 **one001**）、5 个第三方导入包
+- 缩略图回归包：`tmp/thumb-reclaim-test.zip`。**维护者已决定不纳入 git**（`tmp/` 被
+  gitignore），换机器后若丢失照下面重建即可（关键是结构，图本身随便一张竖图都行）：
+
+  ```
+  thumb-reclaim-test/
+  ├── nativePC/common/hmm_thumb_reclaim_test.bin   # 任意内容，只为让包能被识别
+  ├── preview.jpg                                  # 356×768 竖图，最贴近真实场景
+  └── readme.txt                                   # 说明用途，可省
+  ```
+
+  识别规则：扫描器先找 `nativepc` 目录，取其**父目录**作候选根，只收**直接子文件**
+  里的图片；`preview.*` 优先级最高，扩展名只认 png/jpg/jpeg/webp。
+  该包**装不上是正常的**：zip 里套了 `thumb-reclaim-test/` 包装目录，而解包不剥
+  单层包装目录 → 相对路径根不在 `allowed_install_roots`（MHW 只有 `["nativePC"]`）
+  → 全被过滤，审计里是 `action_count: 0` 的**空计划成功**，不是失败。
+  **推论：标准安装要求 zip 根目录下直接就是 `nativePC/`，不能套一层文件夹**——
+  库里现有几个包都套了包装目录，因此只能通过 retarget 装。
+- **判定预览图用哪个变体**：看 URL 的 variant 段 + `naturalWidth`。
+  768 → 356×768（65777 B），1024 → 474×1024（98891 B，upscale 出来的）。
+  脚本 `tmp/check-preview-1024.mjs`（CDP 连 9223）。
+- **触发 1024→768 回落**：把沙箱源图 `preview.jpg` 改名（detail 每次打开时现扫沙箱，
+  不读 thumbnails 缓存；卡片 768 来自持久化的 revision catalog 不受影响）。
+  改名后**不要**重启/重导/清缓存，但必须**重新打开弹窗**。
+- **验证语言切换**（I18N-08）不能走「去设置页切语言」——那条路会卸载页面再重新拉取，
+  改不改都是对的。必须 preference 设为**跟随系统** + 触发 `languagechange`
+  （CDP `Emulation.setLocaleOverride`）。脚本 `tmp/check-locale-switch.mjs`。
+  判定唯一有区分度的是「名称就地变化」。
