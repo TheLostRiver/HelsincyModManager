@@ -81,6 +81,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
+- Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
 
@@ -1945,6 +1946,48 @@ Mod 展示元数据契约边界：
 - `delete_mod_metadata` 删除指定 Mod 的用户 overlay；后续展示回退到原始导入分析元数据。删除 overlay 不删除 Mod、安装记录、manifest、备份或玩家文件。
 - 两个命令对空 `modId` 返回稳定错误码 `mod_id_empty`；时钟、仓储或服务失败统一返回 `mod_metadata_unavailable`。错误响应不暴露底层路径或存储错误。
 - 展示元数据和分类都是 library overlay，不是安装、依赖、冲突、路径、manifest、profile 或 game adapter 的事实来源。前端不得据此生成 `InstallPlan`、拼接写入路径或绕过后端安装流程。
+
+### 8. Mod 删除
+
+Mod 删除 command 从库中移除已导入的 logical Mod、它的全部 revision 与已提取的包内容（沙盒目录、缩略图、
+分类关联和展示元数据 overlay），并让 library query projection 失效重建。它是库管理动作，不是安装动作：
+删除不触碰游戏目录、安装清单、备份或玩家文件。
+
+| command | 输入 | 返回 |
+| --- | --- | --- |
+| `preview_mod_deletion` | `{ modId }` | `ModDeletionPreviewDto` |
+| `delete_mod_from_library` | `{ modId }` | `ModDeletionResultDto` |
+
+```ts
+type ModDeletionPreviewDto = {
+  modId: string;
+  displayName: string;
+  revisionCount: number;
+  categoryLabels: string[];
+  affectedProfiles: string[];
+};
+
+type ModDeletionResultDto = {
+  modId: string;
+  removedRevisionCount: number;
+  removedPackageIds: string[];
+};
+```
+
+契约边界：
+
+- **安装门禁完全在后端**：任一 profile 的安装清单仍存在该 Mod 的 `TrustEntries` 条目时，删除被拒绝并返回
+  `mod_delete_blocked_installed`；reinstall recovery 事务存在或清单处于非可信态时返回
+  `mod_delete_blocked_recovery`。`affectedProfiles` 只用于展示，前端不得据此推断门禁结果，也不得在前端
+  复算安装状态。
+- Mod 不在库中返回 `mod_delete_target_not_found`；revision catalog、沙盒或缩略图存储不可用返回
+  `mod_delete_store_unavailable`。四个错误码稳定，`message` 只是展示文本，前端按码取词。
+- 清理顺序固定为：选择意图 → 沙盒 → 缩略图 → 目录 → 元数据 overlay → 分类关联 → 审计。审计是 best-effort，
+  写入失败只降级，不改变删除已提交的事实。
+- 批量删除 v1 不是新的批量生命周期 operation：前端确认后逐个调用 `delete_mod_from_library` 并逐项收集稳定
+  错误码。批量框架不新增 Delete 操作类型。
+- 前端对单个与批量删除都必须先弹确认框并列出将被移除的 Mod；删除进行中确认按钮禁用。
+- 「卸载并删除」组合动作不在本契约内，属于 follow-up；v1 已安装的 Mod 必须先卸载再删除。
 
 ## 窗口关闭与托盘生命周期
 

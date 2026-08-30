@@ -29,12 +29,17 @@ import {
   getBatchCapabilityUnavailableLabel,
 } from "./batch-lifecycle/batchModLifecycleCopy.ts";
 import {
+  DeleteConfirmationDialog,
   InstallPlanDetailSheet,
   ManagedInstallTaskFeedback,
   UninstallConfirmationDialog,
   type InstallPlanDetailSheetState,
+  type ModDeletionConfirmation,
+  type ModDeletionConfirmationEntry,
   type UninstallConfirmationState,
 } from "./ModLifecycleFeedback";
+import { deleteModFromLibrary, previewModDeletion } from "./modDeleteApi";
+import { modDeleteCopy, type ModDeleteCopy } from "./modDeleteCopy";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { ModLibraryPagination } from "./ModLibraryPagination";
 import {
@@ -320,6 +325,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const copy = resolveCopy(modLibraryCopy, locale);
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
   const batchCopy = resolveCopy(batchModLifecycleCopy, locale);
+  const deleteCopy = resolveCopy<ModDeleteCopy>(modDeleteCopy, locale);
   // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
   const lifecycleCopyRef = useRef(lifecycleCopy);
   lifecycleCopyRef.current = lifecycleCopy;
@@ -353,6 +359,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     status: "idle",
   });
   const [uninstallConfirmation, setUninstallConfirmation] = useState<PendingUninstallConfirmation | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<ModDeletionConfirmation | null>(null);
+  const [deletionBusy, setDeletionBusy] = useState(false);
   const [installTaskState, setInstallTaskState] = useState<ManagedInstallTaskState>({ status: "idle" });
   const [lifecycleToast, setLifecycleToast] = useState<ModLifecycleToast | null>(null);
   const installTaskStateRef = useRef<ManagedInstallTaskState>(installTaskState);
@@ -361,6 +369,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const handledInstallTerminalTaskIdsRef = useRef(new Set<string>());
   const handledBatchTerminalAttemptsRef = useRef(new Set<string>());
   const startFailureToastSequenceRef = useRef(0);
+  const deleteToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
   const installPlanPreviewGenerationRef = useRef(0);
   const categoriesRequestGenerationRef = useRef(0);
@@ -977,6 +986,35 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     selectionMode,
   ]);
 
+  const contextMenuDeleteAction = useMemo(() => {
+    const item = contextMenuState === null
+      ? null
+      : libraryItems.find((candidate) => candidate.id === contextMenuState.modId) ?? null;
+    const label = deleteCopy.menu.delete;
+
+    if (item === null) {
+      return { label, disabledReason: copy.page.cardAction.notInList } as const;
+    }
+    if (selectionMode === "batch") {
+      return { label, disabledReason: copy.page.cardAction.batchSelecting } as const;
+    }
+    if (selectionInteractionDisabledReason !== undefined) {
+      return { label, disabledReason: selectionInteractionDisabledReason } as const;
+    }
+    // The cross-profile install gate is enforced in Rust; this mirrors the current-profile view.
+    if (item.installSummary?.status === "installed") {
+      return { label, disabledReason: deleteCopy.menu.deleteBlockedInstalled } as const;
+    }
+    return { label } as const;
+  }, [
+    contextMenuState,
+    copy,
+    deleteCopy,
+    libraryItems,
+    selectionInteractionDisabledReason,
+    selectionMode,
+  ]);
+
   const handleQueryChange = (nextQuery: string) => {
     setQuery(nextQuery);
     resetPageInteraction("search-changed");
@@ -1340,6 +1378,124 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       });
   };
 
+  const promptDeleteMods = async (requestedModIds: string[]) => {
+    if (
+      libraryQueryBusy
+      || selectionInteractionLocked
+      || deletionBusy
+      || activeProfileId === null
+      || requestedModIds.length === 0
+    ) {
+      return;
+    }
+
+    const entries: ModDeletionConfirmationEntry[] = [];
+    for (const modId of requestedModIds) {
+      const item = libraryItems.find((candidate) => candidate.id === modId) ?? null;
+      const fallbackName = item?.name ?? modId;
+      const fallbackCategories = item?.categoryLabels.map((label) => label.name) ?? [];
+      if (item?.installSummary?.status !== "not_installed") {
+        entries.push({
+          modId,
+          displayName: fallbackName,
+          revisionCount: 0,
+          categoryLabels: fallbackCategories,
+          affectedProfiles: [],
+          skip: true,
+          skipReason: deleteCopy.dialog.skipInstalled,
+        });
+        continue;
+      }
+
+      try {
+        const preview = await previewModDeletion(modId);
+        entries.push({
+          modId,
+          displayName: preview.displayName,
+          revisionCount: preview.revisionCount,
+          categoryLabels: preview.categoryLabels,
+          affectedProfiles: preview.affectedProfiles,
+        });
+      } catch {
+        entries.push({
+          modId,
+          displayName: fallbackName,
+          revisionCount: 0,
+          categoryLabels: fallbackCategories,
+          affectedProfiles: [],
+          skip: true,
+          skipReason: deleteCopy.dialog.skipPreviewUnavailable,
+        });
+      }
+    }
+
+    if (!pageMountedRef.current) {
+      return;
+    }
+    setDeleteConfirmation({ mods: entries });
+  };
+
+  const cancelDeleteConfirmation = () => {
+    if (deletionBusy) {
+      return;
+    }
+    setDeleteConfirmation(null);
+  };
+
+  const confirmDeleteMods = async () => {
+    if (
+      libraryQueryBusy
+      || deletionBusy
+      || deleteConfirmation === null
+      || activeProfileId === null
+    ) {
+      return;
+    }
+
+    const targets = deleteConfirmation.mods.filter((entry) => entry.skip !== true);
+    if (targets.length === 0) {
+      setDeleteConfirmation(null);
+      return;
+    }
+
+    setDeletionBusy(true);
+    let deleted = 0;
+    const failures: string[] = [];
+    for (const entry of targets) {
+      try {
+        await deleteModFromLibrary(entry.modId);
+        deleted += 1;
+      } catch (error) {
+        const code = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+          ? error.code
+          : null;
+        const fallback = deleteCopy.errors.fallback;
+        const resolved = (code === null ? undefined : deleteCopy.errors.codes[code]) ?? fallback;
+        failures.push(resolved.hint === undefined
+          ? `${entry.displayName}: ${resolved.message}`
+          : `${entry.displayName}: ${resolved.message} ${resolved.hint}`);
+      }
+    }
+    setDeletionBusy(false);
+
+    if (!pageMountedRef.current) {
+      return;
+    }
+    const toastCopy = deleteCopy.toasts;
+    setLifecycleToast({
+      id: `mod-delete-${++deleteToastSequenceRef.current}`,
+      title: failures.length === 0
+        ? toastCopy.deletedTitle(deleted)
+        : toastCopy.deleteFailedTitle(failures.length),
+      message: failures.length === 0
+        ? toastCopy.deletedMessage
+        : `${toastCopy.deleteFailedMessage} ${failures.join(" ")}`,
+      tone: failures.length === 0 ? "success" : "danger",
+    });
+    setDeleteConfirmation(null);
+    await refreshModLibraryAfterWrite();
+  };
+
   const handleAction = (actionId: string) => {
     switch (actionId) {
       case "enter-batch-selection":
@@ -1402,6 +1558,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           void batchWorkflow.prepare("uninstall", Array.from(selectedIds));
         }
         break;
+      case "delete":
+        if (selectionMode === "single") {
+          if (selectedItem !== null) {
+            void promptDeleteMods([selectedItem.id]);
+          }
+        } else if (!selectionInteractionLocked) {
+          void promptDeleteMods(Array.from(selectedIds));
+        }
+        break;
       default:
         onAction?.(actionId);
         break;
@@ -1418,6 +1583,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         break;
       case "uninstall":
         promptSelectedUninstallTask(modId);
+        break;
+      case "delete":
+        void promptDeleteMods([modId]);
         break;
       case "info-settings":
         setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
@@ -1524,6 +1692,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             canInstallSelection={canInstallSelected}
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
+            canDeleteSelection={selectionMode === "batch" && batchWriteUnavailableReason === undefined}
             onImportCompleted={refreshModLibraryAfterWrite}
             onAction={handleAction}
           />
@@ -1540,6 +1709,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         blockerMessage={uninstallBlockerMessage}
         onCancel={cancelUninstallConfirmation}
         onConfirm={startSelectedUninstallTask}
+      />
+
+      <DeleteConfirmationDialog
+        state={deleteConfirmation}
+        busy={deletionBusy}
+        onCancel={cancelDeleteConfirmation}
+        onConfirm={() => void confirmDeleteMods()}
       />
 
       <ManagedInstallTaskFeedback
@@ -1701,6 +1877,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           y={contextMenuState.y}
           modId={contextMenuState.modId}
           lifecycleAction={contextMenuLifecycleAction}
+          deleteAction={contextMenuDeleteAction}
           onClose={() => setContextMenuState(null)}
           onAction={handleContextMenuAction}
         />

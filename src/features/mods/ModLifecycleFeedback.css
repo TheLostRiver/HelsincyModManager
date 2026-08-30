@@ -262,3 +262,36 @@
     animation: none;
   }
 }
+
+/* 删除确认（#276）：逐项名单与审计保留说明。 */
+.mod-lifecycle-feedback__delete-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mod-lifecycle-feedback__delete-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+}
+
+.mod-lifecycle-feedback__delete-list em {
+  color: var(--color-warning-text);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.mod-lifecycle-feedback__audit-note {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}

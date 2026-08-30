@@ -37,6 +37,7 @@ type CompactActionPanelProps = {
   canInstallSelection?: boolean;
   canReinstallSelection?: boolean;
   canUninstallSelection?: boolean;
+  canDeleteSelection?: boolean;
   onImportCompleted: () => Promise<void> | void;
   onAction: (actionId: string) => void;
 };
@@ -50,6 +51,7 @@ const actionIcons: Record<string, ComponentType<LucideProps>> = {
   install: Download,
   reinstall: RefreshCcw,
   uninstall: Trash2,
+  delete: Trash2,
 };
 
 export function CompactActionPanel({
@@ -68,6 +70,7 @@ export function CompactActionPanel({
   canInstallSelection = true,
   canReinstallSelection = false,
   canUninstallSelection = false,
+  canDeleteSelection = false,
   onImportCompleted,
   onAction,
 }: CompactActionPanelProps) {
@@ -84,6 +87,7 @@ export function CompactActionPanel({
     install: compact.buttons.install,
     reinstall: compact.buttons.reinstall,
     uninstall: compact.buttons.uninstall,
+    delete: compact.buttons.delete,
   };
   const batchSelectionActive = selectionMode === "batch";
   const addAction = compactActions.find((a) => a.id === "add");
@@ -112,6 +116,7 @@ export function CompactActionPanel({
       install: compact.batchActionLabels.install,
       reinstall: compact.batchActionLabels.reinstall,
       uninstall: compact.batchActionLabels.uninstall,
+      delete: compact.batchActionLabels.delete,
     };
     return labels[actionId] ?? fallback;
   };
@@ -175,6 +180,7 @@ export function CompactActionPanel({
                     canInstallSelection,
                     canReinstallSelection,
                     canUninstallSelection,
+                    canDeleteSelection,
                   }, compact);
               return (
                 <ModLibraryControlTooltip key={action.id} content={disabledReason}>
@@ -207,7 +213,10 @@ export function CompactActionPanel({
         </div>
 
         {compactActions
+          // Delete is a batch-only entry point: single deletion lives in the card context menu,
+          // so rendering it outside batch selection would leave a permanently disabled button.
           .filter((a) => !["select-all", "invert", "refresh", "add", "add-revision"].includes(a.id))
+          .filter((a) => a.id !== "delete" || batchSelectionActive)
           .map((action) => {
             const Icon = actionIcons[action.id] ?? Plus;
             const disabledReason = lifecycleDisabledReason(
@@ -220,6 +229,7 @@ export function CompactActionPanel({
                 libraryQueryBusy,
                 canInstallSelection,
                 canReinstallSelection,
+                canDeleteSelection,
                 canUninstallSelection,
               }, compact),
             );

@@ -217,6 +217,8 @@ export const compactActions: CompactAction[] = [
   { id: "install", label: "安装选中 MOD", variant: "success" },
   { id: "reinstall", label: "重装选中 MOD", variant: "info" },
   { id: "uninstall", label: "卸载选中 MOD", variant: "danger" },
+  // 删除是批量入口（v1 逐个调用单删命令）；单个删除走卡片右键菜单。
+  { id: "delete", label: "删除选中 MOD", variant: "danger" },
 ];
 
 export const libraryFilterChips = ["全部", "已安装", "已禁用", "存在冲突", "外观", "武器", "语音"] as const;
