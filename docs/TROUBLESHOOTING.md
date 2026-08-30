@@ -22,6 +22,7 @@
 | `pnpm lint` 长期挂一条 warning，verify 却一直是绿的 | `pnpm lint` 没有 `--max-warnings 0` | [4.4](#44-warning-不阻塞-verifywarning-不等于无害) |
 | 图片放大后拖到边缘就回不来，只能重置 | clamp 用了视口尺寸而非渲染尺寸，且拖动未重锚（死区） | [4.5](#45-边界不变量要断言方向无关的量) |
 | 新加的回归用例在把修复退回去后**依然绿** | 不变量断言写成了单侧、方向选反——假绿 | [4.5](#45-边界不变量要断言方向无关的量) |
+| 代码里打了日志，dev 终端能看到，`logs/app/app-*.log` 里却没有 | 普通 tracing 不过 app 日志层；字段白名单外会被整条拒绝 | [6.1](#61-加了-tracingwarn-但-logsappapp-log-里什么都没有) |
 
 ## 1. 环境与工具链
 
@@ -367,3 +368,35 @@ DTO 携带全语言 `displayNames`，展示名在**渲染时**按 fallback 链�
 - 既有测试存在**用字面量断言源码形状**的情况（如
   `batchSelectionActive && actionId === "preview-plan"`）。重构时保留原表达式形态，
   否则测试红得莫名其妙。
+
+## 6. 日志与诊断
+
+### 6.1 加了 `tracing::warn!` 但 `logs/app/app-*.log` 里什么都没有
+
+**症状**：代码里明明打了日志，dev 终端能看到，`logs/app/app-YYYY-MM-DD.log` 里却搜不到，
+而且没有任何报错——事件像被吞了一样。
+
+**根因**：app 日志层（`hmm-infra/src/app_log.rs`）只处理 **target == `hmm.safe_app_log`**
+的事件，`on_event` 第一行不匹配就 return。**普通 `tracing::warn!` / `info!` 一律留在
+文件层之外**——该文件自己的注释就写着 "ordinary tracing stays outside the file layer"。
+
+更隐蔽的是第二条：字段有**白名单**，未知字段会把整条事件判为 `invalid` 并拒绝
+（`into_validated_record` → `EventRejected`）。所以即便补上 target，只要带了一个白名单
+外的字段（比如自定义的 `stage`），这条日志照样不落盘；而且从日志本身完全看不出来，
+只会在 `/diagnostics` 的 health 里表现为事件被拒。
+
+**处理**：走 `emit_safe_app_log(AppLogEvent::warning(event_name).with_xxx())`。
+字段名只能用白名单内的这些：
+
+```
+event_name  task_id  game_id  profile_id  mod_id  task_kind  task_status
+phase  operation  result  error_code  safe_path  item_count  duration_ms
+```
+
+自定义语义要**映射到既有字段**：比如「准入阶段」放 `operation`、「子步骤」放 `phase`。
+事件名与 code 类字段受 `validate_stable_code` 约束：只允许小写字母、数字与 `_.-`，
+且不得包含敏感文本（路径、用户名等一律不行）。
+
+**校验方法**：别只看编译通过。要么在测试里用 `tracing::subscriber::with_default` +
+scoped 日志层断言落盘内容，要么真机触发一次**失败**路径后去看日志文件——
+成功路径不会留下这行日志，验证不了通道是否通。

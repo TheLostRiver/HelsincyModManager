@@ -1082,13 +1082,17 @@ impl SandboxRuntimeWriteAdmission {
     /// #273: every branch used to map to `SafetyRejected` with no log line at all, so a sandbox
     /// rejection was indistinguishable from any other safety failure. Diagnosing the issue
     /// required reading the admission code instead of the logs.
+    ///
+    /// This goes through the safe app-log layer deliberately: a plain `tracing::warn!` stays
+    /// outside the file layer (see `app_log.rs`), so it would only ever be visible in a dev
+    /// terminal — the exact case this line exists to fix. The layer whitelists fields, so the
+    /// admission stage rides along as `operation` and no path is ever logged.
     fn reject(&self, stage: &'static str, reason: &str) -> InstallWriteAdmissionError {
-        tracing::warn!(
-            event = "sandbox_write_admission_rejected",
-            stage,
-            error_code = reason,
-            data_root_mode = self.environment.data_root_mode().as_str(),
-            result = "failure"
+        emit_safe_app_log(
+            AppLogEvent::warning("sandbox_write_admission_rejected")
+                .with_operation(stage)
+                .with_error_code(reason)
+                .with_result("failure"),
         );
         InstallWriteAdmissionError::SafetyRejected
     }
