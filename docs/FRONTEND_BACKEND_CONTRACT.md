@@ -1985,7 +1985,9 @@ type ModDeletionResultDto = {
 - 清理顺序固定为：选择意图 → 沙盒 → 缩略图 → 目录 → 元数据 overlay → 分类关联 → 审计。审计是 best-effort，
   写入失败只降级，不改变删除已提交的事实。
 - 批量删除 v1 不是新的批量生命周期 operation：前端确认后逐个调用 `delete_mod_from_library` 并逐项收集稳定
-  错误码。批量框架不新增 Delete 操作类型。
+  错误码。批量框架不新增 Delete 操作类型，因此**删除不受 batch write capability 门禁约束**——该门禁只在
+  Sandbox 下开放，套用到删除会让 Production 下的批量删除恒为禁用。单个删除入口是卡片右键菜单，批量删除入口
+  是快捷操作栏（仅批量选择模式渲染）。
 - 前端对单个与批量删除都必须先弹确认框并列出将被移除的 Mod；删除进行中确认按钮禁用。
 - 「卸载并删除」组合动作不在本契约内，属于 follow-up；v1 已安装的 Mod 必须先卸载再删除。
 

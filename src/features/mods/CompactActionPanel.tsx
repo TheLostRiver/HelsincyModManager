@@ -120,12 +120,18 @@ export function CompactActionPanel({
     };
     return labels[actionId] ?? fallback;
   };
-  const batchCapabilityDisabledReason = (actionId: string) =>
-    batchSelectionActive && actionId === "preview-plan"
+  const batchCapabilityDisabledReason = (actionId: string) => {
+    // Delete is a page-side loop over the single delete command and never enters the batch
+    // lifecycle framework, so the sandbox-gated write capability does not apply to it.
+    if (actionId === "delete") {
+      return undefined;
+    }
+    return batchSelectionActive && actionId === "preview-plan"
       ? batchPreviewUnavailableReason
       : batchSelectionActive
         ? batchWriteUnavailableReason
         : undefined;
+  };
   const lifecycleDisabledReason = (
     actionId: string,
     fallbackReason: string | undefined,
