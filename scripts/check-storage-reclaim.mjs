@@ -10,6 +10,7 @@
 // Exit code 0 = every check passed, 1 = at least one failed.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export function collectPackageIds(revisions) {
   return new Set((revisions ?? []).map((revision) => revision?.package_id).filter(Boolean));
@@ -183,4 +184,12 @@ function main() {
   return failed === 0 ? 0 : 1;
 }
 
-process.exit(main());
+// Guarded so importing this module for its pure helpers does not read the real
+// app data and exit the host process.
+const isDirectRun =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  process.exit(main());
+}
