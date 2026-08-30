@@ -259,18 +259,17 @@ admission 使用以下稳定 tracing event：
 - `write_admission_owner_recovered`
 - `write_admission_release_order_violation`
 - `write_admission_release_failed`
-- `sandbox_write_admission_rejected`（沙箱 root admission 拒绝写请求；携带受控 stage 与
-  `SandboxWriteCapabilityError` 的稳定 code。见 #273）
+- `sandbox_write_admission_rejected`（沙箱 root admission 拒绝写请求；`operation` 承载受控
+  阶段，`error_code` 为 `SandboxWriteCapabilityError` 的稳定 code。见 #273）
 
-admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage、
-`data root mode`（`system | explicit_sandbox` 枚举，不含路径）和
+admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage 和
 `abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名或路径、SID、
 用户名、完整 app-data path、Steam ID、存档路径和原始平台错误。guard release/unlock、owner-record
 清理或 release order 失败只能记录对应的受控 event/stage，不能把已经提交的玩家文件、manifest、
 backup、rollback 或 recovery 事实改写成业务失败。
 
-`sandbox_write_admission_rejected` 的 stage 取自固定集合 `load_game_instance`、
-`acquire_capability`、`admit_roots`、`revalidate`；它把此前静默折叠成
+`sandbox_write_admission_rejected` 的阶段落在 `operation` 字段，取自固定集合
+`load_game_instance`、`acquire_capability`、`admit_roots`、`revalidate`；它把此前静默折叠成
 `write_safety_rejected` 的各个失败分支区分开，但**仍然不记录任何路径**。
 
 ## 诊断导出
