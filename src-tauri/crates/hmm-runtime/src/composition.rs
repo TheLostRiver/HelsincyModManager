@@ -783,7 +783,6 @@ impl HmmRuntime {
                 (Some(admission), _) => admission,
                 (None, Some(environment)) => Arc::new(SandboxRuntimeWriteAdmission::new(
                     environment,
-                    app_data_dir.clone(),
                     Arc::clone(&game_config_repository),
                 )),
                 (None, None) => Arc::new(AllowRuntimeWriteAdmission),
@@ -1047,9 +1046,20 @@ impl InstallWriteAdmission for AllowRuntimeWriteAdmission {
     }
 }
 
+/// GUI-composition admission: allows writes only when the sandbox root validates, and contains
+/// the **game root** inside it.
+///
+/// The app-data root is deliberately *not* part of the admitted set. #273: the GUI resolves it
+/// through Tauri to the OS location (`%APPDATA%\dev.helsincy.modmanager`) and never relocates
+/// it, so requiring it to sit inside the sandbox root made GUI writes structurally impossible —
+/// the two are disjoint by construction. Requiring containment here rejected every install with
+/// `install_retarget_failed:write_safety_rejected`.
+///
+/// This is an accepted weakening of "everything written in sandbox mode goes through
+/// containment": the app-data root holds manager metadata, and it is the game root that sandbox
+/// mode exists to protect. See issue #273 for the trade-off and its review note.
 struct SandboxRuntimeWriteAdmission {
     environment: RuntimeEnvironment,
-    app_data_dir: PathBuf,
     game_config_repository: Arc<dyn GameConfigRepository>,
     capability: Mutex<Option<SandboxWriteCapability>>,
 }
@@ -1057,15 +1067,30 @@ struct SandboxRuntimeWriteAdmission {
 impl SandboxRuntimeWriteAdmission {
     fn new(
         environment: RuntimeEnvironment,
-        app_data_dir: PathBuf,
         game_config_repository: Arc<dyn GameConfigRepository>,
     ) -> Self {
         Self {
             environment,
-            app_data_dir,
             game_config_repository,
             capability: Mutex::new(None),
         }
+    }
+
+    /// Records why a sandbox write was refused before collapsing it into the opaque
+    /// `SafetyRejected` that the install pipeline reports to the UI.
+    ///
+    /// #273: every branch used to map to `SafetyRejected` with no log line at all, so a sandbox
+    /// rejection was indistinguishable from any other safety failure. Diagnosing the issue
+    /// required reading the admission code instead of the logs.
+    fn reject(&self, stage: &'static str, reason: &str) -> InstallWriteAdmissionError {
+        tracing::warn!(
+            event = "sandbox_write_admission_rejected",
+            stage,
+            error_code = reason,
+            data_root_mode = self.environment.data_root_mode().as_str(),
+            result = "failure"
+        );
+        InstallWriteAdmissionError::SafetyRejected
     }
 }
 
@@ -1078,28 +1103,25 @@ impl InstallWriteAdmission for SandboxRuntimeWriteAdmission {
         let game_instance = self
             .game_config_repository
             .load_game_instance(game_id)
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?;
+            .map_err(|_| self.reject("load_game_instance", "game_instance_unavailable"))?
+            .ok_or_else(|| self.reject("load_game_instance", "game_instance_missing"))?;
         let mut capability = self
             .capability
             .lock()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
+            .map_err(|_| self.reject("lock_capability", "capability_lock_poisoned"))?;
         if capability.is_none() {
             *capability = Some(
                 SandboxWriteCapability::acquire(&self.environment)
-                    .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?,
+                    .map_err(|error| self.reject("acquire_capability", error.code()))?,
             );
         }
         capability
             .as_ref()
-            .ok_or(InstallWriteAdmissionError::SafetyRejected)?
-            .admit_roots(SandboxWriteRoots::new(
-                self.app_data_dir.clone(),
-                game_instance.root_dir,
-            ))
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?
+            .ok_or_else(|| self.reject("admit_roots", "capability_missing"))?
+            .admit_roots(SandboxWriteRoots::game_root_only(game_instance.root_dir))
+            .map_err(|error| self.reject("admit_roots", error.code()))?
             .revalidate()
-            .map_err(|_| InstallWriteAdmissionError::SafetyRejected)
+            .map_err(|error| self.reject("revalidate", error.code()))
     }
 }
 
@@ -2327,23 +2349,23 @@ mod tests {
         }
     }
 
+    /// Admits a game root inside the sandbox and rejects one outside it. The app-data root is
+    /// not part of the admitted set at all — see `sandbox_write.rs` for the #273 test that pins
+    /// down the GUI shape against the stricter batch/CLI shape it replaced.
     #[test]
-    fn sandbox_runtime_write_admission_accepts_only_roots_inside_the_capability() {
+    fn sandbox_runtime_write_admission_rejects_a_game_root_outside_the_capability() {
         let sandbox = tempfile::tempdir().expect("temporary sandbox root");
-        let app_data_dir = sandbox.path().join("app-data");
         let game_dir = sandbox.path().join("game");
         std::fs::write(
             sandbox.path().join(crate::SANDBOX_MARKER_FILE_NAME),
             crate::SANDBOX_MARKER_SCHEMA,
         )
         .expect("write artificial sandbox marker");
-        std::fs::create_dir_all(&app_data_dir).expect("create app data root");
         std::fs::create_dir_all(&game_dir).expect("create game root");
         let environment =
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment");
         let admission = SandboxRuntimeWriteAdmission::new(
             environment,
-            app_data_dir,
             Arc::new(StaticGameConfigRepository {
                 instance: Some(GameInstance {
                     id: "mhw-sandbox".to_owned(),
@@ -2358,7 +2380,7 @@ mod tests {
 
         admission
             .ensure_write_allowed(&GameId::mhw(), &ProfileId::new("default"))
-            .expect("sandbox roots are admitted");
+            .expect("a game root inside the sandbox is admitted");
         assert!(sandbox
             .path()
             .join(crate::SANDBOX_MARKER_FILE_NAME)
@@ -2367,7 +2389,6 @@ mod tests {
         let outside = tempfile::tempdir().expect("outside game root");
         let rejected = SandboxRuntimeWriteAdmission::new(
             RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("sandbox environment"),
-            sandbox.path().join("app-data"),
             Arc::new(StaticGameConfigRepository {
                 instance: Some(GameInstance {
                     id: "mhw-outside".to_owned(),
