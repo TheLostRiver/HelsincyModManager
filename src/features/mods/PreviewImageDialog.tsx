@@ -10,8 +10,11 @@ import {
   MAX_SCALE,
   MIN_SCALE,
   SCALE_STEP,
+  advanceDrag,
   isDefaultView,
   normalizeView,
+  type DragAnchor,
+  type Size,
   type ViewState,
 } from "./previewImageZoom";
 import "./PreviewImageDialog.css";
@@ -35,22 +38,44 @@ export function PreviewImageDialog({
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [view, setView] = useState<ViewState>(INITIAL_VIEW);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const dragRef = useRef<DragAnchor | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  // Natural size of the loaded image. A ref, not state: it is only read when
+  // clamping, so keeping it out of state avoids re-rendering on every load.
+  const imageSizeRef = useRef<Size>({ width: 0, height: 0 });
 
-  const applyView = useCallback((next: ViewState) => {
+  /**
+   * Content box of the viewport: what the image's `max-width/max-height: 100%`
+   * resolves against. `getBoundingClientRect()` would include the border.
+   */
+  const readViewport = useCallback((): Size => {
     const element = viewportRef.current;
-    const rect = element?.getBoundingClientRect();
-    const viewport = { width: rect?.width ?? 0, height: rect?.height ?? 0 };
-    setView(normalizeView(next, viewport));
+    if (!element) return { width: 0, height: 0 };
+    return { width: element.clientWidth, height: element.clientHeight };
   }, []);
+
+  /** Applies `next` and returns the view that was actually committed. */
+  const applyView = useCallback((next: ViewState): ViewState => {
+    const applied = normalizeView(next, readViewport(), imageSizeRef.current);
+    const current = viewRef.current;
+    if (
+      applied.scale === current.scale
+      && applied.x === current.x
+      && applied.y === current.y
+    ) {
+      return current;
+    }
+    setView(applied);
+    return applied;
+  }, [readViewport]);
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
     setDetail(null);
     setView(INITIAL_VIEW);
+    imageSizeRef.current = { width: 0, height: 0 };
 
     getModDetailPreviewImage(modId)
       .then((image) => {
@@ -83,6 +108,19 @@ export function PreviewImageDialog({
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
+  }, [applyView]);
+
+  // The pan range is derived from the viewport size, so resizing the window can
+  // invalidate an offset that was legal a moment ago. Re-clamp instead of
+  // letting the image sit half outside the frame.
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return undefined;
+    const observer = new ResizeObserver(() => {
+      applyView(viewRef.current);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [applyView]);
 
   const detailUrl = detail?.kind === "thumbnail" ? detail.thumbnailUrl : null;
@@ -156,11 +194,15 @@ export function PreviewImageDialog({
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!drag) return;
-          applyView({
-            scale: view.scale,
-            x: drag.ox + (event.clientX - drag.px),
-            y: drag.oy + (event.clientY - drag.py),
-          });
+          const stepped = advanceDrag(
+            drag,
+            { x: event.clientX, y: event.clientY },
+            view.scale,
+            readViewport(),
+            imageSizeRef.current,
+          );
+          dragRef.current = stepped.anchor;
+          setView(stepped.view);
         }}
         onPointerUp={() => {
           dragRef.current = null;
@@ -179,6 +221,15 @@ export function PreviewImageDialog({
             src={imageSrc}
             alt=""
             draggable={false}
+            onLoad={(event) => {
+              imageSizeRef.current = {
+                width: event.currentTarget.naturalWidth,
+                height: event.currentTarget.naturalHeight,
+              };
+              // The pan range is unknown until the size is known, so re-clamp
+              // whatever the view is now.
+              applyView(viewRef.current);
+            }}
             style={{
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
             }}
