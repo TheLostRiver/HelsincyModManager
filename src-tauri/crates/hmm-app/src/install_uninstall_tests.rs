@@ -1,4 +1,8 @@
 use super::*;
+use hmm_core::{
+    ReplacementBinding, ReplacementBindingId, ReplacementSourceId, ReplacementTargetId,
+    ReplacementTargetKind,
+};
 
 #[test]
 fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
@@ -679,4 +683,54 @@ fn uninstall_mod_removes_only_the_requested_mod_replacement_snapshot() {
         .entries
         .iter()
         .all(|entry| entry.mod_id == ModId::new("mod-b")));
+}
+
+#[test]
+fn uninstall_reclaims_stale_replacement_binding_for_uninstalled_mod() {
+    // 卸载失败或回滚残留会让条目先清空、绑定还留着。原先这条路径直接返回，
+    // 于是清单一直为「未安装」的 MOD 声称一个替换目标，下次安装就拿这份
+    // 陈旧目标做比对（#278）。
+    let mut existing_manifest = InstallManifest::completed(ProfileId::new("default"), Vec::new());
+    existing_manifest.replacement_bindings = vec![ReplacementBindingSnapshot::new(
+        ReplacementBinding::new(
+            ReplacementBindingId::parse("11111111-1111-4111-8111-111111111111")
+                .expect("binding id"),
+            ModId::new("mod-a"),
+            ProfileId::new("default"),
+            ReplacementSourceId::parse("mhw:armor:f_equip:pl121_0000").expect("source id"),
+            ReplacementTargetId::parse("mhw:armor:target-a").expect("target id"),
+            42,
+        )
+        .expect("binding"),
+        None,
+        "pl121_0000",
+        "pl129_0000",
+        "pl/f_equip",
+        "pl/f_equip",
+        ReplacementTargetKind::parse("armor").expect("kind"),
+    )
+    .expect("snapshot")];
+
+    let manifests = Arc::new(
+        RecordingInstallManifestRepository::default().with_existing_manifest(existing_manifest),
+    );
+    let service = UninstallModService::new(
+        Arc::new(RecordingInstallGameFileSystem::with_files([])),
+        Arc::new(RecordingInstallBackupStore::default()),
+        manifests.clone(),
+    );
+
+    let error = service
+        .uninstall_mod(UninstallModRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+        })
+        .expect_err("mod without installed entries is not installed");
+
+    assert!(matches!(error, UninstallModError::ModNotInstalled));
+    let saved = manifests
+        .take_manifest()
+        .expect("stale binding should be reclaimed");
+    assert_eq!(saved.replacement_bindings, Vec::new());
 }
