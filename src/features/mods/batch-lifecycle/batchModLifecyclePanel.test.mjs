@@ -216,3 +216,45 @@ test("batch capability is backend-owned, fail-closed, and mapped to product copy
   );
   assert.ok(getBatchCapabilityUnavailableLabel(null, zhBatch.capability).length > 0);
 });
+
+test("batch replacement target names are projected per render, not frozen at load", () => {
+  const page = readSource("src/features/mods/ModLibraryPage.tsx");
+  const panel = readSource(
+    "src/features/mods/batch-lifecycle/BatchModLifecyclePreviewPanel.tsx",
+  );
+  const types = readSource(
+    "src/features/mods/batch-lifecycle/batchModLifecycleTypes.ts",
+  );
+
+  // The facts carry the raw multi-locale names. Resolving them while loading would
+  // bake one locale into the workflow state, so a language switch mid-flow would
+  // leave the dropdown stale until the facts are refetched (which would also drop
+  // the current selection). This is the I18N-08 contract.
+  assert.match(
+    types,
+    /BatchModLifecycleReplacementTargetOption = \{\s*id: string;\s*displayNames: ReplacementTargetDisplayNames;/,
+  );
+  assert.doesNotMatch(
+    types,
+    /BatchModLifecycleReplacementTargetOption = \{[^}]*\bdisplayName\b/,
+    "target options must not carry a pre-resolved display name",
+  );
+  assert.match(
+    page,
+    /targets: targets\.map\(\(\{ id, displayNames \}\) => \(\{\s*id,\s*displayNames,\s*\}\)\)/,
+  );
+  assert.doesNotMatch(
+    page,
+    /resolveReplacementTargetNames\(/,
+    "ModLibraryPage must not resolve replacement target names at load time",
+  );
+
+  // The panel projects them on every render, so switching the UI language relabels
+  // the options in place — no refetch, no state loss.
+  assert.match(
+    panel,
+    /availableTargets\.map\(\(target\) => \{[\s\S]{0,400}?resolveReplacementTargetNames\(\s*target\.displayNames,\s*locale,\s*\)/,
+  );
+  assert.match(panel, /<strong>\{displayName\}<\/strong>/);
+  assert.match(panel, /\{secondaryName \? <small>\{secondaryName\}<\/small> : null\}/);
+});
