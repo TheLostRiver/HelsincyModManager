@@ -118,6 +118,8 @@ import {
 } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
+import { PreviewImageDialog } from "./PreviewImageDialog";
+import { previewImageViewCopy } from "./previewImageViewCopy";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
@@ -326,6 +328,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
   const batchCopy = resolveCopy(batchModLifecycleCopy, locale);
   const deleteCopy = resolveCopy<ModDeleteCopy>(modDeleteCopy, locale);
+  const previewImageCopy = resolveCopy(previewImageViewCopy, locale);
   // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
   const lifecycleCopyRef = useRef(lifecycleCopy);
   lifecycleCopyRef.current = lifecycleCopy;
@@ -358,6 +361,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [installPlanDetailState, setInstallPlanDetailState] = useState<InstallPlanDetailSheetState>({
     status: "idle",
   });
+  const [previewModId, setPreviewModId] = useState<string | null>(null);
   const [uninstallConfirmation, setUninstallConfirmation] = useState<PendingUninstallConfirmation | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<ModDeletionConfirmation | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
@@ -1015,6 +1019,33 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     selectionMode,
   ]);
 
+  // Offered only when the mod actually has a preview image to show.
+  const contextMenuPreviewAction = useMemo(() => {
+    const item = contextMenuState === null
+      ? null
+      : libraryItems.find((candidate) => candidate.id === contextMenuState.modId) ?? null;
+
+    if (item === null || item.previewImage?.kind !== "thumbnail") {
+      return null;
+    }
+    return { label: previewImageCopy.menu.viewPreview } as const;
+  }, [contextMenuState, libraryItems, previewImageCopy]);
+
+  const previewMod = useMemo(() => {
+    if (previewModId === null) {
+      return null;
+    }
+    const item = libraryItems.find((candidate) => candidate.id === previewModId);
+    if (item === undefined || item.previewImage?.kind !== "thumbnail") {
+      return null;
+    }
+    return {
+      modId: item.id,
+      name: item.name,
+      thumbnailUrl: item.previewImage.thumbnailUrl,
+    } as const;
+  }, [libraryItems, previewModId]);
+
   const handleQueryChange = (nextQuery: string) => {
     setQuery(nextQuery);
     resetPageInteraction("search-changed");
@@ -1587,6 +1618,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "delete":
         void promptDeleteMods([modId]);
         break;
+      case "view-preview":
+        setPreviewModId(modId);
+        break;
       case "info-settings":
         setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
         break;
@@ -1878,8 +1912,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           modId={contextMenuState.modId}
           lifecycleAction={contextMenuLifecycleAction}
           deleteAction={contextMenuDeleteAction}
+          previewAction={contextMenuPreviewAction ?? undefined}
           onClose={() => setContextMenuState(null)}
           onAction={handleContextMenuAction}
+        />
+      )}
+
+      {previewMod !== null && (
+        <PreviewImageDialog
+          modId={previewMod.modId}
+          modName={previewMod.name}
+          fallbackThumbnailUrl={previewMod.thumbnailUrl}
+          onClose={() => setPreviewModId(null)}
         />
       )}
     </section>
