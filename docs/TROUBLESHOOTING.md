@@ -17,6 +17,8 @@
 | 往 `tmp/` 放个脚本，`eslint .` 就报一堆 `no-undef` | gitignore 不影响 eslint 扫描范围 | [2.1](#21-tmp-下的脚本让-eslint-报-no-undef) |
 | 新写的 scripts 测试从没被执行 | `pnpm test` 的 glob 只覆盖 `src/**` | [2.2](#22-scripts-测试没被执行) |
 | 缩略图生成成功但界面不显示，协议请求无响应 | WebView2 不支持非标准 scheme | [3.1](#31-自定义协议请求无响应) |
+| 切语言后界面文案不更新，且 lint 有一条长期被忽略的 warning | 展示名在**载入时**就解析成字符串存进 state，违反 I18N-08 | [4.3](#43-语言相关的展示数据必须在渲染时投影) |
+| `pnpm lint` 长期挂一条 warning，verify 却一直是绿的 | `pnpm lint` 没有 `--max-warnings 0` | [4.4](#44-warning-不阻塞-verifywarning-不等于无害) |
 
 ## 1. 环境与工具链
 
@@ -253,6 +255,32 @@ ID 格式的那天，它不会报错也不会警告，只是**静默地什么都
 
 **处理**：结构化数据走结构化读取（`entries[].mod_id` / `entries[].revision_id` /
 `replacement_bindings[].binding.mod_id`），正则只用于真正没有结构的文本。
+
+### 4.3 语言相关的展示数据必须在渲染时投影
+
+**反例（#282）**：批量生命周期的替换目标名在**载入事实时**就调用
+`resolveReplacementTargetNames(displayNames, locale)` 解析成字符串，存进 workflow
+state。后果是切语言后已经打开的下拉不会更新——要更新只能重新拉取事实，而那会丢掉
+用户已选的目标。
+
+这类缺陷很容易被误诊成 `useCallback` 依赖数组漏了 `locale`。补依赖确实治好
+「切语言后**再进入**流程」，但治不好「**已在流程里**切语言」，因为病灶是
+**解析时机**，不是闭包新鲜度。**先问一句这份数据在 state 里是原始值还是已投影值**，
+再决定改哪儿。
+
+**契约（I18N-08，见 `src/features/replacements/replacementTargetNames.ts` 头部）**：
+DTO 携带全语言 `displayNames`，展示名在**渲染时**按 fallback 链投影，语言切换不重拉
+列表。参照实现是 `ReplacementTargetPanel`。
+
+### 4.4 warning 不阻塞 verify，warning 不等于无害
+
+`pnpm lint` 没有 `--max-warnings 0`，`verify.ps1` 不会因为 warning 变红。
+#282 那条 `React Hook useCallback has a missing dependency: 'locale'` 因此安静地
+待了很久，被当成无害噪音，实际是个真 bug。
+
+**处理**：看到 warning 先判断它是「风格建议」还是「可能的行为缺陷」。
+`react-hooks/exhaustive-deps` 属于后者——它报的正是闭包会捕获陈旧值。
+做不到零 warning 时，至少记住哪几条是已知的、为什么留着。
 
 ## 5. 仓库硬约束
 
