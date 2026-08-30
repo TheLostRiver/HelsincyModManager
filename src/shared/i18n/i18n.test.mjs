@@ -79,6 +79,7 @@ test("copy 字典三语齐全并由 satisfies 锁定", () => {
     "src/features/mods/modLifecycleCopy.ts",
     "src/features/mods/modDeleteCopy.ts",
     "src/features/mods/modReinstallCopy.ts",
+    "src/features/mods/previewImageViewCopy.ts",
     "src/features/mods/batch-lifecycle/batchModLifecycleCopy.ts",
     "src/features/replacements/replacementCopy.ts",
     "src/features/profiles/profilePageCopy.ts",

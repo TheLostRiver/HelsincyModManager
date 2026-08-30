@@ -18,6 +18,10 @@ export type ModContextMenuProps = {
     label: string;
     disabledReason?: string;
   };
+  previewAction?: {
+    label: string;
+    disabledReason?: string;
+  };
   onClose: () => void;
   onAction: (actionId: string, modId: string) => void;
 };
@@ -65,12 +69,21 @@ const IconFolder = () => (
   </svg>
 );
 
+const IconImage = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+    <polyline points="21 15 16 10 5 21"></polyline>
+  </svg>
+);
+
 export function ModContextMenu({
   x,
   y,
   modId,
   lifecycleAction,
   deleteAction,
+  previewAction,
   onClose,
   onAction,
 }: ModContextMenuProps) {
@@ -152,6 +165,29 @@ export function ModContextMenu({
 
   return createPortal(
     <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
+      {previewAction ? (
+        <>
+          <button
+            type="button"
+            className={"mod-context-menu__item" + (previewAction.disabledReason ? " is-disabled" : "")}
+            aria-disabled={previewAction.disabledReason !== undefined}
+            disabled={previewAction.disabledReason !== undefined}
+            title={previewAction.disabledReason}
+            onClick={() => {
+              if (!previewAction.disabledReason) {
+                handleItemClick("view-preview");
+              }
+            }}
+          >
+            <IconImage />
+            <span className="mod-context-menu__item-copy">
+              <span>{previewAction.label}</span>
+              {previewAction.disabledReason ? <small>{previewAction.disabledReason}</small> : null}
+            </span>
+          </button>
+          <div className="mod-context-menu__divider" />
+        </>
+      ) : null}
       <button
         type="button"
         className={`mod-context-menu__item${resolvedLifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
