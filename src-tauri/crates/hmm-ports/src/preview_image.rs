@@ -78,6 +78,13 @@ pub trait ThumbnailStore: Send + Sync {
     ) -> Result<ThumbnailRef>;
 
     fn resolve_url(&self, thumbnail_ref: &ThumbnailRef) -> Result<String>;
+
+    /// 删除一个 package 的全部缩略图（`thumbnails/<package_id>/` 整目录）。
+    /// 供 Mod 删除回收存储使用；目录不存在时视为已删除并返回 Ok。
+    /// 默认不支持：不能安全删除的存储实现必须 fail closed。
+    fn remove_package_thumbnails(&self, _package_id: &str) -> Result<()> {
+        anyhow::bail!("package thumbnail removal is not supported by this store")
+    }
 }
 
 pub struct ThumbnailCacheMaintenanceRequest<'a> {

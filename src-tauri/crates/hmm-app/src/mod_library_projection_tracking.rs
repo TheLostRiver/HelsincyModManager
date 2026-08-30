@@ -196,6 +196,13 @@ impl ModImportResultRepository for ProjectionTrackingModImportResultRepository {
         Ok(())
     }
 
+    fn remove_analysis(&self, mod_id: &str) -> Result<()> {
+        let _activity_guard = self.tracker.begin_write()?;
+        self.delegate.remove_analysis(mod_id)?;
+        self.finish_write();
+        Ok(())
+    }
+
     fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>> {
         self.delegate.list_analysis()
     }
