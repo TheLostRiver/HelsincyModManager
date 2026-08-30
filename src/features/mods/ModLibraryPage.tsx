@@ -127,7 +127,6 @@ import {
   analyzeImportedModReplacement,
   listReplacementTargets,
 } from "../replacements/replacementApi";
-import { resolveReplacementTargetNames } from "../replacements/replacementTargetNames";
 
 export type ModViewMode = "classic" | "grid" | "list" | "tech";
 
@@ -472,9 +471,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               modId,
               retargetable: analysis.retargetable,
               installedTargetId: analysis.installedTargetId ?? null,
+              // Keep the raw multi-locale names and let the panel project them at
+              // render time (I18N-08). Resolving here bakes one locale into the
+              // workflow state, which goes stale on a language switch — and the
+              // stale closure on `locale` made it unfixable at the source.
               targets: targets.map(({ id, displayNames }) => ({
                 id,
-                ...resolveReplacementTargetNames(displayNames, locale),
+                displayNames,
               })),
             };
           } catch {

@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, LoaderCircle, X } from "lucide-react";
 import { useId, useRef } from "react";
 import { useModalFocusTrap } from "../../../shared/feedback/useModalFocusTrap";
 import { resolveCopy, useI18n } from "../../../shared/i18n";
+import { resolveReplacementTargetNames } from "../../replacements/replacementTargetNames";
 import type {
   BatchModLifecycleExecutionPolicy,
   BatchModLifecyclePreviewDto,
@@ -233,21 +234,29 @@ export function BatchModLifecyclePreviewPanel({
                       </p>
                     ) : (
                       <div className="batch-panel__target-options" role="radiogroup" aria-label={panelCopy.targetGroupAria(facts.modId)}>
-                        {availableTargets.map((target) => (
-                          <label className="batch-panel__target-option" key={target.id}>
-                            <input
-                              type="radio"
-                              name={`batch-replacement-target-${facts.modId}`}
-                              value={target.id}
-                              checked={targetSelection.selectedTargets[facts.modId] === target.id}
-                              onChange={() => onReplacementTargetChange(facts.modId, target.id)}
-                            />
-                            <span>
-                              <strong>{target.displayName}</strong>
-                              {target.secondaryName ? <small>{target.secondaryName}</small> : null}
-                            </span>
-                          </label>
-                        ))}
+                        {availableTargets.map((target) => {
+                          // Projected per render (I18N-08): a language switch updates
+                          // the labels in place, with no refetch and no state loss.
+                          const { displayName, secondaryName } = resolveReplacementTargetNames(
+                            target.displayNames,
+                            locale,
+                          );
+                          return (
+                            <label className="batch-panel__target-option" key={target.id}>
+                              <input
+                                type="radio"
+                                name={`batch-replacement-target-${facts.modId}`}
+                                value={target.id}
+                                checked={targetSelection.selectedTargets[facts.modId] === target.id}
+                                onChange={() => onReplacementTargetChange(facts.modId, target.id)}
+                              />
+                              <span>
+                                <strong>{displayName}</strong>
+                                {secondaryName ? <small>{secondaryName}</small> : null}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
                     )}
                   </fieldset>

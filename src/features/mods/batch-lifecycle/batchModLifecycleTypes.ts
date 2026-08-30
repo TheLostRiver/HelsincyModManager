@@ -1,3 +1,4 @@
+import type { ReplacementTargetDisplayNames } from "../../replacements/replacementTargetNames";
 import type { TaskStartedDto } from "../modImportTypes";
 
 export const BATCH_MOD_LIFECYCLE_SCHEMA_VERSION = 1;
@@ -41,10 +42,12 @@ export type BatchModLifecycleReplacementTargetDto = {
   targetId: string;
 };
 
+// I18N-08: carry the raw multi-locale names, not a resolved string. Resolving at
+// load time bakes one locale into the workflow state, so switching the UI language
+// mid-flow would leave the dropdown stale until the facts are refetched.
 export type BatchModLifecycleReplacementTargetOption = {
   id: string;
-  displayName: string;
-  secondaryName?: string;
+  displayNames: ReplacementTargetDisplayNames;
 };
 
 export type BatchModLifecycleReplacementTargetFacts = {
