@@ -19,9 +19,15 @@
 - `CONTRIBUTING.md`
 - `docs/TESTING.md`
 - `docs/GOVERNANCE.md`
+- `docs/TROUBLESHOOTING.md`
 - `SECURITY.md`
 
 涉及安全、文件写入、存档、安装回滚、并发、游戏适配器时，必须先确认相关文档中的约束。
+
+**遇到报错但信息指不到原因时，先查 `docs/TROUBLESHOOTING.md`。** 里面收录的都是
+「症状与根因相距很远」的坑：cargo 锁死、测试成片失败实为环境自伤、自定义协议在
+WebView2 下不生效、校验脚本的隐性扫描范围等。按报错字面去查会浪费大量时间，
+也容易误改成没问题的代码。
 
 ## 上下文管理工具
 
