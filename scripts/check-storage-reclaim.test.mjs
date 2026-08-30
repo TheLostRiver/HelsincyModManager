@@ -109,12 +109,41 @@ test("fails when the install manifest still references a deleted package", () =>
     mods: [{ mod_id: "pkg-1" }],
     revisions: [{ package_id: "pkg-1" }],
     sandboxes: ["pkg-1"],
-    manifest: { entries: [{ mod_id: "pkg-gone", revision_id: "pkg-gone" }] },
+    // A real dangling reference is always a real id - the package existed once.
+    manifest: {
+      entries: [
+        {
+          mod_id: "mod-import-1787999000000-0",
+          revision_id: "mod-import-1787999000000-0",
+        },
+      ],
+    },
   });
 
   const result = run(root);
   assert.equal(result.status, 1);
   assert.match(result.stdout, /manifest references no deleted package/);
+});
+
+test("reference extraction does not depend on the id format", () => {
+  // Guards against regressing back to regex-scraping the manifest. A pattern tied
+  // to today's id shapes keeps matching today's ids, so the case above stays
+  // green while the checker silently stops seeing anything else. An unfamiliar
+  // format must still be reported.
+  const root = buildAppData({
+    mods: [{ mod_id: "pkg-1" }],
+    revisions: [{ package_id: "pkg-1" }],
+    sandboxes: ["pkg-1"],
+    manifest: {
+      entries: [
+        { mod_id: "some-future-id-format", revision_id: "some-future-id-format" },
+      ],
+    },
+  });
+
+  const result = run(root);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /some-future-id-format/);
 });
 
 test("confirms a deleted package is gone from every location", () => {
