@@ -165,29 +165,6 @@ export function ModContextMenu({
 
   return createPortal(
     <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
-      {previewAction ? (
-        <>
-          <button
-            type="button"
-            className={"mod-context-menu__item" + (previewAction.disabledReason ? " is-disabled" : "")}
-            aria-disabled={previewAction.disabledReason !== undefined}
-            disabled={previewAction.disabledReason !== undefined}
-            title={previewAction.disabledReason}
-            onClick={() => {
-              if (!previewAction.disabledReason) {
-                handleItemClick("view-preview");
-              }
-            }}
-          >
-            <IconImage />
-            <span className="mod-context-menu__item-copy">
-              <span>{previewAction.label}</span>
-              {previewAction.disabledReason ? <small>{previewAction.disabledReason}</small> : null}
-            </span>
-          </button>
-          <div className="mod-context-menu__divider" />
-        </>
-      ) : null}
       <button
         type="button"
         className={`mod-context-menu__item${resolvedLifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
@@ -206,6 +183,27 @@ export function ModContextMenu({
           {resolvedLifecycleAction.disabledReason ? <small>{resolvedLifecycleAction.disabledReason}</small> : null}
         </span>
       </button>
+      {/* Placed after install/uninstall on purpose: that entry is used far more often. */}
+      {previewAction ? (
+        <button
+          type="button"
+          className={"mod-context-menu__item" + (previewAction.disabledReason ? " is-disabled" : "")}
+          aria-disabled={previewAction.disabledReason !== undefined}
+          disabled={previewAction.disabledReason !== undefined}
+          title={previewAction.disabledReason}
+          onClick={() => {
+            if (!previewAction.disabledReason) {
+              handleItemClick("view-preview");
+            }
+          }}
+        >
+          <IconImage />
+          <span className="mod-context-menu__item-copy">
+            <span>{previewAction.label}</span>
+            {previewAction.disabledReason ? <small>{previewAction.disabledReason}</small> : null}
+          </span>
+        </button>
+      ) : null}
       {deleteAction ? (
         <>
           <div className="mod-context-menu__divider" />
