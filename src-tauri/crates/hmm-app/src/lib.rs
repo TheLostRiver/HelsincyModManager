@@ -16,6 +16,7 @@ mod install_manifest_query;
 mod install_recovery;
 mod install_task;
 mod log_diagnostics;
+mod mod_deletion;
 mod mod_dependency_graph;
 mod mod_import;
 mod mod_import_diagnostics;
@@ -203,6 +204,9 @@ pub use install_task::{
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,
+};
+pub use mod_deletion::{
+    ModDeletionError, ModDeletionPreview, ModDeletionResult, ModDeletionService,
 };
 pub use mod_dependency_graph::{
     ModDependencyGraph, ModDependencyGraphEdge, ModDependencyGraphNode, ModDependencyGraphService,

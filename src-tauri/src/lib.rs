@@ -14,6 +14,7 @@ mod game_setup_commands;
 mod install_commands;
 mod installer_cleanup;
 mod log_storage_commands;
+mod mod_deletion_commands;
 mod mod_import_commands;
 mod mod_library_commands;
 mod mod_library_dto;
@@ -61,6 +62,7 @@ use install_commands::{
     start_uninstall_task,
 };
 use log_storage_commands::{get_log_storage_settings, set_log_storage_settings};
+use mod_deletion_commands::{delete_mod_from_library, preview_mod_deletion};
 use mod_import_commands::{
     export_audit_log_diagnostics, export_preview_image_diagnostics, export_support_diagnostics,
     get_diagnostics_page_snapshot, get_mod_dependency_graph, get_mod_detail,
@@ -187,6 +189,8 @@ pub fn run() {
             list_replacement_targets,
             analyze_imported_mod_replacement,
             list_replacement_target_occupancy,
+            preview_mod_deletion,
+            delete_mod_from_library,
             preview_initial_retarget_install,
             start_retarget_install_task,
             preview_retarget_reinstall,

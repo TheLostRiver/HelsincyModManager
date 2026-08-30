@@ -408,6 +408,28 @@ pub trait ModImportResultRepository: Send + Sync {
     fn save_analysis(&self, analysis: &StoredModImportAnalysis) -> Result<()>;
     fn list_analysis(&self) -> Result<Vec<StoredModImportAnalysis>>;
     fn get_analysis(&self, mod_id: &str) -> Result<Option<StoredModImportAnalysis>>;
+
+    /// 删除 logical Mod 与其全部 revision，返回被删 revision 的 package_id 列表，
+    /// 供调用方回收 per-package 存储（提取沙盒内容、缩略图）。
+    ///
+    /// 实现必须在一次一致的变更里删除 logical Mod 行与全部 `mod_id` 匹配的
+    /// revision 行——只删 mod 行会让目录校验（每个 revision 必须解析到既有
+    /// logical Mod）失败。
+    fn remove_mod_with_revisions(&self, mod_id: &ModId) -> Result<Vec<String>> {
+        let revisions = self.list_revisions(mod_id)?;
+        let package_ids = revisions
+            .iter()
+            .map(|revision| revision.package_id.clone())
+            .collect();
+        self.remove_analysis(mod_id.as_str())?;
+        Ok(package_ids)
+    }
+
+    /// 删除一个 logical Mod 的分析行（及其投影出的全部 revision）。
+    /// 默认不支持：不能安全删除的仓储必须 fail closed。
+    fn remove_analysis(&self, _mod_id: &str) -> Result<()> {
+        anyhow::bail!("mod removal is not supported by this repository")
+    }
 }
 
 pub struct DiagnosticPackageEntry<'a> {

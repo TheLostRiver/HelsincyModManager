@@ -528,6 +528,26 @@ impl ModImportResultRepository for JsonModImportResultRepository {
                 .find(|analysis| analysis.mod_id == mod_id))
         })
     }
+
+    fn remove_analysis(&self, mod_id: &str) -> Result<()> {
+        self.mutate_catalog(|catalog| {
+            let mod_id = ModId::new(mod_id);
+            anyhow::ensure!(
+                catalog
+                    .mods
+                    .iter()
+                    .any(|logical_mod| logical_mod.mod_id == mod_id),
+                "mod is not present in the revision catalog"
+            );
+            catalog
+                .revisions
+                .retain(|revision| revision.mod_id != mod_id);
+            catalog
+                .mods
+                .retain(|logical_mod| logical_mod.mod_id != mod_id);
+            Ok(())
+        })
+    }
 }
 
 fn apply_catalog_upsert(

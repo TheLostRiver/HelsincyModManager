@@ -405,6 +405,23 @@ impl ThumbnailStore for FileSystemThumbnailStore {
             thumbnail_ref.package_id, thumbnail_ref.variant, thumbnail_ref.content_hash
         ))
     }
+
+    fn remove_package_thumbnails(&self, package_id: &str) -> Result<()> {
+        let safe_package_id = sanitize_path_segment(package_id);
+        let package_dir = self.root_dir.join("thumbnails").join(&safe_package_id);
+        match std::fs::symlink_metadata(&package_dir) {
+            Ok(metadata) => {
+                anyhow::ensure!(
+                    metadata.is_dir() && !metadata.file_type().is_symlink(),
+                    "thumbnail package entry is not a regular directory"
+                );
+                std::fs::remove_dir_all(&package_dir)?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        Ok(())
+    }
 }
 
 impl ThumbnailCacheMaintenance for FileSystemThumbnailStore {
