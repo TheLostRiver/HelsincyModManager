@@ -206,14 +206,17 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   gitignore），换机器后若丢失照下面重建即可（关键是结构，图本身随便一张竖图都行）：
 
   ```
-  thumb-reclaim-test/
-  ├── nativePC/common/hmm_thumb_reclaim_test.bin   # 任意内容，只为让包能被识别
-  ├── preview.jpg                                  # 356×768 竖图，最贴近真实场景
-  └── readme.txt                                   # 说明用途，可省
+  thumb-reclaim-test.zip
+  └── thumb-reclaim-test/                          ← zip 根下就是这一层，别压平
+      ├── nativePC/common/hmm_thumb_reclaim_test.bin  # 任意内容，只为让包能被识别
+      ├── preview.jpg                                 # 356×768 竖图，最贴近真实场景
+      └── readme.txt                                  # 说明用途，可省
   ```
 
   识别规则：扫描器先找 `nativepc` 目录，取其**父目录**作候选根，只收**直接子文件**
   里的图片；`preview.*` 优先级最高，扩展名只认 png/jpg/jpeg/webp。
+  （现包内 `readme.txt` 原文：`HMM thumbnail reclaim test package. Used to verify that
+  deleting a mod removes sandboxes, thumbnails and catalog entries.`）
   该包**装不上是正常的**：zip 里套了 `thumb-reclaim-test/` 包装目录，而解包不剥
   单层包装目录 → 相对路径根不在 `allowed_install_roots`（MHW 只有 `["nativePC"]`）
   → 全被过滤，审计里是 `action_count: 0` 的**空计划成功**，不是失败。
