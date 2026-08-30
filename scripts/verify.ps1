@@ -84,6 +84,24 @@ try {
         exit $LASTEXITCODE
     }
 
+    Write-Host "Running policy checker tests..."
+    node --test scripts/check-policy.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    Write-Host "Running windows sidecar preparation tests..."
+    node --test scripts/prepare-windows-sidecars.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
+    Write-Host "Running windows installer cleanup config tests..."
+    node --test scripts/windows-installer-cleanup-config.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     if (Test-Path -LiteralPath (Join-Path $repoRoot "package.json")) {
         if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "node_modules"))) {
             Write-Host "node_modules is missing. Run: cmd /c corepack pnpm install --frozen-lockfile" -ForegroundColor Red
