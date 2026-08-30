@@ -10,6 +10,7 @@ import {
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { InstallPlanPreview, InstallRecoveryIssueSummary, UnsafeInstallStatus } from "./modInstallPlanTypes";
 import { getManagedInstallTaskPhaseLabel, type ManagedInstallTaskState } from "./modInstallTaskState";
+import { modDeleteCopy } from "./modDeleteCopy";
 import { modLifecycleCopy, type ModLifecycleCopy } from "./modLifecycleCopy";
 import type { ModLifecycleToast } from "./modLifecycleFeedbackState";
 import {
@@ -275,6 +276,122 @@ export function UninstallConfirmationDialog({
         {blockerMessage ? (
           <p className="mod-lifecycle-feedback__status is-danger" role="alert">{blockerMessage}</p>
         ) : null}
+      </div>
+    </Dialog>
+  );
+}
+
+// Mod deletion (#276): the page projects backend preview facts only. The install
+// gate lives in Rust, so an entry may be marked skip with a backend-derived reason.
+export type ModDeletionConfirmationEntry = {
+  modId: string;
+  displayName: string;
+  revisionCount: number;
+  categoryLabels: string[];
+  affectedProfiles: string[];
+  skip?: boolean;
+  skipReason?: string;
+};
+
+export type ModDeletionConfirmation = {
+  mods: ModDeletionConfirmationEntry[];
+};
+
+type DeleteConfirmationDialogProps = {
+  state: ModDeletionConfirmation | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+export function DeleteConfirmationDialog({
+  state,
+  busy,
+  onCancel,
+  onConfirm,
+}: DeleteConfirmationDialogProps) {
+  const { locale } = useI18n();
+  const deleteCopy = resolveCopy(modDeleteCopy, locale).dialog;
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  if (state === null) {
+    return null;
+  }
+
+  const pending = state.mods.filter((entry) => entry.skip !== true);
+  const batch = state.mods.length > 1;
+  const primary = pending[0] ?? state.mods[0] ?? null;
+
+  return (
+    <Dialog
+      open
+      title={batch ? deleteCopy.batchTitle : deleteCopy.singleTitle}
+      description={batch ? undefined : primary?.displayName}
+      icon={<AlertTriangle size={20} />}
+      onClose={onCancel}
+      closeLabel={deleteCopy.closeAria}
+      closeOnBackdrop={false}
+      initialFocusRef={cancelButtonRef}
+      role="alertdialog"
+      footer={
+        <>
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            className="mod-lifecycle-feedback__button"
+            onClick={onCancel}
+          >
+            {deleteCopy.cancel}
+          </button>
+          <button
+            type="button"
+            className="mod-lifecycle-feedback__button is-danger"
+            onClick={onConfirm}
+            disabled={busy || pending.length === 0}
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            {busy ? deleteCopy.confirmBusy : deleteCopy.confirm}
+          </button>
+        </>
+      }
+    >
+      <div className="mod-lifecycle-feedback__dialog-copy">
+        {batch ? (
+          <>
+            <p>{deleteCopy.batchBody}</p>
+            <ul className="mod-lifecycle-feedback__delete-list">
+              {state.mods.map((entry) => (
+                <li key={entry.modId}>
+                  <span>{entry.displayName}</span>
+                  {entry.skipReason ? <em>{entry.skipReason}</em> : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : primary === null ? null
+          : primary.skip === true ? (
+            <p className="mod-lifecycle-feedback__status is-danger" role="alert">
+              {primary.skipReason ?? deleteCopy.skipInstalled}
+            </p>
+          ) : (
+            <>
+              <p>{deleteCopy.body}</p>
+              <SummaryMetrics
+                items={[
+                  { label: deleteCopy.metricRevisions, value: primary.revisionCount },
+                  { label: deleteCopy.metricCategories, value: primary.categoryLabels.length },
+                ]}
+              />
+              {primary.categoryLabels.length > 0 ? (
+                <p className="mod-lifecycle-feedback__status">{primary.categoryLabels.join(" / ")}</p>
+              ) : null}
+              <p className="mod-lifecycle-feedback__status">
+                {`${deleteCopy.affectedProfiles}: ${primary.affectedProfiles.length > 0
+                  ? primary.affectedProfiles.join(" / ")
+                  : deleteCopy.affectedProfilesEmpty}`}
+              </p>
+            </>
+          )}
+        <p className="mod-lifecycle-feedback__audit-note">{deleteCopy.retainedAudit}</p>
       </div>
     </Dialog>
   );

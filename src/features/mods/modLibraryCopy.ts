@@ -164,12 +164,14 @@ export type ModLibraryCopy = {
       install: string;
       reinstall: string;
       uninstall: string;
+      delete: string;
     };
     batchActionLabels: {
       previewPlan: string;
       install: string;
       reinstall: string;
       uninstall: string;
+      delete: string;
     };
     buttons: {
       add: string;
@@ -181,11 +183,13 @@ export type ModLibraryCopy = {
       install: string;
       reinstall: string;
       uninstall: string;
+      delete: string;
     };
     previewNeedsInstallable: string;
     installNeedsInstallable: string;
     reinstallNeedsInstalled: string;
     uninstallNeedsInstalled: string;
+    deleteNeedsNotInstalled: string;
     exitBatchToImportRevision: string;
     title: string;
     selectedPill: (count: number) => string;
@@ -384,12 +388,14 @@ export const modLibraryCopy = {
         install: "安装",
         reinstall: "重装",
         uninstall: "卸载",
+        delete: "删除",
       },
       batchActionLabels: {
         previewPlan: "预览批量计划",
         install: "批量安装",
         reinstall: "批量重装",
         uninstall: "批量卸载",
+        delete: "批量删除",
       },
       buttons: {
         add: "导入 Mod",
@@ -401,11 +407,13 @@ export const modLibraryCopy = {
         install: "安装选中 MOD",
         reinstall: "重装选中 MOD",
         uninstall: "卸载选中 MOD",
+        delete: "删除选中 MOD",
       },
       previewNeedsInstallable: "仅未安装且状态安全的 MOD 可预览安装计划",
       installNeedsInstallable: "仅未安装且状态安全的 MOD 可安装",
       reinstallNeedsInstalled: "仅已安装且状态安全的 MOD 可重装",
       uninstallNeedsInstalled: "仅已安装且状态安全的 MOD 可卸载",
+      deleteNeedsNotInstalled: "仅未安装的 MOD 可删除；已安装的请先卸载",
       exitBatchToImportRevision: "退出批量选择后可导入新版本",
       title: "快捷操作",
       selectedPill: (count) => `已选 ${count}`,
@@ -604,12 +612,14 @@ export const modLibraryCopy = {
         install: "install",
         reinstall: "reinstall",
         uninstall: "uninstall",
+        delete: "delete",
       },
       batchActionLabels: {
         previewPlan: "Preview batch plan",
         install: "Batch install",
         reinstall: "Batch reinstall",
         uninstall: "Batch uninstall",
+        delete: "Batch delete",
       },
       buttons: {
         add: "Import mod",
@@ -621,11 +631,13 @@ export const modLibraryCopy = {
         install: "Install selected mods",
         reinstall: "Reinstall selected mods",
         uninstall: "Uninstall selected mods",
+        delete: "Delete selected mods",
       },
       previewNeedsInstallable: "Only uninstalled mods in a safe state can preview the install plan",
       installNeedsInstallable: "Only uninstalled mods in a safe state can be installed",
       reinstallNeedsInstalled: "Only installed mods in a safe state can be reinstalled",
       uninstallNeedsInstalled: "Only installed mods in a safe state can be uninstalled",
+      deleteNeedsNotInstalled: "Only mods that are not installed can be deleted; uninstall installed ones first",
       exitBatchToImportRevision: "Exit batch selection to import a new version",
       title: "Quick actions",
       selectedPill: (count) => `Selected ${count}`,
@@ -824,12 +836,14 @@ export const modLibraryCopy = {
         install: "インストール",
         reinstall: "再インストール",
         uninstall: "アンインストール",
+        delete: "削除",
       },
       batchActionLabels: {
         previewPlan: "一括計画をプレビュー",
         install: "一括インストール",
         reinstall: "一括再インストール",
         uninstall: "一括アンインストール",
+        delete: "一括削除",
       },
       buttons: {
         add: "Mod をインポート",
@@ -841,12 +855,14 @@ export const modLibraryCopy = {
         install: "選択した Mod をインストール",
         reinstall: "選択した Mod を再インストール",
         uninstall: "選択した Mod をアンインストール",
+        delete: "選択した Mod を削除",
       },
       previewNeedsInstallable:
         "未インストールかつ安全な状態の Mod のみインストール計画をプレビューできます",
       installNeedsInstallable: "未インストールかつ安全な状態の Mod のみインストールできます",
       reinstallNeedsInstalled: "インストール済みかつ安全な状態の Mod のみ再インストールできます",
       uninstallNeedsInstalled: "インストール済みかつ安全な状態の Mod のみアンインストールできます",
+      deleteNeedsNotInstalled: "未インストールの Mod のみ削除できます。インストール済みは先にアンインストールしてください",
       exitBatchToImportRevision: "一括選択を終了すると新バージョンをインポートできます",
       title: "クイック操作",
       selectedPill: (count) => `選択中 ${count}`,

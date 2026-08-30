@@ -16,6 +16,7 @@ const readyAction = {
   canInstallSelection: true,
   canReinstallSelection: false,
   canUninstallSelection: false,
+  canDeleteSelection: true,
 };
 
 test("compact lifecycle actions explain selection, task, profile, and durable-state blockers in priority order", () => {
@@ -56,6 +57,7 @@ test("query refresh blocks page selection and lifecycle actions with product cop
     "install",
     "reinstall",
     "uninstall",
+    "delete",
   ]) {
     assert.equal(
       getCompactActionDisabledReason({ ...readyAction, actionId, libraryQueryBusy: true }, zhCompact),
@@ -87,6 +89,13 @@ test("preview, reinstall, and uninstall expose action-specific fail-closed reaso
     "仅已安装且状态安全的 MOD 可卸载",
   );
   assert.equal(
+    getCompactActionDisabledReason(
+      { ...readyAction, actionId: "delete", canDeleteSelection: false },
+      zhCompact,
+    ),
+    "仅未安装的 MOD 可删除；已安装的请先卸载",
+  );
+  assert.equal(
     getCompactActionDisabledReason({
       ...readyAction,
       actionId: "reinstall",
@@ -111,7 +120,16 @@ test("no compact action is unconditionally disabled", () => {
    * 显式断言必须存在的动作。只遍历"已存在的动作"是不够的——误删 select-all 或 invert
    * 会让循环少跑一轮而静默通过，正好漏掉这条断言本该保护的东西。
    */
-  for (const requiredId of ["select-all", "invert", "refresh", "preview-plan", "install", "reinstall", "uninstall"]) {
+  for (const requiredId of [
+    "select-all",
+    "invert",
+    "refresh",
+    "preview-plan",
+    "install",
+    "reinstall",
+    "uninstall",
+    "delete",
+  ]) {
     assert.ok(actionIds.includes(requiredId), `快捷操作栏缺少动作 ${requiredId}`);
   }
 

@@ -1,6 +1,6 @@
 import type { ModLibraryCopy } from "./modLibraryCopy";
 
-export type CompactLifecycleActionId = "preview-plan" | "install" | "reinstall" | "uninstall";
+export type CompactLifecycleActionId = "preview-plan" | "install" | "reinstall" | "uninstall" | "delete";
 
 type CompactActionAvailabilityInput = {
   actionId: string;
@@ -11,6 +11,7 @@ type CompactActionAvailabilityInput = {
   canInstallSelection: boolean;
   canReinstallSelection: boolean;
   canUninstallSelection: boolean;
+  canDeleteSelection: boolean;
 };
 
 const lifecycleActions = new Set<CompactLifecycleActionId>([
@@ -18,6 +19,7 @@ const lifecycleActions = new Set<CompactLifecycleActionId>([
   "install",
   "reinstall",
   "uninstall",
+  "delete",
 ]);
 
 export function getCompactActionDisabledReason({
@@ -29,6 +31,7 @@ export function getCompactActionDisabledReason({
   canInstallSelection,
   canReinstallSelection,
   canUninstallSelection,
+  canDeleteSelection,
 }: CompactActionAvailabilityInput, compact: ModLibraryCopy["compact"]): string | undefined {
   if (
     libraryQueryBusy
@@ -58,6 +61,7 @@ export function getCompactActionDisabledReason({
       install: compact.actionLabels.install,
       reinstall: compact.actionLabels.reinstall,
       uninstall: compact.actionLabels.uninstall,
+      delete: compact.actionLabels.delete,
     };
     return compact.selectProfileFor(actionLabel[actionId as CompactLifecycleActionId]);
   }
@@ -71,6 +75,8 @@ export function getCompactActionDisabledReason({
       return canReinstallSelection ? undefined : compact.reinstallNeedsInstalled;
     case "uninstall":
       return canUninstallSelection ? undefined : compact.uninstallNeedsInstalled;
+    case "delete":
+      return canDeleteSelection ? undefined : compact.deleteNeedsNotInstalled;
     default:
       return undefined;
   }

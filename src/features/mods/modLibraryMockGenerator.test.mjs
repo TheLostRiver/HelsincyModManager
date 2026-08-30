@@ -110,7 +110,7 @@ test("mock generator reuses the canonical ModLibraryItem contract", () => {
 test("mock generator preserves separate import, install and true reinstall actions", () => {
   const { content } = runGenerator(["--count", "1"]);
 
-  for (const actionId of ["add", "add-revision", "preview-plan", "install", "reinstall", "uninstall"]) {
+  for (const actionId of ["add", "add-revision", "preview-plan", "install", "reinstall", "uninstall", "delete"]) {
     assert.match(content, new RegExp(`id: "${actionId}"`));
   }
   assert.doesNotMatch(content, /安装 \/ 重装选中 MOD/);
