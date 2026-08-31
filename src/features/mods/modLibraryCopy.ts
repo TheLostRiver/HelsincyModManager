@@ -16,6 +16,7 @@ export type ModLibraryCopy = {
       modNotFound: string;
       analysisUnavailable: string;
       archiveUnavailable: string;
+      ambiguousContentRoot: string;
       unsupportedGame: string;
       failed: string;
     };
@@ -230,6 +231,7 @@ export const modLibraryCopy = {
         modNotFound: "未找到已导入的 Mod",
         analysisUnavailable: "无法读取导入分析",
         archiveUnavailable: "无法读取导入文件",
+        ambiguousContentRoot: "包内有多个 nativePC 目录，请拆分后分别导入",
         unsupportedGame: "当前游戏不支持安装计划预览",
         failed: "安装计划预览失败",
       },
@@ -453,6 +455,8 @@ export const modLibraryCopy = {
         modNotFound: "Imported mod not found",
         analysisUnavailable: "Cannot read the import analysis",
         archiveUnavailable: "Cannot read the imported file",
+        ambiguousContentRoot:
+          "The package contains more than one nativePC directory; split it and import separately",
         unsupportedGame: "This game does not support install plan preview",
         failed: "Install plan preview failed",
       },
@@ -677,6 +681,8 @@ export const modLibraryCopy = {
         modNotFound: "インポート済みの Mod が見つかりません",
         analysisUnavailable: "インポート解析を読み取れません",
         archiveUnavailable: "インポートファイルを読み取れません",
+        ambiguousContentRoot:
+          "パッケージ内に nativePC ディレクトリが複数あります。分割してから個別にインポートしてください",
         unsupportedGame: "このゲームはインストール計画プレビューに対応していません",
         failed: "インストール計画のプレビューに失敗しました",
       },

@@ -6,7 +6,7 @@ use crate::controlled_fs::{
 use anyhow::{Context, Result};
 use hmm_ports::{
     ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use std::fs;
 use std::io::Read;
@@ -20,7 +20,7 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
     fn scan_install_files(
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
-    ) -> Result<Vec<ModPackageInstallFile>> {
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError> {
         // #284：第三方压缩包普遍在 `nativePC` 外套一层甚至多层包装目录，而安装
         // 路径过滤要求目标路径以 `nativePC` 打头——若仍以沙箱根为基准算路径，
         // 整包都会被过滤掉，装成一个空计划（#285）。
@@ -28,12 +28,12 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
         // 因此先解析出真正的**内容根**，再据此计算目标路径。这里与预览图扫描
         // 共用 `resolve_content_root`，保证两边对「内容根在哪」判断一致，
         // 不会出现「图能显示、却装不上」。
-        let resolution = resolve_content_root(request.sandbox_root)?;
+        let resolution = resolve_content_root(request.sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
         let Some(content_root) = resolution.install_root() else {
-            anyhow::bail!(
-                "imported mod package contains more than one nativePC directory; \
-                 refusing to guess which one to install"
-            );
+            // 多个 nativePC 不是「坏包」，而是需要玩家自己决定。返回枚举而不是
+            // 笼统错误，好让上层把它呈现成可操作的提示（#284 review 的 R1）。
+            return Err(ModPackageInstallFileScanError::AmbiguousContentRoot);
         };
 
         let mut files = Vec::new();
@@ -128,21 +128,22 @@ fn collect_sandbox_install_files(
     directory: &Path,
     depth: usize,
     files: &mut Vec<ModPackageInstallFile>,
-) -> Result<()> {
+) -> Result<(), ModPackageInstallFileScanError> {
     if depth > MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH {
-        anyhow::bail!("imported mod sandbox exceeds install file scan depth limit");
+        return Err(ModPackageInstallFileScanError::DepthLimitExceeded);
     }
 
-    let entries = fs::read_dir(directory).context("failed to read imported mod sandbox")?;
+    let entries =
+        fs::read_dir(directory).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
     for entry in entries {
-        let entry = entry.context("failed to read imported mod sandbox entry")?;
+        let entry = entry.map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
         let path = entry.path();
         let metadata =
-            fs::symlink_metadata(&path).context("failed to inspect imported mod sandbox entry")?;
+            fs::symlink_metadata(&path).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
         if metadata.file_type().is_symlink() {
-            anyhow::bail!("imported mod sandbox contains an unsupported link entry");
+            return Err(ModPackageInstallFileScanError::UnsupportedEntry);
         }
 
         if metadata.is_dir() {
@@ -154,15 +155,20 @@ fn collect_sandbox_install_files(
             continue;
         }
 
+        // 下面两处 strip_prefix 与路径规范化在正常流程下不会失败（path 就是从
+        // 对应根遍历出来的），保留判定只是防御性：真失败时统一归为 Unavailable，
+        // 不把内部路径细节往外带。
         let package_relative = path
             .strip_prefix(sandbox_root)
-            .context("imported mod sandbox entry escaped its root")?;
-        let package_file_id = sandbox_install_relative_path(package_relative)?;
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let package_file_id = sandbox_install_relative_path(package_relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
         let content_relative = path
             .strip_prefix(content_root)
-            .context("imported mod sandbox entry escaped its content root")?;
-        let target_path = sandbox_install_relative_path(content_relative)?;
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let target_path = sandbox_install_relative_path(content_relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
         files.push(ModPackageInstallFile {
             package_file_id,
@@ -339,10 +345,9 @@ mod tests {
             })
             .expect_err("several nativePC directories must not be guessed");
 
-        assert!(
-            error.to_string().contains("more than one nativePC"),
-            "unexpected error: {error}"
-        );
+        // 用枚举而非字符串匹配——这正是 #284 R1 想要的：原因要能被上层**区分**，
+        // 而不是混在笼统的「扫描失败」里。
+        assert_eq!(error, ModPackageInstallFileScanError::AmbiguousContentRoot);
     }
 
     #[test]
@@ -364,7 +369,7 @@ mod tests {
             })
             .expect_err("excessive depth should be rejected");
 
-        assert!(error.to_string().contains("depth"));
+        assert_eq!(error, ModPackageInstallFileScanError::DepthLimitExceeded);
     }
 
     #[test]
@@ -452,10 +457,12 @@ mod tests {
             .expect_err("reader must not follow a junction");
 
         fs::remove_dir(&junction_path).expect("remove junction");
-        assert!(
-            error.to_string().contains("unsupported link") || error.to_string().contains("reparse"),
-            "unexpected error: {error}"
+        assert_eq!(
+            error,
+            ModPackageInstallFileScanError::UnsupportedEntry,
+            "junction must be classified as an unsupported entry"
         );
+        // 读取链路仍走 anyhow（它不需要可判定的分类），这里保持字符串匹配。
         assert!(
             read_error.to_string().contains("directory")
                 || read_error.to_string().contains("reparse")

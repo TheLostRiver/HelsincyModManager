@@ -529,6 +529,11 @@ fn install_planning_error_to_command_error(error: InstallPlanningError) -> Comma
             code: "install_planning_imported_mod_file_scan_unavailable".to_owned(),
             message: "imported mod files are unavailable".to_owned(),
         },
+        // #284：多个 nativePC 需要玩家自己决定，不能报成「文件读不出来」。
+        InstallPlanningError::ImportedModAmbiguousContentRoot => CommandErrorDto {
+            code: "install_planning_imported_mod_ambiguous_content_root".to_owned(),
+            message: "imported mod package contains more than one nativePC directory".to_owned(),
+        },
     }
 }
 

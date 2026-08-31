@@ -173,7 +173,10 @@ impl ReinstallCandidatePlanner for InstallPlanningService {
             | InstallPlanningError::ImportedModNotFound { .. }
             | InstallPlanningError::ImportedModAnalysisUnavailable
             | InstallPlanningError::ImportedModSandboxUnavailable
-            | InstallPlanningError::ImportedModFileScanUnavailable => {
+            | InstallPlanningError::ImportedModFileScanUnavailable
+            // 合集包：候选本身还没到可安装的形态，需要玩家先拆分或选择，
+            // 不是来源不可用。
+            | InstallPlanningError::ImportedModAmbiguousContentRoot => {
                 ReinstallCandidatePlanError::NotReady
             }
         })

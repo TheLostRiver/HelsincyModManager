@@ -2147,7 +2147,10 @@ fn write_install_error<W: Write, E: Write>(
             false,
         ),
         ReadOnlyInstallAutomationError::GameInstanceUnavailable
-        | ReadOnlyInstallAutomationError::ImportedModNotFound => (
+        | ReadOnlyInstallAutomationError::ImportedModNotFound
+        // #284：合集包需要调用方自己决定装哪个——是「需要用户动作」，
+        // 不是运行时故障，重试也不会变好。
+        | ReadOnlyInstallAutomationError::ImportedModAmbiguousContentRoot => (
             CliErrorCategory::UserActionRequired,
             CliExitCode::Rejected,
             false,

@@ -2058,13 +2058,82 @@ impl ModPackageInstallFileScanner for FakeInstallFileScanner {
     fn scan_install_files(
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
-    ) -> anyhow::Result<Vec<ModPackageInstallFile>> {
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError> {
         self.seen_requests.lock().expect("requests").push((
             request.package_id.to_owned(),
             request.sandbox_root.to_path_buf(),
         ));
         Ok(self.files.clone())
     }
+}
+
+// #284 review 的 R1：扫描错误的**分类**必须能穿透到 planning 层，否则玩家看到
+// 的只会是一句笼统的「无法读取导入文件」。
+struct FailingFileScanner {
+    error: ModPackageInstallFileScanError,
+}
+
+impl ModPackageInstallFileScanner for FailingFileScanner {
+    fn scan_install_files(
+        &self,
+        _request: ModPackageInstallFileScanRequest<'_>,
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError> {
+        Err(self.error)
+    }
+}
+
+fn planning_service_with_failing_scan(
+    error: ModPackageInstallFileScanError,
+) -> InstallPlanningService {
+    InstallPlanningService::with_imported_mod_sources(
+        Arc::new(FakeModImportResultRepository::new(vec![stored_analysis(
+            "mod-a",
+            "package-a",
+        )])),
+        Arc::new(FakeSandboxLocator {
+            root: PathBuf::from("controlled-sandbox/package-a"),
+        }),
+        Arc::new(FailingFileScanner { error }),
+        vec![Arc::new(FakeGameAdapter {
+            game_id: GameId::mhw(),
+            allowed_roots: vec!["nativePC".to_owned()],
+        })],
+    )
+}
+
+#[test]
+fn ambiguous_content_root_is_reported_distinctly_from_a_generic_scan_failure() {
+    // 合集包必须报成「需要玩家决定装哪个」，而不是「文件读不出来」——
+    // 后者会让玩家以为包损坏了。
+    let service =
+        planning_service_with_failing_scan(ModPackageInstallFileScanError::AmbiguousContentRoot);
+
+    let error = service
+        .build_plan_from_imported_mod(BuildImportedModInstallPlanRequest {
+            game_id: GameId::mhw(),
+            mod_id: ModId::new("mod-a"),
+            layer: FileLayer::new("base", 0),
+        })
+        .expect_err("ambiguous content root must fail planning");
+
+    assert_eq!(error, InstallPlanningError::ImportedModAmbiguousContentRoot);
+}
+
+#[test]
+fn a_generic_scan_failure_stays_a_generic_scan_failure() {
+    // 防退化：只有「多个 nativePC」该被单列，其他扫描失败不能跟着升级，
+    // 否则这条分类就失去意义了。
+    let service = planning_service_with_failing_scan(ModPackageInstallFileScanError::Unavailable);
+
+    let error = service
+        .build_plan_from_imported_mod(BuildImportedModInstallPlanRequest {
+            game_id: GameId::mhw(),
+            mod_id: ModId::new("mod-a"),
+            layer: FileLayer::new("base", 0),
+        })
+        .expect_err("generic scan failure must fail planning");
+
+    assert_eq!(error, InstallPlanningError::ImportedModFileScanUnavailable);
 }
 
 struct FakeGameAdapter {
