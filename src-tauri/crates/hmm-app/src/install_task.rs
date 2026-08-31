@@ -647,16 +647,21 @@ impl InstallTaskRunner {
         }
         let action_count = plan.actions.len();
 
+        // 取消优先于失败判定：规划完成后被取消时，即便计划为空也应报「已取消」，
+        // 而不是被记成安装失败。
+        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
+            return Ok(events);
+        }
+
         // #285：空计划必须明确失败，不能报成「安装成功」却一个文件都没装。
         //
-        // 拦截点刻意选在这里：跨进程锁、写锁、写入准入检查、recovery 记录都还没发生，
-        // 所以拒绝空计划**不留任何副作用**。挪到 commit 之后再拦就晚了。
+        // 只拦**普通导入安装**。revision 安装（retarget / 重装）的空计划由 `install.rs`
+        // 的 `PlanHasInvalidRevisionIdentity` 负责——那是既有语义（计划与期望 revision
+        // 不符），不该被这里抢先改成 `empty_plan`。
         //
-        // 其余所有生成计划的路径早已把空计划当错误处理——retarget 返回
-        // `EmptyRetargetPlan`（`hmm-core/src/retarget.rs`）、reinstall 以
-        // `CandidateNotReady` 阻塞（`reinstall.rs`）。这正说明空计划从来不是合法结果，
-        // 在此处失败不会打断任何合法流程。
-        if action_count == 0 {
+        // 位置也刻意选在跨进程锁、写锁、写入准入检查、recovery 记录之前：拒绝空计划
+        // 不产生安装副作用，仅把任务置为 failed 并写一条失败审计。
+        if action_count == 0 && revision_id.is_none() {
             return Err(self.fail_with_audit(
                 task_id,
                 &request,
@@ -665,10 +670,6 @@ impl InstallTaskRunner {
                 "empty_plan",
                 action_count,
             ));
-        }
-
-        if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
-            return Ok(events);
         }
 
         let current_prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
@@ -3244,6 +3245,109 @@ mod tests {
         let audit = audit_log.take_event().expect("success audit");
         assert_eq!(audit.result, "success");
         assert_eq!(audit.fields["action_count"], "1");
+    }
+
+    // #285 评审发现：取消必须优先于空计划失败。这个 planner 在「规划完成那一刻」
+    // 取消任务，用于覆盖「规划后取消 + 空计划」这条路径。
+    struct CancellingEmptyPlanPlanner {
+        task_manager: Arc<crate::TaskManager>,
+        task_id: String,
+    }
+
+    impl ImportedModInstallPlanner for CancellingEmptyPlanPlanner {
+        fn build_imported_mod_install_plan(
+            &self,
+            _request: BuildImportedModInstallPlanRequest,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            let _ = self.task_manager.cancel_task(&self.task_id);
+            Ok(ImportedModInstallPreflight {
+                plan: InstallPlan::from_providers(vec![]),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn build_imported_mod_revision_install_plan(
+            &self,
+            _game_id: &GameId,
+            _mod_id: &ModId,
+            _revision_id: &ModRevisionId,
+            _layer: &FileLayer,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            Ok(ImportedModInstallPreflight {
+                plan: InstallPlan::from_providers(vec![]),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            ready_prerequisite_decision()
+        }
+    }
+
+    #[test]
+    fn cancellation_after_planning_wins_over_the_empty_plan_rejection() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(CancellingEmptyPlanPlanner {
+                task_manager: Arc::clone(&task_manager),
+                task_id: task.task_id.clone(),
+            }),
+            committer_dep,
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        // 用户主动取消不该被记成安装失败，即便计划为空。
+        runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("cancelled task must return Ok instead of an empty-plan failure");
+
+        assert!(committer.take_profiles().is_empty());
+    }
+
+    // #285 评审发现：revision 安装（retarget / 重装）的空计划有**既有**语义
+    // （`install.rs` 的 `PlanHasInvalidRevisionIdentity`），不该被普通导入的
+    // empty_plan 检查抢先改写错误分类。
+    #[test]
+    fn revision_install_is_not_short_circuited_by_the_empty_plan_check() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(InstallPlan::from_providers(
+                vec![],
+            ))),
+            committer_dep,
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        runner
+            .run_install_revision_task_for_orchestration_with_observer(
+                &task.task_id,
+                sample_request(),
+                ModRevisionId::new("revision-a"),
+                None,
+                &noop_task_progress_observer(),
+            )
+            .expect("revision install must not be rejected as empty_plan");
+
+        // 走到了 commit，说明没有被 empty_plan 提前拦下。
+        assert_eq!(committer.take_profiles().len(), 1);
     }
 
     #[test]
