@@ -18,6 +18,12 @@
 | 往 `tmp/` 放个脚本，`eslint .` 就报一堆 `no-undef` | gitignore 不影响 eslint 扫描范围 | [2.1](#21-tmp-下的脚本让-eslint-报-no-undef) |
 | 新写的 scripts 测试从没被执行 | `pnpm test` 的 glob 只覆盖 `src/**` | [2.2](#22-scripts-测试没被执行) |
 | 缩略图生成成功但界面不显示，协议请求无响应 | WebView2 不支持非标准 scheme | [3.1](#31-自定义协议请求无响应) |
+| `git push` 卡住不动，或报 `could not read Username` | WSL 的 git 没有凭据，在等交互式输入 | [1.7](#17-git-push-卡住不动并报-could-not-read-username) |
+| `gh run watch --exit-status` 退出码是 0，但 CI 其实还没跑完 | `$?` 拿到的是管道里 `tail` 的退出码 | [1.8](#18-gh-run-watch-退出码是-0-但-ci-还在跑) |
+| 只想给文档改一句话，diff 却变成整行重写 | 编辑未逐字符匹配，全角标点被半角化 | [1.9](#19-只改一句话-diff-却变成整行重写) |
+| 真机验收时装不上，或刚合入的修复「没生效」 | 沙箱根还停在控制组 / 二进制没重编 | [3.3](#33-真机验收时装不上或修复没生效) |
+| 删掉某个文案 key 后测试照样全绿 | 防退化断言用的是数量下限，永不失败 | [4.6](#46-防退化断言永不失败) |
+| 玩家看到兜底文案，但前端后端测试都全绿 | 错误码与前端文案 key 不对应，缺 key 静默回落 | [4.7](#47-后端错误码与前端文案-key-不对应) |
 | 切语言后界面文案不更新，且 lint 有一条长期被忽略的 warning | 展示名在**载入时**就解析成字符串存进 state，违反 I18N-08 | [4.3](#43-语言相关的展示数据必须在渲染时投影) |
 | `pnpm lint` 长期挂一条 warning，verify 却一直是绿的 | `pnpm lint` 没有 `--max-warnings 0` | [4.4](#44-warning-不阻塞-verifywarning-不等于无害) |
 | 图片放大后拖到边缘就回不来，只能重置 | clamp 用了视口尺寸而非渲染尺寸，且拖动未重锚（死区） | [4.5](#45-边界不变量要断言方向无关的量) |
@@ -166,6 +172,103 @@ FullyQualifiedErrorId : UnauthorizedAccess
 
 `corepack.cmd pnpm --version` 在本机验证可用，走 cmd 的调用链是通的。
 
+### 1.7 git push 卡住不动并报 could not read Username
+
+**症状**：
+
+```
+fatal: could not read Username for 'https://github.com': terminal prompts disabled
+```
+
+或者更糟——命令**卡在那里不动**，既不成功也不失败。
+
+**根因**：WSL 里的 git **没有配置凭据**，HTTPS 推送于是在等待交互式输入用户名——
+在非交互终端里表现为卡死。可复核：
+
+```bash
+git config --get credential.helper                              # WSL：空
+powershell.exe -NoProfile -Command "git config --get credential.helper"
+# Windows：!"D:/Tools/PortableGit/mingw64/bin/git-credential-manager.exe"
+```
+
+两侧结果不同，正是同一台机器上「Windows git 能推、WSL git 不能推」的原因。
+
+**处理**：
+
+- 推送走 **Windows 的 git**：
+
+  ```powershell
+  powershell.exe -NoProfile -Command "git push -u origin <branch>"
+  ```
+- 想让它在没凭据时**快速失败**而不是卡住，设 `GIT_TERMINAL_PROMPT=0`。
+- 只读操作（`git fetch`、`git ls-remote`）不需要凭据，可以继续用 WSL 的 git——
+  所以「推送失败了吗」要用 `git ls-remote` 复核，**不要靠重试判断**（网络层报错
+  不代表服务端没收到，可能已写完才断开）。
+- 想在 WSL 里直接用 `gh`，调 Windows 版：
+  `"/mnt/c/Program Files/GitHub CLI/gh.exe"`。`WindowsApps\gh.exe` 不要碰：它是
+  App Execution Alias，不是普通文件——WSL 的目录列表里看得见，但访问与执行都报
+  `No such file or directory`（PowerShell 里 `Test-Path` 同样返回 False）。
+
+### 1.8 gh run watch 退出码是 0 但 CI 还在跑
+
+**症状**：`gh run watch <id> --exit-status` 明明还在刷新（in_progress），
+后面的 `echo $?` 却打印 `0`，于是误判 CI 已绿。
+
+**根因**：`$?` 是管道**最后一条命令**的退出码。写成
+`gh run watch <id> --exit-status | tail -5; echo $?` 时，拿到的是 `tail` 的退出码（恒 0），
+gh 的退出码被管道吃掉了。
+
+**处理**：
+
+```bash
+# 要退出码就别接管道
+gh run watch <id> --exit-status; echo $?
+
+# 确实要管道的话
+gh run watch <id> --exit-status | tail -5; echo "${PIPESTATUS[0]}"
+```
+
+**另外一个独立的坑**：PR 自己的 run 与**合并后 main 上的 push run 是两个不同的 run**。
+PR 全绿不等于合并后 main 全绿——收尾要等后者：
+
+```bash
+gh run list --branch main --limit 1 --json databaseId
+```
+
+别用 `sleep` 轮询，用上面的 `gh run watch <id> --exit-status`。
+
+**还有一个坑**：`gh run watch` 要等到 CI 跑完，而这套 CI 实测 6.5~8.7 分钟——**可能超过
+单次命令的时长上限被中止**。别把「命令被中止」误读成「CI 卡住」：用有界等待，中止后用
+`gh run view` 查真实状态，不要再开一个 watch。
+
+```bash
+timeout 230 gh run watch <id> --exit-status      # 有界等待
+gh run view <id> --json status,conclusion        # 查状态用这条
+```
+
+### 1.9 只改一句话 diff 却变成整行重写
+
+**症状**：只想给某个超长文档条目追加一句话，`git diff` 却显示**整行被重写**，
+动辄上千字的改动量，看不出你真正改了什么。
+
+**根因**：编辑工具的待匹配文本与原文**不是逐字符一致**（典型是把全角 `：` 写成了
+半角 `:`），工具仍报告替换成功，但实际按自己的规范化重写了整行——把行内所有
+全角 `，`/`：`/（）`/`——` 都换成了半角。`FRONTEND_BACKEND_CONTRACT.md` 里有
+近 1900 字符的长条目（实测最长行 1869 字符、全文件 2 行超过 1000 字符），中招代价很大。
+
+**处理**：
+
+1. 中文长行一律用脚本做**精确替换 + 计数断言**：
+
+   ```python
+   assert source.count(old) == 1, source.count(old)
+   source = source.replace(old, new)
+   ```
+2. 改完核对「只有预期变化」：用 `difflib.SequenceMatcher` 打印 opcode，
+   或统计全角标点数量是否**只随新增句子增长**。
+3. 看到 diff 异常大就立刻 `git checkout -- <file>` 还原重做，**不要在坏掉的基础上
+   继续改**。
+
 ## 2. 前端与校验
 
 ### 2.1 tmp/ 下的脚本让 eslint 报 no-undef
@@ -265,6 +368,45 @@ corepack pnpm check:thumbnail-protocol
 corepack pnpm check:thumbnail-protocol -- --probe <pkg> <variant> <hash>
 ```
 
+### 3.3 真机验收时装不上或修复没生效
+
+**症状**（两种，都容易误判成代码问题）：
+
+1. **任何安装都失败**，errorCode 为 `install_failed:write_safety_rejected`
+   （重装任务则是 `install_reinstall_failed:write_safety_rejected`）。
+   注意**普通安装没有 preflight 阶段**：它会在 `install.plan.building` 之后直接
+   `install.failed`——`install.commit.processing` 只在准入通过的分支里发，所以被拒时
+   日志里根本看不到它。`install.reinstall.preflight.processing` 是重装任务自己的阶段。
+2. **刚合入的修复在真机上「没生效」**，行为与合并前一样。
+
+**根因**：
+
+1. 沙箱根还停在**控制组**配置（一个不含游戏根的目录，如 `D:\HMM-sandbox`）——
+   上次跑控制组验收后忘了换回来。方案 b 只校验游戏根，游戏根不在沙箱根内就会被拒，
+   **这是正确行为，不是 bug**。
+2. `target/debug/hmm-tauri.exe` 是 cargo 产物。不重编就重启，测的是旧行为
+   （#284 验收时该产物 mtime 为 08-30 21:41，而合并提交是 08-31 16:55，差约 19 小时）。
+
+**处理**：
+
+- 实验组沙箱根取**游戏根的父目录**，游戏根在内、app-data 在外，marker 已存在：
+
+  ```powershell
+  $env:HMM_SANDBOX_DATA_DIR = "$env:APPDATA\dev.helsincy.modmanager\game"
+  pnpm.cmd tauri:dev
+  ```
+- **判断当前沙箱根只能反推**。别试 `Get-Process hmm-tauri` 的
+  `StartInfo.EnvironmentVariables`：实测它返回 63 个变量且**不含** `HMM_SANDBOX_DATA_DIR`
+  ——.NET 只对由自己启动的进程填充 `StartInfo`，拿它判断沙箱根会得出错误结论。
+  改用两条证据：看哪个目录里的 `.hmm-sandbox.json` 的 mtime 与最后一次启动吻合，
+  配合 `logs/app/app-*.log` 里 `application.started` 的时间戳确认是否重启过。
+- 验收前先看二进制新鲜度：`target/debug/hmm-tauri.exe` 的 mtime 应**不早于**最后一个提交。
+- **跑完控制组必须把沙箱根换回来**，否则之后每次安装都被拒，看起来像新 bug。
+
+**顺带一条验收方法**：同一个用户动作的**多个入口要逐个点**。合集包在「预览安装」
+给出正确文案，但「右键菜单 → 直接安装」走的是另一条链路——#284 的 R5 就是这个，
+只点一个入口会漏。
+
 ## 4. 测试方法论
 
 这一节不是环境坑，但同样属于「不写清楚就会反复踩」的类别。
@@ -349,6 +491,58 @@ DTO 携带全语言 `displayNames`，展示名在**渲染时**按 fallback 链�
   越界量原路走回去，图才会重新动——用户看到的就是「拖到空白处然后拖不动了」。
 
 两条叠在一起才有了「拖出屏幕 + 拖不回来」的完整症状，只修任一条都还是坏的。
+
+### 4.6 防退化断言永不失败
+
+**症状**：写了「防退化」断言，控制组也跑了，但**删掉某个 key / 分支后测试照样全绿**，
+护栏等于没设。
+
+**根因**：断言用的是**数量下限**这类几乎不可能失败的条件，例如：
+
+```js
+assert.ok(Object.keys(dict).length >= 8);
+```
+
+真实风险是「某个**具体**的 key 消失」，而总数从 12 掉到 11 仍然满足 `>= 8`。
+（本次排查：12 个文案 key 里有 5 个**没有任何用例断言**。其中 `empty_plan` 是实测的——
+删掉它之后 564 条测试零失败，而它正是 #285 专门为「装了但没装上」写的。另外 4 个
+`lock` / `complete` / `recovery_pending` / `recovery_unavailable` 是 grep 确认无断言引用，
+**未逐个实测**，属同等风险。）
+
+**处理**：
+
+1. 验**集合**而不是数量：
+
+   ```js
+   assert.deepEqual(Object.keys(dict).sort(), expected.sort());
+   ```
+
+   少了 key、多了未登记的 key，都会红。
+2. 写之前先问一句：**这条断言可能失败吗？** 想不出让它红的输入，它就是装饰。
+3. 判别方法与控制组同：真的把目标 key 删掉跑一次，看它红不红。
+4. **「顺带被别的用例把守」不等于有把守**：某个 key 被抓到，可能只是因为别的用例
+   恰好硬编码了它（本次 12 个里只有 7 个是这种「偶然覆盖」）。覆盖要显式。
+
+### 4.7 后端错误码与前端文案 key 不对应
+
+**症状**：后端新增了稳定的错误码 / phase，后端单测全绿、前端测试全绿、CI 全绿，
+但**玩家看到的是兜底文案**（如「安装失败」），完全不知道发生了什么。
+
+**根因**：前端按 `install_failed:<phase>` 去掉前缀去查 `installFailures[phase]`，
+**缺 key 时用 `?? default` 静默回落**。而测试是分层的：后端测「错误码对不对」，
+前端测「三语 key 集合是否一致」——**没人测「phase 与 key 是否成对」**，
+于是两侧各自全绿。
+
+**处理**：
+
+1. 新增 phase 必须同步补三语文案（`FRONTEND_BACKEND_CONTRACT.md` 已写明），
+   并在用例里登记进**完整必需清单**（见 4.6）。
+2. 空串要单独判：`??` 只在 nullish 时回落，`""` 不会被兜底文案接住。
+3. **验证只能靠真机点一遍**：合成该错误码的输入，看界面文案。
+   这一层是单测替代不了的——#284 的 R5 就是真机才发现的。
+4. 相关：**契约里 phase 的枚举会悄悄过期**。phase 有三个来源，只 grep 调用点的
+   字符串字面量会漏掉 `error.code()` 与 `error.failure_phase()` 这两族**非字面量**
+   来源（#284 R5 时漏了 4 个 `write_admission_*`）。
 
 ## 5. 仓库硬约束
 
