@@ -647,8 +647,29 @@ impl InstallTaskRunner {
         }
         let action_count = plan.actions.len();
 
+        // 取消优先于失败判定：规划完成后被取消时，即便计划为空也应报「已取消」，
+        // 而不是被记成安装失败。
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             return Ok(events);
+        }
+
+        // #285：空计划必须明确失败，不能报成「安装成功」却一个文件都没装。
+        //
+        // 只拦**普通导入安装**。revision 安装（retarget / 重装）的空计划由 `install.rs`
+        // 的 `PlanHasInvalidRevisionIdentity` 负责——那是既有语义（计划与期望 revision
+        // 不符），不该被这里抢先改成 `empty_plan`。
+        //
+        // 位置也刻意选在跨进程锁、写锁、写入准入检查、recovery 记录之前：拒绝空计划
+        // 不产生安装副作用，仅把任务置为 failed 并写一条失败审计。
+        if action_count == 0 && revision_id.is_none() {
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                events,
+                observer,
+                "empty_plan",
+                action_count,
+            ));
         }
 
         let current_prerequisite_decision = self.planner.prerequisite_decision(&request.game_id);
@@ -3144,6 +3165,189 @@ mod tests {
         // 门禁在计划构建之前短路：既不规划也不写入，玩家文件保持原样。
         assert!(planner.take_requests().is_empty());
         assert!(committer.take_profiles().is_empty());
+    }
+
+    // #285：空计划此前会被记成 `result: "success"` + `action_count: "0"`，玩家看到的是
+    // 「装了但没装上」——比如 nativePC 上套了包装目录的包，文件全被
+    // `is_installable_target_path` 过滤掉，一个都不剩。
+    #[test]
+    fn empty_install_plan_fails_instead_of_being_reported_as_success() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let planner = Arc::new(RecordingInstallPlanner::new(InstallPlan::from_providers(
+            vec![],
+        )));
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let planner_dep: Arc<dyn ImportedModInstallPlanner> = planner.clone();
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner_dep,
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("empty plan must not be reported as success");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:empty_plan")
+        );
+
+        // 审计必须记 failure，而不是此前那个 result=success 的空计划。
+        let audit = audit_log.take_event().expect("failure audit");
+        assert_eq!(audit.result, "failure");
+        assert_eq!(audit.fields["error_code"], "install_failed:empty_plan");
+        assert_eq!(audit.fields["action_count"], "0");
+
+        // 拦截点在 commit 之前：不能有任何写入，也不留 recovery 记录。
+        assert!(committer.take_profiles().is_empty());
+        assert!(!planner.take_requests().is_empty());
+    }
+
+    // 防退化：#285 的空计划拦截不能误伤正常安装。
+    #[test]
+    fn non_empty_install_plan_still_commits_successfully() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("normal plan must still install");
+
+        assert_eq!(committer.take_profiles().len(), 1);
+        // 正常路径必须仍记 success，且 action_count 不为 0——
+        // 若 #285 的拦截条件写反（比如误判非空计划为空），这一条会红。
+        let audit = audit_log.take_event().expect("success audit");
+        assert_eq!(audit.result, "success");
+        assert_eq!(audit.fields["action_count"], "1");
+    }
+
+    // #285 评审发现：取消必须优先于空计划失败。这个 planner 在「规划完成那一刻」
+    // 取消任务，用于覆盖「规划后取消 + 空计划」这条路径。
+    struct CancellingEmptyPlanPlanner {
+        task_manager: Arc<crate::TaskManager>,
+        task_id: String,
+    }
+
+    impl ImportedModInstallPlanner for CancellingEmptyPlanPlanner {
+        fn build_imported_mod_install_plan(
+            &self,
+            _request: BuildImportedModInstallPlanRequest,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            let _ = self.task_manager.cancel_task(&self.task_id);
+            Ok(ImportedModInstallPreflight {
+                plan: InstallPlan::from_providers(vec![]),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn build_imported_mod_revision_install_plan(
+            &self,
+            _game_id: &GameId,
+            _mod_id: &ModId,
+            _revision_id: &ModRevisionId,
+            _layer: &FileLayer,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            Ok(ImportedModInstallPreflight {
+                plan: InstallPlan::from_providers(vec![]),
+                prerequisite_decision: ready_prerequisite_decision(),
+            })
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            ready_prerequisite_decision()
+        }
+    }
+
+    #[test]
+    fn cancellation_after_planning_wins_over_the_empty_plan_rejection() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(CancellingEmptyPlanPlanner {
+                task_manager: Arc::clone(&task_manager),
+                task_id: task.task_id.clone(),
+            }),
+            committer_dep,
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        // 用户主动取消不该被记成安装失败，即便计划为空。
+        runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("cancelled task must return Ok instead of an empty-plan failure");
+
+        assert!(committer.take_profiles().is_empty());
+    }
+
+    // #285 评审发现：revision 安装（retarget / 重装）的空计划有**既有**语义
+    // （`install.rs` 的 `PlanHasInvalidRevisionIdentity`），不该被普通导入的
+    // empty_plan 检查抢先改写错误分类。
+    #[test]
+    fn revision_install_is_not_short_circuited_by_the_empty_plan_check() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(InstallPlan::from_providers(
+                vec![],
+            ))),
+            committer_dep,
+            Arc::new(RecordingAuditLogWriter::default()),
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        runner
+            .run_install_revision_task_for_orchestration_with_observer(
+                &task.task_id,
+                sample_request(),
+                ModRevisionId::new("revision-a"),
+                None,
+                &noop_task_progress_observer(),
+            )
+            .expect("revision install must not be rejected as empty_plan");
+
+        // 走到了 commit，说明没有被 empty_plan 提前拦下。
+        assert_eq!(committer.take_profiles().len(), 1);
     }
 
     #[test]
