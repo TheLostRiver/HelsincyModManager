@@ -247,6 +247,8 @@ pub enum ReadOnlyInstallAutomationError {
     ImportedModCatalogUnavailable,
     ImportedModSandboxUnavailable,
     ImportedModFilesUnavailable,
+    // #284：合集包需要调用方自己决定装哪个，不能混进「文件不可用」。
+    ImportedModAmbiguousContentRoot,
     InstallPlanInvalid,
     InstallStateInvalid,
     InstallManifestUnavailable,
@@ -277,6 +279,9 @@ impl ReadOnlyInstallAutomationError {
                 "install_planning_imported_mod_sandbox_unavailable"
             }
             Self::ImportedModFilesUnavailable => "install_planning_imported_mod_files_unavailable",
+            Self::ImportedModAmbiguousContentRoot => {
+                "install_planning_imported_mod_ambiguous_content_root"
+            }
             Self::InstallPlanInvalid => "install_plan_invalid",
             Self::InstallStateInvalid => "install_state_invalid",
             Self::InstallManifestUnavailable => "install_manifest_unavailable",
@@ -1491,6 +1496,9 @@ fn map_planning_error(error: InstallPlanningError) -> ReadOnlyInstallAutomationE
         }
         InstallPlanningError::ImportedModFileScanUnavailable => {
             ReadOnlyInstallAutomationError::ImportedModFilesUnavailable
+        }
+        InstallPlanningError::ImportedModAmbiguousContentRoot => {
+            ReadOnlyInstallAutomationError::ImportedModAmbiguousContentRoot
         }
         InstallPlanningError::InvalidTargetPath { .. }
         | InstallPlanningError::ImportedModSourcesUnavailable

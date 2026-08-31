@@ -1,15 +1,17 @@
+use crate::content_root::native_pc_parents;
 use anyhow::Result;
 use hmm_ports::{
     CancellationToken, PackagePreviewScanner, PreviewImageCandidate, PreviewImageScanRequest,
     PreviewImageSourceRef,
 };
-use std::collections::BTreeSet;
 use std::path::Path;
 
-/// Sandbox content comes from third-party archives. Keep the `nativePC` parent discovery
-/// explicitly bounded so a deeply nested directory tree cannot turn into unbounded recursion.
-/// Values below the limit are already deeper than any supported mod layout.
-const MAX_PREVIEW_CANDIDATE_ROOT_DEPTH: usize = 64;
+// `nativePC` 父目录的发现已抽到 `crate::content_root`，**与安装文件扫描共用**
+// （#284）。两处必须对「内容根在哪」给出同一个答案，否则会出现
+// 「预览图能显示、安装却装不上」——那正是本条 issue 的现象。
+//
+// 深度上限同样来自 `content_root`（现在是 4）。它比原先的 64 严格，但现实里
+// 不存在超过 4 层包装的 MOD 包；统一之后，行为也更可预测。
 
 pub struct SandboxPackagePreviewScanner;
 
@@ -37,53 +39,22 @@ impl PackagePreviewScanner for SandboxPackagePreviewScanner {
     }
 }
 
+/// 找出候选图的搜索根目录。
+///
+/// 与安装文件扫描共用 `crate::content_root` 的解析（#284）。这里的语义比安装侧
+/// **宽松**：多个 `nativePC` 时全部收图，而安装侧遇到多个必须拒绝（合集包不替
+/// 用户挑一个）。两者不冲突——预览图负责「让你看见」，安装负责「不擅自决定」。
 fn find_candidate_roots(
     sandbox_root: &Path,
-    cancellation_token: &dyn CancellationToken,
+    _cancellation_token: &dyn CancellationToken,
 ) -> Result<Vec<std::path::PathBuf>> {
-    let mut native_pc_parents = BTreeSet::new();
-    collect_native_pc_parents(sandbox_root, 0, cancellation_token, &mut native_pc_parents)?;
+    let mut roots = native_pc_parents(sandbox_root)?;
 
-    if native_pc_parents.is_empty() {
-        native_pc_parents.insert(sandbox_root.to_path_buf());
+    if roots.is_empty() {
+        roots.insert(sandbox_root.to_path_buf());
     }
 
-    Ok(native_pc_parents.into_iter().collect())
-}
-
-fn collect_native_pc_parents(
-    current_dir: &Path,
-    depth: usize,
-    cancellation_token: &dyn CancellationToken,
-    out: &mut BTreeSet<std::path::PathBuf>,
-) -> Result<()> {
-    ensure_not_cancelled(cancellation_token)?;
-    if depth >= MAX_PREVIEW_CANDIDATE_ROOT_DEPTH {
-        return Ok(());
-    }
-
-    for entry in std::fs::read_dir(current_dir)? {
-        ensure_not_cancelled(cancellation_token)?;
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-
-        if file_type.is_symlink() || !file_type.is_dir() {
-            continue;
-        }
-
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .eq_ignore_ascii_case("nativepc")
-        {
-            out.insert(current_dir.to_path_buf());
-            continue;
-        }
-
-        collect_native_pc_parents(&entry.path(), depth + 1, cancellation_token, out)?;
-    }
-
-    Ok(())
+    Ok(roots.into_iter().collect())
 }
 
 fn collect_direct_candidates(
@@ -191,6 +162,7 @@ fn candidate_priority(file_name: &str) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::content_root::MAX_CONTENT_ROOT_SEARCH_DEPTH;
     use hmm_core::PreviewImagePolicy;
     use hmm_ports::{
         CancellationToken, NeverCancelled, PackagePreviewScanner, PreviewImageScanRequest,
@@ -360,7 +332,7 @@ mod tests {
             .expect("write sandbox-root preview");
 
         let mut deep_path = temp.path().to_path_buf();
-        for _ in 0..(MAX_PREVIEW_CANDIDATE_ROOT_DEPTH + 2) {
+        for _ in 0..(MAX_CONTENT_ROOT_SEARCH_DEPTH + 2) {
             deep_path.push("d");
         }
         std::fs::create_dir_all(&deep_path).expect("create deep tree");
