@@ -117,6 +117,10 @@ export const modLifecycleCopy = {
         recovery_unavailable: "安装状态暂时无法确认",
         empty_plan: "包内没有找到可安装的文件，未做任何修改",
         ambiguous_content_root: "包内有多个 nativePC 目录，请拆分后分别导入",
+        prerequisite: "前置环境检查未通过或已变化，安装已阻止，请到「前置环境」重新检查",
+        write_safety_rejected: "当前配置不允许写入该游戏目录，安装已阻止",
+        write_admission_busy: "另一项操作正在使用该游戏目录，请稍后重试",
+        replacement_selection_pending: "替换目标尚未选择完成，请回到「替换目标」面板继续安装",
       },
       uninstallFailures: {
         lock: "卸载任务暂时无法开始",
@@ -238,6 +242,14 @@ export const modLifecycleCopy = {
         empty_plan: "No installable files were found in the package; nothing was changed",
         ambiguous_content_root:
           "The package contains more than one nativePC directory; split it and import separately",
+        prerequisite:
+          "The prerequisite check failed or changed, so the install was blocked; recheck the prerequisites",
+        write_safety_rejected:
+          "The current configuration does not allow writing to this game directory, so the install was blocked",
+        write_admission_busy:
+          "Another operation is using this game directory, so please try again later",
+        replacement_selection_pending:
+          "The replacement target has not been selected yet, so return to the replacement target panel to continue",
       },
       uninstallFailures: {
         lock: "The uninstall task cannot start right now",
@@ -360,6 +372,14 @@ export const modLifecycleCopy = {
           "パッケージ内にインストール可能なファイルが見つからなかったため、変更は行っていません",
         ambiguous_content_root:
           "パッケージ内に nativePC ディレクトリが複数あります。分割してから個別にインポートしてください",
+        prerequisite:
+          "前提環境のチェックに失敗または変化したため、インストールを阻止しました。前提環境を再確認してください",
+        write_safety_rejected:
+          "現在の設定ではこのゲームディレクトリに書き込めないため、インストールを阻止しました",
+        write_admission_busy:
+          "別の操作がこのゲームディレクトリを使用中のため、しばらくしてから再試行してください",
+        replacement_selection_pending:
+          "置換ターゲットが未選択のため、置換ターゲットの選択に戻ってインストールを続行してください",
       },
       uninstallFailures: {
         lock: "アンインストールタスクを今は開始できません",
