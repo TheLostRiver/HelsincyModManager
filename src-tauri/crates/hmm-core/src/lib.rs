@@ -1,3 +1,4 @@
+mod app_version;
 mod batch;
 mod category;
 mod external_import;
@@ -13,6 +14,9 @@ mod save_backup;
 mod save_directory;
 mod save_restore;
 
+pub use app_version::{
+    decide_update, is_newer_version, parse_app_version, AppVersion, AppVersionError, UpdateDecision,
+};
 pub use batch::{
     build_batch_plan, BatchActionSummary, BatchAttempt, BatchAttemptStatus, BatchExecutionPolicy,
     BatchId, BatchItemFacts, BatchItemId, BatchItemInput, BatchItemPlan, BatchItemResult,

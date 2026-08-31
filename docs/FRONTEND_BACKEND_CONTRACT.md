@@ -82,6 +82,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
+- 检查是否有可用更新：`check_app_update`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
 
@@ -2004,6 +2005,37 @@ type ModDeletionResultDto = {
   是快捷操作栏（仅批量选择模式渲染）。
 - 前端对单个与批量删除都必须先弹确认框并列出将被移除的 Mod；删除进行中确认按钮禁用。
 - 「卸载并删除」组合动作不在本契约内，属于 follow-up；v1 已安装的 Mod 必须先卸载再删除。
+
+## 检查更新（只告知，不下载）
+
+- `check_app_update` **无参数**、不依赖 `AppState`，返回 `AppUpdateStatusDto`：
+  `{ status, currentVersion, latestVersion }`。**它不是 `Result`——这个 command 不会失败**，
+  查不到就是 `status: "unknown"`，没有 `CommandErrorDto` 分支。
+- `status` 的稳定取值只有三个：**`up_to_date`**（已是最新，或当前是正式版而对方是预发布）、
+  **`update_available`**（有可用更新，此时 `latestVersion` 才有值）、**`unknown`**
+  （拿不到最新版本，或版本号无法解析）。**只有 `update_available` 会带 `latestVersion`**。
+- `latestVersion` 是**发布标签原文**（可能带 `v` 前缀），前端**原样展示不解析**。
+- 版本先后按 semver 2.0.0 优先级规则的子集判定，实现在 `hmm-core::app_version`：
+  核心版本号逐级数值比较；带预发布标识的版本**小于**同核心版本号的正式版；预发布段逐段比较
+  （数字段比数值且小于字母段，前面相等时段多者更大）；`+build` 元数据不参与比较。
+  **不可用字符串比较**——`0.1.0-alpha.10` 按字符串排会小于 `0.1.0-alpha.9`。
+- **通道规则**：当前是正式版时**不提示预发布版本**（预览通道只面向已在预览通道的用户）。
+  通道划分本身仍是未决问题，见 [应用内更新器规划](../release/UPDATER_PLAN.md)。
+- 查询源是 GitHub Releases **列表**端点，URL 为**编译期常量**、不接受调用方输入。
+  实现**自己比较出版本号最高的一个**，不依赖接口返回顺序；跳过草稿；解析不了的标签忽略
+  （一个不合规范的旧标签不该让整次查询失效）。不用 `/releases/latest`——
+  仓库只有草稿发布时它返回 **404**（本仓库当前就是这个状态，实测确认）。
+- **网络请求发生在 Rust 侧**：前端拿不到发请求的手段，因此本功能**不需要改 CSP，
+  也不需要新增 Tauri capability 权限**，整体网络策略没有被放宽
+  （与 `UPDATER_PLAN.md` 的安全边界一致）。若把这个请求移到前端，就必须给 CSP 的
+  `connect-src` 加上 `https://api.github.com`，那是放宽整个前端的网络策略，不被接受。
+- 超时固定 3 秒，走 `tauri::async_runtime::spawn_blocking`，不阻塞异步运行时。
+- **失败一律静默**：断网、超时、接口变动、仓库还没有已发布版本，对普通用户都是常态。
+  前端**不得**因为 `unknown` 弹错误、写失败提示，或让应用进入任何降级状态。
+- 本 command **不下载、不校验签名、不写入任何文件**，因此与 `UPDATER_PLAN.md`
+  「Alpha 阶段不引入应用内自动更新」不冲突——它是 updater 的**前置改良**而非替代。
+- 前端负责查询节流（最短间隔）与「是否自动检查」开关。两者都是**前端偏好**
+  （与既有偏好一致，落 localStorage），后端不保存这些状态。
 
 ## 窗口关闭与托盘生命周期
 

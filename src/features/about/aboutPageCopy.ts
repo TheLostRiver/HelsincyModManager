@@ -18,6 +18,12 @@ export type AboutPageCopy = {
     description: string;
     checkUpdates: string;
     changelog: string;
+    checking: string;
+    upToDate: string;
+    updateAvailable: (version: string) => string;
+    autoCheck: string;
+    autoCheckHint: string;
+    download: string;
   };
   linkLabels: {
     releases: string;
@@ -59,9 +65,15 @@ export const aboutPageCopy = {
     release: {
       title: "版本与更新",
       description:
-        "当前尚未启用应用内自动更新。检查更新会打开 GitHub Releases，供你对照版本并下载发布包。",
+        "当前尚未启用应用内自动更新：HMM 只会告诉你有没有新版本，下载仍需前往 GitHub Releases。",
       checkUpdates: "检查更新",
       changelog: "更新记录",
+      checking: "正在检查更新…",
+      upToDate: "已是最新版本",
+      updateAvailable: (version) => `${version} 可用`,
+      autoCheck: "自动检查更新",
+      autoCheckHint: "打开本页时检查，24 小时内不重复查询。",
+      download: "前往下载页",
     },
     linkLabels: {
       releases: "GitHub Releases",
@@ -113,9 +125,15 @@ export const aboutPageCopy = {
     release: {
       title: "Version & updates",
       description:
-        "In-app auto-update is not enabled yet. Checking for updates opens GitHub Releases so you can compare versions and download release packages.",
+        "In-app auto-update is not enabled yet: HMM only tells you whether a newer version exists - downloads still go through GitHub Releases.",
       checkUpdates: "Check for updates",
       changelog: "Changelog",
+      checking: "Checking for updates…",
+      upToDate: "You are on the latest version",
+      updateAvailable: (version) => `${version} is available`,
+      autoCheck: "Check for updates automatically",
+      autoCheckHint: "Checks when this page opens, at most once every 24 hours.",
+      download: "Go to downloads",
     },
     linkLabels: {
       releases: "GitHub Releases",
@@ -173,9 +191,15 @@ export const aboutPageCopy = {
     release: {
       title: "バージョンと更新",
       description:
-        "アプリ内自動更新は未対応です。更新の確認では GitHub Releases が開き、バージョンの比較とリリースパッケージのダウンロードができます。",
+        "アプリ内自動更新は未対応です。HMM は新しいバージョンがあるかどうかのみを通知し、ダウンロードは GitHub Releases から行います。",
       checkUpdates: "更新を確認",
       changelog: "更新履歴",
+      checking: "更新を確認しています…",
+      upToDate: "最新バージョンです",
+      updateAvailable: (version) => `${version} が利用可能です`,
+      autoCheck: "更新を自動的に確認する",
+      autoCheckHint: "このページを開いたときに確認します。24 時間以内は再確認しません。",
+      download: "ダウンロードページへ",
     },
     linkLabels: {
       releases: "GitHub Releases",
