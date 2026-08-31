@@ -3,7 +3,7 @@
 新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
 `HANDOFF.md` 需要提交就提交，不需要就删掉。
 
-> 本文件最后更新：2026-08-31 17:40，HEAD = `3b6c80d`。
+> 本文件最后更新：2026-08-31 24:00，HEAD = `a9ead2b`。
 > **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
 > 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
 > 照旧文档接手会往错误方向做。
@@ -107,12 +107,30 @@ docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先
   偏好落 localStorage、工作态不落，是既有区分（全页只有 `showCardCategoryLabels` 落盘）。
   **别把「切侧边栏丢多选」当 bug 修。**
 
-## 四、当前进度（2026-08-31 17:40，HEAD = `3b6c80d`）
+## 四、当前进度（2026-08-31 24:00，HEAD = `a9ead2b`）
 
 最近提交（由新到旧）：
 
 | commit | 说明 |
 |---|---|
+| `a9ead2b` | Merge PR #299（docs/verify-parity，本地校验跑 CI 同款策略 + 对等矩阵） |
+| `026436f` | fix(tools) 让 `verify.ps1` 再跑一遍 `check-policy.mjs`，并用矩阵锁住两边 |
+| `5833bc3` | Merge PR #297（hy/about-update-version-check，**#288**） |
+| `fbc7bad` | fix(about) 复查失败时不再让旧结论冒充本次结果 |
+| `2aeb317` | fix+docs 修正契约文档链接，并记录本地校验漏掉 CI 检查的坑 |
+| `ec24a1c` | feat(about) 「检查更新」真的查询最新版本（**#288**） |
+| `912d9a3` | Merge PR #296（docs/troubleshooting-pitfalls） |
+| `150bcdc` | docs 实测排障手册里 4 条未验证的说法并订正 |
+| `8c5452f` | docs 自审排障手册，修正 4 处事实错误 |
+| `24d997f` | docs 排障手册补 6 条「症状指不到原因」的坑 |
+| `2bba598` | Merge PR #295（hy/install-failure-phase-copy） |
+| `62470d7` | test 安装失败文案改用完整清单校验，堵住「key 被删无人发现」 |
+| `77fc33f` | feat(i18n) 安装失败的 4 类 phase 补上可操作的三语文案 |
+| `3f753af` | Merge PR #294（hy/install-ambiguous-content-root-phase） |
+| `de7acd5` | docs+test 补齐契约的 phase 枚举，并加守卫测试 |
+| `9d7269c` | fix(install) 合集包走直接安装时不再退化成「无法生成安装计划」（**#284 R5**） |
+| `f4a7fcc` | Merge PR #293（docs/handoff-head-3b6c80d） |
+| `c82a17f` | docs HANDOFF 更新到 3b6c80d |
 | `3b6c80d` | Merge PR #291（fix/wrapper-directory，**#284**） |
 | `d75c7de` | test(import) 补内容根测试缺口（嵌套 nativePC 取最浅 / 根级+包装内并存），并记录大小写变体问题 |
 | `121414a` | fix(install) 合集包单独报错，不再混成「无法读取导入文件」（#284 R1） |
@@ -141,14 +159,19 @@ Issue 状态：
 | **282** | **CLOSED** | 根因不是 `useCallback` 漏依赖，而是**名称在载入时就解析成字符串存进 state**（违反 I18N-08）。修法是回到渲染时投影。当前 `pnpm lint` 全项目 **0 error / 0 warning** |
 | **283** | **CLOSED** | 6 项验收全部真机通过。判定「用的是 1024 还是 768」**不能看画质**——1024 是 upscale 出来的（356×768 → 474×1024），要看 URL 的 variant 段 + `naturalWidth` |
 | **273** | **CLOSED** | 方案 b：GUI 准入只校验游戏根，app-data 根豁免。已真机验证 + 控制组 + 日志通道三验 |
-| **284** | **CLOSED** | PR #291 合并（内容根解析 + 合集包单独报错）。**遗留 R4 已单独开 #292**：大小写变体 `NATIVEpc` 认得出内容根却装不上 |
+| **284** | **CLOSED** | 主线在 #291（内容根解析 + 合集包单独报错）；**真机验收又抓出 R5**，已由 #294/#295 修完。遗留 R4 已单独开 #292 |
 | **285** | **CLOSED** | PR #290 合并：空计划在 commit 前拦截为 `install_failed:empty_plan` |
+| **288** | **CLOSED** | 「检查更新」真的查询最新版本（PR #297）。不下载/不校验/不写文件，网络请求留在 Rust 侧，**CSP 与 capability 一行未改** |
 | **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施 |
+| **286** | **进行中** | 外部 MOD 接管。**切片 1（纯逻辑）已开 PR #301**；后续切片：IO+后台任务、三语文案与接线、接管 adopt。设计决定与已核实事实都在 issue 评论里 |
+| **298** | OPEN | #288 遗留：启动时检查更新 + 导航提示（要动导航项与引导锚点，维护者决定暂缓） |
+| **300** | OPEN | #286 后续：孤儿文件检测（只读报告，不给删除动作） |
+| **287** | OPEN | 国内分发渠道——#288 负责「告知有没有新版」，#287 负责「从哪里下」 |
 | **275** | OPEN | Mod 存储目录可配置。**依赖 #273，现在可以开工**，但「存储目录必须落在沙箱根内」的校验语义要按新准入模型重新确认（app-data 根已豁免） |
 | 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
 | 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
 
-工作区：**干净**（只剩未跟踪的 `HANDOFF.md`）。PR #289 / #290 / #291 的分支本地与远程均已删除。
+工作区：**干净**。PR #289 至 #299 的分支本地与远程均已删除；`hy/external-mod-state-scan`（#286 切片 1，PR #301）为当前唯一开放分支。
 
 ## 五、沙箱模式与验收（#273 落地后的新常识）
 
@@ -166,29 +189,57 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
 - **判断当前沙箱根靠反推**：游戏目录（`config/games.json` 的 `root_dir`）没变 +
   却出现 `sandbox_write_root_rejected` ⇒ 沙箱根不含游戏根。
   配合 `logs/app/` 里 `application.started` 的时间戳可确认是否重启过。
+  **别指望读进程环境变量**：`Get-Process hmm-tauri` 的 `StartInfo.EnvironmentVariables`
+  **读得到、不报错**（实测返回 63 个变量），但那份变量**不是目标进程的环境**
+  （不含 `HMM_SANDBOX_DATA_DIR`）。旧版本这两份文档都写成「会报『无法对 Null 数组进行
+  索引』」——**这是错的**，已订正。它的危险在于读得到却给错答案：报错你会换方法，
+  错数据你会据此下结论。
 - **日志只证明「没被拒绝」，文件系统才证明「真写进去了」**——验收要两处都对上。
 - **跑完控制组记得把沙箱根换回来**。控制组（沙箱根不含游戏根，例如 `D:\HMM-sandbox`）
   跑完若不复原，之后每次安装都会被 `write_safety_rejected` 拒掉，看起来像新 bug。
-  判断当前沙箱根：看哪个目录里有 `.hmm-sandbox.json` 且其 mtime 与最后一次启动吻合
-  （Windows 读不到 `hmm-tauri` 进程的环境变量，`StartInfo.EnvironmentVariables` 会报
-  「无法对 Null 数组进行索引」，所以只能靠 marker + `logs/app/` 的 `application.started`
-  时间戳反推）。
+  判断当前沙箱根：**只能靠 marker + 时间戳反推**——别指望进程环境变量。
+  `StartInfo.EnvironmentVariables` 能读、不报错，但返回的是一份**与目标进程无关**的
+  变量表（实测：读得到 63 个变量，但不含 `HMM_SANDBOX_DATA_DIR`）。
+  具体做法：看哪个目录里的 `.hmm-sandbox.json` 的 mtime 与最后一次启动吻合
+  （配合 `logs/app/` 的 `application.started` 时间戳确认是否重启过）。
 - **改完代码必须重编再验收**：`target/debug/hmm-tauri.exe` 是 cargo 产物，
   不重编就重启，测的还是旧行为（`pnpm tauri:dev` 会自动触发 cargo build）。
 
 ## 六、待办（挑一个开工，别一次铺开）
 
-1. **#275 Mod 存储目录可配置**（推荐下一个）。开工前先跟用户确认：
-   app-data 根既已豁免，「存储目录必须落在沙箱根内」的 containment 该怎么算。
-2. **#274 catalog 武器目标别名**——依赖外部数据来源审计，先确认数据源。
-3. **#277 vite 冷启动卡死**——诊断型，复现不稳定，除非频繁打扰否则优先级最低。
-4. **#292（#284 的 R4）大小写变体的 `nativePC` 装不上**——已开 issue，三种修法与代价都写在里面，**等维护者拍板取向再动代码**。倾向 C（只把报错说清楚，不动匹配规则）：放宽匹配会让清单同时出现 `nativePC/x` 与 `NATIVEpc/x`，在 NTFS 上指向同一文件，冲突检测会失效；归一化又要改清单事实口径，牵动 #278 的占用判定。带修法进 #292 时，一并补「安装侧大小写混合端到端」用例（现在补会固化现状，故 #291 未补）。
-5. 可选的展示优化（非阻塞）：卡片缩略图 `object-fit: cover` +
+1. **#286 外部 MOD 接管**（**当前在做**）。已定的口径：按需扫描（不做进每次翻页）、
+   扫描做成**后台任务 + 有界并发**（`std::thread::scope`，worker 数 `min(4, available_parallelism)`，
+   **不引 rayon**）、徽标**三档降级**（tech 完整 / classic·grid 精简 / list 极简）、
+   「外部来源」放 pill 内、接管后允许重装、孤儿文件另开（#300）、CLI 延后。
+   切片顺序：①纯逻辑（PR #301，已开）→ ②IO + 后台任务 → ③三语文案与接线 → ④接管 adopt。
+   **动手前先读 issue 评论**：里面有一张已核实的代码事实表（哪几处可复用、哪几处是坑）。
+
+   两条最关键的既有能力，**不要新造**：
+   - 卸载已有「无 `backup_ref` → 删除文件」语义 ⇒ **接管只写无 backup_ref 的清单条目，
+     不用改卸载代码**；
+   - `InstalledFileSummary { size_bytes, sha256 }` 已存在（`hmm-core`）⇒ 接管直接复用。
+
+2. **#292（#284 的 R4）大小写变体的 `nativePC` 装不上**——已开 issue，三种修法与代价都写在里面，
+   **等维护者拍板取向再动代码**。倾向 C（只把报错说清楚，不动匹配规则）：放宽匹配会让清单同时
+   出现 `nativePC/x` 与 `NATIVEpc/x`，在 NTFS 上指向同一文件，冲突检测会失效；归一化又要改清单
+   事实口径，牵动 #278 的占用判定。带修法进 #292 时，一并补「安装侧大小写混合端到端」用例
+   （现在补会固化现状，故 #291 未补）。
+3. **发版前置：全量 catalog Sandbox Gate 复验**——`docs/PROJECT_TASK_STATUS.md` 明确写着
+   「发版前置仅剩全量 catalog Sandbox Gate 复验」：WR-04 Gate D 的证据基于已退役的
+   developer seed，全量 catalog 入库后尚未复验。**需要 disposable Windows Sandbox 环境，
+   先确认有没有。**
+4. **#275 Mod 存储目录可配置**。开工前先跟用户确认：app-data 根既已豁免，
+   「存储目录必须落在沙箱根内」的 containment 该怎么算。
+5. **#298 启动时检查更新 + 导航提示**（#288 遗留）——要动导航项与新手引导锚点
+   `about.release`，维护者决定暂缓，等明确要动引导时再开。
+6. **#300 孤儿文件检测**（#286 后续）——有了扫描能力后只剩一层薄封装，但「如何界定
+   游戏原版文件、不把原版全算成孤儿」这个噪声问题还没解，先不急。
+7. **#274 catalog 武器目标别名**——依赖外部数据来源审计，先确认数据源。
+8. **#277 vite 冷启动卡死**——诊断型，复现不稳定，除非频繁打扰否则优先级最低。
+9. 可选的展示优化（非阻塞）：卡片缩略图 `object-fit: cover` +
    `object-position: center top` 是**设计意图**（出自 `41d38a0` / #57），
    代价是 356×768 这种竖图只显示顶部约 56%。若要改进，DTO 已带 `width`/`height`
    而前端没消费，做「按图片比例自适应」成本最低，不必动后端。
-6. （原第 5 条已处理）空计划静默成功 → 开成 **#285**，PR #290 已修并关闭；
-   #284 让「该装的能装上」之后，#285 的报错应当只在真的没有可安装文件时出现。
 
 ## 七、行为纪律
 
@@ -199,6 +250,11 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
 - 破坏性操作必须二次确认：弹窗走 `shared/feedback` 的 `Dialog`，
   `role="alertdialog"` + `closeOnBackdrop={false}` + `initialFocusRef` 指向取消按钮。
 - 用户重视：后端安全优先、中文交流、小步提交、**不接受把没跑过的测试说成已通过**。
+- **没测过的事实不要写进文档**。本轮我凭「跑了 A 脚本」就外推「B 脚本也不含某检查」，
+  写进排障手册并据此向维护者提了错误建议——实测 B 脚本是好的。**测了 A 不等于知道 B。**
+- **提交前跑 `scripts/verify.ps1`（完整入口），不要用单个 `check-*.ps1` 代替**：
+  `check-policy.ps1` 只查文件/脚本的存在性与大小写，内容检查（链接/边界/密钥/体积）
+  由 verify.ps1 里的 7 个脚本 + `check-policy.mjs` 完成（见 `docs/TROUBLESHOOTING.md` 2.4）。
   交接文档里写「已完成」的项，动手前先扫一眼实体是否真的存在
   （上一手就有 `DeleteConfirmationDialog` 只写了 import、组件本体没有的情况）。
 - **改行为后新增的回归用例必须跑控制组**：把修复退回去，**逐条**确认新用例会变红。
