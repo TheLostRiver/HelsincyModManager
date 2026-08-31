@@ -647,6 +647,26 @@ impl InstallTaskRunner {
         }
         let action_count = plan.actions.len();
 
+        // #285：空计划必须明确失败，不能报成「安装成功」却一个文件都没装。
+        //
+        // 拦截点刻意选在这里：跨进程锁、写锁、写入准入检查、recovery 记录都还没发生，
+        // 所以拒绝空计划**不留任何副作用**。挪到 commit 之后再拦就晚了。
+        //
+        // 其余所有生成计划的路径早已把空计划当错误处理——retarget 返回
+        // `EmptyRetargetPlan`（`hmm-core/src/retarget.rs`）、reinstall 以
+        // `CandidateNotReady` 阻塞（`reinstall.rs`）。这正说明空计划从来不是合法结果，
+        // 在此处失败不会打断任何合法流程。
+        if action_count == 0 {
+            return Err(self.fail_with_audit(
+                task_id,
+                &request,
+                events,
+                observer,
+                "empty_plan",
+                action_count,
+            ));
+        }
+
         if self.task_manager.task_status(task_id) == Some(TaskStatus::Cancelled) {
             return Ok(events);
         }
@@ -3144,6 +3164,86 @@ mod tests {
         // 门禁在计划构建之前短路：既不规划也不写入，玩家文件保持原样。
         assert!(planner.take_requests().is_empty());
         assert!(committer.take_profiles().is_empty());
+    }
+
+    // #285：空计划此前会被记成 `result: "success"` + `action_count: "0"`，玩家看到的是
+    // 「装了但没装上」——比如 nativePC 上套了包装目录的包，文件全被
+    // `is_installable_target_path` 过滤掉，一个都不剩。
+    #[test]
+    fn empty_install_plan_fails_instead_of_being_reported_as_success() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let planner = Arc::new(RecordingInstallPlanner::new(InstallPlan::from_providers(
+            vec![],
+        )));
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let planner_dep: Arc<dyn ImportedModInstallPlanner> = planner.clone();
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner_dep,
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("empty plan must not be reported as success");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:empty_plan")
+        );
+
+        // 审计必须记 failure，而不是此前那个 result=success 的空计划。
+        let audit = audit_log.take_event().expect("failure audit");
+        assert_eq!(audit.result, "failure");
+        assert_eq!(audit.fields["error_code"], "install_failed:empty_plan");
+        assert_eq!(audit.fields["action_count"], "0");
+
+        // 拦截点在 commit 之前：不能有任何写入，也不留 recovery 记录。
+        assert!(committer.take_profiles().is_empty());
+        assert!(!planner.take_requests().is_empty());
+    }
+
+    // 防退化：#285 的空计划拦截不能误伤正常安装。
+    #[test]
+    fn non_empty_install_plan_still_commits_successfully() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let committer = Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let committer_dep: Arc<dyn InstallPlanCommitter> = committer.clone();
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            Arc::new(RecordingInstallPlanner::new(sample_plan())),
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect("normal plan must still install");
+
+        assert_eq!(committer.take_profiles().len(), 1);
+        // 正常路径必须仍记 success，且 action_count 不为 0——
+        // 若 #285 的拦截条件写反（比如误判非空计划为空），这一条会红。
+        let audit = audit_log.take_event().expect("success audit");
+        assert_eq!(audit.result, "success");
+        assert_eq!(audit.fields["action_count"], "1");
     }
 
     #[test]
