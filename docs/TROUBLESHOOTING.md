@@ -182,8 +182,16 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
 
 或者更糟——命令**卡在那里不动**，既不成功也不失败。
 
-**根因**：WSL 里的 git **没有配置凭据**。Windows 侧的 Git Credential Manager 不会
-自动被 WSL 调用，HTTPS 推送于是在等待交互式输入用户名——在非交互终端里表现为卡死。
+**根因**：WSL 里的 git **没有配置凭据**，HTTPS 推送于是在等待交互式输入用户名——
+在非交互终端里表现为卡死。可复核：
+
+```bash
+git config --get credential.helper                              # WSL：空
+powershell.exe -NoProfile -Command "git config --get credential.helper"
+# Windows：!"D:/Tools/PortableGit/mingw64/bin/git-credential-manager.exe"
+```
+
+两侧结果不同，正是同一台机器上「Windows git 能推、WSL git 不能推」的原因。
 
 **处理**：
 
@@ -229,8 +237,8 @@ gh run list --branch main --limit 1 --json databaseId
 
 别用 `sleep` 轮询，用上面的 `gh run watch <id> --exit-status`。
 
-**还有一个坑**：`gh run watch` 要等到 CI 跑完，而这套 CI 要 7~9 分钟——**可能超过单次
-命令的时长上限被中止**。别把「命令被中止」误读成「CI 卡住」：用有界等待，中止后用
+**还有一个坑**：`gh run watch` 要等到 CI 跑完，而这套 CI 实测 6.5~8.7 分钟——**可能超过
+单次命令的时长上限被中止**。别把「命令被中止」误读成「CI 卡住」：用有界等待，中止后用
 `gh run view` 查真实状态，不要再开一个 watch。
 
 ```bash
@@ -246,7 +254,7 @@ gh run view <id> --json status,conclusion        # 查状态用这条
 **根因**：编辑工具的待匹配文本与原文**不是逐字符一致**（典型是把全角 `：` 写成了
 半角 `:`），工具仍报告替换成功，但实际按自己的规范化重写了整行——把行内所有
 全角 `，`/`：`/（）`/`——` 都换成了半角。`FRONTEND_BACKEND_CONTRACT.md` 里有
-2000+ 字的长条目，中招代价很大。
+近 1900 字符的长条目（实测最长行 1869 字符、全文件 2 行超过 1000 字符），中招代价很大。
 
 **处理**：
 
@@ -387,9 +395,10 @@ corepack pnpm check:thumbnail-protocol -- --probe <pkg> <variant> <hash>
   $env:HMM_SANDBOX_DATA_DIR = "$env:APPDATA\dev.helsincy.modmanager\game"
   pnpm.cmd tauri:dev
   ```
-- **判断当前沙箱根只能反推**：Windows 读不到 `hmm-tauri` 进程的环境变量
-  （`StartInfo.EnvironmentVariables` 报「无法对 Null 数组进行索引」）。
-  看哪个目录里的 `.hmm-sandbox.json` 的 mtime 与最后一次启动吻合，
+- **判断当前沙箱根只能反推**。别试 `Get-Process hmm-tauri` 的
+  `StartInfo.EnvironmentVariables`：实测它返回 63 个变量且**不含** `HMM_SANDBOX_DATA_DIR`
+  ——.NET 只对由自己启动的进程填充 `StartInfo`，拿它判断沙箱根会得出错误结论。
+  改用两条证据：看哪个目录里的 `.hmm-sandbox.json` 的 mtime 与最后一次启动吻合，
   配合 `logs/app/app-*.log` 里 `application.started` 的时间戳确认是否重启过。
 - 验收前先看二进制新鲜度：`target/debug/hmm-tauri.exe` 的 mtime 应**不早于**最后一个提交。
 - **跑完控制组必须把沙箱根换回来**，否则之后每次安装都被拒，看起来像新 bug。
