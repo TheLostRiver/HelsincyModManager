@@ -197,8 +197,9 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
   所以「推送失败了吗」要用 `git ls-remote` 复核，**不要靠重试判断**（网络层报错
   不代表服务端没收到，可能已写完才断开）。
 - 想在 WSL 里直接用 `gh`，调 Windows 版：
-  `"/mnt/c/Program Files/GitHub CLI/gh.exe"`。注意 `WindowsApps\gh.exe` 是 0 字节的
-  App Execution Alias，WSL 执行不了。
+  `"/mnt/c/Program Files/GitHub CLI/gh.exe"`。`WindowsApps\gh.exe` 不要碰：它是
+  App Execution Alias，不是普通文件——WSL 的目录列表里看得见，但访问与执行都报
+  `No such file or directory`（PowerShell 里 `Test-Path` 同样返回 False）。
 
 ### 1.8 gh run watch 退出码是 0 但 CI 还在跑
 
@@ -226,7 +227,16 @@ PR 全绿不等于合并后 main 全绿——收尾要等后者：
 gh run list --branch main --limit 1 --json databaseId
 ```
 
-别用 `sleep` 轮询，直接 `gh run watch <id> --exit-status`（本节前面那句）。
+别用 `sleep` 轮询，用上面的 `gh run watch <id> --exit-status`。
+
+**还有一个坑**：`gh run watch` 要等到 CI 跑完，而这套 CI 要 7~9 分钟——**可能超过单次
+命令的时长上限被中止**。别把「命令被中止」误读成「CI 卡住」：用有界等待，中止后用
+`gh run view` 查真实状态，不要再开一个 watch。
+
+```bash
+timeout 230 gh run watch <id> --exit-status      # 有界等待
+gh run view <id> --json status,conclusion        # 查状态用这条
+```
 
 ### 1.9 只改一句话 diff 却变成整行重写
 
@@ -354,8 +364,11 @@ corepack pnpm check:thumbnail-protocol -- --probe <pkg> <variant> <hash>
 
 **症状**（两种，都容易误判成代码问题）：
 
-1. **任何安装都失败**，任务日志停在 `preflight`：
-   `install_failed:write_safety_rejected` / `install_reinstall_failed:write_safety_rejected`。
+1. **任何安装都失败**，errorCode 为 `install_failed:write_safety_rejected`
+   （重装任务则是 `install_reinstall_failed:write_safety_rejected`）。
+   注意**普通安装没有 preflight 阶段**：它会在 `install.plan.building` 之后直接
+   `install.failed`——`install.commit.processing` 只在准入通过的分支里发，所以被拒时
+   日志里根本看不到它。`install.reinstall.preflight.processing` 是重装任务自己的阶段。
 2. **刚合入的修复在真机上「没生效」**，行为与合并前一样。
 
 **根因**：
@@ -364,7 +377,7 @@ corepack pnpm check:thumbnail-protocol -- --probe <pkg> <variant> <hash>
    上次跑控制组验收后忘了换回来。方案 b 只校验游戏根，游戏根不在沙箱根内就会被拒，
    **这是正确行为，不是 bug**。
 2. `target/debug/hmm-tauri.exe` 是 cargo 产物。不重编就重启，测的是旧行为
-   （#284 验收时该产物比合并提交早了近 5 小时）。
+   （#284 验收时该产物 mtime 为 08-30 21:41，而合并提交是 08-31 16:55，差约 19 小时）。
 
 **处理**：
 
@@ -482,8 +495,10 @@ assert.ok(Object.keys(dict).length >= 8);
 ```
 
 真实风险是「某个**具体**的 key 消失」，而总数从 12 掉到 11 仍然满足 `>= 8`。
-（本次实测：12 个文案 key 里有 5 个删掉后 565 条测试零失败，其中包括 #285 专门
-为「装了但没装上」写的 `empty_plan`。）
+（本次排查：12 个文案 key 里有 5 个**没有任何用例断言**。其中 `empty_plan` 是实测的——
+删掉它之后 564 条测试零失败，而它正是 #285 专门为「装了但没装上」写的。另外 4 个
+`lock` / `complete` / `recovery_pending` / `recovery_unavailable` 是 grep 确认无断言引用，
+**未逐个实测**，属同等风险。）
 
 **处理**：
 
