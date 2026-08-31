@@ -373,6 +373,19 @@
   border-left: 3px solid var(--color-warning-dot);
 }
 
+/*
+ * 「上次检查失败」的说明。刻意比状态行更轻（更小、更淡）：
+ * 它是附注而不是告警——失败仍然静默，只是不能让旧结论冒充这次复查的结果。
+ */
+.about-page__update-stale {
+  margin: 4px 0 0;
+  padding-left: 0;
+  color: var(--color-text-muted);
+  font-size: 0.86em;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
 .about-page__auto-check {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

@@ -8,8 +8,9 @@ test("an available update carries the version to display", () => {
     projectUpdateCheckView({
       checking: false,
       status: { status: "update_available", currentVersion: "0.1.0-alpha.0", latestVersion: "v0.2.0" },
+      attemptFailed: false,
     }),
-    { kind: "update_available", version: "v0.2.0" },
+    { kind: "update_available", version: "v0.2.0", stale: false },
   );
 });
 
@@ -19,6 +20,7 @@ test("update_available without a version stays silent instead of showing a blank
     projectUpdateCheckView({
       checking: false,
       status: { status: "update_available", currentVersion: "0.1.0", latestVersion: null },
+      attemptFailed: false,
     }),
     { kind: "unknown" },
   );
@@ -29,8 +31,9 @@ test("up to date is reported as such", () => {
     projectUpdateCheckView({
       checking: false,
       status: { status: "up_to_date", currentVersion: "0.1.0", latestVersion: null },
+      attemptFailed: false,
     }),
-    { kind: "up_to_date" },
+    { kind: "up_to_date", stale: false },
   );
 });
 
@@ -43,7 +46,7 @@ test("failures and unknown statuses render nothing", () => {
     { status: "something_new", currentVersion: "0.1.0", latestVersion: null },
   ]) {
     assert.deepEqual(
-      projectUpdateCheckView({ checking: false, status }),
+      projectUpdateCheckView({ checking: false, status, attemptFailed: false }),
       { kind: "unknown" },
       `${JSON.stringify(status)} 应静默`,
     );
@@ -56,7 +59,41 @@ test("checking wins over a stale result", () => {
     projectUpdateCheckView({
       checking: true,
       status: { status: "up_to_date", currentVersion: "0.1.0", latestVersion: null },
+      attemptFailed: true,
     }),
     { kind: "checking" },
+  );
+});
+
+test("a failed re-check keeps the previous result but marks it stale", () => {
+  // 用户点了「检查更新」后断网：旧的「已是最新版本」不能假装是这次复查的结论，
+  // 否则用户会以为了解到最新情况——那正是本功能要防的「有新版本却以为没有」。
+  assert.deepEqual(
+    projectUpdateCheckView({
+      checking: false,
+      status: { status: "up_to_date", currentVersion: "0.1.0", latestVersion: null },
+      attemptFailed: true,
+    }),
+    { kind: "up_to_date", stale: true },
+  );
+
+  assert.deepEqual(
+    projectUpdateCheckView({
+      checking: false,
+      status: { status: "update_available", currentVersion: "0.1.0", latestVersion: "v0.2.0" },
+      attemptFailed: true,
+    }),
+    { kind: "update_available", version: "v0.2.0", stale: true },
+  );
+});
+
+test("a successful re-check clears the stale mark", () => {
+  assert.deepEqual(
+    projectUpdateCheckView({
+      checking: false,
+      status: { status: "up_to_date", currentVersion: "0.1.0", latestVersion: null },
+      attemptFailed: false,
+    }),
+    { kind: "up_to_date", stale: false },
   );
 });

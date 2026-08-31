@@ -10,6 +10,13 @@ export type UpdateCheckController = {
   checking: boolean;
   /** 后端返回的事实；`null` 表示没有结论（非 Tauri 环境或未到查询时机）。 */
   status: AppUpdateStatusDto | null;
+  /**
+   * 最近一次查询是否失败。
+   *
+   * 只在**手里还有旧结论**时才有意义：此时仍展示旧结论，但必须同时说明
+   * 「上次检查失败」——否则用户点了「检查更新」之后会以为复查通过了。
+   */
+  attemptFailed: boolean;
   autoCheckEnabled: boolean;
   setAutoCheckEnabled: (enabled: boolean) => void;
   /** 手动检查一次，忽略 24 小时节流。 */
@@ -28,6 +35,7 @@ export function useUpdateCheck(): UpdateCheckController {
   const [preference, setPreference] = useState<UpdateCheckPreference>(readUpdateCheckPreference);
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<AppUpdateStatusDto | null>(null);
+  const [attemptFailed, setAttemptFailed] = useState(false);
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
 
@@ -45,9 +53,12 @@ export function useUpdateCheck(): UpdateCheckController {
       }
       setChecking(false);
       if (result === null) {
-        // 没有结论就什么都别显示——断网、超时都是常态，不打扰用户。
+        // 没有结论：保留可能已有的旧结论（它曾是真的），但标记为「上次检查失败」，
+        // 由界面一并说明。不弹错误、不打扰——失败本身仍然静默。
+        setAttemptFailed(true);
         return;
       }
+      setAttemptFailed(false);
       setStatus(result);
       setPreference((current) => {
         const next: UpdateCheckPreference = { ...current, lastCheckedAt: Date.now() };
@@ -78,6 +89,7 @@ export function useUpdateCheck(): UpdateCheckController {
   return {
     checking,
     status,
+    attemptFailed,
     autoCheckEnabled: preference.autoCheckEnabled,
     setAutoCheckEnabled,
     refresh: runCheck,
