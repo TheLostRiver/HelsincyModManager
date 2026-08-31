@@ -47,7 +47,10 @@ export type ExternalInstallStateSummary = {
   files: ExternalInstallFileFact[];
 };
 
-export type ModViewMode = "classic" | "grid" | "list" | "tech";
+// 复用 `ModLibraryPage` 里已有的定义，不另立一份——否则加视图模式时这里会静默漂移。
+// 用 `import type`：node 的 type stripping 会在运行时擦掉它，因此从 .tsx 导入也不会
+// 影响本模块被 node --test 直接加载（已用探针实测确认）。
+import type { ModViewMode } from "./ModLibraryPage";
 
 export type StatusBadgeTier = "full" | "compact" | "minimal";
 
@@ -95,9 +98,11 @@ export type ExternalStatusBadge = {
   detail: string;
   tier: StatusBadgeTier;
   case: ExternalStatusCase;
-  /** 是否为外部来源（不是 HMM 装的）。 */
-  externalOrigin: boolean;
 };
+
+// 「是否外部来源」**不进**这个结构：本模块只在外部 MOD 上被调用，
+// 把它做成字段就会变成恒为 true 的冗余事实，还暗示它可能是 false。
+// 需要展示「外部」标记时直接用 `copy.externalOrigin`（见 externalStatusAriaLabel）。
 
 /**
  * 视图 → 档位。
@@ -169,13 +174,7 @@ export function projectExternalStatusBadge(
   const text = badgeText(badgeCase, tier, numbers, copy);
   const detail = badgeText(badgeCase, "full", numbers, copy);
 
-  return {
-    text,
-    detail,
-    tier,
-    case: badgeCase,
-    externalOrigin: true,
-  };
+  return { text, detail, tier, case: badgeCase };
 }
 
 function badgeText(
