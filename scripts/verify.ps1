@@ -60,6 +60,18 @@ try {
         }
     }
 
+    # 再跑一遍 CI 用的**同一个**策略实现。
+    #
+    # 上面的 PowerShell 检查器与 CI（Linux，走 `scripts/check-policy.mjs`）是两套
+    # 独立实现。它们今天对同一问题给出同样的结论，但没有任何机制保证以后不漂移；
+    # 一旦漂移，就会出现「本地全过、CI 红」。多跑这一遍（几秒钟）换来的是
+    # **本地与 CI 判定完全一致**，而上面那组 ps1 脚本仍然被使用、不至于烂掉。
+    Write-Host "Running scripts/check-policy.mjs --scope verify (the implementation CI uses) ..."
+    node scripts/check-policy.mjs --scope verify
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     if (Test-Path -LiteralPath (Join-Path $repoRoot "src-tauri/tauri.conf.json")) {
         Write-Host "Checking Tauri icon assets..."
         Assert-RequiredFile -RelativePath "src-tauri/icons/icon.ico"
