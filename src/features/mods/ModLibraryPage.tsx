@@ -256,6 +256,9 @@ function installPlanPreviewErrorMessage(
     case "install_planning_imported_mod_sandbox_unavailable":
     case "install_planning_imported_mod_file_scan_unavailable":
       return planPreview.archiveUnavailable;
+    // #284：合集包要让玩家知道该怎么做（拆分后分别导入），不能报成「读不出来」。
+    case "install_planning_imported_mod_ambiguous_content_root":
+      return planPreview.ambiguousContentRoot;
     case "install_planning_game_adapter_not_found":
     case "game_id_invalid":
       return planPreview.unsupportedGame;

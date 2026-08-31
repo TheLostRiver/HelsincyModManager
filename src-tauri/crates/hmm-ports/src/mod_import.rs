@@ -100,11 +100,60 @@ pub struct ModPackageInstallFileScanRequest<'a> {
     pub sandbox_root: &'a Path,
 }
 
+/// 扫描安装文件失败的原因。
+///
+/// 刻意做成枚举而不是 `anyhow::Error`：调用方需要**区分**原因，才能把
+/// 「包内有多个 nativePC」这类可操作的失败如实告诉玩家，而不是笼统地
+/// 报一句「无法读取导入文件」（#284 review 发现的 R1）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModPackageInstallFileScanError {
+    /// 沙箱无法读取（IO 失败、路径不是目录等）。
+    Unavailable,
+    /// 沙箱里出现不受支持的条目，例如符号链接或目录联接。
+    UnsupportedEntry,
+    /// 目录层级超过扫描深度上限。
+    DepthLimitExceeded,
+    /// 包内有多个 `nativePC`（合集包）。
+    ///
+    /// 这不是「坏包」，而是**需要玩家自己做决定**——静默挑一个会写入他没预期的
+    /// 文件。调用方应当把它呈现成可操作的提示，而不是当成错误。
+    AmbiguousContentRoot,
+}
+
+impl std::fmt::Display for ModPackageInstallFileScanError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Unavailable => "imported mod sandbox files are unavailable",
+            Self::UnsupportedEntry => "imported mod sandbox contains an unsupported entry",
+            Self::DepthLimitExceeded => {
+                "imported mod sandbox exceeds the install file scan depth limit"
+            }
+            Self::AmbiguousContentRoot => {
+                "imported mod package contains more than one nativePC directory"
+            }
+        })
+    }
+}
+
+impl std::error::Error for ModPackageInstallFileScanError {}
+
+impl ModPackageInstallFileScanError {
+    /// 稳定错误码，供审计与前端取词使用；不含路径等敏感信息。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Unavailable => "imported_mod_file_scan_unavailable",
+            Self::UnsupportedEntry => "imported_mod_file_scan_unsupported_entry",
+            Self::DepthLimitExceeded => "imported_mod_file_scan_depth_limit_exceeded",
+            Self::AmbiguousContentRoot => "imported_mod_file_scan_ambiguous_content_root",
+        }
+    }
+}
+
 pub trait ModPackageInstallFileScanner: Send + Sync {
     fn scan_install_files(
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
-    ) -> Result<Vec<ModPackageInstallFile>>;
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError>;
 }
 
 pub struct ModPackageInstallFileReadRequest<'a> {

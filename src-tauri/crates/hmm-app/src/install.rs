@@ -8,8 +8,8 @@ use hmm_core::{
 use hmm_ports::{
     GameAdapter, GameRunningDetector, GameRunningStatus, InstallBackupStore, InstallGameFileSystem,
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanRequest,
-    ModPackageInstallFileScanner,
+    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileScanError,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -158,6 +158,11 @@ pub enum InstallPlanningError {
     ImportedModSandboxUnavailable,
     #[error("failed to scan imported mod files")]
     ImportedModFileScanUnavailable,
+    // #284：多个 `nativePC` 不是坏包，而是需要玩家自己决定装哪个。它必须从
+    // 笼统的「扫描失败」里分出来——否则玩家看到的是「无法读取导入文件」，
+    // 会以为文件损坏（#284 review 的 R1）。
+    #[error("imported mod package contains more than one nativePC directory")]
+    ImportedModAmbiguousContentRoot,
 }
 
 #[derive(Clone)]
@@ -1543,7 +1548,13 @@ impl InstallPlanningService {
                 package_id,
                 sandbox_root: &sandbox_root,
             })
-            .map_err(|_| InstallPlanningError::ImportedModFileScanUnavailable)?;
+            .map_err(|error| match error {
+                // 合集包：需要玩家自己决定，不能混在「文件读不出来」里。
+                ModPackageInstallFileScanError::AmbiguousContentRoot => {
+                    InstallPlanningError::ImportedModAmbiguousContentRoot
+                }
+                _ => InstallPlanningError::ImportedModFileScanUnavailable,
+            })?;
         let allowed_target_roots = adapter.allowed_install_roots();
 
         self.build_plan(BuildInstallPlanRequest {

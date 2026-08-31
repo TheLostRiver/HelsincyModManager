@@ -1,3 +1,4 @@
+use crate::content_root::resolve_content_root;
 use crate::controlled_fs::{
     ensure_regular_file_metadata, open_existing_directory_chain, open_existing_directory_nofollow,
     open_regular_file_nofollow,
@@ -5,7 +6,7 @@ use crate::controlled_fs::{
 use anyhow::{Context, Result};
 use hmm_ports::{
     ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use std::fs;
 use std::io::Read;
@@ -19,9 +20,30 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
     fn scan_install_files(
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
-    ) -> Result<Vec<ModPackageInstallFile>> {
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError> {
+        // #284：第三方压缩包普遍在 `nativePC` 外套一层甚至多层包装目录，而安装
+        // 路径过滤要求目标路径以 `nativePC` 打头——若仍以沙箱根为基准算路径，
+        // 整包都会被过滤掉，装成一个空计划（#285）。
+        //
+        // 因此先解析出真正的**内容根**，再据此计算目标路径。这里与预览图扫描
+        // 共用 `resolve_content_root`，保证两边对「内容根在哪」判断一致，
+        // 不会出现「图能显示、却装不上」。
+        let resolution = resolve_content_root(request.sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let Some(content_root) = resolution.install_root() else {
+            // 多个 nativePC 不是「坏包」，而是需要玩家自己决定。返回枚举而不是
+            // 笼统错误，好让上层把它呈现成可操作的提示（#284 review 的 R1）。
+            return Err(ModPackageInstallFileScanError::AmbiguousContentRoot);
+        };
+
         let mut files = Vec::new();
-        collect_sandbox_install_files(request.sandbox_root, request.sandbox_root, 0, &mut files)?;
+        collect_sandbox_install_files(
+            request.sandbox_root,
+            content_root,
+            content_root,
+            0,
+            &mut files,
+        )?;
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
     }
@@ -90,30 +112,42 @@ impl ModPackageInstallFileReader for SandboxModPackageInstallFileScanner {
     }
 }
 
+/// 收集可安装文件。
+///
+/// 两个路径字段的基准**不同**，这不是笔误：
+///
+/// - `package_file_id` 相对**沙箱根**——读取链路（`install_commit`、
+///   `staging`、`replacement`）都以沙箱根为基准解析它，改了就读不到文件。
+/// - `target_path` 相对**内容根**（`nativePC` 的父目录）——安装路径过滤要求
+///   它以 `nativePC` 打头。
+///
+/// 内容根为沙箱根时两者相同（无包装目录的常规包），这正是改动前的行为。
 fn collect_sandbox_install_files(
     sandbox_root: &Path,
+    content_root: &Path,
     directory: &Path,
     depth: usize,
     files: &mut Vec<ModPackageInstallFile>,
-) -> Result<()> {
+) -> Result<(), ModPackageInstallFileScanError> {
     if depth > MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH {
-        anyhow::bail!("imported mod sandbox exceeds install file scan depth limit");
+        return Err(ModPackageInstallFileScanError::DepthLimitExceeded);
     }
 
-    let entries = fs::read_dir(directory).context("failed to read imported mod sandbox")?;
+    let entries =
+        fs::read_dir(directory).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
     for entry in entries {
-        let entry = entry.context("failed to read imported mod sandbox entry")?;
+        let entry = entry.map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
         let path = entry.path();
         let metadata =
-            fs::symlink_metadata(&path).context("failed to inspect imported mod sandbox entry")?;
+            fs::symlink_metadata(&path).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
 
         if metadata.file_type().is_symlink() {
-            anyhow::bail!("imported mod sandbox contains an unsupported link entry");
+            return Err(ModPackageInstallFileScanError::UnsupportedEntry);
         }
 
         if metadata.is_dir() {
-            collect_sandbox_install_files(sandbox_root, &path, depth + 1, files)?;
+            collect_sandbox_install_files(sandbox_root, content_root, &path, depth + 1, files)?;
             continue;
         }
 
@@ -121,12 +155,23 @@ fn collect_sandbox_install_files(
             continue;
         }
 
-        let relative_path = path
+        // 下面两处 strip_prefix 与路径规范化在正常流程下不会失败（path 就是从
+        // 对应根遍历出来的），保留判定只是防御性：真失败时统一归为 Unavailable，
+        // 不把内部路径细节往外带。
+        let package_relative = path
             .strip_prefix(sandbox_root)
-            .context("imported mod sandbox entry escaped its root")?;
-        let target_path = sandbox_install_relative_path(relative_path)?;
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let package_file_id = sandbox_install_relative_path(package_relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
+        let content_relative = path
+            .strip_prefix(content_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let target_path = sandbox_install_relative_path(content_relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
         files.push(ModPackageInstallFile {
-            package_file_id: target_path.clone(),
+            package_file_id,
             target_path,
         });
     }
@@ -193,6 +238,163 @@ mod tests {
         );
     }
 
+    // #284：zip 里套一层包装目录是最常见的第三方形态（`黑骑士大剑/nativePC/...`）。
+    // 修复前 target_path 会带上包装层，被安装路径过滤整个丢弃，装成空计划。
+    #[test]
+    fn sandbox_install_file_scanner_strips_a_single_wrapper_directory() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("黑骑士大剑/nativePC/models"))
+            .expect("create fixture");
+        fs::write(
+            sandbox_root.join("黑骑士大剑/nativePC/models/player.mod3"),
+            b"model",
+        )
+        .expect("write fixture");
+
+        let files = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("scan sandbox files");
+
+        assert_eq!(
+            files,
+            vec![ModPackageInstallFile {
+                // package_file_id 相对**沙箱根**：读取链路靠它定位文件。
+                package_file_id: "黑骑士大剑/nativePC/models/player.mod3".to_owned(),
+                // target_path 相对**内容根**：以 nativePC 打头，能通过安装过滤。
+                target_path: "nativePC/models/player.mod3".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn sandbox_install_file_scanner_strips_two_wrapper_directories() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("outer/inner/nativePC/models")).expect("create");
+        fs::write(
+            sandbox_root.join("outer/inner/nativePC/models/player.mod3"),
+            b"model",
+        )
+        .expect("write fixture");
+
+        let files = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("scan sandbox files");
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].target_path, "nativePC/models/player.mod3");
+        assert_eq!(
+            files[0].package_file_id,
+            "outer/inner/nativePC/models/player.mod3"
+        );
+    }
+
+    // 内容根（nativePC 的父目录）**之外**的文件不属于这个 MOD，不该被扫描进来。
+    //
+    // 注意区分：内容根之内的同级说明文件（如 wrapper/说明.txt）**会**被扫到，
+    // 但它的 target_path 不以 nativePC 打头，随后由安装路径过滤丢弃——
+    // 那是下一道工序的职责，扫描阶段不越权删。
+    #[test]
+    fn sandbox_install_file_scanner_ignores_files_outside_the_content_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("wrapper/nativePC/models")).expect("create fixture");
+        fs::write(
+            sandbox_root.join("wrapper/nativePC/models/player.mod3"),
+            b"model",
+        )
+        .expect("write fixture");
+        fs::write(sandbox_root.join("外层说明.txt"), b"outside").expect("write outside");
+
+        let files = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("scan sandbox files");
+
+        assert_eq!(files.len(), 1, "内容根之外的文件不应进入扫描结果");
+        assert_eq!(files[0].target_path, "nativePC/models/player.mod3");
+        assert_eq!(
+            files[0].package_file_id,
+            "wrapper/nativePC/models/player.mod3"
+        );
+    }
+
+    // 嵌套的 `nativePC`（`sandbox/nativePC/nativePC/...`）：取**最浅**的那个，
+    // 内容根 = sandbox，且不深入其内部——里面不可能有「更该被当作内容根」的层级。
+    #[test]
+    fn sandbox_install_file_scanner_prefers_the_shallowest_native_pc() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/nativePC/models")).expect("create fixture");
+        fs::write(
+            sandbox_root.join("nativePC/nativePC/models/player.mod3"),
+            b"model",
+        )
+        .expect("write fixture");
+
+        let files = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("scan sandbox files");
+
+        // 内容根 = sandbox，因此 target_path 从最外层 nativePC 算起。
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].target_path, "nativePC/nativePC/models/player.mod3");
+    }
+
+    // 「根级 nativePC + 包装目录里还有一个」= 两个 nativePC，必须拒绝。
+    #[test]
+    fn sandbox_install_file_scanner_refuses_a_root_native_pc_alongside_a_wrapped_one() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/models")).expect("create fixture");
+        fs::create_dir_all(sandbox_root.join("wrapper/nativePC/models")).expect("create fixture");
+        fs::write(sandbox_root.join("nativePC/models/a.mod3"), b"a").expect("write a");
+        fs::write(sandbox_root.join("wrapper/nativePC/models/b.mod3"), b"b").expect("write b");
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("two nativePC directories must not be guessed");
+
+        assert_eq!(error, ModPackageInstallFileScanError::AmbiguousContentRoot);
+    }
+
+    // 合集包：不替用户挑一个——静默合并会写入玩家没预期的文件。
+    #[test]
+    fn sandbox_install_file_scanner_refuses_several_native_pc_directories() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("mod-a/nativePC/models")).expect("create fixture");
+        fs::create_dir_all(sandbox_root.join("mod-b/nativePC/models")).expect("create fixture");
+        fs::write(sandbox_root.join("mod-a/nativePC/models/a.mod3"), b"a").expect("write a");
+        fs::write(sandbox_root.join("mod-b/nativePC/models/b.mod3"), b"b").expect("write b");
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("several nativePC directories must not be guessed");
+
+        // 用枚举而非字符串匹配——这正是 #284 R1 想要的：原因要能被上层**区分**，
+        // 而不是混在笼统的「扫描失败」里。
+        assert_eq!(error, ModPackageInstallFileScanError::AmbiguousContentRoot);
+    }
+
     #[test]
     fn sandbox_install_file_scanner_rejects_excessive_directory_depth() {
         let temp = tempfile::tempdir().expect("temp dir");
@@ -212,7 +414,7 @@ mod tests {
             })
             .expect_err("excessive depth should be rejected");
 
-        assert!(error.to_string().contains("depth"));
+        assert_eq!(error, ModPackageInstallFileScanError::DepthLimitExceeded);
     }
 
     #[test]
@@ -300,10 +502,12 @@ mod tests {
             .expect_err("reader must not follow a junction");
 
         fs::remove_dir(&junction_path).expect("remove junction");
-        assert!(
-            error.to_string().contains("unsupported link") || error.to_string().contains("reparse"),
-            "unexpected error: {error}"
+        assert_eq!(
+            error,
+            ModPackageInstallFileScanError::UnsupportedEntry,
+            "junction must be classified as an unsupported entry"
         );
+        // 读取链路仍走 anyhow（它不需要可判定的分类），这里保持字符串匹配。
         assert!(
             read_error.to_string().contains("directory")
                 || read_error.to_string().contains("reparse")
