@@ -53,8 +53,9 @@ pub use external_import::{
     EXTERNAL_IMPORT_SELECTION_MUTATION_MAX_ITEMS,
 };
 pub use external_install_state::{
-    classify_external_file, summarize_external_install_state, ExternalFileObservation,
-    ExternalFileState, ExternalInstallState, ExternalInstallStateSummary, ExternalTargetPresence,
+    classify_external_file, installed_file_summary, summarize_external_install_state,
+    ExternalFileObservation, ExternalFileState, ExternalInstallState, ExternalInstallStateSummary,
+    ExternalTargetPresence,
 };
 pub use game::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
