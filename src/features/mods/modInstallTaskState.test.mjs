@@ -120,6 +120,27 @@ test("managed install failures only expose mapped stable messages", () => {
   assert.equal(getManagedInstallTaskFailureMessage("uninstall", null, zhInstallTask), "卸载失败");
 });
 
+test("ambiguous content root failure is not flattened into the generic planning message", () => {
+  // #284 R1 给合集包单独划了错误码，但安装任务层原本用 `Err(_)` 把规划失败一律压成
+  // `planning`，玩家走右键菜单直接安装时只会看到「无法生成安装计划」，会以为包坏了。
+  // 这条用例锁住「新 phase 有自己的文案」这一事实。
+  assert.equal(
+    getManagedInstallTaskFailureMessage(
+      "install",
+      "install_failed:ambiguous_content_root",
+      zhInstallTask,
+    ),
+    "包内有多个 nativePC 目录，请拆分后分别导入",
+  );
+
+  // 防退化：分类要有区分度。若后端把所有规划失败都升级成新码，或前端把它写回
+  // planning，这条就会红——那说明分类等于没做。
+  assert.equal(
+    getManagedInstallTaskFailureMessage("install", "install_failed:planning", zhInstallTask),
+    "无法生成安装计划",
+  );
+});
+
 test("install failure messages keep the same keys across every locale", () => {
   // #285 加 `empty_plan` 时发现的缺口：`installFailures` / `uninstallFailures` 的类型是
   // `Record<string, string>`，于是 `satisfies LocaleDictionary<>` **无法**保证三语 key
