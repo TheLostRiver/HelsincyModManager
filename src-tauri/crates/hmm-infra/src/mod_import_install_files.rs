@@ -328,6 +328,51 @@ mod tests {
         );
     }
 
+    // 嵌套的 `nativePC`（`sandbox/nativePC/nativePC/...`）：取**最浅**的那个，
+    // 内容根 = sandbox，且不深入其内部——里面不可能有「更该被当作内容根」的层级。
+    #[test]
+    fn sandbox_install_file_scanner_prefers_the_shallowest_native_pc() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/nativePC/models")).expect("create fixture");
+        fs::write(
+            sandbox_root.join("nativePC/nativePC/models/player.mod3"),
+            b"model",
+        )
+        .expect("write fixture");
+
+        let files = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("scan sandbox files");
+
+        // 内容根 = sandbox，因此 target_path 从最外层 nativePC 算起。
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].target_path, "nativePC/nativePC/models/player.mod3");
+    }
+
+    // 「根级 nativePC + 包装目录里还有一个」= 两个 nativePC，必须拒绝。
+    #[test]
+    fn sandbox_install_file_scanner_refuses_a_root_native_pc_alongside_a_wrapped_one() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/models")).expect("create fixture");
+        fs::create_dir_all(sandbox_root.join("wrapper/nativePC/models")).expect("create fixture");
+        fs::write(sandbox_root.join("nativePC/models/a.mod3"), b"a").expect("write a");
+        fs::write(sandbox_root.join("wrapper/nativePC/models/b.mod3"), b"b").expect("write b");
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("two nativePC directories must not be guessed");
+
+        assert_eq!(error, ModPackageInstallFileScanError::AmbiguousContentRoot);
+    }
+
     // 合集包：不替用户挑一个——静默合并会写入玩家没预期的文件。
     #[test]
     fn sandbox_install_file_scanner_refuses_several_native_pc_directories() {
