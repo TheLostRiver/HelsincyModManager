@@ -162,3 +162,66 @@ test("documents every registered Tauri command in the frontend/backend contract"
     `undocumented registered Tauri commands: ${missingCommands.join(", ")}`,
   );
 });
+
+function extractFunctionBody(source, signature) {
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `missing ${signature}`);
+  const bodyStart = source.indexOf("{", start);
+  assert.notEqual(bodyStart, -1, `missing body for ${signature}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(bodyStart, index + 1);
+      }
+    }
+  }
+  assert.fail(`unbalanced braces for ${signature}`);
+}
+
+function extractMappingValues(body) {
+  return [...body.matchAll(/=>\s*"([a-z_]+)"/g)].map((match) => match[1]);
+}
+
+// 契约里 `install_failed:<phase>` 的枚举会悄悄过期——#284 R5 时代码实际发 15 种、
+// 契约只登记 7 种。根因是 phase 有三个来源：调用点的字面量、
+// `InstallWriteAdmissionError::failure_phase()`，以及
+// `CrossProcessWriteAdmissionError::code()`。后两者**不是调用点字面量**，
+// 只 grep 字面量会漏掉整整一族（那次漏了 4 个 `write_admission_*`）。
+// 这条用例直接从两个映射函数里取值，要求契约逐个登记。
+test("documents every install failure phase produced by the admission layers", () => {
+  const installTaskSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-app/src/install_task.rs"),
+    "utf8",
+  );
+  const writeAdmissionSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-ports/src/write_admission.rs"),
+    "utf8",
+  );
+
+  const phases = [
+    ...extractMappingValues(
+      extractFunctionBody(installTaskSource, "fn failure_phase(&self) -> &'static str"),
+    ),
+    ...extractMappingValues(
+      extractFunctionBody(writeAdmissionSource, "pub const fn code(self) -> &'static str"),
+    ),
+  ];
+
+  assert.ok(phases.length > 0, "expected admission-derived failure phases");
+  assert.ok(
+    phases.includes("write_admission_busy"),
+    "extraction must cover the cross-process admission codes",
+  );
+
+  const undocumented = phases.filter((phase) => !contractSource.includes(phase));
+  assert.deepEqual(
+    undocumented,
+    [],
+    `undocumented install failure phases: ${undocumented.join(", ")}`,
+  );
+});
