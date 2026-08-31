@@ -3,7 +3,7 @@
 新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
 `HANDOFF.md` 需要提交就提交，不需要就删掉。
 
-> 本文件最后更新：2026-08-30 22:10，HEAD = `1af44ab`。
+> 本文件最后更新：2026-08-31 17:40，HEAD = `3b6c80d`。
 > **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
 > 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
 > 照旧文档接手会往错误方向做。
@@ -107,12 +107,22 @@ docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先
   偏好落 localStorage、工作态不落，是既有区分（全页只有 `showCardCategoryLabels` 落盘）。
   **别把「切侧边栏丢多选」当 bug 修。**
 
-## 四、当前进度（2026-08-30 22:10，HEAD = `1af44ab`）
+## 四、当前进度（2026-08-31 17:40，HEAD = `3b6c80d`）
 
 最近提交（由新到旧）：
 
 | commit | 说明 |
 |---|---|
+| `3b6c80d` | Merge PR #291（fix/wrapper-directory，**#284**） |
+| `d75c7de` | test(import) 补内容根测试缺口（嵌套 nativePC 取最浅 / 根级+包装内并存），并记录大小写变体问题 |
+| `121414a` | fix(install) 合集包单独报错，不再混成「无法读取导入文件」（#284 R1） |
+| `d12701f` | fix(import) 解析导入包的「内容根」，支持 `nativePC` 外套包装目录（**#284**） |
+| `954e063` | Merge PR #290（fix/empty-install-plan，**#285**） |
+| `e1b3b35` | fix(install) 采纳 PR #290 评审意见——取消优先、revision 语义不变（#285） |
+| `c506e6f` | fix(install) 空计划必须失败，不能报成「安装成功」（**#285**） |
+| `e81f5f6` | Merge PR #289（docs/sponsor-in-readme） |
+| `bf41cb8` / `2e58a42` | docs README 赞助渠道展示 |
+| `0dcb202` / `e040a7e` | docs 重写交接文档到 1af44ab |
 | `1af44ab` | chore(deps) Cargo.lock 撤掉 hmm-runtime 的 tracing 依赖 |
 | `8851a8d` | fix(runtime) 准入拒绝日志改用安全 app 日志通道（#273 补） |
 | `ef87ac9` | fix(runtime) 沙箱模式下 GUI 安装不再被写入准入结构性拒绝（**#273**） |
@@ -131,11 +141,14 @@ Issue 状态：
 | **282** | **CLOSED** | 根因不是 `useCallback` 漏依赖，而是**名称在载入时就解析成字符串存进 state**（违反 I18N-08）。修法是回到渲染时投影。当前 `pnpm lint` 全项目 **0 error / 0 warning** |
 | **283** | **CLOSED** | 6 项验收全部真机通过。判定「用的是 1024 还是 768」**不能看画质**——1024 是 upscale 出来的（356×768 → 474×1024），要看 URL 的 variant 段 + `naturalWidth` |
 | **273** | **CLOSED** | 方案 b：GUI 准入只校验游戏根，app-data 根豁免。已真机验证 + 控制组 + 日志通道三验 |
+| **284** | **CLOSED** | PR #291 合并（内容根解析 + 合集包单独报错）。**遗留 R4 已单独开 #292**：大小写变体 `NATIVEpc` 认得出内容根却装不上 |
+| **285** | **CLOSED** | PR #290 合并：空计划在 commit 前拦截为 `install_failed:empty_plan` |
+| **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施 |
 | **275** | OPEN | Mod 存储目录可配置。**依赖 #273，现在可以开工**，但「存储目录必须落在沙箱根内」的校验语义要按新准入模型重新确认（app-data 根已豁免） |
 | 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
 | 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
 
-工作区：**干净**（只剩未跟踪的 `HANDOFF.md`）。
+工作区：**干净**（只剩未跟踪的 `HANDOFF.md`）。PR #289 / #290 / #291 的分支本地与远程均已删除。
 
 ## 五、沙箱模式与验收（#273 落地后的新常识）
 
@@ -154,6 +167,14 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   却出现 `sandbox_write_root_rejected` ⇒ 沙箱根不含游戏根。
   配合 `logs/app/` 里 `application.started` 的时间戳可确认是否重启过。
 - **日志只证明「没被拒绝」，文件系统才证明「真写进去了」**——验收要两处都对上。
+- **跑完控制组记得把沙箱根换回来**。控制组（沙箱根不含游戏根，例如 `D:\HMM-sandbox`）
+  跑完若不复原，之后每次安装都会被 `write_safety_rejected` 拒掉，看起来像新 bug。
+  判断当前沙箱根：看哪个目录里有 `.hmm-sandbox.json` 且其 mtime 与最后一次启动吻合
+  （Windows 读不到 `hmm-tauri` 进程的环境变量，`StartInfo.EnvironmentVariables` 会报
+  「无法对 Null 数组进行索引」，所以只能靠 marker + `logs/app/` 的 `application.started`
+  时间戳反推）。
+- **改完代码必须重编再验收**：`target/debug/hmm-tauri.exe` 是 cargo 产物，
+  不重编就重启，测的还是旧行为（`pnpm tauri:dev` 会自动触发 cargo build）。
 
 ## 六、待办（挑一个开工，别一次铺开）
 
@@ -161,12 +182,13 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    app-data 根既已豁免，「存储目录必须落在沙箱根内」的 containment 该怎么算。
 2. **#274 catalog 武器目标别名**——依赖外部数据来源审计，先确认数据源。
 3. **#277 vite 冷启动卡死**——诊断型，复现不稳定，除非频繁打扰否则优先级最低。
-4. 可选的展示优化（非阻塞）：卡片缩略图 `object-fit: cover` +
+4. **#292（#284 的 R4）大小写变体的 `nativePC` 装不上**——已开 issue，三种修法与代价都写在里面，**等维护者拍板取向再动代码**。倾向 C（只把报错说清楚，不动匹配规则）：放宽匹配会让清单同时出现 `nativePC/x` 与 `NATIVEpc/x`，在 NTFS 上指向同一文件，冲突检测会失效；归一化又要改清单事实口径，牵动 #278 的占用判定。带修法进 #292 时，一并补「安装侧大小写混合端到端」用例（现在补会固化现状，故 #291 未补）。
+5. 可选的展示优化（非阻塞）：卡片缩略图 `object-fit: cover` +
    `object-position: center top` 是**设计意图**（出自 `41d38a0` / #57），
    代价是 356×768 这种竖图只显示顶部约 56%。若要改进，DTO 已带 `width`/`height`
    而前端没消费，做「按图片比例自适应」成本最低，不必动后端。
-5. 待确认是否开 issue：安装 `action_count = 0`（空计划）时后端仍报 `completed`，
-   前端无提示，玩家看到的是「装了但没装上」。属于可诊断性缺口。
+6. （原第 5 条已处理）空计划静默成功 → 开成 **#285**，PR #290 已修并关闭；
+   #284 让「该装的能装上」之后，#285 的报错应当只在真的没有可安装文件时出现。
 
 ## 七、行为纪律
 
@@ -183,6 +205,10 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   没红的就是假绿（恒真断言）。2026-08-30 靠这条抓出过自己写的假绿用例
   （「图永不被拖出视口」只断言了右边缘，而往右拖时离开视口的是左边缘）。
   **不要因为「别的红了」就判定整组有效。**
+- **评审里「已知但未修」的缺口必须转成 issue，不能只留在 PR 评论里**——
+  PR 一旦合并归档，评论就再也不会有人看，缺口等于丢失。PR #291 的 R4 就是这样：
+  先记在评论里，合并时才补开 #292。开 issue 时把**可选修法各自代价**一并写进去，
+  让拍板的人不用重读 PR。
 - **关闭 issue 的门槛是验收标准逐条为真，不是「剩下的应该没问题」**。
   验收标准里捆在一起的多个动作（如「双击重置 + Esc + 点背景关闭」）要拆开分别标注，
   #283 就是这么收的尾。
@@ -217,11 +243,16 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   里的图片；`preview.*` 优先级最高，扩展名只认 png/jpg/jpeg/webp。
   （现包内 `readme.txt` 原文：`HMM thumbnail reclaim test package. Used to verify that
   deleting a mod removes sandboxes, thumbnails and catalog entries.`）
-  该包**装不上是正常的**：zip 里套了 `thumb-reclaim-test/` 包装目录，而解包不剥
-  单层包装目录 → 相对路径根不在 `allowed_install_roots`（MHW 只有 `["nativePC"]`）
-  → 全被过滤，审计里是 `action_count: 0` 的**空计划成功**，不是失败。
-  **推论：标准安装要求 zip 根目录下直接就是 `nativePC/`，不能套一层文件夹**——
-  库里现有几个包都套了包装目录，因此只能通过 retarget 装。
+  **#284 之前**该包装不上是「正常」的：zip 里套了 `thumb-reclaim-test/` 包装目录，
+  解包不剥单层包装目录 → 相对路径根不在 `allowed_install_roots`（MHW 只有
+  `["nativePC"]`）→ 全被过滤，审计里是 `action_count: 0` 的空计划。
+
+  **#284（PR #291）之后该包应当能装成功**：导入后点安装 → 任务日志走到
+  `commit.processing → completed`、审计 `action_count=1`、游戏根下真的出现
+  `nativePC/common/hmm_thumb_reclaim_test.bin`。它是 #284 的标准回归包，
+  **装上失败就说明内容根解析退化**。
+  包内多个 `nativePC`（合集包）仍应拒绝，且报「包内有多个 nativePC 目录，
+  请拆分后分别导入」（不再是「无法读取导入文件」）。
 - **判定预览图用哪个变体**：看 URL 的 variant 段 + `naturalWidth`。
   768 → 356×768（65777 B），1024 → 474×1024（98891 B，upscale 出来的）。
   脚本 `tmp/check-preview-1024.mjs`（CDP 连 9223）。
