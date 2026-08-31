@@ -115,6 +115,7 @@ export const modLifecycleCopy = {
         complete: "安装收尾未完成，已重新检查安装状态",
         recovery_pending: "安装被待处理的恢复状态阻断",
         recovery_unavailable: "安装状态暂时无法确认",
+        empty_plan: "包内没有找到可安装的文件，未做任何修改",
       },
       uninstallFailures: {
         lock: "卸载任务暂时无法开始",
@@ -233,6 +234,7 @@ export const modLifecycleCopy = {
         complete: "Install finalization did not complete; install status was re-checked",
         recovery_pending: "Install blocked by a pending recovery state",
         recovery_unavailable: "Install status temporarily unconfirmable",
+        empty_plan: "No installable files were found in the package; nothing was changed",
       },
       uninstallFailures: {
         lock: "The uninstall task cannot start right now",
@@ -351,6 +353,8 @@ export const modLifecycleCopy = {
         complete: "インストールの後処理が完了しなかったため、インストール状態を再確認しました",
         recovery_pending: "処理待ちの復旧状態によりインストールがブロックされました",
         recovery_unavailable: "インストール状態を一時的に確認できません",
+        empty_plan:
+          "パッケージ内にインストール可能なファイルが見つからなかったため、変更は行っていません",
       },
       uninstallFailures: {
         lock: "アンインストールタスクを今は開始できません",

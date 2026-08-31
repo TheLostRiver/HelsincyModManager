@@ -119,3 +119,19 @@ test("managed install failures only expose mapped stable messages", () => {
   assert.equal(getManagedInstallTaskFailureMessage("install", "C:\\Users\\private\\raw-error", zhInstallTask), "安装失败");
   assert.equal(getManagedInstallTaskFailureMessage("uninstall", null, zhInstallTask), "卸载失败");
 });
+
+test("install failure messages keep the same keys across every locale", () => {
+  // #285 加 `empty_plan` 时发现的缺口：`installFailures` / `uninstallFailures` 的类型是
+  // `Record<string, string>`，于是 `satisfies LocaleDictionary<>` **无法**保证三语 key
+  // 集合一致——实测删掉 ja 的 key 后 `tsc --noEmit` 照样通过，i18n 测试也不检查这一层。
+  // 这条用例补上该检查，免得以后加文案时漏掉某个语言。
+  for (const group of ["installFailures", "uninstallFailures"]) {
+    const [zh, en, ja] = ["zh_cn", "en", "ja"].map((locale) =>
+      Object.keys(modLifecycleCopy[locale].installTask[group]).sort(),
+    );
+
+    assert.ok(zh.length > 0, `${group} 至少应有一个 key`);
+    assert.deepEqual(en, zh, `${group}: en 与 zh_cn 的 key 不一致`);
+    assert.deepEqual(ja, zh, `${group}: ja 与 zh_cn 的 key 不一致`);
+  }
+});
