@@ -2,6 +2,7 @@ mod app_version;
 mod batch;
 mod category;
 mod external_import;
+mod external_install_state;
 mod game;
 mod install;
 mod mod_metadata;
@@ -50,6 +51,10 @@ pub use external_import::{
     DEFAULT_EXTERNAL_IMPORT_MATERIALIZATION_MAX_TOTAL_BYTES,
     EXTERNAL_IMPORT_HISTORY_MAX_SCAN_ONLY_BATCHES, EXTERNAL_IMPORT_SELECTION_MAX_ITEMS,
     EXTERNAL_IMPORT_SELECTION_MUTATION_MAX_ITEMS,
+};
+pub use external_install_state::{
+    classify_external_file, summarize_external_install_state, ExternalFileObservation,
+    ExternalFileState, ExternalInstallState, ExternalInstallStateSummary, ExternalTargetPresence,
 };
 pub use game::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
