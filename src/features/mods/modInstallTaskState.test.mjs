@@ -141,6 +141,40 @@ test("ambiguous content root failure is not flattened into the generic planning 
   );
 });
 
+test("admission and prerequisite failure phases have their own messages", () => {
+  // #284 R5 时发现：phase 有 15 种，而 `installFailures` 只有 8 个 key。
+  // 缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，
+  // 于是玩家只看到「安装失败」——后端单测与三语 key 检查都全绿，只有真机才看得见。
+  // 这条用例锁住本次补齐的 4 个 phase。**新增 phase 时请同步在这里登记**，
+  // 否则又会退回到「代码对了、玩家看不懂」。
+  const expected = {
+    prerequisite: "前置环境检查未通过或已变化，安装已阻止，请到「前置环境」重新检查",
+    write_safety_rejected: "当前配置不允许写入该游戏目录，安装已阻止",
+    write_admission_busy: "另一项操作正在使用该游戏目录，请稍后重试",
+    replacement_selection_pending: "替换目标尚未选择完成，请回到「替换目标」面板继续安装",
+  };
+
+  for (const [phase, message] of Object.entries(expected)) {
+    assert.equal(
+      getManagedInstallTaskFailureMessage("install", `install_failed:${phase}`, zhInstallTask),
+      message,
+      `${phase} 没有自己的文案，回落到默认提示了`,
+    );
+    assert.notEqual(
+      message,
+      zhInstallTask.installFailedDefault,
+      `${phase} 的文案不能等于默认失败文案，否则等于没写`,
+    );
+  }
+
+  // 防退化：分组 key 数应当与这里登记的 phase 一并增长。
+  // 若有人加了 phase 却没补文案，这条会红。
+  assert.ok(
+    Object.keys(zhInstallTask.installFailures).length >= Object.keys(expected).length + 4,
+    "installFailures 的 key 不应少于既有 4 条 + 本次补齐的 4 条",
+  );
+});
+
 test("install failure messages keep the same keys across every locale", () => {
   // #285 加 `empty_plan` 时发现的缺口：`installFailures` / `uninstallFailures` 的类型是
   // `Record<string, string>`，于是 `satisfies LocaleDictionary<>` **无法**保证三语 key
