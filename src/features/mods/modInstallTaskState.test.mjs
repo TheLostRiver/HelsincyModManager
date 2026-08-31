@@ -141,6 +141,82 @@ test("ambiguous content root failure is not flattened into the generic planning 
   );
 });
 
+test("admission and prerequisite failure phases have their own messages", () => {
+  // #284 R5 时发现：phase 有 15 种，而 `installFailures` 只有 8 个 key。
+  // 缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，
+  // 于是玩家只看到「安装失败」——后端单测与三语 key 检查都全绿，只有真机才看得见。
+  // 这条用例锁住本次补齐的 4 个 phase。**新增 phase 时请同步在这里登记**，
+  // 否则又会退回到「代码对了、玩家看不懂」。
+  const expected = {
+    prerequisite: "前置环境检查未通过或已变化，安装已阻止，请到「前置环境」重新检查",
+    write_safety_rejected: "当前配置不允许写入该游戏目录，安装已阻止",
+    write_admission_busy: "另一项操作正在使用该游戏目录，请稍后重试",
+    replacement_selection_pending: "替换目标尚未选择完成，请回到「替换目标」面板继续安装",
+  };
+
+  for (const [phase, message] of Object.entries(expected)) {
+    assert.equal(
+      getManagedInstallTaskFailureMessage("install", `install_failed:${phase}`, zhInstallTask),
+      message,
+      `${phase} 没有自己的文案，回落到默认提示了`,
+    );
+    assert.notEqual(
+      message,
+      zhInstallTask.installFailedDefault,
+      `${phase} 的文案不能等于默认失败文案，否则等于没写`,
+    );
+  }
+
+});
+
+// `install_failed:<phase>` 代码实际会发 15 种，其中 12 种有专属文案；
+// 另外 3 个 `write_admission_cancelled` / `_order_violation` / `_unavailable`
+// 是取消与内部不变量，刻意回落到默认文案。
+//
+// 这个集合是**完整清单**而不是抽样：`getManagedInstallTaskFailureMessage` 缺 key 时
+// 会静默回落到 `installFailedDefault`，只验几条挡不住「有人删了某个 key」。
+// （早先版本用 `key 数 >= 8` 这种下限判断，删掉一个 key 照样通过——是条假护栏。）
+// **新增 phase 请先在这里登记，再补三语文案。**
+const requiredInstallFailurePhases = [
+  "planning",
+  "ambiguous_content_root",
+  "empty_plan",
+  "prerequisite",
+  "replacement_selection_pending",
+  "write_safety_rejected",
+  "write_admission_busy",
+  "lock",
+  "commit",
+  "complete",
+  "recovery_pending",
+  "recovery_unavailable",
+];
+
+test("every documented install failure phase has its own message", () => {
+  for (const phase of requiredInstallFailurePhases) {
+    const message = getManagedInstallTaskFailureMessage(
+      "install",
+      `install_failed:${phase}`,
+      zhInstallTask,
+    );
+
+    assert.notEqual(
+      message,
+      zhInstallTask.installFailedDefault,
+      `${phase} 没有专属文案，回落到了默认的「安装失败」`,
+    );
+    // 空串不会被 `?? default` 兜住（它只在 nullish 时回落），所以单独判一次。
+    assert.ok(message.trim().length > 0, `${phase} 的文案是空的`);
+  }
+
+  // 双向对齐：字典里多出未登记的 key、或少了必需 key，都会红。
+  assert.deepEqual(
+    Object.keys(zhInstallTask.installFailures).sort(),
+    [...requiredInstallFailurePhases].sort(),
+    "installFailures 的 key 集合与必需清单不一致（新增文案请同步登记到必需清单）",
+  );
+});
+
 test("install failure messages keep the same keys across every locale", () => {
   // #285 加 `empty_plan` 时发现的缺口：`installFailures` / `uninstallFailures` 的类型是
   // `Record<string, string>`，于是 `satisfies LocaleDictionary<>` **无法**保证三语 key
