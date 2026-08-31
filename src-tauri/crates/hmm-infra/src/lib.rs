@@ -1,6 +1,7 @@
 mod app_log;
 mod app_settings_repository;
 mod audit_log;
+mod content_root;
 mod controlled_fs;
 mod cross_process_write_admission;
 mod debug_log;
@@ -55,6 +56,10 @@ pub use app_log::{
 };
 pub use app_settings_repository::JsonAppSettingsRepository;
 pub use audit_log::{FileSystemAuditLogReader, FileSystemAuditLogWriter};
+pub use content_root::{
+    native_pc_parents, resolve_content_root, ContentRootResolution, MAX_CONTENT_ROOT_SEARCH_DEPTH,
+    NATIVE_PC_DIR_NAME,
+};
 pub use cross_process_write_admission::{
     PlatformCrossProcessWriteAdmission, PlatformCrossProcessWriteAdmissionInitError,
 };
