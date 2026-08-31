@@ -21,6 +21,7 @@
 | `git push` 卡住不动，或报 `could not read Username` | WSL 的 git 没有凭据，在等交互式输入 | [1.7](#17-git-push-卡住不动并报-could-not-read-username) |
 | `gh run watch --exit-status` 退出码是 0，但 CI 其实还没跑完 | `$?` 拿到的是管道里 `tail` 的退出码 | [1.8](#18-gh-run-watch-退出码是-0-但-ci-还在跑) |
 | 只想给文档改一句话，diff 却变成整行重写 | 编辑未逐字符匹配，全角标点被半角化 | [1.9](#19-只改一句话-diff-却变成整行重写) |
+| 本地 `check-policy.ps1` / `verify.ps1` 全过，CI 却红 | 两个入口不是同一套检查，CI 走 `check-policy.mjs` | [2.4](#24-scriptscheck-policyps1-全过ci-却红) |
 | 真机验收时装不上，或刚合入的修复「没生效」 | 沙箱根还停在控制组 / 二进制没重编 | [3.3](#33-真机验收时装不上或修复没生效) |
 | 删掉某个文案 key 后测试照样全绿 | 防退化断言用的是数量下限，永不失败 | [4.6](#46-防退化断言永不失败) |
 | 玩家看到兜底文案，但前端后端测试都全绿 | 错误码与前端文案 key 不对应，缺 key 静默回落 | [4.7](#47-后端错误码与前端文案-key-不对应) |
@@ -306,6 +307,46 @@ if ($LASTEXITCODE -ne 0) {
 
 本仓库曾有三份测试（check-policy 15 条、prepare-windows-sidecars 14 条、
 windows-installer-cleanup-config 7 条）因此休眠，现已在 verify.ps1 登记。
+
+### 2.4 `scripts/check-policy.ps1` 全过，CI 却红
+
+**症状**：本地 `scripts/check-policy.ps1` 输出 `Policy check passed.`，
+`scripts/verify.ps1` 也全过，推送后 CI 的 `Run full verification` 却失败，
+报的常常是 **markdown 链接无效**、前端边界、密钥扫描、文件体积这类内容检查。
+
+**根因**：两个入口**不是同一套检查**。
+
+- `check-policy.ps1`：只查 `policy.json` 里 `requiredFiles` / `caseSensitiveFiles` /
+  `requiredScripts` 的存在性与大小写，外加根目录必须是 `AGENTS.md`。
+  **不做任何内容检查**。
+- `check-policy.mjs --scope verify`：完整策略（markdown 链接、前端边界、密钥扫描、
+  文件体积、禁用文件……）。
+
+而 CI 走 `scripts/verify.sh` → `node scripts/check-policy.mjs --scope verify`，
+本地（Windows，也就是 AGENTS.md 让大家跑的 `verify.ps1`）走的是 `check-policy.ps1`。
+于是「本地 policy 过了」**推不出**「CI 会过」。
+
+本机实测：往 `CHANGELOG.md` 追加一个明显不存在的链接，
+`check-policy.ps1` 仍然输出 `Policy check passed.`，而
+`node scripts/check-policy.mjs --scope verify` 立刻报
+`Markdown link check failed: - CHANGELOG.md contains invalid link: ...`。
+
+**处理**：提交前补跑 CI 真正在跑的那条：
+
+```bash
+node scripts/check-policy.mjs --scope verify
+```
+
+CI 的完整清单（`scripts/verify.sh`）还有两条本地容易漏的，一起跑掉最省事：
+
+```bash
+node --test scripts/verify-entrypoints.test.mjs
+corepack pnpm run build          # verify.ps1 里没有 build
+```
+
+**注意 Markdown 链接的相对路径基准是文件所在目录**：从 `docs/FRONTEND_BACKEND_CONTRACT.md`
+链到 `docs/release/UPDATER_PLAN.md` 要写 `release/UPDATER_PLAN.md`，写成
+`../release/UPDATER_PLAN.md` 会被解析成仓库根的 `release/`，从而报链接无效。
 
 ### 2.3 vite 冷启动白屏
 
