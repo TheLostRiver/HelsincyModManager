@@ -38,6 +38,8 @@ mod state;
 mod task_commands;
 mod task_events;
 mod thumbnail_protocol;
+mod update_commands;
+mod update_dto;
 mod window_lifecycle_commands;
 
 use category_commands::{
@@ -100,6 +102,7 @@ use state::AppState;
 use task_commands::cancel_task;
 use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
+use update_commands::check_app_update;
 use window_lifecycle_commands::{
     exit_app, get_app_exit_guard, hide_main_window_to_tray, register_window_lifecycle,
     ExitAuthorizationStore,
@@ -249,7 +252,8 @@ pub fn run() {
             start_save_restore_task,
             hide_main_window_to_tray,
             get_app_exit_guard,
-            exit_app
+            exit_app,
+            check_app_update
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Helsincy Mod Manager");

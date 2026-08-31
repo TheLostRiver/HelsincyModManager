@@ -345,6 +345,60 @@
   font-size: var(--about-scale-label);
 }
 
+/*
+ * 更新检查结果。三个形态的视觉权重是刻意分层的：
+ * - is-checking / is-current 只是状态说明，用脚注排版，不抢注意力；
+ * - is-available 才是需要用户行动的信息，给它背景与色边。
+ * `unknown` 根本没有对应元素——失败静默，界面上什么都不出现。
+ */
+.about-page__update-status {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-inner);
+  font-size: var(--about-scale-body);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.about-page__update-status.is-checking,
+.about-page__update-status.is-current {
+  padding-left: 0;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.about-page__update-status.is-available {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning-dot);
+}
+
+.about-page__auto-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px 8px;
+  grid-column: 2;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: var(--about-scale-body);
+  cursor: pointer;
+}
+
+.about-page__auto-check > input {
+  grid-row: span 2;
+  align-self: start;
+  margin: 2px 0 0;
+  accent-color: var(--color-accent);
+}
+
+.about-page__auto-check > small {
+  color: var(--color-text-muted);
+  font-size: 0.86em;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
 .about-page__feedback {
   display: flex;
   align-items: center;

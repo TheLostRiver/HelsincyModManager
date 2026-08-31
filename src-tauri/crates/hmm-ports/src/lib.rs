@@ -18,6 +18,7 @@ mod mod_metadata;
 mod preview_image;
 mod profile;
 mod reinstall;
+mod release_update;
 mod replacement;
 mod replacement_selection;
 mod save_backup;
@@ -115,6 +116,7 @@ pub use profile::{
     SystemDirectoryOpener,
 };
 pub use reinstall::{ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore};
+pub use release_update::{LatestReleaseVersionError, LatestReleaseVersionSource};
 pub use replacement::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
     ReplacementAnalysisRequest, ReplacementAsset, ReplacementAssetContentReader,
