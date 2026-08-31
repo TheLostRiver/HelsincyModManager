@@ -599,8 +599,24 @@ impl InstallTaskRunner {
         };
         let preflight = match preflight {
             Ok(preflight) => preflight,
-            Err(_) => {
-                return Err(self.fail_with_audit(task_id, &request, events, observer, "planning", 0))
+            Err(error) => {
+                // #284 R1 已经让「扫描」层把合集包单独报出来，预览安装也能显示正确文案；
+                // 但这里原本是 `Err(_)`，把所有规划失败一律压成通用 `planning`，
+                // 于是走右键菜单直接安装的玩家只会看到「无法生成安装计划」，
+                // 会以为包坏了——与 #285/R1 立的「失败要说清楚」相冲突。
+                //
+                // 和 `empty_plan` 同理：**只**给普通导入安装分类。revision 安装
+                // （retarget / 重装）沿用 `planning`——`reinstall.rs` 已把合集包在
+                // revision 语境下归为候选未就绪，不该被这里抢先改写错误分类。
+                let phase = match error {
+                    InstallPlanningError::ImportedModAmbiguousContentRoot
+                        if revision_id.is_none() =>
+                    {
+                        "ambiguous_content_root"
+                    }
+                    _ => "planning",
+                };
+                return Err(self.fail_with_audit(task_id, &request, events, observer, phase, 0));
             }
         };
         let action_count = preflight.plan.actions.len();
@@ -3348,6 +3364,134 @@ mod tests {
 
         // 走到了 commit，说明没有被 empty_plan 提前拦下。
         assert_eq!(committer.take_profiles().len(), 1);
+    }
+
+    // #284 真机验收发现：合集包走**直接安装**（右键菜单）时，规划错误在这一层被
+    // `Err(_)` 压成通用 `planning`，玩家只看到「无法生成安装计划」，会以为包坏了。
+    // 这个 planner 按需要返回指定规划错误，用于锁住「合集包有独立 phase、
+    // 其他规划失败仍是 planning」这一区分度。
+    struct FailingPlanningPlanner {
+        error: InstallPlanningError,
+    }
+
+    impl ImportedModInstallPlanner for FailingPlanningPlanner {
+        fn build_imported_mod_install_plan(
+            &self,
+            _request: BuildImportedModInstallPlanRequest,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            Err(self.error.clone())
+        }
+
+        fn build_imported_mod_revision_install_plan(
+            &self,
+            _game_id: &GameId,
+            _mod_id: &ModId,
+            _revision_id: &ModRevisionId,
+            _layer: &FileLayer,
+        ) -> Result<ImportedModInstallPreflight, InstallPlanningError> {
+            Err(self.error.clone())
+        }
+
+        fn prerequisite_decision(&self, _game_id: &GameId) -> GamePrerequisiteDecision {
+            ready_prerequisite_decision()
+        }
+    }
+
+    // 返回（任务事件里的 error_code，审计里的 error_code）——两处必须一致，
+    // 否则前端只按事件投影，审计会与用户看到的对不上。
+    fn planning_failure_codes(error: InstallPlanningError) -> (String, String) {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let planner_dep: Arc<dyn ImportedModInstallPlanner> =
+            Arc::new(FailingPlanningPlanner { error });
+        let committer_dep: Arc<dyn InstallPlanCommitter> =
+            Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner_dep,
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        let error = runner
+            .run_install_task(&task.task_id, sample_request())
+            .expect_err("planning failure must fail the install task");
+        let event_code = error
+            .events
+            .last()
+            .and_then(|event| event.error.clone())
+            .expect("failure event carries a stable error code");
+        let audit = audit_log.take_event().expect("failure audit");
+        (event_code, audit.fields["error_code"].clone())
+    }
+
+    #[test]
+    fn ambiguous_content_root_is_reported_distinctly_from_generic_planning_failures() {
+        let (event_code, audit_code) =
+            planning_failure_codes(InstallPlanningError::ImportedModAmbiguousContentRoot);
+
+        assert_eq!(event_code, "install_failed:ambiguous_content_root");
+        assert_eq!(audit_code, "install_failed:ambiguous_content_root");
+    }
+
+    // 防退化：分类要有区分度。若后端把所有规划失败都升级成新 phase，
+    // 或前端把它写回 planning，这条会红——那说明这次分类等于没做。
+    #[test]
+    fn a_generic_planning_failure_stays_a_generic_planning_failure() {
+        let (event_code, audit_code) =
+            planning_failure_codes(InstallPlanningError::ImportedModFileScanUnavailable);
+
+        assert_eq!(event_code, "install_failed:planning");
+        assert_eq!(audit_code, "install_failed:planning");
+    }
+
+    // revision 安装（retarget / 重装）语境下，合集包由 `reinstall.rs` 归为
+    // 候选未就绪（`ReinstallCandidatePlanError::NotReady`），不该被新 phase 抢先改写——
+    // 与 #285 的 `empty_plan` 只拦普通导入安装是同一条纪律。
+    #[test]
+    fn revision_install_keeps_the_generic_planning_phase_for_ambiguous_content_root() {
+        let task_manager = Arc::new(crate::TaskManager::new());
+        let task = task_manager
+            .create_task(crate::TaskKind::Install)
+            .expect("task can be created");
+        let audit_log = Arc::new(RecordingAuditLogWriter::default());
+        let planner_dep: Arc<dyn ImportedModInstallPlanner> = Arc::new(FailingPlanningPlanner {
+            error: InstallPlanningError::ImportedModAmbiguousContentRoot,
+        });
+        let committer_dep: Arc<dyn InstallPlanCommitter> =
+            Arc::new(RecordingInstallCommitter::new(sample_manifest()));
+        let audit_dep: Arc<dyn AuditLogWriter> = audit_log.clone();
+        let runner = InstallTaskRunner::with_write_locks(
+            Arc::clone(&task_manager),
+            planner_dep,
+            committer_dep,
+            audit_dep,
+            Arc::new(FixedClock),
+            Arc::new(GameProfileWriteLockRegistry::default()),
+            crate::replacement_selection_test_support::in_memory_selection_repository(),
+        );
+
+        let error = runner
+            .run_install_revision_task_for_orchestration_with_observer(
+                &task.task_id,
+                sample_request(),
+                ModRevisionId::new("revision-a"),
+                None,
+                &noop_task_progress_observer(),
+            )
+            .expect_err("revision install must still fail on a planning error");
+
+        assert_eq!(
+            error.events.last().and_then(|event| event.error.as_deref()),
+            Some("install_failed:planning")
+        );
     }
 
     #[test]

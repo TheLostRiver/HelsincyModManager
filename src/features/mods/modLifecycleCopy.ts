@@ -116,6 +116,7 @@ export const modLifecycleCopy = {
         recovery_pending: "安装被待处理的恢复状态阻断",
         recovery_unavailable: "安装状态暂时无法确认",
         empty_plan: "包内没有找到可安装的文件，未做任何修改",
+        ambiguous_content_root: "包内有多个 nativePC 目录，请拆分后分别导入",
       },
       uninstallFailures: {
         lock: "卸载任务暂时无法开始",
@@ -235,6 +236,8 @@ export const modLifecycleCopy = {
         recovery_pending: "Install blocked by a pending recovery state",
         recovery_unavailable: "Install status temporarily unconfirmable",
         empty_plan: "No installable files were found in the package; nothing was changed",
+        ambiguous_content_root:
+          "The package contains more than one nativePC directory; split it and import separately",
       },
       uninstallFailures: {
         lock: "The uninstall task cannot start right now",
@@ -355,6 +358,8 @@ export const modLifecycleCopy = {
         recovery_unavailable: "インストール状態を一時的に確認できません",
         empty_plan:
           "パッケージ内にインストール可能なファイルが見つからなかったため、変更は行っていません",
+        ambiguous_content_root:
+          "パッケージ内に nativePC ディレクトリが複数あります。分割してから個別にインポートしてください",
       },
       uninstallFailures: {
         lock: "アンインストールタスクを今は開始できません",
