@@ -14,8 +14,8 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
     ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ReplacementAdapter,
-    ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
+    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ReplacementAdapter, ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
     ReplacementCatalogProvider, ReplacementCatalogResult, RetargetPlanRequest,
     RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
     StoredModImportAnalysis, StoredModPackageMetadata,
@@ -125,8 +125,10 @@ impl ModPackageInstallFileScanner for FakeFileScanner {
     fn scan_install_files(
         &self,
         request: ModPackageInstallFileScanRequest<'_>,
-    ) -> anyhow::Result<Vec<ModPackageInstallFile>> {
-        anyhow::ensure!(request.package_id == "revision-v1", "unexpected package");
+    ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError> {
+        if request.package_id != "revision-v1" {
+            return Err(ModPackageInstallFileScanError::Unavailable);
+        }
         Ok(vec![ModPackageInstallFile {
             package_file_id: "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3".to_owned(),
             target_path: "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3".to_owned(),
