@@ -57,6 +57,7 @@ export function AboutPage() {
   const updateView = projectUpdateCheckView({
     checking: updateCheck.checking,
     status: updateCheck.status,
+    attemptFailed: updateCheck.attemptFailed,
   });
   const [linkFeedback, setLinkFeedback] = useState<LinkFeedback>({ kind: "idle" });
   const releaseChannel = appVersion.includes("-")
@@ -131,6 +132,12 @@ export function AboutPage() {
             <p className="about-page__update-status is-available" role="status">
               {copy.release.updateAvailable(updateView.version)}
             </p>
+          ) : null}
+          {/* 旧结论 + 上次失败：必须一起说明，否则用户会以为这次复查通过了。 */}
+          {updateView.kind === "up_to_date" || updateView.kind === "update_available" ? (
+            updateView.stale ? (
+              <p className="about-page__update-stale">{copy.release.staleNote}</p>
+            ) : null
           ) : null}
           {/* `unknown` 刻意什么都不渲染：断网 / 超时 / 接口失败都是常态，静默处理。 */}
         </div>
