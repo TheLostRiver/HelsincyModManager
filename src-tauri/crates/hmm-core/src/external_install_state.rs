@@ -23,6 +23,34 @@
 //! 调用方（未来的 IO 层）负责按 `target_path` 排序，保证同样的事实永远得到同样的输出。
 
 use crate::install::InstalledFileSummary;
+use sha2::{Digest, Sha256};
+
+/// 由文件内容算出安装摘要。
+///
+/// **这是新代码应当用的那一份**。仓库里另有 3 份私有副本
+/// （`hmm-app/src/install.rs`、`install_recovery.rs`、`reinstall.rs`），
+/// 它们逻辑相同但因为是各模块私有的而无法复用。本函数放在
+/// `InstalledFileSummary` 所在的 crate，供新代码使用；
+/// 那 3 份的收敛属于独立的清理，不在 #286 范围内。
+pub fn installed_file_summary(bytes: &[u8]) -> InstalledFileSummary {
+    let digest = Sha256::digest(bytes);
+    InstalledFileSummary {
+        size_bytes: bytes.len() as u64,
+        sha256: hex_encode(&digest),
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes.iter().fold(
+        String::with_capacity(bytes.len() * 2),
+        |mut output, byte| {
+            // 写入 String 不会失败，这里没有可恢复的错误路径。
+            let _ = write!(output, "{byte:02x}");
+            output
+        },
+    )
+}
 
 /// 游戏目录里某个目标文件的观测结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +222,19 @@ mod tests {
             expected,
             actual,
         }
+    }
+
+    #[test]
+    fn installed_file_summary_matches_size_and_content() {
+        let summary = installed_file_summary(b"abc");
+        assert_eq!(summary.size_bytes, 3);
+        // SHA-256("abc") 的已知常量，防止有人改了算法或编码方式。
+        assert_eq!(
+            summary.sha256,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        // 空文件也要有确定的摘要，不能走「缺失」的分支。
+        assert_eq!(installed_file_summary(b"").size_bytes, 0);
     }
 
     fn matched(path: &str) -> ExternalFileObservation<'_> {
