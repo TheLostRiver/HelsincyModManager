@@ -17,6 +17,8 @@ import packageMetadata from "../../../package.json";
 import { AppBrandMark } from "../../app/branding/AppBrandMark";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { aboutPageCopy, type AboutPageCopy } from "./aboutPageCopy";
+import { projectUpdateCheckView } from "./updateCheckView";
+import { useUpdateCheck } from "./useUpdateCheck";
 import "./AboutPage.css";
 
 // 只保留 href 常量；所有用户可见文本都在 aboutPageCopy 里（I18N-01 试点）。
@@ -51,6 +53,12 @@ export function AboutPage() {
   const { locale } = useI18n();
   const copy = resolveCopy(aboutPageCopy, locale);
   const appVersion = useInstalledAppVersion();
+  const updateCheck = useUpdateCheck();
+  const updateView = projectUpdateCheckView({
+    checking: updateCheck.checking,
+    status: updateCheck.status,
+    attemptFailed: updateCheck.attemptFailed,
+  });
   const [linkFeedback, setLinkFeedback] = useState<LinkFeedback>({ kind: "idle" });
   const releaseChannel = appVersion.includes("-")
     ? copy.hero.previewChannel
@@ -110,15 +118,46 @@ export function AboutPage() {
         <div className="about-page__release-copy">
           <h3>{copy.release.title}</h3>
           <p>{copy.release.description}</p>
+          {updateView.kind === "checking" ? (
+            <p className="about-page__update-status is-checking" role="status">
+              {copy.release.checking}
+            </p>
+          ) : null}
+          {updateView.kind === "up_to_date" ? (
+            <p className="about-page__update-status is-current" role="status">
+              {copy.release.upToDate}
+            </p>
+          ) : null}
+          {updateView.kind === "update_available" ? (
+            <p className="about-page__update-status is-available" role="status">
+              {copy.release.updateAvailable(updateView.version)}
+            </p>
+          ) : null}
+          {/* 旧结论 + 上次失败：必须一起说明，否则用户会以为这次复查通过了。 */}
+          {updateView.kind === "up_to_date" || updateView.kind === "update_available" ? (
+            updateView.stale ? (
+              <p className="about-page__update-stale">{copy.release.staleNote}</p>
+            ) : null
+          ) : null}
+          {/* `unknown` 刻意什么都不渲染：断网 / 超时 / 接口失败都是常态，静默处理。 */}
         </div>
         <div className="about-page__release-actions">
-          <AboutActionLink
-            id="releases"
-            icon={RefreshCw}
-            label={copy.release.checkUpdates}
-            primary
-            onOpen={openAboutLink}
-          />
+          {updateView.kind === "update_available" ? (
+            <AboutActionLink
+              id="releases"
+              icon={ExternalLink}
+              label={copy.release.download}
+              primary
+              onOpen={openAboutLink}
+            />
+          ) : (
+            <AboutActionButton
+              icon={RefreshCw}
+              label={copy.release.checkUpdates}
+              busy={updateCheck.checking}
+              onTrigger={updateCheck.refresh}
+            />
+          )}
           <AboutActionLink
             id="changelog"
             icon={History}
@@ -126,6 +165,15 @@ export function AboutPage() {
             onOpen={openAboutLink}
           />
         </div>
+        <label className="about-page__auto-check">
+          <input
+            type="checkbox"
+            checked={updateCheck.autoCheckEnabled}
+            onChange={(event) => updateCheck.setAutoCheckEnabled(event.target.checked)}
+          />
+          <span>{copy.release.autoCheck}</span>
+          <small>{copy.release.autoCheckHint}</small>
+        </label>
       </section>
 
       <div className="about-page__link-columns" data-tour-id="about.links">
@@ -235,6 +283,30 @@ function AboutActionLink({
       <span>{label}</span>
       <ExternalLink size={14} aria-hidden="true" />
     </a>
+  );
+}
+
+function AboutActionButton({
+  icon: Icon,
+  label,
+  busy,
+  onTrigger,
+}: {
+  icon: LucideIcon;
+  label: string;
+  busy: boolean;
+  onTrigger: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="about-page__action is-primary"
+      onClick={onTrigger}
+      disabled={busy}
+    >
+      <Icon size={16} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
   );
 }
 

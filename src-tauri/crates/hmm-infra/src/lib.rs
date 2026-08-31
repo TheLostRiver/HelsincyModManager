@@ -29,6 +29,7 @@ mod mod_revision_catalog_tests;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod reinstall;
+mod release_update;
 mod replacement_selection;
 mod save_backup;
 mod save_backup_background_registry;
@@ -103,6 +104,7 @@ pub use preview_image::{
     ThumbnailPruneReport, ThumbnailSizePruneReport,
 };
 pub use reinstall::JsonReinstallRecoveryTransactionRepository;
+pub use release_update::{GitHubLatestReleaseSource, ReqwestReleaseFeedHttpTransport};
 pub use replacement_selection::JsonReplacementSelectionRepository;
 pub use save_backup::{FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter};
 #[cfg(windows)]
