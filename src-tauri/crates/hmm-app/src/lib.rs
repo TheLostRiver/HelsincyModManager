@@ -8,6 +8,11 @@ mod category;
 mod external_import;
 #[cfg(test)]
 mod external_import_batch_tests;
+// #286：外部 MOD 状态扫描服务。
+// `pub` 是因为它属于本 crate 对外提供的能力，由 `src-tauri` 的 command 层使用；
+// 目前 command 尚未接线（下一片），因此这里先以公开 API 的形式落地，避免私有模块
+// 无人调用而被判为死代码。接线完成后 `pub` 仍然是合适的——它与其它 service 一致。
+pub mod external_state_scan;
 mod game_launch;
 mod game_prerequisites;
 mod game_setup;
