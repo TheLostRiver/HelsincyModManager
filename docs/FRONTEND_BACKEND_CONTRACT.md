@@ -262,10 +262,16 @@ batch/result 事实或伪造导入失败。
   结果通过 `get_external_mod_state` 查询。
 - `ExternalModStateDto = { summary: ExternalModStateSummaryDto | null, stale, lastError }`：
   - `summary`：上一次**成功**扫描的判定；从未扫成时为 `null`。形状为
-    `{ state, matchedFileCount, missingFileCount, changedFileCount, unreadableFileCount, files }`，
+    `{ state, matchedFileCount, missingFileCount, changedFileCount, unreadableFileCount, occupiedBy, files }`，
     `state ∈ installed | partial | changed | mixed | not_installed | unknown`；`files[]` 为
-    `{ targetPath, state ∈ matched | missing | changed | unreadable }`，`targetPath` 是导入包内的
-    相对展示路径，**不包含**游戏目录绝对路径、manifest 内容或第三方文件内容。
+    `{ targetPath, state ∈ matched | missing | changed | unreadable, claimedByModId?, claimedByModName? }`，
+    `targetPath` 是导入包内的相对展示路径，**不包含**游戏目录绝对路径、manifest 内容或第三方文件内容。
+  - 占用归因（#286 第三层，正交事实——哈希判定不因占用而改变）：`claimedByModId` = 该路径被哪个
+    **其他** MOD 的清单条目认领（键缺席 = 无主）；`claimedByModName` 是 getter 时按 `get_mod_detail`
+    取名链解析的显示名，解析不到（如 MOD 已删）时键缺席、前端回退显示 id，**不回传不复算**。
+    `occupiedBy` 为按文件序首现去重的占用者列表 `{ modId, modName? }[]`，恒在（空数组 = 无占用）。
+    归因在三段式 stage 3 与指纹复核**同一锁窗口**读清单计算；清单读失败以稳定码
+    `external_state_scan_manifest_unavailable` 整体失败（fail-closed，不静默少报占用）。
   - `stale`：getter 重新 stat 与存档指纹不一致（或游戏实例暂不可读、stat 失败）时为 `true`，
     此时 `summary` 仍是上次结果——**保留而不是清空**（#286 拍板的降级口径）。
   - `lastError`：上次扫描没做成的稳定错误码（`external_state_scan_*`）。与 `summary` 可同时存在，
