@@ -770,6 +770,7 @@ impl HmmRuntime {
                 Arc::clone(&mod_import_sandbox_locator),
                 mhw_adapter.allowed_install_roots(),
                 Arc::clone(&install_write_locks),
+                Arc::new(SystemClock),
             ));
         // 安装、卸载与存档侧共用同一个探测器：游戏在跑时不得写玩家文件。
         let install_game_running_detector = game_running_detector_for_platform(&game_adapters);
