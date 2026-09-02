@@ -8,6 +8,7 @@ mod composition;
 mod diagnostics_automation;
 mod external_import;
 pub mod external_state_scan;
+pub mod external_state_scan_tasks;
 mod game_automation;
 mod install_automation;
 mod lifecycle_automation;
@@ -34,8 +35,14 @@ pub use diagnostics_automation::{
 pub use external_import::ExternalImportComposition;
 pub use external_state_scan::{
     ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
-    ConfiguredExternalStateScanner, GameFileSystemFactory, GameFileSystemHandles,
-    RealGameFileSystemFactory,
+    ConfiguredExternalStateScanner, ExternalStateScanQuery, GameFileSystemFactory,
+    GameFileSystemHandles, RealGameFileSystemFactory,
+};
+pub use external_state_scan_tasks::{
+    queued_scan_event, ExternalStateScanTaskError, ExternalStateScanTaskLaunch,
+    ExternalStateScanTaskService, EXTERNAL_STATE_SCAN_CANCELLED_PHASE,
+    EXTERNAL_STATE_SCAN_COMPLETED_PHASE, EXTERNAL_STATE_SCAN_FAILED_PHASE,
+    EXTERNAL_STATE_SCAN_PROCESSING_PHASE, EXTERNAL_STATE_SCAN_QUEUED_PHASE,
 };
 pub use game_automation::{
     GamePrerequisiteItemSnapshot, GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot,

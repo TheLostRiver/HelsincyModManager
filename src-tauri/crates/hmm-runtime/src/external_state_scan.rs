@@ -265,6 +265,10 @@ impl ConfiguredExternalStateScanner {
     ///
     /// 与 [`Self::scan`] 分开：前者是重活（哈希），这个只是重新 stat 一遍，
     /// 因此**很便宜**，可以随界面刷新反复调用。
+    ///
+    /// 游戏实例读不到时**不丢弃缓存结果**：这是查询期的处境，不是上次扫描的结论，
+    /// 不能写进 `last_error`（那个字段的语义是「上次扫描没做成的原因」）。此时无法
+    /// stat，也就无法证明结果仍然成立——与 stat 失败同一口径，按 `stale` 报。
     pub fn query(
         &self,
         game_id: &GameId,
@@ -275,11 +279,9 @@ impl ConfiguredExternalStateScanner {
         // 因此这里直接构造 inspector 即可。
         let Ok(Some(game_instance)) = self.game_config_repository.load_game_instance(game_id)
         else {
-            return ExternalStateScanQuery {
-                summary: None,
-                stale: false,
-                last_error: Some(ConfiguredExternalStateScanError::GameInstanceUnavailable),
-            };
+            return self
+                .cache
+                .query_without_inspector(game_id, profile_id, mod_id);
         };
         let handles = self.game_fs_factory.create(&game_instance.root_dir);
         self.cache
@@ -563,6 +565,12 @@ pub struct ExternalStateScanQuery {
     pub stale: bool,
     /// 上次扫描没做成的原因（稳定错误码）。成功时为 `None`。
     pub last_error: Option<ConfiguredExternalStateScanError>,
+    /// 与 `summary.files` **同序**的展示路径（导入包里的原始字符串）。
+    ///
+    /// `ExternalInstallStateSummary.files` 只有状态没有路径——路径在扫描时的
+    /// `prepared` 里。界面的文件级明细两者都要，所以这里按同一顺序补上。
+    /// `summary` 为 `None` 时恒为空。
+    pub display_paths: Vec<String>,
 }
 
 /// 按 `(game_id, profile_id, mod_id)` 缓存扫描结果。
@@ -678,13 +686,35 @@ impl ExternalStateScanCache {
         mod_id: &ModId,
         inspector: &dyn InstallGameFileInspector,
     ) -> ExternalStateScanQuery {
+        self.query_with(game_id, profile_id, mod_id, |record| {
+            self.is_stale(record, inspector)
+        })
+    }
+
+    /// 拿不到游戏目录（inspector 无从构造）时的查询。
+    ///
+    /// 无法 stat ⇒ 无法证明结果仍然成立 ⇒ 只要有结果就按 `stale` 报
+    /// （与 stat 失败同一口径，fail-closed）。`last_error` 保持上次扫描的事实，
+    /// 不用查询期的处境去覆盖它。
+    pub fn query_without_inspector(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> ExternalStateScanQuery {
+        self.query_with(game_id, profile_id, mod_id, |_record| true)
+    }
+
+    fn query_with(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+        is_record_stale: impl Fn(&ExternalStateScanRecord) -> bool,
+    ) -> ExternalStateScanQuery {
         let snapshot = {
             let Ok(entries) = self.entries.lock() else {
-                return ExternalStateScanQuery {
-                    summary: None,
-                    stale: false,
-                    last_error: None,
-                };
+                return empty_scan_query();
             };
             entries
                 .get(&cache_key(game_id, profile_id, mod_id))
@@ -692,23 +722,32 @@ impl ExternalStateScanCache {
         };
 
         let Some(entry) = snapshot else {
-            return ExternalStateScanQuery {
-                summary: None,
-                stale: false,
-                last_error: None,
-            };
+            return empty_scan_query();
         };
 
         let stale = match &entry.record {
-            Some(record) => self.is_stale(record, inspector),
+            Some(record) => is_record_stale(record),
             // 从没成功扫过，谈不上"过期"。
             None => false,
         };
 
+        let (summary, display_paths) = match entry.record {
+            Some(record) => (
+                Some(record.summary),
+                record
+                    .prepared
+                    .into_iter()
+                    .map(|target| target.display_path)
+                    .collect(),
+            ),
+            None => (None, Vec::new()),
+        };
+
         ExternalStateScanQuery {
-            summary: entry.record.map(|record| record.summary),
+            summary,
             stale,
             last_error: entry.last_error,
+            display_paths,
         }
     }
 
@@ -725,6 +764,15 @@ impl ExternalStateScanCache {
             Ok(current) => !same_fingerprints(&record.fingerprints, &current),
             Err(_) => true,
         }
+    }
+}
+
+fn empty_scan_query() -> ExternalStateScanQuery {
+    ExternalStateScanQuery {
+        summary: None,
+        stale: false,
+        last_error: None,
+        display_paths: Vec::new(),
     }
 }
 
