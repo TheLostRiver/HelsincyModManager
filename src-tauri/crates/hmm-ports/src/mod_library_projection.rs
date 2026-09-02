@@ -4,7 +4,9 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::StoredImportPreviewImage;
 
-pub const MOD_LIBRARY_PROJECTION_SCHEMA_VERSION: u32 = 1;
+/// v2：新增 `external_import_adapter_id` 列（#286 切片 3b-1）。
+/// bump 让旧库的投影判定为过期，下次查询自动从权威目录重建补齐新列。
+pub const MOD_LIBRARY_PROJECTION_SCHEMA_VERSION: u32 = 2;
 pub const MOD_LIBRARY_QUERY_KEY_VERSION: &str = "mod-library-query-key-v1";
 
 pub fn normalize_mod_library_query_key(value: &str) -> String {
@@ -35,6 +37,11 @@ pub struct ModLibraryProjectionRecord {
     pub size_label: String,
     pub preview_image: StoredImportPreviewImage,
     pub labels: Vec<ModLibraryProjectionLabel>,
+    /// 外部导入来源的 adapter id（如狩技盒子）；普通 zip 导入为 `None`。
+    ///
+    /// 列表页「外部来源」标记的唯一事实来源（#286 切片 3b-1）。只存 adapter id，
+    /// 展示名由前端字典按 id 取词——与详情层 `ModOriginSummary` 的口径一致。
+    pub external_import_adapter_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

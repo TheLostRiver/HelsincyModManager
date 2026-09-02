@@ -536,5 +536,58 @@ fn record(mod_id: &str, display_name: &str) -> ModLibraryProjectionRecord {
             name: "Armor".to_owned(),
             color: Some("#123456".to_owned()),
         }],
+        // 给夹具带上真值：既有的整 record 相等断言随之覆盖新列的写入→读回。
+        external_import_adapter_id: Some(format!("adapter-{mod_id}")),
     }
+}
+
+#[test]
+fn external_import_adapter_id_survives_the_projection_roundtrip() {
+    // 既有用例只断言 mod_id，新列的「写入 → 读回」必须有显式覆盖，
+    // 否则 SELECT 漏列会静默把外部来源全部读成 NULL（前端标记无声消失）。
+    let temp = tempfile::tempdir().expect("temporary app data");
+    let conn = crate::open_database(&temp.path().join("hmm.db")).expect("open database");
+    let conn = Arc::new(Mutex::new(conn));
+    let repository = SqliteModLibraryProjectionRepository::new(Arc::clone(&conn));
+
+    let mut plain = record("mod-plain", "Plain Zip");
+    plain.external_import_adapter_id = None;
+    repository
+        .rebuild(&ModLibraryProjectionSnapshot {
+            source_fingerprint: "catalog-origin-v1".to_owned(),
+            records: vec![record("mod-a", "External One"), plain],
+            profiles: vec![ModLibraryProfileProjection {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+                statuses: vec![],
+            }],
+        })
+        .expect("publish projection");
+
+    let page = repository
+        .query(&ModLibraryProjectionQueryRequest {
+            source_fingerprint: "catalog-origin-v1".to_owned(),
+            profile: Some(ModLibraryProjectionProfileQuery {
+                profile_id: ProfileId::new("profile-a"),
+                source_fingerprint: "manifest-v1".to_owned(),
+            }),
+            normalized_search: String::new(),
+            filter: ModLibraryProjectionQueryFilter::All,
+            page: 1,
+            page_size: 12,
+        })
+        .expect("query projection");
+
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.items[0].record.mod_id.as_str(), "mod-a");
+    assert_eq!(
+        page.items[0].record.external_import_adapter_id.as_deref(),
+        Some("adapter-mod-a"),
+        "外部导入的 adapter id 必须原样读回"
+    );
+    assert_eq!(page.items[1].record.mod_id.as_str(), "mod-plain");
+    assert_eq!(
+        page.items[1].record.external_import_adapter_id, None,
+        "普通 zip 导入不得凭空长出外部来源"
+    );
 }

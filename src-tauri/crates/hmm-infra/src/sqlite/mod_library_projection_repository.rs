@@ -357,7 +357,8 @@ impl ModLibraryProjectionQueryRepository for SqliteModLibraryProjectionRepositor
             let rows_sql = format!(
                 "SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,\n\
                  i.version_label, i.size_label, i.preview_image_json, status_row.status,\n\
-                 status_row.managed_file_count, status_row.backup_count\n\
+                 status_row.managed_file_count, status_row.backup_count,\n\
+                 i.external_import_adapter_id\n\
                  FROM mod_library_projection_items i\n\
                  LEFT JOIN mod_library_projection_profile_status status_row\n\
                  ON status_row.profile_id = ?6 AND status_row.profile_generation = ?7\n\
@@ -440,7 +441,8 @@ const STORED_STATUS_COUNT_SQL: &str = "
 const STORED_STATUS_ROWS_SQL: &str = "
     SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,
            i.version_label, i.size_label, i.preview_image_json, status_row.status,
-           status_row.managed_file_count, status_row.backup_count
+           status_row.managed_file_count, status_row.backup_count,
+           i.external_import_adapter_id
     FROM mod_library_projection_items i INDEXED BY idx_mod_library_projection_items_name
     CROSS JOIN mod_library_projection_profile_status status_row
     ON status_row.profile_id = ?2
@@ -558,6 +560,7 @@ fn read_projection_page_item(
             size_label: row.get(6)?,
             preview_image,
             labels: Vec::new(),
+            external_import_adapter_id: row.get(11)?,
         },
         status,
     })
@@ -761,8 +764,8 @@ fn insert_record(
             "INSERT INTO mod_library_projection_items (
                  mod_id, generation, display_revision_id, package_id, display_name,
                  author, version_label, size_label, preview_image_json,
-                 normalized_name, normalized_author
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 normalized_name, normalized_author, external_import_adapter_id
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 record.mod_id.as_str(),
                 sqlite_i64(generation)?,
@@ -774,7 +777,8 @@ fn insert_record(
                 record.size_label,
                 prepared.preview_image_json,
                 prepared.normalized_name,
-                prepared.normalized_author
+                prepared.normalized_author,
+                record.external_import_adapter_id
             ],
         )
         .context("failed to insert Mod library projection item")?;
