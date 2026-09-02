@@ -14,6 +14,7 @@ import { localeMeta, resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
 import { externalImportCopy } from "./external-import/externalImportCopy";
+import type { ExternalModStateDto } from "./externalStateApi";
 import { ExternalStateSection } from "./ExternalStateSection";
 import { modDetailDialogCopy } from "./modDetailDialogCopy";
 import { getModDetail } from "./modLibraryApi";
@@ -47,6 +48,8 @@ type ModDetailDialogProps = {
   installStatus: InstallManifestStatus | undefined;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
+  /** 外部状态 getter 结果的会话级上报口（#286 3b-2），供列表卡片共享。 */
+  onExternalStateResult?: (modId: string, state: ExternalModStateDto) => void;
 };
 
 type CategoryLoadState = "idle" | "ready" | "unavailable";
@@ -67,6 +70,7 @@ export function ModDetailDialog({
   installStatus,
   onClose,
   onSaved,
+  onExternalStateResult,
 }: ModDetailDialogProps) {
   const { locale } = useI18n();
   const dialogCopy = resolveCopy(modDetailDialogCopy, locale);
@@ -485,6 +489,7 @@ export function ModDetailDialog({
                 profileId={profileId}
                 modId={modId}
                 active={activeTab === "details"}
+                onResult={onExternalStateResult}
               />
             ) : null}
               </>
