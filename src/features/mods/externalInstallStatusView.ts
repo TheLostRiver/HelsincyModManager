@@ -83,6 +83,11 @@ export type ExternalStatusBadgeCopy = {
   installed: string;
   notInstalled: string;
   unknown: string;
+  /**
+   * 追加在卡片 title/aria 末尾的过时提示（getter 重新 stat 发现指纹漂移）。
+   * 弹窗的 `staleNotice` 措辞带「以下结果」这种版面指代，不能复用到卡片上。
+   */
+  staleHint: string;
   /** 只有缺失。 */
   partial: Record<StatusBadgeTier, (numbers: ExternalStatusNumbers) => string>;
   /** 只有「与预期不符」，没有缺失。 */
