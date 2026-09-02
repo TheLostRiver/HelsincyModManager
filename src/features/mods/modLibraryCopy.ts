@@ -146,6 +146,10 @@ export type ModLibraryCopy = {
     deselectAria: (name: string, categorySummary: string) => string;
     versionLabel: string;
     sizeLabel: string;
+    /** 附在状态 pill 内的「外部来源」短标（#286 切片 3b-1）。 */
+    externalOriginShort: string;
+    /** title/aria 用的全量说明；adapter 展示名来自 externalImportCopy（单一出处）。 */
+    externalOriginTitle: (adapterLabel: string) => string;
   };
   contextMenu: {
     installOrUninstall: string;
@@ -371,6 +375,8 @@ export const modLibraryCopy = {
       deselectAria: (name, categorySummary) => `取消选择 ${name}${categorySummary}`,
       versionLabel: "版本: ",
       sizeLabel: "大小: ",
+      externalOriginShort: "外部",
+      externalOriginTitle: (adapterLabel) => `外部来源：${adapterLabel}`,
     },
     contextMenu: {
       installOrUninstall: "安装 / 卸载 Mod",
@@ -597,6 +603,8 @@ export const modLibraryCopy = {
       deselectAria: (name, categorySummary) => `Deselect ${name}${categorySummary}`,
       versionLabel: "Version: ",
       sizeLabel: "Size: ",
+      externalOriginShort: "External",
+      externalOriginTitle: (adapterLabel) => `External source: ${adapterLabel}`,
     },
     contextMenu: {
       installOrUninstall: "Install / uninstall mod",
@@ -823,6 +831,8 @@ export const modLibraryCopy = {
       deselectAria: (name, categorySummary) => `${name} の選択を解除${categorySummary}`,
       versionLabel: "バージョン: ",
       sizeLabel: "サイズ: ",
+      externalOriginShort: "外部",
+      externalOriginTitle: (adapterLabel) => `外部ソース：${adapterLabel}`,
     },
     contextMenu: {
       installOrUninstall: "Mod をインストール / アンインストール",

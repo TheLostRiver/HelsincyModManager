@@ -46,6 +46,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "语音替换" }],
     posterFrom: "#fbe9cb",
     posterTo: "#e8b15a",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-005-薄纱晚宴长裙",
@@ -109,6 +110,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "武器替换" }],
     posterFrom: "#ede9fe",
     posterTo: "#a78bfa",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-012-公会纹章武器翻新",
@@ -172,6 +174,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "防具替换" }],
     posterFrom: "#e5e7ff",
     posterTo: "#9ca3ff",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-019-非官方仪式礼服-2号变体",
@@ -235,6 +238,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "外观" }],
     posterFrom: "#d7e7ff",
     posterTo: "#77a8ff",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-026-礼宾接待套装-2号变体",
@@ -298,6 +302,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "语音替换" }, { name: "工具 / 前置" }],
     posterFrom: "#e2f7ec",
     posterTo: "#86efac",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-033-霜刃太刀外观包-2号变体",
@@ -361,6 +366,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "外观" }, { name: "武器替换" }],
     posterFrom: "#e0f0dc",
     posterTo: "#7cc47c",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-040-贵妇礼裙-3号变体",
@@ -424,6 +430,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "外观" }, { name: "防具替换" }],
     posterFrom: "#fce7f3",
     posterTo: "#f9a8d4",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-047-月辰剑纹重涂-3号变体",
@@ -487,6 +494,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "工具 / 前置" }],
     posterFrom: "#f5e6f2",
     posterTo: "#d98bc7",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-054-随从礼帽皮肤集-3号变体",
@@ -550,6 +558,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "语音替换" }],
     posterFrom: "#dcfce7",
     posterTo: "#4ade80",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-061-雪狐披肩-4号变体",
@@ -613,6 +622,7 @@ export const modLibraryItems: ModLibraryItem[] = [
     categoryLabels: [{ name: "武器替换" }],
     posterFrom: "#eef2ff",
     posterTo: "#a5b4fc",
+    externalImportAdapterId: "hunting_box_directory_v1",
   },
   {
     id: "mod-068-猎人据点灯光增强-4号变体",

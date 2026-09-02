@@ -155,6 +155,9 @@ function buildModLibraryItems(count) {
       categoryLabels,
       posterFrom,
       posterTo,
+      // 每 7 个混一个外部导入来源（#286 3b-1），让 pill 短标在 dev 模式可见。
+      externalImportAdapterId:
+        index % 7 === 3 ? "hunting_box_directory_v1" : undefined,
     };
   });
 }
@@ -179,7 +182,11 @@ ${metadataLines.length === 0 ? "" : `${metadataLines}\n`}    sizeLabel: ${JSON.s
       .join(", ")}],
     posterFrom: ${JSON.stringify(item.posterFrom)},
     posterTo: ${JSON.stringify(item.posterTo)},
-  },`;
+${
+  item.externalImportAdapterId == null
+    ? ""
+    : `    externalImportAdapterId: ${JSON.stringify(item.externalImportAdapterId)},\n`
+}  },`;
     })
     .join("\n");
 }
