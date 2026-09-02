@@ -11,6 +11,7 @@ import {
   externalStatusAriaLabel,
   projectExternalStatusBadge,
 } from "./externalInstallStatusView";
+import type { ExternalModStateDto } from "./externalStateApi";
 import { externalStateCopy, externalStateErrorMessage } from "./externalStateCopy";
 import { useExternalModState } from "./useExternalModState";
 import { FolderSearch } from "lucide-react";
@@ -21,6 +22,8 @@ type ExternalStateSectionProps = {
   modId: string;
   /** The details tab is visible; gates the initial cached-state query. */
   active: boolean;
+  /** Mirrors every getter result to the page-level session store (#286 3b-2). */
+  onResult?: (modId: string, state: ExternalModStateDto) => void;
 };
 
 export function ExternalStateSection({
@@ -28,10 +31,11 @@ export function ExternalStateSection({
   profileId,
   modId,
   active,
+  onResult,
 }: ExternalStateSectionProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(externalStateCopy, locale);
-  const workflow = useExternalModState({ gameId, profileId, modId, active });
+  const workflow = useExternalModState({ gameId, profileId, modId, active, onResult });
 
   const summary = workflow.state?.summary ?? null;
   // The dialog is a wide surface: always project the full tier ("tech" view).
