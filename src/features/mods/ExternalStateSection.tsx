@@ -96,6 +96,11 @@ export function ExternalStateSection({
                   <span aria-hidden="true">{badge.text}</span>
                 </span>
               </p>
+              {badge.case === "unknown" ? (
+                <p className="mod-detail-dialog__external-notice is-stale">
+                  {copy.unknownHint}
+                </p>
+              ) : null}
               {summary.files.length > 0 ? (
                 <div className="mod-detail-dialog__external-files">
                   <table>
