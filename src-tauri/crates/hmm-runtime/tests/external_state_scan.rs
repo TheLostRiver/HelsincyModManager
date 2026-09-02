@@ -22,16 +22,17 @@
 use hmm_app::external_state_scan::DEFAULT_WORKER_LIMIT;
 use hmm_app::{GameProfileWriteLockRegistry, TaskManager, TaskStatus};
 use hmm_core::{
-    ExternalFileState, ExternalInstallState, GameDirectoryStatus, GameId, GameInstance,
-    InstallTargetPath, ModId, ProfileId,
+    ExternalFileState, ExternalInstallState, FileLayer, GameDirectoryStatus, GameId, GameInstance,
+    InstallManifest, InstallManifestEntry, InstallTargetPath, ModId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
     AppClock, CancellationToken, GameConfigRepository, GameConfigRepositoryError,
     GameConfigRepositoryResult, GameFileFingerprint, InstallGameFileInspector,
-    InstallGameFileSystem, ModImportResultRepository, ModImportSandboxLocator,
-    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    NeverCancelled, StoredImportPreviewImage, StoredModImportAnalysis,
+    InstallGameFileSystem, InstallManifestRepository, ModImportResultRepository,
+    ModImportSandboxLocator, ModPackageInstallFile, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanError, ModPackageInstallFileScanRequest,
+    ModPackageInstallFileScanner, NeverCancelled, StoredImportPreviewImage,
+    StoredModImportAnalysis,
 };
 use hmm_runtime::external_state_scan::{
     ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
@@ -102,6 +103,37 @@ impl GameConfigRepository for FakeGameConfigRepository {
         Err(GameConfigRepositoryError::StorageFailed(
             "tests do not save game instances".to_owned(),
         ))
+    }
+}
+
+/// 归因（#286 第三层）用的清单假件。默认 `Ok(None)` = 该配置档从未有 HMM 安装。
+#[derive(Default)]
+struct FakeInstallManifestRepository {
+    manifest: Mutex<Option<InstallManifest>>,
+    fail: Mutex<bool>,
+}
+
+impl FakeInstallManifestRepository {
+    fn set_manifest(&self, manifest: InstallManifest) {
+        *self.manifest.lock().expect("manifest lock") = Some(manifest);
+    }
+
+    /// 模拟清单读取失败（IO 错误），而不是清单不存在。
+    fn fail_loads(&self) {
+        *self.fail.lock().expect("fail lock") = true;
+    }
+}
+
+impl InstallManifestRepository for FakeInstallManifestRepository {
+    fn load_manifest(&self, _profile_id: &ProfileId) -> anyhow::Result<Option<InstallManifest>> {
+        if *self.fail.lock().expect("fail lock") {
+            anyhow::bail!("manifest storage failed");
+        }
+        Ok(self.manifest.lock().expect("manifest lock").clone())
+    }
+
+    fn save_manifest(&self, _manifest: &InstallManifest) -> anyhow::Result<()> {
+        anyhow::bail!("tests do not save manifests")
     }
 }
 
@@ -384,6 +416,8 @@ struct Harness {
     scanner: Arc<ConfiguredExternalStateScanner>,
     game_fs: Arc<RecordingGameFs>,
     game_config: Arc<FakeGameConfigRepository>,
+    /// 归因用清单假件；默认「从未安装」，用例可注入条目或让读取失败。
+    manifest_repository: Arc<FakeInstallManifestRepository>,
     /// 与 scanner 内部 `lock_for` 返回的是同一把锁。
     write_lock: Arc<Mutex<()>>,
 }
@@ -403,12 +437,14 @@ fn harness(package_files: &[(&str, &[u8])], game_fs: RecordingGameFs) -> Harness
 
     let game_fs = Arc::new(game_fs);
     let game_config = Arc::new(FakeGameConfigRepository::with_root(game_root));
+    let manifest_repository = Arc::new(FakeInstallManifestRepository::default());
     let scanner = Arc::new(ConfiguredExternalStateScanner::new(
         Arc::clone(&game_config) as Arc<dyn GameConfigRepository>,
         Arc::new(FakeModImportResultRepository {
             analysis: Some(analysis("mod-a", "package-a")),
         }),
         Arc::new(FixedSandboxLocator(temp.path().join("sandbox"))),
+        Arc::clone(&manifest_repository) as Arc<dyn InstallManifestRepository>,
         ALLOWED_ROOTS
             .iter()
             .map(|root| (*root).to_owned())
@@ -438,6 +474,7 @@ fn harness(package_files: &[(&str, &[u8])], game_fs: RecordingGameFs) -> Harness
         scanner,
         game_fs,
         game_config,
+        manifest_repository,
         write_lock,
     }
 }
@@ -645,6 +682,7 @@ fn error_codes_are_stable_and_distinct() {
         ConfiguredExternalStateScanError::GameFileUnavailable,
         ConfiguredExternalStateScanError::Cancelled,
         ConfiguredExternalStateScanError::ScanUnavailable,
+        ConfiguredExternalStateScanError::ManifestUnavailable,
         ConfiguredExternalStateScanError::WriteAdmissionOrderViolation,
         ConfiguredExternalStateScanError::Stale,
     ]
@@ -658,6 +696,7 @@ fn error_codes_are_stable_and_distinct() {
         "external_state_scan_game_file_unavailable",
         "external_state_scan_cancelled",
         "external_state_scan_unavailable",
+        "external_state_scan_manifest_unavailable",
         "external_state_scan_admission_order_violation",
         "external_state_scan_stale",
     ];
@@ -683,6 +722,7 @@ fn a_missing_game_instance_is_reported_before_touching_the_sandbox() {
             analysis: Some(analysis("mod-a", "package-a")),
         }),
         Arc::new(FixedSandboxLocator(temp.path().join("sandbox"))),
+        Arc::new(FakeInstallManifestRepository::default()),
         ALLOWED_ROOTS
             .iter()
             .map(|root| (*root).to_owned())
@@ -725,6 +765,7 @@ fn an_unknown_mod_id_is_reported_without_scanning() {
             analysis: Some(analysis("mod-a", "package-a")),
         }),
         Arc::new(FixedSandboxLocator(temp.path().join("sandbox"))),
+        Arc::new(FakeInstallManifestRepository::default()),
         ALLOWED_ROOTS
             .iter()
             .map(|root| (*root).to_owned())
@@ -763,6 +804,7 @@ fn a_failing_package_scan_is_reported() {
             analysis: Some(analysis("mod-a", "package-a")),
         }),
         Arc::new(FixedSandboxLocator(temp.path().join("sandbox"))),
+        Arc::new(FakeInstallManifestRepository::default()),
         ALLOWED_ROOTS
             .iter()
             .map(|root| (*root).to_owned())
@@ -792,6 +834,102 @@ fn a_failing_package_scan_is_reported() {
 
     // 与 GameFileUnavailable 区分：这是包的问题，不是游戏目录的问题。
     assert_eq!(error, ConfiguredExternalStateScanError::PackageScanFailed);
+}
+
+// ---------------------------------------------------------------------------
+// 占用归因（#286 第三层）
+// ---------------------------------------------------------------------------
+
+fn manifest_entry(target: &str, mod_id: &str) -> InstallManifestEntry {
+    let roots: Vec<String> = ALLOWED_ROOTS
+        .iter()
+        .map(|root| (*root).to_owned())
+        .collect();
+    InstallManifestEntry {
+        target_path: InstallTargetPath::parse(target, &roots).expect("合法目标路径"),
+        mod_id: ModId::new(mod_id),
+        revision_id: None,
+        package_file_id: PackageFileId::new(target),
+        layer: FileLayer::new("base", 0),
+        backup_ref: None,
+        installed_file: None,
+    }
+}
+
+#[test]
+fn claims_from_the_manifest_are_recorded_and_returned_in_order() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same"), ("nativePC/b.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    // a 归其他 MOD（mod-flat）；b 归被扫 MOD 自己——自己名下不算占用。
+    harness
+        .manifest_repository
+        .set_manifest(InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
+                manifest_entry("nativePC/a.mod3", "mod-flat"),
+                manifest_entry("nativePC/b.mod3", "mod-a"),
+            ],
+        ));
+
+    harness.scan().expect("scan succeeds");
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    // 与 display_paths 同序：哈希判定不因占用而改变，归因是正交事实。
+    assert_eq!(
+        query.display_paths,
+        vec!["nativePC/a.mod3".to_owned(), "nativePC/b.mod3".to_owned()],
+    );
+    assert_eq!(query.claimed_by, vec![Some(ModId::new("mod-flat")), None]);
+    assert_eq!(
+        query.summary.expect("summary present").state,
+        ExternalInstallState::Installed,
+    );
+}
+
+#[test]
+fn claims_without_any_manifest_are_all_none() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+
+    harness.scan().expect("scan succeeds");
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    // 清单不存在 = 从未有 HMM 安装：长度仍与文件对齐，全为 None。
+    assert_eq!(query.claimed_by, vec![None]);
+}
+
+#[test]
+fn a_manifest_read_failure_fails_the_scan_and_keeps_the_previous_result() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    harness.scan().expect("first scan succeeds");
+
+    harness.manifest_repository.fail_loads();
+    let error = harness.scan().expect_err("清单读失败必须让扫描失败");
+
+    // fail-closed：静默把占用报成「无占用」会复刻「外部已安装」的误导。
+    assert_eq!(error, ConfiguredExternalStateScanError::ManifestUnavailable);
+    assert_eq!(error.code(), "external_state_scan_manifest_unavailable");
+
+    // 上次成功结果保留，失败原因如实记录——与其他失败同一降级口径。
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+    assert!(query.summary.is_some(), "上次成功结果必须保留");
+    assert_eq!(
+        query.last_error,
+        Some(ConfiguredExternalStateScanError::ManifestUnavailable),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1237,6 +1375,7 @@ fn record_at(computed_at_unix_millis: u128) -> ExternalStateScanRecord {
         summary: hmm_core::summarize_external_install_state(&[]),
         prepared: Vec::new(),
         fingerprints: Vec::new(),
+        claimed_by: Vec::new(),
         computed_at_unix_millis,
     }
 }

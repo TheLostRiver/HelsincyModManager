@@ -24,7 +24,8 @@ use std::thread::available_parallelism;
 use anyhow::Result;
 use hmm_core::{
     installed_file_summary, summarize_external_install_state, ExternalFileObservation,
-    ExternalInstallStateSummary, ExternalTargetPresence, InstallTargetPath, InstalledFileSummary,
+    ExternalInstallStateSummary, ExternalTargetPresence, InstallManifest, InstallTargetPath,
+    InstalledFileSummary, ModId,
 };
 use hmm_ports::{
     CancellationToken, InstallGameFileSystem, ModPackageInstallFileReadRequest,
@@ -303,6 +304,36 @@ impl ExternalModStateScanService {
             .unwrap_or(1);
         self.worker_limit.min(cpus).min(file_count).max(1)
     }
+}
+
+/// 与 `prepared` 同序的「被其他 MOD 占用」归因（#286 第三层归因）。
+///
+/// 数据源是安装清单——它是「当前磁盘上这一路径归谁」的事实来源；归属视图取
+/// `first_manifest_entry_by_target`（同一路径首条，见其文档对畸形态的说明）。
+/// 被扫 MOD 自己名下的条目不算占用——正常门禁下未安装的 MOD 不该有条目，
+/// 防御性排除是为了让语义在任何输入下都成立。清单缺席（该配置档从未有
+/// HMM 安装）= 全部无占用。
+///
+/// 只做查表，不读文件。调用方负责在与指纹复验一致的锁窗口内取得清单快照，
+/// 否则归因可能描述另一个时刻的磁盘。
+pub fn claimed_by_other_mods(
+    manifest: Option<&InstallManifest>,
+    prepared: &[PreparedExternalTarget],
+    scanned_mod_id: &ModId,
+) -> Vec<Option<ModId>> {
+    let Some(manifest) = manifest else {
+        return vec![None; prepared.len()];
+    };
+    let owners = crate::install::first_manifest_entry_by_target(manifest);
+    prepared
+        .iter()
+        .map(|target| {
+            owners
+                .get(&target.target_path)
+                .filter(|entry| entry.mod_id != *scanned_mod_id)
+                .map(|entry| entry.mod_id.clone())
+        })
+        .collect()
 }
 
 /// 把 `total` 切成 `parts` 段，尽量均匀；前面的段多分余数。
@@ -651,5 +682,85 @@ mod tests {
         let ranges = split_ranges(7, 3);
         let covered: Vec<usize> = ranges.iter().flat_map(|range| range.clone()).collect();
         assert_eq!(covered, vec![0, 1, 2, 3, 4, 5, 6]);
+    }
+
+    // ---- 第三层归因（#286）：claimed_by_other_mods ----
+
+    fn prepared_target(relative: &str) -> PreparedExternalTarget {
+        let roots = vec!["nativePC".to_owned()];
+        PreparedExternalTarget {
+            target_path: InstallTargetPath::parse(relative, &roots).expect("合法目标路径"),
+            package_file_id: relative.to_owned(),
+            display_path: relative.to_owned(),
+        }
+    }
+
+    fn manifest_entry_for(
+        target: &InstallTargetPath,
+        mod_id: &str,
+    ) -> hmm_core::InstallManifestEntry {
+        hmm_core::InstallManifestEntry {
+            target_path: target.clone(),
+            mod_id: ModId::new(mod_id),
+            revision_id: None,
+            package_file_id: hmm_core::PackageFileId::new("pkg/file"),
+            layer: hmm_core::FileLayer::new("base", 0),
+            backup_ref: None,
+            installed_file: None,
+        }
+    }
+
+    #[test]
+    fn attribution_reports_other_mod_claims_and_skips_self_and_unowned() {
+        let claimed = prepared_target("nativePC/wp/one/one001.mod3");
+        let self_owned = prepared_target("nativePC/wp/one/one001.mrl3");
+        let unowned = prepared_target("nativePC/wp/one/one001.tex");
+        let manifest = InstallManifest::completed(
+            hmm_core::ProfileId::new("default"),
+            vec![
+                manifest_entry_for(&claimed.target_path, "mod-flat"),
+                manifest_entry_for(&self_owned.target_path, "mod-scanned"),
+            ],
+        );
+
+        let claims = claimed_by_other_mods(
+            Some(&manifest),
+            &[claimed, self_owned, unowned],
+            &ModId::new("mod-scanned"),
+        );
+
+        // 与 prepared 同序：他主条目报占用者，自己名下与无主路径为 None。
+        assert_eq!(claims, vec![Some(ModId::new("mod-flat")), None, None],);
+    }
+
+    #[test]
+    fn attribution_without_manifest_reports_no_claims() {
+        let prepared = vec![
+            prepared_target("nativePC/wp/a.mod3"),
+            prepared_target("nativePC/wp/b.mod3"),
+        ];
+
+        let claims = claimed_by_other_mods(None, &prepared, &ModId::new("mod-scanned"));
+
+        // 清单缺席 = 该配置档从未有 HMM 安装：长度仍与 prepared 对齐，全为 None。
+        assert_eq!(claims, vec![None, None]);
+    }
+
+    #[test]
+    fn attribution_uses_the_first_manifest_entry_per_target() {
+        let target = prepared_target("nativePC/wp/a.mod3");
+        // 同一路径两条异主条目属于畸形态；归因按首条报告（见
+        // first_manifest_entry_by_target 的口径说明），不做修复判定。
+        let manifest = InstallManifest::completed(
+            hmm_core::ProfileId::new("default"),
+            vec![
+                manifest_entry_for(&target.target_path, "mod-first"),
+                manifest_entry_for(&target.target_path, "mod-second"),
+            ],
+        );
+
+        let claims = claimed_by_other_mods(Some(&manifest), &[target], &ModId::new("mod-scanned"));
+
+        assert_eq!(claims, vec![Some(ModId::new("mod-first"))]);
     }
 }

@@ -1106,6 +1106,24 @@ fn manifest_backup_refs_by_target(
     backup_refs
 }
 
+/// 清单里每个 `target_path` 的**首条**条目——「这一路径归谁」的归属视图，
+/// 供外部状态扫描的归因（#286 第三层归因）使用。
+///
+/// 与 `cross_mod_target_conflicts` 是两个不同的查询：归因问「归属是谁」，
+/// 冲突判定问「计划会踩到谁」——后者对同一路径的多条异主条目取**任一被踩**
+/// 即冲突（fail-closed），不能与本函数合并实现，否则会弱化那道门禁。
+/// 健康清单同一路径只有一条条目（跨 MOD 覆盖在计划期即被拦下）；
+/// 出现多条异主条目属于畸形态，本函数按首条报告，不在这里做修复判定。
+pub fn first_manifest_entry_by_target(
+    manifest: &InstallManifest,
+) -> BTreeMap<&InstallTargetPath, &InstallManifestEntry> {
+    let mut by_target = BTreeMap::new();
+    for entry in &manifest.entries {
+        by_target.entry(&entry.target_path).or_insert(entry);
+    }
+    by_target
+}
+
 /// 计划里每个将被别的 MOD 顶掉的目标，连同占用者的 provider 一起返回。
 ///
 /// 这是「跨 Mod 同目标占用」的**唯一**判定实现：retarget 预览
