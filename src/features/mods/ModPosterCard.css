@@ -28,6 +28,19 @@
   white-space: nowrap;
 }
 
+/* #286 3b-1：附在 pill 内的「外部来源」短标。不参与截断（flex-shrink: 0），
+   窄卡片下宁可截断状态文案也保留来源标记——它是决策相关事实。 */
+.mod-card__status-origin {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
 .mod-card[aria-disabled="true"] {
   cursor: progress;
 }

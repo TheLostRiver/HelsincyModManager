@@ -30,6 +30,8 @@ export type ModLibraryItem = {
   posterFrom?: string;
   posterTo?: string;
   previewImage?: PreviewImage;
+  /** External import adapter id (e.g. hunting box); absent for plain zip imports. */
+  externalImportAdapterId?: string;
 };
 
 export type ModLibraryProfileContext = {
