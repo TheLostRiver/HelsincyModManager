@@ -49,8 +49,8 @@
 use std::sync::Arc;
 
 use hmm_app::external_state_scan::{
-    ExternalModStateScanService, ExternalStateScanError, ExternalStateScanPrepareRequest,
-    PreparedExternalTarget,
+    claimed_by_other_mods, ExternalModStateScanService, ExternalStateScanError,
+    ExternalStateScanPrepareRequest, PreparedExternalTarget,
 };
 use hmm_app::GameProfileWriteLockRegistry;
 use hmm_core::{ExternalInstallStateSummary, GameId, ModId, ProfileId};
@@ -59,8 +59,8 @@ use hmm_infra::{FileSystemInstallGameFileSystem, SandboxModPackageInstallFileSca
 use hmm_ports::{
     AppClock, CancellationToken, CrossProcessWriteAdmissionError, GameConfigRepository,
     GameFileFingerprint, InstallGameFileInspector, InstallGameFileSystem,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
-    ModPackageInstallFileScanner,
+    InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFileReader, ModPackageInstallFileScanner,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -95,6 +95,11 @@ pub enum ConfiguredExternalStateScanError {
     Cancelled,
     /// 底层扫描服务读取失败（既非取消、也非准备失败）。
     ScanUnavailable,
+    /// 安装清单读取失败，无法为结果做占用归因（#286 第三层归因）。
+    ///
+    /// **fail-closed**：静默把占用报成「无占用」会复刻「外部已安装」的误导，
+    /// 那正是归因要消灭的东西。清单**不存在**（从未安装过）不算此错误。
+    ManifestUnavailable,
     /// 跨进程写入准入的获取顺序被违反。
     ///
     /// **这是调用方 bug，不是运行时状态**，因此不做降级。把它并进 `Stale` 会把
@@ -118,17 +123,19 @@ impl ConfiguredExternalStateScanError {
             Self::GameFileUnavailable => "external_state_scan_game_file_unavailable",
             Self::Cancelled => "external_state_scan_cancelled",
             Self::ScanUnavailable => "external_state_scan_unavailable",
+            Self::ManifestUnavailable => "external_state_scan_manifest_unavailable",
             Self::WriteAdmissionOrderViolation => "external_state_scan_admission_order_violation",
             Self::Stale => "external_state_scan_stale",
         }
     }
 }
 
-/// 一次成功扫描的产物：判定结果 + 复核所需的指纹与目标列表。
+/// 一次成功扫描的产物：判定结果 + 复核所需的指纹与目标列表 + 占用归因。
 type SuccessfulExternalStateScan = (
     ExternalInstallStateSummary,
     Vec<PreparedExternalTarget>,
     Vec<Option<GameFileFingerprint>>,
+    Vec<Option<ModId>>,
 );
 
 pub struct ConfiguredExternalStateScanRequest<'a> {
@@ -147,6 +154,8 @@ pub struct ConfiguredExternalStateScanner {
     game_config_repository: Arc<dyn GameConfigRepository>,
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    /// 占用归因（#286 第三层）的事实来源：这一路径当前归哪个 MOD 管。
+    install_manifest_repository: Arc<dyn InstallManifestRepository>,
     allowed_roots: Vec<String>,
     write_locks: Arc<GameProfileWriteLockRegistry>,
     scanner: Arc<dyn ModPackageInstallFileScanner>,
@@ -163,6 +172,7 @@ impl ConfiguredExternalStateScanner {
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        install_manifest_repository: Arc<dyn InstallManifestRepository>,
         allowed_roots: Vec<String>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         scanner: Arc<dyn ModPackageInstallFileScanner>,
@@ -176,6 +186,7 @@ impl ConfiguredExternalStateScanner {
             game_config_repository,
             mod_import_result_repository,
             sandbox_locator,
+            install_manifest_repository,
             allowed_roots,
             write_locks,
             scanner,
@@ -196,6 +207,7 @@ impl ConfiguredExternalStateScanner {
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        install_manifest_repository: Arc<dyn InstallManifestRepository>,
         allowed_roots: Vec<String>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         clock: Arc<dyn AppClock>,
@@ -210,6 +222,7 @@ impl ConfiguredExternalStateScanner {
             game_config_repository,
             mod_import_result_repository,
             sandbox_locator,
+            install_manifest_repository,
             allowed_roots,
             write_locks,
             scanner,
@@ -238,7 +251,7 @@ impl ConfiguredExternalStateScanner {
         } = request;
 
         match self.scan_inner(game_id, profile_id, mod_id, cancellation_token) {
-            Ok((summary, prepared, fingerprints)) => {
+            Ok((summary, prepared, fingerprints, claimed_by)) => {
                 let computed_at = self.cache_clock_now();
                 self.cache.record_success(
                     game_id,
@@ -248,6 +261,7 @@ impl ConfiguredExternalStateScanner {
                         summary: summary.clone(),
                         prepared,
                         fingerprints,
+                        claimed_by,
                         computed_at_unix_millis: computed_at,
                     },
                 );
@@ -347,9 +361,19 @@ impl ConfiguredExternalStateScanner {
             .summarize_prepared(&prepared, &package_id, &sandbox_root, cancellation_token)
             .map_err(map_scan_error)?;
 
-        // ---- stage 3（锁内）：复核指纹。有漂移就丢弃结果，绝不返回可疑事实 ----
-        let after = self.with_game_lock(game_id, profile_id, |inspector| {
-            stat_all(inspector, &prepared)
+        // ---- stage 3（锁内）：复核指纹 + 占用归因。有漂移就丢弃结果 ----
+        // 归因（#286 第三层）与最终 stat 在**同一锁窗口**读清单：写锁在手意味着
+        // 没有安装在改清单，归因与「复验通过」的磁盘事实描述同一时刻。
+        // 清单读失败按硬失败报（fail-closed）：静默把占用报成「无占用」会复刻
+        // 「外部已安装」的误导。清单不存在（从未安装）= 全部无占用，正常路径。
+        let (after, claimed_by) = self.with_game_lock(game_id, profile_id, |inspector| {
+            let after = stat_all(inspector, &prepared)?;
+            let manifest = self
+                .install_manifest_repository
+                .load_manifest(profile_id)
+                .map_err(|_| ConfiguredExternalStateScanError::ManifestUnavailable)?;
+            let claimed_by = claimed_by_other_mods(manifest.as_ref(), &prepared, mod_id);
+            Ok((after, claimed_by))
         })?;
 
         if !same_fingerprints(&before, &after) {
@@ -358,7 +382,7 @@ impl ConfiguredExternalStateScanner {
 
         // 存的是 stage 3 **复核通过**的指纹：它才是「这个结果成立时的文件状态」。
         // 存 stage 1 的 `before` 会漏掉扫描期间的改动，而那正是要检测的东西。
-        Ok((summary, prepared, after))
+        Ok((summary, prepared, after, claimed_by))
     }
 
     fn service_for(&self, game_root: &std::path::Path) -> ExternalModStateScanService {
@@ -539,6 +563,9 @@ pub struct ExternalStateScanRecord {
     pub prepared: Vec<PreparedExternalTarget>,
     /// stage 3 复核通过时的指纹快照，供 getter 比对。
     pub fingerprints: Vec<Option<GameFileFingerprint>>,
+    /// 与 `prepared` **同序**的占用归因（#286 第三层）：该路径被哪个**其他**
+    /// MOD 的清单条目认领。`None` = 无主或归被扫 MOD 自己。
+    pub claimed_by: Vec<Option<ModId>>,
     pub computed_at_unix_millis: u128,
 }
 
@@ -571,6 +598,9 @@ pub struct ExternalStateScanQuery {
     /// `prepared` 里。界面的文件级明细两者都要，所以这里按同一顺序补上。
     /// `summary` 为 `None` 时恒为空。
     pub display_paths: Vec<String>,
+    /// 与 `display_paths` **同序**的占用归因（#286 第三层）。
+    /// `summary` 为 `None` 时恒为空；名字解析归 command 层，这里只出 id。
+    pub claimed_by: Vec<Option<ModId>>,
 }
 
 /// 按 `(game_id, profile_id, mod_id)` 缓存扫描结果。
@@ -731,7 +761,7 @@ impl ExternalStateScanCache {
             None => false,
         };
 
-        let (summary, display_paths) = match entry.record {
+        let (summary, display_paths, claimed_by) = match entry.record {
             Some(record) => (
                 Some(record.summary),
                 record
@@ -739,8 +769,9 @@ impl ExternalStateScanCache {
                     .into_iter()
                     .map(|target| target.display_path)
                     .collect(),
+                record.claimed_by,
             ),
-            None => (None, Vec::new()),
+            None => (None, Vec::new(), Vec::new()),
         };
 
         ExternalStateScanQuery {
@@ -748,6 +779,7 @@ impl ExternalStateScanCache {
             stale,
             last_error: entry.last_error,
             display_paths,
+            claimed_by,
         }
     }
 
@@ -773,6 +805,7 @@ fn empty_scan_query() -> ExternalStateScanQuery {
         stale: false,
         last_error: None,
         display_paths: Vec::new(),
+        claimed_by: Vec::new(),
     }
 }
 

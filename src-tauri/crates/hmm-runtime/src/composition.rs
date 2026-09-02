@@ -770,6 +770,7 @@ impl HmmRuntime {
                 Arc::clone(&game_config_repository),
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
+                Arc::clone(&install_manifest_repository),
                 mhw_adapter.allowed_install_roots(),
                 Arc::clone(&install_write_locks),
                 Arc::new(SystemClock),

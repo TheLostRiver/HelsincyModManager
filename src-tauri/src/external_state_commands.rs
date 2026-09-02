@@ -61,10 +61,19 @@ pub fn get_external_mod_state(
 ) -> Result<ExternalModStateDto, CommandErrorDto> {
     let (game_id, profile_id, mod_id) = parse_external_state_ids(game_id, profile_id, mod_id)?;
 
-    Ok(state
+    let query = state
         .external_state_scanner
-        .query(&game_id, &profile_id, &mod_id)
-        .into())
+        .query(&game_id, &profile_id, &mod_id);
+    // 占用者显示名随查随取（get_mod_detail 取名链：analysis 取名 + 用户改名覆盖）；
+    // 解析失败按「没有名字」处理——归因事实（id）仍然如实返回，前端回退显示 id。
+    Ok(ExternalModStateDto::from_query(query, |claimant_id| {
+        state
+            .mod_library
+            .get_mod_detail(claimant_id)
+            .ok()
+            .flatten()
+            .map(|detail| detail.name)
+    }))
 }
 
 fn parse_external_state_ids(
