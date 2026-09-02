@@ -565,7 +565,7 @@ pub struct ExternalStateScanQuery {
     pub last_error: Option<ConfiguredExternalStateScanError>,
 }
 
-/// 按 `(profile_id, mod_id)` 缓存扫描结果。
+/// 按 `(game_id, profile_id, mod_id)` 缓存扫描结果。
 ///
 /// ## 为什么是进程内内存，而不是持久化
 ///
