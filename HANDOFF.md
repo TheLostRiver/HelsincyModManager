@@ -3,7 +3,7 @@
 新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
 `HANDOFF.md` 需要提交就提交，不需要就删掉。
 
-> 本文件最后更新：2026-09-01，HEAD = `4dc1951`。
+> 本文件最后更新：2026-09-02，HEAD = `8cc2cc6`。
 > **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
 > 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
 > 照旧文档接手会往错误方向做。
@@ -107,12 +107,38 @@ docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先
   偏好落 localStorage、工作态不落，是既有区分（全页只有 `showCardCategoryLabels` 落盘）。
   **别把「切侧边栏丢多选」当 bug 修。**
 
-## 四、当前进度（2026-08-31 24:00，HEAD = `a9ead2b`）
+## 四、当前进度（2026-09-02，HEAD = `8cc2cc6`）
 
 最近提交（由新到旧）：
 
 | commit | 说明 |
 |---|---|
+| `8cc2cc6` | Merge PR #310（hy/external-mod-state-ui，**#286 切片 3a**：详情弹窗按需扫描） |
+| `ef22277` | feat(mods)「无法判定」补原因提示（真机验收时维护者被 unknown 态困惑） |
+| `afa7e22` | test(mods) 徽标三档文案与错误映射（6 条新增，3 组控制组见红） |
+| `3b8a8ae` | feat(mods) 详情弹窗接线「游戏目录状态」区块（切片 3a 之二） |
+| `e01186c` | feat(mods) 外部状态扫描的前端数据层（切片 3a 之一） |
+| `479c9bd` | Merge PR #308（hy/external-mod-state-commands，**#286 切片 2b 第 3 步**） |
+| `3564b14` | docs(app) `TaskKind` 注释措辞修正（开 PR 前自审） |
+| `747f788` | test(runtime) 覆盖任务服务与查询语义（8 条新增，4 组控制组全部见红） |
+| `40011c9` | feat(tauri) `start_external_mod_state_scan` + `get_external_mod_state`（含契约登记） |
+| `10b7bc6` | feat(runtime) 外部 MOD 状态扫描任务服务（新增 `TaskKind::ExternalStateScan`） |
+| `7f305dd` | Merge PR #307（hy/external-mod-state-scanner，**#286 切片 2b 第 2 步**） |
+| `823c0a4` | docs(runtime) 缓存键说明补上 `game_id`（开 PR 前自审） |
+| `7dc36fa` | Merge PR #306（docs/handoff-2b-scanner） |
+| `ed758d5` | test(runtime) 覆盖外部 MOD 状态结果存储（13 条新增，全文件 26 条） |
+| `bd903ac` | feat(runtime) 外部 MOD 状态结果存储（`ExternalStateScanCache`，切片 2b 第 2 步） |
+| `de9142c` | docs HANDOFF 更新到 4dc1951 + 记录 #286 切片 2b 进度 |
+| `097bb34` | Merge PR #303（hy/external-mod-state-scanner，**#286 切片 2b 第 1 步**） |
+| `559de43` | feat(runtime) 新增 `ConfiguredExternalStateScanner`（三段式加锁 + 挂 `HmmRuntime`） |
+| `eafee73` | refactor(app) 把外部状态扫描拆成 prepare 与 summarize 两段 |
+| `26d0b07` | feat(ports) 新增只读的 `InstallGameFileInspector` |
+| `4dc1951` | Merge PR #302（docs/handoff-refresh，上一版 HANDOFF 更新） |
+| `012b9a7` | Merge PR #301（hy/external-mod-state-scan，**#286 切片 1 + 2a**） |
+| `ff08a9a` / `f44ffe3` | docs HANDOFF 注明切片 1/2a 已合并、更新到 a9ead2b 并订正一处错误论断 |
+| `02250c6` | feat(app) 外部 MOD 状态扫描服务：有界并发、可取消、只读（**#286** 切片 2a） |
+| `b78cb8e` | refactor(view) #301 自查后修两处 API 瑕疵（开 PR 前自审） |
+| `25b001a` | feat(core+view) 外部 MOD 状态判定的纯逻辑，无 IO、无写入（**#286** 切片 1） |
 | `a9ead2b` | Merge PR #299（docs/verify-parity，本地校验跑 CI 同款策略 + 对等矩阵） |
 | `026436f` | fix(tools) 让 `verify.ps1` 再跑一遍 `check-policy.mjs`，并用矩阵锁住两边 |
 | `5833bc3` | Merge PR #297（hy/about-update-version-check，**#288**） |
@@ -162,18 +188,20 @@ Issue 状态：
 | **284** | **CLOSED** | 主线在 #291（内容根解析 + 合集包单独报错）；**真机验收又抓出 R5**，已由 #294/#295 修完。遗留 R4 已单独开 #292 |
 | **285** | **CLOSED** | PR #290 合并：空计划在 commit 前拦截为 `install_failed:empty_plan` |
 | **288** | **CLOSED** | 「检查更新」真的查询最新版本（PR #297）。不下载/不校验/不写文件，网络请求留在 Rust 侧，**CSP 与 capability 一行未改** |
-| **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施 |
-| **286** | **进行中** | 外部 MOD 接管。切片 1（判定纯逻辑 + 三档徽标投影）与切片 2a（扫描服务：有界并发、可取消、只读）已合并（PR #301）；**切片 2b 第 1 步已合并（PR #303，2026-09-01）：`ConfiguredExternalStateScanner` 三段式加锁 + 挂到 `HmmRuntime`**——它是**第一个被真实构造**的 #286 组件，此前切片 1/2a 都只是无人调用的 `pub` 模块。**后续切片**：结果存储 → Tauri command + 契约登记 → 三语文案与 UI 接线 → 接管 adopt。设计决定与已核实事实都在 issue 评论里 |
+| **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施。**取向须重估：见 #309**——变体不只来自用户手工包，是 HMM 自己的物化管线批量制造的，「只改提示」救不了主流程 |
+| **286** | **进行中** | 外部 MOD 接管。切片 1（判定纯逻辑 + 三档徽标投影）、2a（扫描服务：有界并发、可取消、只读）、2b（`ConfiguredExternalStateScanner` 三段式加锁 → 结果存储 → command 接线 + 契约登记）、3a（详情弹窗按需扫描 + 完整档徽标 + 文件明细 + 三语文案）**已全部合并**（PR #301 / #303 / #307 / #308 / #310）。**剩余**：3b（列表卡片三档徽标 + 外部来源 provenance）→ **第三层归因**（来源归因，复用 `cross_mod_target_conflicts`；**必须在 adopt 之前**，理由见 issue 最新评论）→ adopt（4 条认领规则待拍板）。设计决定与已核实事实都在 issue 评论里 |
 | **298** | OPEN | #288 遗留：启动时检查更新 + 导航提示（要动导航项与引导锚点，维护者决定暂缓） |
 | **300** | OPEN | #286 后续：孤儿文件检测（只读报告，不给删除动作） |
 | **304** | OPEN | #286 缺口：「写锁即判据」的失效条件——`save_game_instance` 不走 game/profile 写锁。含三种修法与代价，等拍板 |
 | **305** | OPEN | #286 缺口：沙箱侧读失败的文件被静默丢弃（`let expected = expected?;`），判定基于残缺事实。含三种修法与代价，等拍板 |
+| **309** | OPEN | **T17 外部导入物化把路径段转小写**：`external_import_scanner.rs:753` 的 `normalized_path_segment` 做 NFKC + `to_lowercase`，而**物化落盘沿用了归一化后的路径** ⇒ 沙箱内容根变成 `nativepc`。于是经狩技盒子导入的每个 MOD 既**装不上**（`allowed_install_roots` 只有 `["nativePC"]` 且大小写敏感 → 空计划，被 #285 拦成失败）**也比不了**（#286 的比对集为空 → 如实报 unknown）。修法 A/B/D 与各自代价写在 issue 里，**倾向 D**（归一化只用于碰撞检测与指纹，落盘用原始段；**存量已物化包不会自愈**，要重导入或补迁移）。它把 #292 从「用户包边角案例」升级为**主流程缺陷**，拍板时两条一并考虑 |
 | **287** | OPEN | 国内分发渠道——#288 负责「告知有没有新版」，#287 负责「从哪里下」 |
 | **275** | OPEN | Mod 存储目录可配置。**依赖 #273，现在可以开工**，但「存储目录必须落在沙箱根内」的校验语义要按新准入模型重新确认（app-data 根已豁免） |
 | 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
 | 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
 
-工作区：**干净**。PR #289 至 #303 的分支本地与远程均已删除；无开放分支。
+工作区：**干净**。PR #289 至 #310 的分支远程均已删除，本地只残留一个 `docs/handoff-2b-scanner`（可删）。
+本文件这次的改动落在本地分支 `docs/handoff-286-slice3a`，**尚未推送**。
 
 ## 五、沙箱模式与验收（#273 落地后的新常识）
 
@@ -213,20 +241,35 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    扫描做成**后台任务 + 有界并发**（`std::thread::scope`，worker 数 `min(4, available_parallelism)`，
    **不引 rayon**）、徽标**三档降级**（tech 完整 / classic·grid 精简 / list 极简）、
    「外部来源」放 pill 内、接管后允许重装、孤儿文件另开（#300）、CLI 延后。
-   切片顺序：①纯逻辑 → ②扫描服务（以上两项为 PR #301，已合并）→
-   **③扫描器装配（PR #303，2026-09-01 已合并）** → ④command 接线 →
-   ⑤三语文案与 UI 接线 → ⑥接管 adopt。
+   切片顺序：①纯逻辑 → ②扫描服务（以上两项为 PR #301）→ ③扫描器装配（PR #303）→
+   ④结果存储（PR #307）→ ⑤command 接线 + 契约登记（PR #308）→
+   ⑥详情弹窗按需扫描即切片 3a（PR #310）——**以上全部已合并**。
+   **剩余三片**：⑦3b 列表卡片三档徽标 + 外部来源 provenance（详情层的
+   `ModOrigin.external_import` 已可复用）→ ⑧第三层归因（来源归因，复用
+   `cross_mod_target_conflicts`）→ ⑨接管 adopt。
+   **adopt 的前置有四项，都记录在 issue #286 最新评论（2026-09-02）里**：
+   - **第三层归因**——没有它，用户会把另一个 MOD 名下的文件接管进第二份清单，
+     两份清单认领同一路径，#278 的占用判定随即失效。它是安全前置，不是展示优化；
+   - **#305**——沙箱侧读失败静默丢弃 ⇒ 认领清单静默漏文件 ⇒ 卸载漏删；
+   - **#309**——物化转小写，#286 的原始场景（狩技盒子导入的泡狐太刀）整体被它阻塞；
+   - **4 条认领规则待拍板**：被 HMM 其他 MOD 占用的文件（无论 matched/changed）绝不认领 /
+     来源不明的 changed 建议不认领、要包版本走重装（重装会把改动版存成 `previous_bytes`，
+     之后可还原）/ unreadable 阻断接管或强确认 / 全部缺失拒绝接管，且写清单前要在
+     写锁内做 stage-3 同款指纹复核（扫描结果到点击接管之间有时间窗）。
    接线时还有一个约束：**结果不能进进度事件**——契约明确禁止 payload 携带
    `target_path`，所以必须落存储 + 单独 getter（与 `get_external_import_preview` 同构）。
 
-   **PR #303 已落地（是 #286 第一个被真实构造的组件）**：`ConfiguredExternalStateScanner`
+   **已落地部分的关键不变量**：`ConfiguredExternalStateScanner`（PR #303）
    挂在 `HmmRuntime.external_state_scanner`。三段式加锁——锁内只 stat、锁外才 hash；
    拿不到准入或有写入进行中 → `Stale`（降级，非失败）；期间文件被改 → **丢弃结果**。
    `try_lock` 而非 `lock()` 是刻意的：用 `lock()` 时「有写入进行中 → Stale」这个分支
    永不执行（实测：退化后该用例不是变红而是**永久挂起**）。
+   stat 走新增的 port `InstallGameFileInspector`（`hmm-ports/src/install.rs`），
+   不是 `read_game_file`。结果落 `ExternalStateScanCache`（进程内、不持久化、上限 512 条，
+   淘汰按 `computedAt` 且时间戳并列时按 key tie-break——不 tie-break 会「单独跑过、
+   整组跑挂」）；`query()` 刻意**不拿锁**，因为看到并发修改正是这次 stat 的目的，
+   撕裂只会多报 stale、方向 fail-closed。
    两个已知缺口已转 issue：**#304**（写锁判据的失效条件）、**#305**（沙箱侧读失败被静默丢弃）。
-   下一步做 ④command 接线时，注意 `InstallGameFileInspector` 是本轮新增的 port
-   （`hmm-ports/src/install.rs`），stat 走它而不是 `read_game_file`。
 
    **动手前先读 issue 评论**：里面有一张已核实的代码事实表（哪几处可复用、哪几处是坑）。
 
@@ -311,8 +354,8 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
 
 - fixture 生成：`HMM_FIXTURE_OUT_DIR=D:/DEV/HMM-WR-fixture cargo test -p hmm-runtime --test generate_weapon_fixture`
 - 应用游戏目录已配置：`%APPDATA%\dev.helsincy.modmanager\game\mhw-minimal`（含前置桩）
-- 库里现有：wrapped（已安装）、flat（`mod-import-1787939069837-0`，已安装，
-  2026-08-30 真机验收时重定向装到了 **one001**）、5 个第三方导入包
+- 库里现有：wrapped（已安装）、flat（`mod-import-1787939069837-0`，2026-08-30 真机验收时
+  重定向装到了 **one001**，**2026-09-02 验收时已卸载**）、5 个第三方导入包
 - 缩略图回归包：`tmp/thumb-reclaim-test.zip`。**维护者已决定不纳入 git**（`tmp/` 被
   gitignore），换机器后若丢失照下面重建即可（关键是结构，图本身随便一张竖图都行）：
 
@@ -348,3 +391,16 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   改不改都是对的。必须 preference 设为**跟随系统** + 触发 `languagechange`
   （CDP `Emulation.setLocaleOverride`）。脚本 `tmp/check-locale-switch.mjs`。
   判定唯一有区分度的是「名称就地变化」。
+- **外部状态扫描（#286）的验收姿势**：2026-09-02 验收后，flat
+  （`mod-import-1787939069837-0`）已**卸载**，游戏根下的 `nativePC/wp/one/one001`
+  也已删除，one001 路径是干净的。
+  wrapped 的沙箱
+  `mod-import/sandboxes/mod-import-1787939077192-1/nativePC/wp/one/one001/mod/`
+  （`one001.mod3` + `.mrl3` 两个文件）是外部状态扫描的**标准复制源**：
+  复制进夹具游戏根 → 「已安装」；删掉其中一个 → 「部分安装」；
+  用 `Add-Content` 改一个 → 「已被改动」（mixed）。两个注意点：
+  - **内容相同的两份导入，哈希不可区分**。「外部 · 已安装」可能实际是被 HMM 的
+    另一个 MOD 占用（one001 双导入就是这个案例）——这是**第三层归因未做前的已知表现**，
+    不是误判，别当 bug 追。
+  - 狩技盒子导入的那 5 个包受 **#309** 影响，扫描结果恒为「无法判定」，
+    **修复前别拿它们验收**。
