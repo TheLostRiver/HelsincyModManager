@@ -685,6 +685,11 @@
   color: var(--color-danger, #d4574e);
 }
 
+/* #286 第三层归因：占用提示是「纠正误导」的关键信息，用正文色而非弱化色。 */
+.mod-detail-dialog__external-notice.is-occupied {
+  color: var(--color-text);
+}
+
 .mod-detail-dialog__external-badge {
   margin: 0;
 }
@@ -753,4 +758,17 @@
 .mod-detail-dialog__external-files tr[data-state="unreadable"] td,
 .mod-detail-dialog__external-files tr[data-state="missing"] td {
   color: var(--color-text);
+}
+
+/* #286 第三层归因：文件行内的占用者标签，外观沿用 pill-origin 的小胶囊。 */
+.mod-detail-dialog__external-claimed {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-accent-weak);
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
