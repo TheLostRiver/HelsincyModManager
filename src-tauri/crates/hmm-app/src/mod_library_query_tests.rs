@@ -348,6 +348,7 @@ fn projection_page(mod_id: &str, name: &str) -> ModLibraryProjectionQueryPage {
                     reason: PreviewImageRejectionReason::Missing,
                 },
                 labels: Vec::new(),
+                external_import_adapter_id: None,
             },
             status: None,
         }],
