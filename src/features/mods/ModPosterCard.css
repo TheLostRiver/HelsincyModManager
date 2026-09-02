@@ -346,6 +346,28 @@
   color: var(--color-success-dot);
 }
 
+/* #286 3b-2：外部状态徽标占据 tech 状态行时的配色（规则在 data-status 之后，
+   同特异性下后者胜出）。完整档文案较长，允许在行内换行而不是溢出。 */
+.mod-grid.view-tech .mod-card__tech-status[data-external-case] {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="installed"] {
+  color: var(--color-text);
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="installed"] .tech-indicator {
+  color: var(--color-success-dot);
+}
+
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="partial"],
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="changed"],
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="mixed"],
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="unknown"] {
+  color: var(--color-warning-text);
+}
+
 /* ---------- 卡片网格 ---------- */
 
 .mod-grid {
@@ -823,6 +845,34 @@
 .mod-card__status-pill.is-rollback_required svg,
 .mod-card__status-pill.is-repair_required svg {
   color: var(--color-danger-dot);
+}
+
+/* #286 3b-2：外部状态徽标占据状态文案位时的配色。规则排在 is-{status} 之后，
+   同特异性下后者胜出——徽标存在时以「游戏目录事实」的语义色覆盖安装状态底色。
+   changed/mixed/partial/unknown 都是「需留意」信号 → 警示色；
+   installed（外部完整在位）→ 成功色；not_installed 维持 is-not_installed 的灰。 */
+.mod-card__status-pill[data-external-case="installed"] {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+}
+
+.mod-card__status-pill[data-external-case="installed"] svg {
+  color: var(--color-success-dot);
+}
+
+.mod-card__status-pill[data-external-case="partial"],
+.mod-card__status-pill[data-external-case="changed"],
+.mod-card__status-pill[data-external-case="mixed"],
+.mod-card__status-pill[data-external-case="unknown"] {
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.mod-card__status-pill[data-external-case="partial"] svg,
+.mod-card__status-pill[data-external-case="changed"] svg,
+.mod-card__status-pill[data-external-case="mixed"] svg,
+.mod-card__status-pill[data-external-case="unknown"] svg {
+  color: var(--color-warning-dot);
 }
 
 .mod-card__meta {

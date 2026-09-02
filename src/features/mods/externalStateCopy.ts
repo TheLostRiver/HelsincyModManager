@@ -67,6 +67,7 @@ export const externalStateCopy = {
       installed: "已安装",
       notInstalled: "未安装",
       unknown: "无法判定",
+      staleHint: "结果可能已过时，建议重新检查",
       partial: {
         full: (n) => `部分安装 · ${n.missing} 个文件缺失`,
         compact: (n) => `缺失 ${n.missing}`,
@@ -123,6 +124,7 @@ export const externalStateCopy = {
       installed: "Installed",
       notInstalled: "Not installed",
       unknown: "Undetermined",
+      staleHint: "May be outdated, check again",
       partial: {
         full: (n) => `Partially installed · ${n.missing} missing`,
         compact: (n) => `Missing ${n.missing}`,
@@ -183,6 +185,7 @@ export const externalStateCopy = {
       installed: "導入済み",
       notInstalled: "未導入",
       unknown: "判定不可",
+      staleHint: "結果が古い可能性があります。再確認してください",
       partial: {
         full: (n) => `一部導入 · 欠損 ${n.missing} 件`,
         compact: (n) => `欠損 ${n.missing}`,

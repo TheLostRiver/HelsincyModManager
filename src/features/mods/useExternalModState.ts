@@ -55,8 +55,14 @@ export function useExternalModState(input: {
   modId: string | null;
   /** The dialog tab is visible; the initial query only runs while active. */
   active: boolean;
+  /**
+   * Mirrors every stored result that reaches this hook (initial cached load
+   * and post-scan re-query) so a page-level session store can keep a copy for
+   * the list cards (#286 3b-2, option A).
+   */
+  onResult?: (modId: string, state: ExternalModStateDto) => void;
 }): ExternalModStateWorkflow {
-  const { gameId, profileId, modId, active } = input;
+  const { gameId, profileId, modId, active, onResult } = input;
   const [state, setState] = useState<ExternalModStateDto | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -69,19 +75,26 @@ export function useExternalModState(input: {
   const pendingTerminalRef = useRef(new Map<string, TaskProgressEventDto>());
   const requestRef = useRef({ gameId, profileId, modId });
   requestRef.current = { gameId, profileId, modId };
+  const onResultRef = useRef(onResult);
+  onResultRef.current = onResult;
 
   const refresh = useCallback(() => {
-    const request = requestRef.current;
-    if (request.modId === null || request.profileId === null) {
+    const { gameId: requestGameId, profileId: requestProfileId, modId: requestModId } =
+      requestRef.current;
+    if (requestModId === null || requestProfileId === null) {
       return;
     }
     const generation = generationRef.current;
     void getExternalModState({
-      gameId: request.gameId,
-      profileId: request.profileId,
-      modId: request.modId,
+      gameId: requestGameId,
+      profileId: requestProfileId,
+      modId: requestModId,
     })
       .then((dto) => {
+        // Report even when the dialog moved on to another mod (generation
+        // drift): the (modId -> result) pair itself is still a valid fact for
+        // the session store, only this hook's local state must not change.
+        onResultRef.current?.(requestModId, dto);
         if (generationRef.current === generation) {
           setState(dto);
           setLoaded(true);

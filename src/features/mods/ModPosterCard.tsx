@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { Check } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
@@ -8,6 +8,9 @@ import type { ModCardSelectionIntent, ModSelectionMode } from "./modSelection";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy, type ModLibraryCopy } from "./modLibraryCopy";
 import { externalImportCopy } from "./external-import/externalImportCopy";
+import { projectExternalCardBadge } from "./externalCardBadge";
+import type { ExternalModStateDto } from "./externalStateApi";
+import { externalStateCopy } from "./externalStateCopy";
 import "./ModPosterCard.css";
 
 type ModPosterCardProps = {
@@ -20,6 +23,8 @@ type ModPosterCardProps = {
   onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
   showCategoryLabels?: boolean;
+  /** 本会话的外部状态扫描结果（#286 3b-2）；null 表示本会话没扫过。 */
+  externalState?: ExternalModStateDto | null;
 };
 
 function statusLabelMap(card: ModLibraryCopy["card"]): Record<ModLibraryItem["status"], string> {
@@ -80,9 +85,23 @@ export function ModPosterCard({
   onContextMenu,
   index = 0,
   showCategoryLabels = true,
+  externalState = null,
 }: ModPosterCardProps) {
   const { locale } = useI18n();
   const card = resolveCopy(modLibraryCopy, locale).card;
+  // #286 3b-2：有本会话扫描结果时，徽标取代状态文案位（档位随视图，见
+  // externalInstallStatusView 的宽度实测表）；「外部」短标位置不变。
+  const externalBadge = projectExternalCardBadge({
+    installStatus: item.status,
+    externalState,
+    viewMode,
+    copy: resolveCopy(externalStateCopy, locale).badge,
+  });
+  // 「需要用户留意」的判定换警示图标；installed / not_installed 维持对勾基线。
+  const externalBadgeAlerts =
+    externalBadge !== null &&
+    externalBadge.case !== "installed" &&
+    externalBadge.case !== "not_installed";
   // Adapter display names live in externalImportCopy (single source for the
   // hunting-box label); the card only projects id -> label, never re-derives.
   const externalImportHistory = resolveCopy(externalImportCopy, locale).history;
@@ -238,9 +257,20 @@ export function ModPosterCard({
           </span>
 
           {/* 状态徽标：Classic, Grid, List 通用 */}
-          <span className={`mod-card__status-pill is-${item.status}`}>
-            <Check size={13} strokeWidth={2.6} aria-hidden="true" />
-            <span className="mod-card__status-label">{statusLabelForItem(item, card)}</span>
+          <span
+            className={`mod-card__status-pill is-${item.status}`}
+            data-external-case={externalBadge?.case}
+            title={externalBadge?.label}
+            aria-label={externalBadge?.label}
+          >
+            {externalBadgeAlerts ? (
+              <TriangleAlert size={13} strokeWidth={2.6} aria-hidden="true" />
+            ) : (
+              <Check size={13} strokeWidth={2.6} aria-hidden="true" />
+            )}
+            <span className="mod-card__status-label">
+              {externalBadge ? externalBadge.text : statusLabelForItem(item, card)}
+            </span>
             {externalOrigin ? (
               <span
                 className="mod-card__status-origin"
@@ -312,10 +342,16 @@ export function ModPosterCard({
             <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span>
             <span className="mod-card__tech-size" data-label="Size">{item.sizeLabel || "Unknown"}</span>
           </div>
-          <div className="mod-card__tech-status" data-status={item.status}>
+          <div
+            className="mod-card__tech-status"
+            data-status={item.status}
+            data-external-case={externalBadge?.case}
+            title={externalBadge?.label}
+            aria-label={externalBadge?.label}
+          >
             <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span className="tech-indicator"></span>
-              {techStatusLabel[item.status]}
+              {externalBadge ? externalBadge.text : techStatusLabel[item.status]}
             </span>
             <span>[ {techValidityLabel[item.status]} ]</span>
           </div>
