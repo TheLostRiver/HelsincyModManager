@@ -14,6 +14,7 @@ import { localeMeta, resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
 import { externalImportCopy } from "./external-import/externalImportCopy";
+import { ExternalStateSection } from "./ExternalStateSection";
 import { modDetailDialogCopy } from "./modDetailDialogCopy";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem, ModOrigin } from "./modLibraryTypes";
@@ -477,6 +478,15 @@ export function ModDetailDialog({
                 <p className="mod-detail-dialog__empty">{dialogCopy.noCategoriesAvailable}</p>
               )}
             </section>
+
+            {replacementInstallStatus === "not_installed" ? (
+              <ExternalStateSection
+                gameId={gameId}
+                profileId={profileId}
+                modId={modId}
+                active={activeTab === "details"}
+              />
+            ) : null}
               </>
             ) : (
               <section className="mod-detail-dialog__section is-replacement">
