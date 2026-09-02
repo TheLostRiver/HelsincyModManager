@@ -18,6 +18,8 @@ export type ExternalStateSectionCopy = {
   rescanAction: string;
   scanning: string;
   neverScanned: string;
+  /** Shown for the `unknown` state: the comparison set was empty. */
+  unknownHint: string;
   staleNotice: string;
   /** Shown instead of the action when no profile is selected. */
   profileRequired: string;
@@ -94,6 +96,8 @@ export const externalStateCopy = {
     scanning: "正在比对导入包与游戏目录…",
     neverScanned:
       "尚未检查过。用其他工具装进游戏的文件不会出现在 HMM 的记录里，点「检查游戏目录」按实际内容判定。",
+    unknownHint:
+      "导入包里没有解析出任何可安装文件，无法比对。这通常是包的目录结构问题（例如 nativePC 目录的大小写变体）。",
     staleNotice: "游戏目录的文件可能已发生变化，以下结果仅供参考，建议重新检查。",
     profileRequired: "当前没有可用的配置档，无法检查。",
     fileListCaption: "文件明细",
@@ -149,6 +153,8 @@ export const externalStateCopy = {
     scanning: "Comparing the package with the game directory…",
     neverScanned:
       "Not checked yet. Files installed by other tools never appear in HMM's records; run the check to judge by what is actually on disk.",
+    unknownHint:
+      "The imported package yielded no installable files, so there is nothing to compare. This usually means a package layout problem (for example a case variant of the nativePC directory).",
     staleNotice:
       "Files in the game directory may have changed. Treat the result below as a hint and check again.",
     profileRequired: "No profile is available, so the check cannot run.",
@@ -207,6 +213,8 @@ export const externalStateCopy = {
     scanning: "パッケージとゲームディレクトリを照合しています…",
     neverScanned:
       "まだ確認していません。他のツールで導入されたファイルは HMM の記録に現れないため、実際の内容で判定するには確認を実行してください。",
+    unknownHint:
+      "インポートパッケージから導入可能なファイルを解析できず、照合できません。パッケージ構造の問題（例：nativePC ディレクトリの大文字小文字の違い）が原因のことが多いです。",
     staleNotice:
       "ゲームディレクトリのファイルが変化した可能性があります。以下は参考情報として扱い、再確認してください。",
     profileRequired: "利用可能なプロファイルがないため、確認できません。",
