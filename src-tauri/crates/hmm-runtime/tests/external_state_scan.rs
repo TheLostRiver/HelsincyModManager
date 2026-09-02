@@ -20,10 +20,10 @@
 //! 每条用例都跑过控制组：把实现退回去，确认它会变红。
 
 use hmm_app::external_state_scan::DEFAULT_WORKER_LIMIT;
-use hmm_app::GameProfileWriteLockRegistry;
+use hmm_app::{GameProfileWriteLockRegistry, TaskManager, TaskStatus};
 use hmm_core::{
-    ExternalInstallState, GameDirectoryStatus, GameId, GameInstance, InstallTargetPath, ModId,
-    ProfileId,
+    ExternalFileState, ExternalInstallState, GameDirectoryStatus, GameId, GameInstance,
+    InstallTargetPath, ModId, ProfileId,
 };
 use hmm_ports::{
     AppClock, CancellationToken, GameConfigRepository, GameConfigRepositoryError,
@@ -37,6 +37,11 @@ use hmm_runtime::external_state_scan::{
     ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
     ConfiguredExternalStateScanner, ExternalStateScanCache, ExternalStateScanRecord,
     GameFileSystemFactory, GameFileSystemHandles,
+};
+use hmm_runtime::external_state_scan_tasks::{
+    queued_scan_event, ExternalStateScanTaskService, EXTERNAL_STATE_SCAN_CANCELLED_PHASE,
+    EXTERNAL_STATE_SCAN_COMPLETED_PHASE, EXTERNAL_STATE_SCAN_FAILED_PHASE,
+    EXTERNAL_STATE_SCAN_PROCESSING_PHASE, EXTERNAL_STATE_SCAN_QUEUED_PHASE,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -63,18 +68,25 @@ fn game_instance(root: PathBuf) -> GameInstance {
 }
 
 struct FakeGameConfigRepository {
-    instance: Option<GameInstance>,
+    instance: Mutex<Option<GameInstance>>,
 }
 
 impl FakeGameConfigRepository {
     fn with_root(root: impl Into<PathBuf>) -> Self {
         Self {
-            instance: Some(game_instance(root.into())),
+            instance: Mutex::new(Some(game_instance(root.into()))),
         }
     }
 
     fn none() -> Self {
-        Self { instance: None }
+        Self {
+            instance: Mutex::new(None),
+        }
+    }
+
+    /// 模拟「游戏实例在扫描之后被移除/读不到」。
+    fn clear_instance(&self) {
+        *self.instance.lock().expect("instance lock") = None;
     }
 }
 
@@ -83,7 +95,7 @@ impl GameConfigRepository for FakeGameConfigRepository {
         &self,
         _game_id: &GameId,
     ) -> GameConfigRepositoryResult<Option<GameInstance>> {
-        Ok(self.instance.clone())
+        Ok(self.instance.lock().expect("instance lock").clone())
     }
 
     fn save_game_instance(&self, _instance: &GameInstance) -> GameConfigRepositoryResult<()> {
@@ -371,6 +383,7 @@ struct Harness {
     _temp: TempDir,
     scanner: Arc<ConfiguredExternalStateScanner>,
     game_fs: Arc<RecordingGameFs>,
+    game_config: Arc<FakeGameConfigRepository>,
     /// 与 scanner 内部 `lock_for` 返回的是同一把锁。
     write_lock: Arc<Mutex<()>>,
 }
@@ -389,8 +402,9 @@ fn harness(package_files: &[(&str, &[u8])], game_fs: RecordingGameFs) -> Harness
     let write_lock = write_locks.lock_for(&GameId::mhw(), &ProfileId::new("default"));
 
     let game_fs = Arc::new(game_fs);
+    let game_config = Arc::new(FakeGameConfigRepository::with_root(game_root));
     let scanner = Arc::new(ConfiguredExternalStateScanner::new(
-        Arc::new(FakeGameConfigRepository::with_root(game_root)),
+        Arc::clone(&game_config) as Arc<dyn GameConfigRepository>,
         Arc::new(FakeModImportResultRepository {
             analysis: Some(analysis("mod-a", "package-a")),
         }),
@@ -423,6 +437,7 @@ fn harness(package_files: &[(&str, &[u8])], game_fs: RecordingGameFs) -> Harness
         _temp: temp,
         scanner,
         game_fs,
+        game_config,
         write_lock,
     }
 }
@@ -1224,4 +1239,257 @@ fn record_at(computed_at_unix_millis: u128) -> ExternalStateScanRecord {
         fingerprints: Vec::new(),
         computed_at_unix_millis,
     }
+}
+
+// ---------------------------------------------------------------------------
+// 查询语义：游戏实例不可用（#307 自审遗留，本轮定死）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_query_without_a_game_instance_keeps_the_summary_and_reports_stale() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    harness.scan().expect("scan succeeds");
+
+    harness.game_config.clear_instance();
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    let summary = query.summary.expect("游戏实例读不到时必须保留上次结果");
+    assert_eq!(summary.state, ExternalInstallState::Installed);
+    assert!(query.stale, "无法 stat 就无法证实结果，必须报 stale");
+    assert_eq!(
+        query.last_error, None,
+        "查询期的处境不得冒充「上次扫描失败原因」"
+    );
+}
+
+#[test]
+fn a_query_without_a_game_instance_and_without_history_reports_nothing() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+
+    harness.game_config.clear_instance();
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert_eq!(query.summary, None);
+    assert!(!query.stale, "从没扫过，谈不上过期");
+    assert_eq!(query.last_error, None);
+}
+
+// ---------------------------------------------------------------------------
+// 查询的文件级明细
+// ---------------------------------------------------------------------------
+
+#[test]
+fn query_display_paths_align_with_per_file_states() {
+    // 一个在且一致、一个缺失：明细必须能指出各自是谁。
+    let package: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same"), ("nativePC/b.mod3", b"gone")];
+    let harness = harness(
+        package,
+        RecordingGameFs::new(&[("nativePC/a.mod3", b"same")]),
+    );
+    harness.scan().expect("scan succeeds");
+
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert_eq!(query.display_paths, ["nativePC/a.mod3", "nativePC/b.mod3"]);
+    let summary = query.summary.expect("summary");
+    assert_eq!(
+        summary.files,
+        [ExternalFileState::Matched, ExternalFileState::Missing],
+        "states 与 display_paths 必须同序——错位会把「缺的是 b」说成「缺的是 a」"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 任务服务（切片 2b-3）
+// ---------------------------------------------------------------------------
+
+fn task_service(harness: &Harness) -> (Arc<TaskManager>, ExternalStateScanTaskService) {
+    let task_manager = Arc::new(TaskManager::new());
+    let service =
+        ExternalStateScanTaskService::new(Arc::clone(&task_manager), Arc::clone(&harness.scanner));
+    (task_manager, service)
+}
+
+fn start_launch(
+    service: &ExternalStateScanTaskService,
+    mod_id: &str,
+) -> hmm_runtime::ExternalStateScanTaskLaunch {
+    service
+        .start_scan(GameId::mhw(), ProfileId::new("default"), ModId::new(mod_id))
+        .expect("start scan")
+}
+
+#[test]
+fn a_successful_scan_task_completes_with_ordered_phases_and_no_paths_in_events() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    let (task_manager, service) = task_service(&harness);
+
+    let launch = start_launch(&service, "mod-a");
+    assert!(launch.task.task_id.starts_with("external-state-scan-"));
+    let queued = queued_scan_event(&launch);
+    assert_eq!(queued.phase, EXTERNAL_STATE_SCAN_QUEUED_PHASE);
+    assert_eq!(queued.result_ref.as_deref(), Some("mod-a"));
+
+    let events = service.run_scan(launch.clone()).expect("run scan");
+
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Completed)
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            EXTERNAL_STATE_SCAN_PROCESSING_PHASE,
+            EXTERNAL_STATE_SCAN_COMPLETED_PHASE
+        ]
+    );
+    // 契约红线：事件 payload 不携带任何目标路径——结果只能通过 getter 拿。
+    for event in &events {
+        assert!(
+            !format!("{event:?}").contains("nativePC"),
+            "进度事件不得携带目标路径：{event:?}"
+        );
+        assert_eq!(event.result_ref.as_deref(), Some("mod-a"));
+    }
+    // 结果已在存储里，getter 可见。
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+    assert_eq!(
+        query.summary.expect("summary").state,
+        ExternalInstallState::Installed
+    );
+}
+
+#[test]
+fn a_cancellation_before_the_runner_starts_yields_only_a_cancelled_event() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    let (task_manager, service) = task_service(&harness);
+
+    let launch = start_launch(&service, "mod-a");
+    task_manager
+        .cancel_task(&launch.task.task_id)
+        .expect("cancel task");
+
+    let events = service.run_scan(launch.clone()).expect("run scan");
+
+    assert_eq!(events.len(), 1, "取消后不该再跑扫描阶段");
+    assert_eq!(events[0].phase, EXTERNAL_STATE_SCAN_CANCELLED_PHASE);
+    assert_eq!(events[0].status, TaskStatus::Cancelled);
+    assert_eq!(events[0].error, None, "取消不是失败，不得贴错误码");
+    // 取消发生在扫描前，不得留下结果。
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+    assert_eq!(query.summary, None);
+}
+
+#[test]
+fn a_failing_scan_marks_the_task_failed_with_the_stable_error_code() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    let (task_manager, service) = task_service(&harness);
+
+    // harness 只登记了 mod-a 的导入分析：扫 mod-b 必然 ModUnavailable。
+    let launch = start_launch(&service, "mod-b");
+    let events = service.run_scan(launch.clone()).expect("run scan");
+
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.phase.as_str())
+            .collect::<Vec<_>>(),
+        [
+            EXTERNAL_STATE_SCAN_PROCESSING_PHASE,
+            EXTERNAL_STATE_SCAN_FAILED_PHASE
+        ]
+    );
+    assert_eq!(
+        events[1].error.as_deref(),
+        Some("external_state_scan_mod_unavailable"),
+        "失败事件必须携带稳定错误码"
+    );
+    // 失败原因同时进存储，getter 可见。
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-b"),
+    );
+    assert_eq!(
+        query.last_error,
+        Some(ConfiguredExternalStateScanError::ModUnavailable)
+    );
+}
+
+#[test]
+fn a_write_in_progress_fails_the_task_as_stale_instead_of_blocking() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    let (task_manager, service) = task_service(&harness);
+
+    let launch = start_launch(&service, "mod-a");
+    // 模拟安装进行中：持有同一把 (game, profile) 写锁。
+    let guard = harness.write_lock.lock().expect("hold write lock");
+    let started = Instant::now();
+    let events = service.run_scan(launch.clone()).expect("run scan");
+    let elapsed = started.elapsed();
+    drop(guard);
+
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "写锁被持有时必须立刻降级，不能阻塞等待（耗时 {elapsed:?}）"
+    );
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Failed)
+    );
+    assert_eq!(
+        events.last().expect("terminal event").error.as_deref(),
+        Some("external_state_scan_stale")
+    );
+}
+
+#[test]
+fn an_unemitted_queued_launch_can_be_aborted_to_a_terminal_state() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    let (task_manager, service) = task_service(&harness);
+
+    let launch = start_launch(&service, "mod-a");
+    service.abort_queued_scan(&launch).expect("abort");
+
+    assert_eq!(
+        task_manager.task_status(&launch.task.task_id),
+        Some(TaskStatus::Failed),
+        "废弃的 launch 不能停留在 queued——那是前端永远等不到的任务"
+    );
+    // 已终态后再 abort 是幂等的。
+    service.abort_queued_scan(&launch).expect("abort again");
 }

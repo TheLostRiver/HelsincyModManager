@@ -1,4 +1,5 @@
 use crate::external_state_scan::ConfiguredExternalStateScanner;
+use crate::external_state_scan_tasks::ExternalStateScanTaskService;
 use crate::mod_library::ModLibraryComposition;
 use crate::{
     RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
@@ -177,6 +178,7 @@ pub struct HmmRuntime {
     pub install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
     pub external_state_scanner: Arc<ConfiguredExternalStateScanner>,
+    pub external_state_scan_tasks: Arc<ExternalStateScanTaskService>,
     pub reinstall_executor: Arc<ConfiguredReinstallExecutor>,
     pub reinstall_task_runner: Arc<ReinstallTaskRunner<ConfiguredReinstallExecutor>>,
     pub reinstall_tasks: Arc<ReinstallTaskService>,
@@ -772,6 +774,10 @@ impl HmmRuntime {
                 Arc::clone(&install_write_locks),
                 Arc::new(SystemClock),
             ));
+        let external_state_scan_tasks = Arc::new(ExternalStateScanTaskService::new(
+            Arc::clone(&task_manager),
+            Arc::clone(&external_state_scanner),
+        ));
         // 安装、卸载与存档侧共用同一个探测器：游戏在跑时不得写玩家文件。
         let install_game_running_detector = game_running_detector_for_platform(&game_adapters);
         let install_committer: Arc<dyn InstallPlanCommitter> =
@@ -929,6 +935,7 @@ impl HmmRuntime {
             install_recovery_scanner,
             install_recovery_action_previewer,
             external_state_scanner,
+            external_state_scan_tasks,
             reinstall_executor,
             reinstall_task_runner,
             reinstall_tasks: Arc::new(ReinstallTaskService::new(Arc::clone(&task_manager))),
