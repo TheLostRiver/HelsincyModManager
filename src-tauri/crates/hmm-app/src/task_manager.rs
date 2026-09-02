@@ -11,7 +11,7 @@ pub enum TaskKind {
     Install,
     SaveBackup,
     SaveRestore,
-    /// 外部 MOD 状态扫描（#286）：只读比对导入包与游戏目录，不获取安装写入路径。
+    /// 外部 MOD 状态扫描（#286）：只读比对导入包与游戏目录，绝不写游戏目录。
     ExternalStateScan,
 }
 
