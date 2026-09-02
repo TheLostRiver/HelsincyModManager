@@ -1,3 +1,4 @@
+use crate::external_state_scan::ConfiguredExternalStateScanner;
 use crate::mod_library::ModLibraryComposition;
 use crate::{
     RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
@@ -175,6 +176,7 @@ pub struct HmmRuntime {
     pub mod_deletion: Arc<ModDeletionService>,
     pub install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
     pub install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
+    pub external_state_scanner: Arc<ConfiguredExternalStateScanner>,
     pub reinstall_executor: Arc<ConfiguredReinstallExecutor>,
     pub reinstall_task_runner: Arc<ReinstallTaskRunner<ConfiguredReinstallExecutor>>,
     pub reinstall_tasks: Arc<ReinstallTaskService>,
@@ -757,6 +759,18 @@ impl HmmRuntime {
                 app_data_dir.clone(),
                 Arc::clone(&install_write_locks),
             ));
+        // #286：外部来源 MOD 的状态扫描。只做只读判定，结果不进进度事件
+        // （契约禁止 payload 携带 target_path）。
+        // `allowed_roots` 取自游戏 adapter，与安装计划同源——否则会出现
+        // 「装不上却显示已安装」。
+        let external_state_scanner =
+            Arc::new(ConfiguredExternalStateScanner::with_real_filesystem(
+                Arc::clone(&game_config_repository),
+                Arc::clone(&mod_import_result_repository),
+                Arc::clone(&mod_import_sandbox_locator),
+                mhw_adapter.allowed_install_roots(),
+                Arc::clone(&install_write_locks),
+            ));
         // 安装、卸载与存档侧共用同一个探测器：游戏在跑时不得写玩家文件。
         let install_game_running_detector = game_running_detector_for_platform(&game_adapters);
         let install_committer: Arc<dyn InstallPlanCommitter> =
@@ -913,6 +927,7 @@ impl HmmRuntime {
             )),
             install_recovery_scanner,
             install_recovery_action_previewer,
+            external_state_scanner,
             reinstall_executor,
             reinstall_task_runner,
             reinstall_tasks: Arc::new(ReinstallTaskService::new(Arc::clone(&task_manager))),
