@@ -113,6 +113,7 @@ fn task_kind_code(kind: TaskKindDto) -> &'static str {
         TaskKindDto::Install => "install",
         TaskKindDto::SaveBackup => "save_backup",
         TaskKindDto::SaveRestore => "save_restore",
+        TaskKindDto::ExternalStateScan => "external_state_scan",
     }
 }
 

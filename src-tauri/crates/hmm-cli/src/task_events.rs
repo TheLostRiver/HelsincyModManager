@@ -203,6 +203,7 @@ fn task_kind_code(kind: TaskKind) -> &'static str {
         TaskKind::Install => "install",
         TaskKind::SaveBackup => "save_backup",
         TaskKind::SaveRestore => "save_restore",
+        TaskKind::ExternalStateScan => "external_state_scan",
     }
 }
 
