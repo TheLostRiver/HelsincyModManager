@@ -7,6 +7,7 @@ mod batch_token_secret;
 mod composition;
 mod diagnostics_automation;
 mod external_import;
+pub mod external_state_scan;
 mod game_automation;
 mod install_automation;
 mod lifecycle_automation;
@@ -31,6 +32,11 @@ pub use diagnostics_automation::{
     ReadOnlyDiagnosticsAutomationError,
 };
 pub use external_import::ExternalImportComposition;
+pub use external_state_scan::{
+    ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
+    ConfiguredExternalStateScanner, GameFileSystemFactory, GameFileSystemHandles,
+    RealGameFileSystemFactory,
+};
 pub use game_automation::{
     GamePrerequisiteItemSnapshot, GamePrerequisiteSnapshot, GameScanSnapshot, GameStatusSnapshot,
     GameValidationSnapshot, GameValidationState, ReadOnlyGameAutomation,
