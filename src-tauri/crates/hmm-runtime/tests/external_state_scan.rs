@@ -26,16 +26,17 @@ use hmm_core::{
     ProfileId,
 };
 use hmm_ports::{
-    CancellationToken, GameConfigRepository, GameConfigRepositoryError, GameConfigRepositoryResult,
-    GameFileFingerprint, InstallGameFileInspector, InstallGameFileSystem,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFile,
-    ModPackageInstallFileReadRequest, ModPackageInstallFileReader, ModPackageInstallFileScanError,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, NeverCancelled,
-    StoredImportPreviewImage, StoredModImportAnalysis,
+    AppClock, CancellationToken, GameConfigRepository, GameConfigRepositoryError,
+    GameConfigRepositoryResult, GameFileFingerprint, InstallGameFileInspector,
+    InstallGameFileSystem, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
+    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    NeverCancelled, StoredImportPreviewImage, StoredModImportAnalysis,
 };
 use hmm_runtime::external_state_scan::{
     ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
-    ConfiguredExternalStateScanner, GameFileSystemFactory, GameFileSystemHandles,
+    ConfiguredExternalStateScanner, ExternalStateScanCache, ExternalStateScanRecord,
+    GameFileSystemFactory, GameFileSystemHandles,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -227,6 +228,14 @@ impl RecordingGameFs {
         self
     }
 
+    /// 替换某个文件的内容（`None` = 存在但 stat/读失败）。
+    fn set_file(&self, path: &str, bytes: Option<Vec<u8>>) {
+        self.files
+            .lock()
+            .expect("files lock")
+            .insert(path.to_owned(), bytes);
+    }
+
     /// 此刻写锁是否被持有。try_lock 失败 == 被持有。
     fn locked_now(&self) -> bool {
         match self.probe.lock().expect("probe lock").as_ref() {
@@ -322,6 +331,30 @@ impl GameFileSystemFactory for SharedGameFsFactory {
     }
 }
 
+/// 固定时钟：让 `computedAt` 可预测，淘汰顺序因此可断言。
+struct FixedClock(Mutex<u128>);
+
+impl FixedClock {
+    fn new(millis: u128) -> Self {
+        Self(Mutex::new(millis))
+    }
+}
+
+impl AppClock for FixedClock {
+    fn now_unix_millis(&self) -> anyhow::Result<u128> {
+        Ok(*self.0.lock().expect("clock lock"))
+    }
+}
+
+/// 永远失败的时钟：用于验证取不到时间时不崩、且退化为「最旧」。
+struct BrokenClock;
+
+impl AppClock for BrokenClock {
+    fn now_unix_millis(&self) -> anyhow::Result<u128> {
+        anyhow::bail!("clock unavailable")
+    }
+}
+
 struct Cancelled;
 
 impl CancellationToken for Cancelled {
@@ -379,6 +412,9 @@ fn harness(package_files: &[(&str, &[u8])], game_fs: RecordingGameFs) -> Harness
         }),
         Arc::new(FakePackageReader::with(package_files)),
         Arc::new(SharedGameFsFactory(Arc::clone(&game_fs))),
+        Arc::new(ExternalStateScanCache::new(Arc::new(FixedClock::new(
+            1_000,
+        )))),
         8 * 1024 * 1024,
         DEFAULT_WORKER_LIMIT,
     ));
@@ -640,6 +676,9 @@ fn a_missing_game_instance_is_reported_before_touching_the_sandbox() {
         Arc::new(FakeScanner::default()),
         Arc::new(FakePackageReader::default()),
         Arc::new(SharedGameFsFactory(Arc::new(RecordingGameFs::new(&[])))),
+        Arc::new(ExternalStateScanCache::new(Arc::new(FixedClock::new(
+            1_000,
+        )))),
         8 * 1024 * 1024,
         DEFAULT_WORKER_LIMIT,
     );
@@ -679,6 +718,9 @@ fn an_unknown_mod_id_is_reported_without_scanning() {
         Arc::new(FakeScanner::default()),
         Arc::new(FakePackageReader::default()),
         Arc::new(SharedGameFsFactory(Arc::new(RecordingGameFs::new(&[])))),
+        Arc::new(ExternalStateScanCache::new(Arc::new(FixedClock::new(
+            1_000,
+        )))),
         8 * 1024 * 1024,
         DEFAULT_WORKER_LIMIT,
     );
@@ -717,6 +759,9 @@ fn a_failing_package_scan_is_reported() {
         }),
         Arc::new(FakePackageReader::default()),
         Arc::new(SharedGameFsFactory(Arc::new(RecordingGameFs::new(&[])))),
+        Arc::new(ExternalStateScanCache::new(Arc::new(FixedClock::new(
+            1_000,
+        )))),
         8 * 1024 * 1024,
         DEFAULT_WORKER_LIMIT,
     );
@@ -732,4 +777,451 @@ fn a_failing_package_scan_is_reported() {
 
     // 与 GameFileUnavailable 区分：这是包的问题，不是游戏目录的问题。
     assert_eq!(error, ConfiguredExternalStateScanError::PackageScanFailed);
+}
+
+// ---------------------------------------------------------------------------
+// 结果存储
+// ---------------------------------------------------------------------------
+
+/// 直接测缓存本身，不经 scanner——这样每条断言只承担一个变量。
+fn cache_with_clock(clock: Arc<FixedClock>) -> Arc<ExternalStateScanCache> {
+    Arc::new(ExternalStateScanCache::new(clock))
+}
+
+#[test]
+fn a_successful_scan_is_retrievable_and_not_stale() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+
+    harness.scan().expect("scan succeeds");
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert!(query.summary.is_some(), "成功扫描后必须能查到结果");
+    assert!(!query.stale, "刚扫完不该是 stale");
+    assert_eq!(query.last_error, None, "成功时不该有失败原因");
+}
+
+#[test]
+fn a_changed_file_makes_the_cached_result_stale_and_keeps_the_old_summary() {
+    // 这条守的是「stale 但保留旧结果」——清空它会让玩家什么也看不到。
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    harness.scan().expect("scan succeeds");
+
+    // 扫完之后改文件（长度不同，stat 指纹必定变化）。
+    harness
+        .game_fs
+        .set_file("nativePC/a.mod3", Some(b"much-longer-content".to_vec()));
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert!(query.stale, "文件被改动后必须报 stale");
+    // 关键：结果**保留**，不是清空。
+    assert!(query.summary.is_some(), "stale 时仍要保留上次结果");
+    assert_eq!(query.last_error, None, "stale 不等于「上次没扫成」");
+}
+
+#[test]
+fn a_failed_scan_keeps_the_previous_result_and_records_the_reason() {
+    // 这条守的是两个字段的**区分**：stale 与 last_error 是不同处境，
+    // 合并成一个会让界面把「压根没扫」说成「可能已变」。
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    harness.scan().expect("first scan succeeds");
+
+    // 持锁 → 第二次扫描必定失败（有写入进行中）。
+    let _guard = harness.write_lock.lock().expect("hold write lock");
+    let error = harness.scan().expect_err("有写入进行中必须失败");
+    drop(_guard);
+
+    assert_eq!(error, ConfiguredExternalStateScanError::Stale);
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert_eq!(
+        query.last_error,
+        Some(ConfiguredExternalStateScanError::Stale),
+        "失败原因必须单独记录"
+    );
+    assert!(query.summary.is_some(), "失败时必须保留上次成功的结果");
+    // 文件没动，所以 stale 仍为 false——证明两个字段确实独立。
+    assert!(
+        !query.stale,
+        "失败时 stale 不应被置位：文件并未变化，只是没扫成"
+    );
+}
+
+#[test]
+fn querying_an_unknown_mod_reports_nothing_without_error() {
+    let cache = cache_with_clock(Arc::new(FixedClock::new(1_000)));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    let query = cache.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("never-scanned"),
+        &game_fs,
+    );
+
+    assert_eq!(query.summary, None);
+    assert!(!query.stale, "从没扫过谈不上过期");
+    assert_eq!(query.last_error, None, "没扫过不等于失败");
+}
+
+#[test]
+fn the_cache_evicts_the_oldest_entry_when_over_the_limit() {
+    // 守的是容量上限：无上限的进程内缓存是 OOM 风险。
+    let cache = Arc::new(ExternalStateScanCache::with_max_entries(
+        Arc::new(FixedClock::new(1_000)),
+        2,
+    ));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    for (index, _) in (0..3).enumerate() {
+        let millis = 1_000 + u128::try_from(index).expect("index fits");
+        cache.record_success(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new(format!("mod-{index}")),
+            record_at(millis),
+        );
+    }
+
+    // mod-0 最旧，应被淘汰；mod-1 与 mod-2 保留。
+    assert!(
+        cache
+            .query(
+                &GameId::mhw(),
+                &ProfileId::new("default"),
+                &ModId::new("mod-0"),
+                &game_fs
+            )
+            .summary
+            .is_none(),
+        "最旧的条目必须被淘汰"
+    );
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new("mod-1"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new("mod-2"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+}
+
+#[test]
+fn eviction_follows_computed_time_not_insertion_order() {
+    // 与上面那条互补：按**时间**淘汰而不是按插入顺序。若实现退化成
+    // 删第一个插入的，这条会红（mod-0 是最后写入但时间最早）。
+    let cache = Arc::new(ExternalStateScanCache::with_max_entries(
+        Arc::new(FixedClock::new(1_000)),
+        2,
+    ));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    // 故意乱序：先写时间戳大的，最后写时间戳小的。
+    cache.record_success(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-new"),
+        record_at(3_000),
+    );
+    cache.record_success(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-mid"),
+        record_at(2_000),
+    );
+    cache.record_success(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-old"),
+        record_at(1_000),
+    );
+
+    assert!(
+        cache
+            .query(
+                &GameId::mhw(),
+                &ProfileId::new("default"),
+                &ModId::new("mod-old"),
+                &game_fs
+            )
+            .summary
+            .is_none(),
+        "应按 computedAt 淘汰最旧的，而不是按插入顺序删第一个"
+    );
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new("mod-new"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new("mod-mid"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+}
+
+#[test]
+fn a_failed_scan_without_any_previous_result_has_no_summary() {
+    // 「从没成功过」与「成功过但这次失败」必须区分：前者界面该显示
+    // 「尚未检查」，后者该显示旧结果 + 失败原因。
+    let cache = cache_with_clock(Arc::new(FixedClock::new(1_000)));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    cache.record_failure(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        ConfiguredExternalStateScanError::Stale,
+    );
+    let query = cache.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        &game_fs,
+    );
+
+    assert_eq!(query.summary, None, "没有成功过就不该有结果");
+    assert_eq!(
+        query.last_error,
+        Some(ConfiguredExternalStateScanError::Stale)
+    );
+    assert!(!query.stale);
+}
+
+#[test]
+fn the_same_mod_id_in_different_profiles_does_not_collide() {
+    // 键必须含 profile_id：同一个 MOD 在不同 profile 下状态不同，
+    // 串了会让玩家看到另一个 profile 的结论。
+    let cache = cache_with_clock(Arc::new(FixedClock::new(1_000)));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    cache.record_success(
+        &GameId::mhw(),
+        &ProfileId::new("profile-a"),
+        &ModId::new("mod-a"),
+        record_at(1_000),
+    );
+
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("profile-a"),
+            &ModId::new("mod-a"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+    assert!(
+        cache
+            .query(
+                &GameId::mhw(),
+                &ProfileId::new("profile-b"),
+                &ModId::new("mod-a"),
+                &game_fs
+            )
+            .summary
+            .is_none(),
+        "不同 profile 必须互不干扰"
+    );
+}
+
+#[test]
+fn a_failure_records_a_new_failure_reason_over_the_old_one() {
+    // 失败原因要被覆盖：否则玩家会一直看到很久以前那次的原因。
+    let cache = cache_with_clock(Arc::new(FixedClock::new(1_000)));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    cache.record_failure(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        ConfiguredExternalStateScanError::Stale,
+    );
+    cache.record_failure(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        ConfiguredExternalStateScanError::GameFileUnavailable,
+    );
+
+    let query = cache.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        &game_fs,
+    );
+    assert_eq!(
+        query.last_error,
+        Some(ConfiguredExternalStateScanError::GameFileUnavailable),
+        "新的失败原因必须覆盖旧的"
+    );
+}
+
+#[test]
+fn a_successful_scan_clears_the_previous_failure_reason() {
+    // 失败后成功：不该再显示「上次没扫成」。
+    let cache = cache_with_clock(Arc::new(FixedClock::new(1_000)));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    cache.record_failure(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        ConfiguredExternalStateScanError::Stale,
+    );
+    cache.record_success(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        record_at(1_000),
+    );
+
+    let query = cache.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+        &game_fs,
+    );
+    assert_eq!(query.last_error, None, "成功后必须清掉失败原因");
+    assert!(query.summary.is_some());
+}
+
+#[test]
+fn an_unavailable_clock_degrades_to_the_oldest_instead_of_panicking() {
+    // 取不到时间不该崩，也不该让功能失效——它只用于淘汰排序。
+    let cache = Arc::new(ExternalStateScanCache::with_max_entries(
+        Arc::new(BrokenClock),
+        2,
+    ));
+    let game_fs = RecordingGameFs::new(&[]);
+
+    for index in 0..3 {
+        cache.record_success(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new(format!("mod-{index}")),
+            record_at(0),
+        );
+    }
+
+    // 三条都退化成时间戳 0，淘汰仍能收敛到上限内（不 panic、不无限循环）。
+    assert!(cache
+        .query(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &ModId::new("mod-2"),
+            &game_fs
+        )
+        .summary
+        .is_some());
+}
+
+#[test]
+fn eviction_is_deterministic_when_timestamps_tie() {
+    // **这条是上面那条修强后的版本**，也是本轮唯一真正守住 tie-break 的用例。
+    //
+    // 背景：时间戳并列是真实场景（时钟取不到时间时全部退化为 0；或同一毫秒内
+    // 连续扫多个 MOD）。`min_by_key` 在并列时返回 HashMap **迭代顺序**里的第一个
+    // ——那个顺序是随机的，表现为「单独跑过、整组跑挂」的幽灵失败。
+    //
+    // 为什么上面那条守不住：它只断言 mod-2 还在，而随机顺序下 mod-2 有 2/3
+    // 概率留下——实测 8 次里只红 2 次。这种用例比没有更危险，它给的是虚假安全感。
+    //
+    // 这条改为断言**确定性语义**：时间戳全并列时，被淘汰的必须是 key 最小的。
+    // 无论迭代顺序怎么变，这个结论都不变，因此它**必然**能抓到 tie-break 缺失。
+    let game_fs = RecordingGameFs::new(&[]);
+
+    for _ in 0..32 {
+        let cache = Arc::new(ExternalStateScanCache::with_max_entries(
+            Arc::new(FixedClock::new(1_000)),
+            2,
+        ));
+        // 故意用**乱序插入** + **相同时间戳**，最大化暴露迭代顺序的影响。
+        for name in ["mod-c", "mod-a", "mod-b"] {
+            cache.record_success(
+                &GameId::mhw(),
+                &ProfileId::new("default"),
+                &ModId::new(name),
+                record_at(5_000),
+            );
+        }
+
+        let survivor = |name: &str| {
+            cache
+                .query(
+                    &GameId::mhw(),
+                    &ProfileId::new("default"),
+                    &ModId::new(name),
+                    &game_fs,
+                )
+                .summary
+                .is_some()
+        };
+        assert!(
+            !survivor("mod-a"),
+            "时间戳并列时必须淘汰 key 最小的（mod-a），结果却不确定"
+        );
+        assert!(survivor("mod-b") && survivor("mod-c"));
+    }
+}
+
+#[test]
+fn stat_failure_during_query_is_reported_as_stale() {
+    // 拿不到当前事实就无法证明结果仍成立 → 如实说「不确定」，方向是 fail-closed。
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same")];
+    let harness = harness(files, RecordingGameFs::new(files));
+    harness.scan().expect("scan succeeds");
+
+    // 让该文件变成「存在但 stat 失败」。
+    harness.game_fs.set_file("nativePC/a.mod3", None);
+    let query = harness.scanner.query(
+        &GameId::mhw(),
+        &ProfileId::new("default"),
+        &ModId::new("mod-a"),
+    );
+
+    assert!(query.stale, "stat 失败必须报 stale，不能赌它没变");
+    assert!(query.summary.is_some(), "仍保留上次结果");
+}
+
+/// 构造一条记录。内容无所谓（只测缓存行为），`computed_at` 才是关键。
+fn record_at(computed_at_unix_millis: u128) -> ExternalStateScanRecord {
+    ExternalStateScanRecord {
+        summary: hmm_core::summarize_external_install_state(&[]),
+        prepared: Vec::new(),
+        fingerprints: Vec::new(),
+        computed_at_unix_millis,
+    }
 }
