@@ -29,6 +29,9 @@ pub(crate) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "migrations/015_external_import_history_query.sql"
         )),
+        M::up(include_str!(
+            "migrations/016_mod_library_projection_external_origin.sql"
+        )),
     ])
 }
 

@@ -268,6 +268,7 @@ fn fingerprint_records(
         hash_text(&mut hasher, &record.display_name);
         hash_optional_text(&mut hasher, record.author.as_deref());
         hash_optional_text(&mut hasher, record.version_label.as_deref());
+        hash_optional_text(&mut hasher, record.external_import_adapter_id.as_deref());
         hash_text(&mut hasher, &record.size_label);
         hash_text(
             &mut hasher,
@@ -342,6 +343,7 @@ mod tests {
             preview_image: StoredImportPreviewImage::Fallback {
                 reason: PreviewImageRejectionReason::Missing,
             },
+            external_import_adapter_id: None,
             labels,
         };
         let armor = ModLibraryProjectionLabel {

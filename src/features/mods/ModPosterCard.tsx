@@ -7,6 +7,7 @@ import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
 import type { ModCardSelectionIntent, ModSelectionMode } from "./modSelection";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy, type ModLibraryCopy } from "./modLibraryCopy";
+import { externalImportCopy } from "./external-import/externalImportCopy";
 import "./ModPosterCard.css";
 
 type ModPosterCardProps = {
@@ -82,6 +83,19 @@ export function ModPosterCard({
 }: ModPosterCardProps) {
   const { locale } = useI18n();
   const card = resolveCopy(modLibraryCopy, locale).card;
+  // Adapter display names live in externalImportCopy (single source for the
+  // hunting-box label); the card only projects id -> label, never re-derives.
+  const externalImportHistory = resolveCopy(externalImportCopy, locale).history;
+  const externalAdapterLabels: Record<string, string> = externalImportHistory.adapters;
+  const externalOrigin = item.externalImportAdapterId
+    ? {
+        short: card.externalOriginShort,
+        title: card.externalOriginTitle(
+          externalAdapterLabels[item.externalImportAdapterId] ??
+            externalImportHistory.unknownAdapter,
+        ),
+      }
+    : null;
   const isTech = viewMode === "tech";
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
@@ -227,6 +241,15 @@ export function ModPosterCard({
           <span className={`mod-card__status-pill is-${item.status}`}>
             <Check size={13} strokeWidth={2.6} aria-hidden="true" />
             <span className="mod-card__status-label">{statusLabelForItem(item, card)}</span>
+            {externalOrigin ? (
+              <span
+                className="mod-card__status-origin"
+                title={externalOrigin.title}
+                aria-label={externalOrigin.title}
+              >
+                {externalOrigin.short}
+              </span>
+            ) : null}
           </span>
 
           {/* 经典视图专属的选中边框 */}

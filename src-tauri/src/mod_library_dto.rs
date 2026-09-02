@@ -20,6 +20,10 @@ pub struct ModLibraryItemDto {
     pub install_summary: Option<ModLibraryInstallSummaryDto>,
     pub category_labels: Vec<CategoryLabelDto>,
     pub preview_image: PreviewImageDto,
+    /// 外部导入来源的 adapter id（如狩技盒子）；普通 zip 导入省略。
+    /// 前端按 id 从字典取展示名，不回传、不复算。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_import_adapter_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -62,6 +66,7 @@ impl From<ModLibraryItem> for ModLibraryItemDto {
                 })
                 .collect(),
             preview_image: item.preview_image.into(),
+            external_import_adapter_id: item.external_import_adapter_id,
         }
     }
 }
@@ -251,6 +256,7 @@ mod tests {
             preview_image: ImportPreviewImage::Fallback {
                 reason: PreviewImageRejectionReason::Missing,
             },
+            external_import_adapter_id: None,
         });
 
         let value = serde_json::to_value(item).expect("serialize mod library item");
@@ -258,6 +264,31 @@ mod tests {
 
         assert!(!object.contains_key("author"));
         assert!(!object.contains_key("versionLabel"));
+        // None 时整个键省略——普通 zip 导入的载荷不背这个字段。
+        assert!(!object.contains_key("externalImportAdapterId"));
+    }
+
+    #[test]
+    fn item_serializes_external_import_adapter_id_in_camel_case() {
+        let item = ModLibraryItemDto::from(ModLibraryItem {
+            id: "mod-b".to_owned(),
+            name: "External B".to_owned(),
+            author: None,
+            version_label: None,
+            size_label: "导入完成".to_owned(),
+            status: ModLibraryStatus::Disabled,
+            category_labels: Vec::new(),
+            preview_image: ImportPreviewImage::Fallback {
+                reason: PreviewImageRejectionReason::Missing,
+            },
+            external_import_adapter_id: Some("hunting_box_directory_v1".to_owned()),
+        });
+
+        let value = serde_json::to_value(item).expect("serialize mod library item");
+        assert_eq!(
+            value["externalImportAdapterId"], "hunting_box_directory_v1",
+            "外部来源 adapter id 必须以 camelCase 键原样到达前端"
+        );
     }
 
     #[test]
@@ -275,6 +306,7 @@ mod tests {
                     preview_image: ImportPreviewImage::Fallback {
                         reason: PreviewImageRejectionReason::Missing,
                     },
+                    external_import_adapter_id: None,
                 },
                 install_summary: Some(InstallManifestStatusSummary {
                     profile_id: ProfileId::new("default"),
