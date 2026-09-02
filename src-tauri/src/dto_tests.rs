@@ -474,6 +474,7 @@ mod preview_image_tests {
             size_label: "导入完成".to_owned(),
             status: hmm_app::ModLibraryStatus::Disabled,
             category_labels: Vec::new(),
+            external_import_adapter_id: None,
             preview_image: ImportPreviewImage::Thumbnail {
                 thumbnail_url: "thumbnail://pkg-1/preview/hash".to_owned(),
                 width: 320,

@@ -348,6 +348,7 @@ fn projection_page_item_to_app(
                 })
                 .collect(),
             preview_image: crate::mod_import::import_preview_from_stored(record.preview_image),
+            external_import_adapter_id: record.external_import_adapter_id,
         },
         install_summary,
     })

@@ -107,6 +107,9 @@ pub struct ModLibraryItem {
     pub size_label: String,
     pub category_labels: Vec<CategoryLabel>,
     pub preview_image: ImportPreviewImage,
+    /// 外部导入来源的 adapter id；普通 zip 导入为 `None`。事实在 logical mod 的
+    /// `origin_provenance` 上，由快照构建器补齐（分析记录本身不带 provenance）。
+    pub external_import_adapter_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -580,11 +583,20 @@ impl ModLibraryService {
 
     pub(crate) fn get_mod_library_snapshot(&self) -> anyhow::Result<Vec<ModLibrarySnapshotItem>> {
         let records = self.result_repository.list_analysis()?;
-        let display_revisions = self
-            .result_repository
-            .list_mods()?
+        let logical_mods = self.result_repository.list_mods()?;
+        // 同一次遍历取两份事实：展示 revision 与外部导入 provenance。
+        let mut external_adapters: HashMap<String, String> = HashMap::new();
+        let display_revisions = logical_mods
             .into_iter()
             .map(|logical_mod| {
+                if let StoredModOriginProvenance::ExternalImport { provenance } =
+                    &logical_mod.origin_provenance
+                {
+                    external_adapters.insert(
+                        logical_mod.mod_id.as_str().to_owned(),
+                        provenance.adapter_id.as_str().to_owned(),
+                    );
+                }
                 (
                     logical_mod.mod_id.as_str().to_owned(),
                     logical_mod.display_revision_id,
@@ -622,6 +634,7 @@ impl ModLibraryService {
                 let stored_preview_image = record.preview_image.clone();
                 let overlay = overlay_map.get(record.mod_id.as_str()).copied();
                 let mut item = library_item_from_stored(record);
+                item.external_import_adapter_id = external_adapters.remove(mod_id.as_str());
                 let user_category_ids = user_cat_id_map.remove(&mod_id).unwrap_or_default();
                 let mut projection_labels = user_projection_label_map
                     .remove(&mod_id)
@@ -695,6 +708,7 @@ impl ModLibraryService {
                 size_label: entry.item.size_label,
                 preview_image: entry.stored_preview_image,
                 labels: entry.projection_labels,
+                external_import_adapter_id: entry.item.external_import_adapter_id,
             })
             .collect())
     }
@@ -892,6 +906,8 @@ fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
         size_label: "导入完成".to_owned(),
         category_labels,
         preview_image: import_preview_from_stored(record.preview_image),
+        // 分析记录不带 provenance；真值由快照构建器从 logical mod 补上。
+        external_import_adapter_id: None,
     }
 }
 
