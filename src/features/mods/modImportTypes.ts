@@ -12,7 +12,7 @@ export type CancelTaskInput = {
 
 export const TASK_PROGRESS_EVENT_NAME = "hmm://task-progress";
 
-export type TaskKind = "mod_import" | "install" | "save_backup" | "save_restore";
+export type TaskKind = "mod_import" | "install" | "save_backup" | "save_restore" | "external_state_scan";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type TaskStartedDto = {
