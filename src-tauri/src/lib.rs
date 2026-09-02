@@ -8,6 +8,8 @@ mod diagnostics_dto;
 mod dto;
 mod external_import_commands;
 mod external_import_dto;
+mod external_state_commands;
+mod external_state_dto;
 mod game_launch_commands;
 mod game_launch_dto;
 mod game_setup_commands;
@@ -53,6 +55,7 @@ use external_import_commands::{
     select_all_external_import_candidates, select_external_import_source,
     start_external_import_batch, start_external_import_scan, update_external_import_selection,
 };
+use external_state_commands::{get_external_mod_state, start_external_mod_state_scan};
 use game_launch_commands::launch_game;
 use game_setup_commands::{
     auto_detect_game_directory, get_game_prerequisite_status, get_game_setup_status,
@@ -168,6 +171,8 @@ pub fn run() {
             cancel_task,
             select_external_import_source,
             start_external_import_scan,
+            start_external_mod_state_scan,
+            get_external_mod_state,
             get_external_import_preview,
             create_external_import_selection,
             update_external_import_selection,

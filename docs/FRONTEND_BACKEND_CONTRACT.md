@@ -243,6 +243,36 @@ batch/result 事实或伪造导入失败。
 `selection_resource_limit_exceeded`、`selection_candidate_invalid`、`selection_expired` 和 `selection_closed`。
 错误 message 不能回显路径或底层 I/O 文本。
 
+### #286 外部 MOD 状态扫描（只读判定）
+
+外部导入的 MOD 在 HMM 清单中没有记录，「已安装」语义必须由**游戏目录事实**给出。本节登记只读
+状态扫描的 transport 形状；接管 adopt（写 manifest）不在本节，实现时单独登记。
+
+| command | 输入 | 返回 |
+| --- | --- | --- |
+| `start_external_mod_state_scan` | `gameId`、`profileId`、`modId` | `{ task: TaskStartedDto, modId }`；登记 `external_state_scan` 任务并发出 `external_state.scan.queued` |
+| `get_external_mod_state` | `gameId`、`profileId`、`modId` | `ExternalModStateDto`（见下） |
+
+- `gameId` 走 `GameId::parse`；`profileId` / `modId` 去除两端空白后按受限字符集
+  （ASCII 字母数字与 `-`/`_`，最长 160）校验为 opaque ID，路径样式、非 ASCII 或超长值整体拒绝。
+- 扫描是**后台任务**：三段式加锁（锁内 stat → 锁外有界并发哈希 → 锁内复核指纹），不持写锁做
+  长时间 hash；拿不到准入、有写入进行中或期间发生漂移时以 `external_state_scan_stale` 失败并
+  **保留上一次成功结果**。支持 `cancel_task`（`queued` / `running`，哈希在取消检查点协作式停止）。
+- **结果绝不进进度事件**（payload 禁携带 target path）：事件 `resultRef` 只带 opaque `modId`，
+  结果通过 `get_external_mod_state` 查询。
+- `ExternalModStateDto = { summary: ExternalModStateSummaryDto | null, stale, lastError }`：
+  - `summary`：上一次**成功**扫描的判定；从未扫成时为 `null`。形状为
+    `{ state, matchedFileCount, missingFileCount, changedFileCount, unreadableFileCount, files }`，
+    `state ∈ installed | partial | changed | mixed | not_installed | unknown`；`files[]` 为
+    `{ targetPath, state ∈ matched | missing | changed | unreadable }`，`targetPath` 是导入包内的
+    相对展示路径，**不包含**游戏目录绝对路径、manifest 内容或第三方文件内容。
+  - `stale`：getter 重新 stat 与存档指纹不一致（或游戏实例暂不可读、stat 失败）时为 `true`，
+    此时 `summary` 仍是上次结果——**保留而不是清空**（#286 拍板的降级口径）。
+  - `lastError`：上次扫描没做成的稳定错误码（`external_state_scan_*`）。与 `summary` 可同时存在，
+    语义正交——「上次没扫成」≠「结果可能过期」，前端不得合并展示。
+- 查询是纯读缓存 + 重新 stat，**不触发扫描**；扫描只由显式 `start_external_mod_state_scan`
+  发起（按需触发，不做进列表翻页）。
+
 ### T13 批量生命周期规划契约
 
 本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
@@ -706,6 +736,11 @@ TaskProgressEventDto
 | `save_restore` | `save_restore.failed` | 恢复未提交或已证明回滚；`error` 只携带稳定 code |
 | `save_restore` | `save_restore.recovery_required` | 无法证明原状态，事务与受控 recovery evidence 已保留 |
 | `save_restore` | `save_restore.cancelled` | transport 已接受 commit barrier 前的协作式取消 |
+| `external_state_scan` | `external_state.scan.queued` | 外部 MOD 状态扫描已登记，`resultRef` 为 opaque mod ID |
+| `external_state_scan` | `external_state.scan.processing` | 三段式只读比对进行中：锁内 stat、锁外有界并发哈希、锁内复核 |
+| `external_state_scan` | `external_state.scan.completed` | 判定已写入进程内结果存储，明细通过 `get_external_mod_state` 查询 |
+| `external_state_scan` | `external_state.scan.failed` | 扫描失败；`error` 只携带稳定 `external_state_scan_*` code（stale 降级也走此终态） |
+| `external_state_scan` | `external_state.scan.cancelled` | 扫描在取消检查点协作式停止；本次不产生结果，上次结果保留 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
