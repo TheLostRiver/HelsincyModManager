@@ -3,8 +3,9 @@ use hmm_core::{
     InstallManifest, InstallRecoveryRecord, InstallTargetPath, ModId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
-    InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
-    InstallRecoveryRecordRepository, InstallSourceFileReader, ReinstallSnapshotStore,
+    GameFileFingerprint, InstallBackupStore, InstallGameFileInspector, InstallGameFileSystem,
+    InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
+    ReinstallSnapshotStore,
 };
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -93,6 +94,32 @@ impl InstallGameFileSystem for FileSystemInstallGameFileSystem {
         ensure_contained_existing_path(&self.game_root, &path)?;
 
         fs::remove_file(path).context("failed to remove install target")
+    }
+}
+
+impl InstallGameFileInspector for FileSystemInstallGameFileSystem {
+    fn stat_game_file(
+        &self,
+        target_path: &InstallTargetPath,
+    ) -> Result<Option<GameFileFingerprint>> {
+        let path = contained_path(&self.game_root, target_path.as_str())?;
+
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        // 与 `read_game_file` 同口径：符号链接与非普通文件一律拒绝，
+        // 绝不能把链接目标的指纹当成游戏目录文件的指纹。
+        let metadata = fs::symlink_metadata(&path).context("failed to inspect install target")?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            anyhow::bail!("install target is not a regular file");
+        }
+        ensure_contained_existing_path(&self.game_root, &path)?;
+
+        Ok(Some(GameFileFingerprint {
+            size_bytes: metadata.len(),
+            modified: metadata.modified().ok(),
+        }))
     }
 }
 

@@ -27,9 +27,8 @@ use hmm_core::{
     ExternalInstallStateSummary, ExternalTargetPresence, InstallTargetPath, InstalledFileSummary,
 };
 use hmm_ports::{
-    CancellationToken, InstallGameFileSystem, ModPackageInstallFile,
-    ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    CancellationToken, InstallGameFileSystem, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 
 /// 并行哈希的**上限**。
@@ -52,6 +51,32 @@ pub struct ExternalStateScanRequest<'a> {
     /// 该游戏允许的安装根（如 `["nativePC"]`）。
     pub allowed_roots: &'a [String],
     pub cancellation_token: &'a dyn CancellationToken,
+}
+
+/// 一个已通过 `allowed_roots` 校验、可直接用于读取的目标文件。
+///
+/// 做成 owned 是为了让「准备」与「判定」能分开调用：外部 MOD 状态扫描要在两处
+/// stat 之间做哈希，调用方需要在**没有锁**的时候持有这份列表（#286 切片 2b）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedExternalTarget {
+    /// 归一化后的强类型目标路径，用于读取游戏目录侧。
+    pub target_path: InstallTargetPath,
+    /// 沙箱内的文件 ID，用于读取导入包副本。
+    pub package_file_id: String,
+    /// 原始目标路径。**排序与展示都用它**——它与 `target_path` 可能只差大小写
+    /// 或分隔符，而展示必须是玩家在包里看到的那个字符串。
+    pub display_path: String,
+}
+
+/// 只做「准备」所需的输入。
+///
+/// 与 `ExternalStateScanRequest` 分开，因为准备阶段不需要取消令牌也不需要
+/// 游戏目录：它只读导入包沙箱。
+pub struct ExternalStateScanPrepareRequest<'a> {
+    pub package_id: &'a str,
+    pub sandbox_root: &'a Path,
+    /// 该游戏允许的安装根（如 `["nativePC"]`）。
+    pub allowed_roots: &'a [String],
 }
 
 pub struct ExternalModStateScanService {
@@ -79,7 +104,11 @@ impl ExternalModStateScanService {
         }
     }
 
-    /// 扫描并判定。
+    /// 扫描并判定（一站式入口）。
+    ///
+    /// 等价于 [`Self::prepare_targets`] + [`Self::summarize_prepared`]。需要在两次
+    /// stat 之间插入别的动作的调用方（如 `hmm-runtime` 的三段式加锁）应当直接用
+    /// 那两个方法。
     ///
     /// 返回**按 `target_path` 排序**的结果：并行执行不改变输出顺序，
     /// 因此同样的事实永远得到同样的结果。
@@ -92,6 +121,27 @@ impl ExternalModStateScanService {
             return Err(ExternalStateScanError::Cancelled);
         }
 
+        let prepared = self.prepare_targets(ExternalStateScanPrepareRequest {
+            package_id: request.package_id,
+            sandbox_root: request.sandbox_root,
+            allowed_roots: request.allowed_roots,
+        })?;
+
+        if token.is_cancelled() {
+            return Err(ExternalStateScanError::Cancelled);
+        }
+
+        self.summarize_prepared(&prepared, request.package_id, request.sandbox_root, token)
+    }
+
+    /// 只读导入包沙箱，产出**已排序**的目标文件列表。
+    ///
+    /// 不碰游戏目录、不读文件内容，因此可以在持有游戏写锁时安全调用——但正常用法
+    /// 是在锁**外**调用，把哈希（长时间工作）留在锁外。
+    pub fn prepare_targets(
+        &self,
+        request: ExternalStateScanPrepareRequest<'_>,
+    ) -> Result<Vec<PreparedExternalTarget>, ExternalStateScanError> {
         let scanned = self
             .scanner
             .scan_install_files(ModPackageInstallFileScanRequest {
@@ -105,23 +155,40 @@ impl ExternalModStateScanService {
         // 曾在这里额外写过一层 `is_installable_target_path` 过滤，但它与 parse 判定完全相同，
         // 是冗余的（控制组证明：去掉它测试照样全绿）。`allowed_roots` 由调用方给出，
         // 不在这里写死任何游戏。
-        let mut targets: Vec<ScannedTarget> = scanned
-            .iter()
+        let mut prepared: Vec<PreparedExternalTarget> = scanned
+            .into_iter()
             .filter_map(|file| {
                 let parsed =
                     InstallTargetPath::parse(&file.target_path, request.allowed_roots).ok()?;
-                Some(ScannedTarget { parsed, file })
+                Some(PreparedExternalTarget {
+                    target_path: parsed,
+                    package_file_id: file.package_file_id,
+                    display_path: file.target_path,
+                })
             })
             .collect();
         // 排序放在并行之前，保证输出顺序确定（并行只影响速度，不影响次序）。
-        targets.sort_by(|left, right| left.file.target_path.cmp(&right.file.target_path));
+        prepared.sort_by(|left, right| left.display_path.cmp(&right.display_path));
 
-        if token.is_cancelled() {
+        Ok(prepared)
+    }
+
+    /// 对已准备好的目标列表做有界并发哈希与判定。
+    ///
+    /// 这是长时间工作（读文件 + hash），**不得在游戏写锁内调用**。
+    pub fn summarize_prepared(
+        &self,
+        prepared: &[PreparedExternalTarget],
+        package_id: &str,
+        sandbox_root: &Path,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<ExternalInstallStateSummary, ExternalStateScanError> {
+        if cancellation_token.is_cancelled() {
             return Err(ExternalStateScanError::Cancelled);
         }
 
         let observations =
-            self.observe_targets(&targets, request.package_id, request.sandbox_root, token)?;
+            self.observe_targets(prepared, package_id, sandbox_root, cancellation_token)?;
 
         Ok(summarize_external_install_state(&observations))
     }
@@ -129,7 +196,7 @@ impl ExternalModStateScanService {
     /// 逐文件读取两侧摘要。**有界并发**，并按输入顺序回收结果。
     fn observe_targets<'a>(
         &self,
-        targets: &'a [ScannedTarget<'a>],
+        targets: &'a [PreparedExternalTarget],
         package_id: &str,
         sandbox_root: &Path,
         token: &dyn CancellationToken,
@@ -159,8 +226,8 @@ impl ExternalModStateScanService {
                                 }
                                 let target = &targets[index];
                                 let expected =
-                                    self.expected_summary(target.file, package_id, sandbox_root);
-                                let actual = self.read_target_presence(&target.parsed);
+                                    self.expected_summary(target, package_id, sandbox_root);
+                                let actual = self.read_target_presence(&target.target_path);
                                 chunk.push((index, expected, actual));
                             }
                             chunk
@@ -195,7 +262,7 @@ impl ExternalModStateScanService {
             .filter_map(|(index, expected, actual)| {
                 let expected = expected?;
                 Some(ExternalFileObservation {
-                    target_path: &targets[index].file.target_path,
+                    target_path: &targets[index].display_path,
                     expected,
                     actual,
                 })
@@ -215,7 +282,7 @@ impl ExternalModStateScanService {
     /// 读取导入包（沙箱）侧摘要。读不到返回 `None`（调用方收敛为「读不到」）。
     fn expected_summary(
         &self,
-        file: &ModPackageInstallFile,
+        target: &PreparedExternalTarget,
         package_id: &str,
         sandbox_root: &Path,
     ) -> Option<InstalledFileSummary> {
@@ -223,7 +290,7 @@ impl ExternalModStateScanService {
             .read_install_file(ModPackageInstallFileReadRequest {
                 package_id,
                 sandbox_root,
-                package_file_id: &hmm_core::PackageFileId::new(file.package_file_id.clone()),
+                package_file_id: &hmm_core::PackageFileId::new(target.package_file_id.clone()),
                 max_bytes: self.max_file_bytes,
             })
             .ok()
@@ -236,12 +303,6 @@ impl ExternalModStateScanService {
             .unwrap_or(1);
         self.worker_limit.min(cpus).min(file_count).max(1)
     }
-}
-
-/// 一个已通过 `allowed_roots` 校验、可直接用于读取的目标文件。
-struct ScannedTarget<'a> {
-    parsed: InstallTargetPath,
-    file: &'a ModPackageInstallFile,
 }
 
 /// 把 `total` 切成 `parts` 段，尽量均匀；前面的段多分余数。
