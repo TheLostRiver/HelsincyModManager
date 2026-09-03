@@ -382,6 +382,65 @@
   to { transform: rotate(360deg); }
 }
 
+/* ─── Mod Import: delete archive after import (#275 slice 4) ─── */
+
+.mod-import-settings-panel {
+  display: grid;
+  min-width: 0;
+}
+
+.mod-import-settings-panel[role="status"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.mod-import-settings-panel__toggle {
+  border-bottom: 0;
+}
+
+.mod-import-settings-panel__status {
+  margin: -2px 20px 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.mod-import-settings-panel__note,
+.mod-import-settings-panel__error {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.mod-import-settings-panel__error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mod-import-settings-panel__error button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mod-import-settings-panel__spinner {
+  color: var(--color-accent);
+  animation: debug-log-settings-spin 0.9s linear infinite;
+}
+
 /* ─── Mod Storage Directory (#275) ─── */
 
 .mod-storage-panel {

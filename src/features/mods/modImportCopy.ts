@@ -1,4 +1,5 @@
 import type { LocaleDictionary } from "../../shared/i18n";
+import type { ModImportArchiveKeptCode } from "./modImportTaskState";
 
 // Mod 导入动作与任务阶段文案（I18N-02）。阶段 key 与后端事件名一一对应，
 // 语义判断（阶段推进、失败识别）留在 modImportTaskState，这里只有文本。
@@ -52,7 +53,10 @@ export type ModImportCopy = {
     importing: string;
     failedRetryHint: string;
   };
+  /** #275 ④：导入成功但源压缩包没删时的提示，按 mod_import_archive_kept_* 码取词。 */
+  archiveKept: Record<ModImportArchiveKeptCode, string>;
   toasts: {
+    archiveKeptTitle: string;
     revisionDoneTitle: string;
     revisionDoneMessage: string;
     importDoneTitle: string;
@@ -117,7 +121,15 @@ export const modImportCopy = {
       importing: "正在导入",
       failedRetryHint: "导入失败，请检查压缩包后重试",
     },
+    archiveKept: {
+      mod_import_archive_kept_not_regular_file: "原始压缩包不是普通文件（目录、链接或联接点），已保留。",
+      mod_import_archive_kept_protected_location: "原始压缩包位于游戏目录、Mod 存储目录或应用数据目录内，已保留。",
+      mod_import_archive_kept_changed: "原始压缩包在导入期间被替换或已不存在，未删除任何文件。",
+      mod_import_archive_kept_unavailable: "无法确认原始压缩包的状态，已保留。",
+      mod_import_archive_kept_remove_failed: "原始压缩包删除失败（可能被占用或没有权限），已保留。",
+    },
     toasts: {
+      archiveKeptTitle: "已导入，原始压缩包未删除",
       revisionDoneTitle: "新版本导入完成",
       revisionDoneMessage: "版本列表已更新。",
       importDoneTitle: "Mod 导入完成",
@@ -180,7 +192,15 @@ export const modImportCopy = {
       importing: "Importing",
       failedRetryHint: "Import failed. Check the archive and retry.",
     },
+    archiveKept: {
+      mod_import_archive_kept_not_regular_file: "The original archive is not a regular file (directory, link or junction); it was kept.",
+      mod_import_archive_kept_protected_location: "The original archive lies inside the game, mod storage or app data directory; it was kept.",
+      mod_import_archive_kept_changed: "The original archive was replaced or removed during the import; nothing was deleted.",
+      mod_import_archive_kept_unavailable: "The original archive could not be checked; it was kept.",
+      mod_import_archive_kept_remove_failed: "The original archive could not be deleted (in use or no permission); it was kept.",
+    },
     toasts: {
+      archiveKeptTitle: "Imported; the original archive was kept",
       revisionDoneTitle: "New version imported",
       revisionDoneMessage: "The version list is updated.",
       importDoneTitle: "Mod imported",
@@ -244,7 +264,15 @@ export const modImportCopy = {
       importing: "インポート中",
       failedRetryHint: "インポートに失敗しました。アーカイブを確認して再試行してください。",
     },
+    archiveKept: {
+      mod_import_archive_kept_not_regular_file: "元のアーカイブが通常のファイルではない（フォルダー、リンク、ジャンクション）ため保持しました。",
+      mod_import_archive_kept_protected_location: "元のアーカイブがゲーム、Mod 保存、またはアプリデータのフォルダー内にあるため保持しました。",
+      mod_import_archive_kept_changed: "元のアーカイブがインポート中に置き換えられたか存在しないため、何も削除していません。",
+      mod_import_archive_kept_unavailable: "元のアーカイブの状態を確認できなかったため保持しました。",
+      mod_import_archive_kept_remove_failed: "元のアーカイブを削除できなかった（使用中または権限なし）ため保持しました。",
+    },
     toasts: {
+      archiveKeptTitle: "インポート済み。元のアーカイブは保持されました",
       revisionDoneTitle: "新バージョンのインポートが完了",
       revisionDoneMessage: "バージョン一覧を更新しました。",
       importDoneTitle: "Mod のインポートが完了",
