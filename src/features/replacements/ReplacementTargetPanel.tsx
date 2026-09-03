@@ -15,6 +15,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
+import {
+  matchedHiddenReplacementTargetNames,
+  replacementTargetSearchHit,
+} from "./replacementTargetMatch";
 import { replacementTargetSearchValues, resolveReplacementTargetNames } from "./replacementTargetNames";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
@@ -337,7 +341,7 @@ export function ReplacementTargetPanel({
     return targets.filter((target) =>
       [...replacementTargetSearchValues(target.displayNames), target.internalId, ...target.aliases]
         .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLocaleLowerCase().includes(keyword)),
+        .some((value) => replacementTargetSearchHit(value, keyword)),
     );
   }, [query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
@@ -654,6 +658,10 @@ export function ReplacementTargetPanel({
                 installedTargetId,
               );
               const occupied = occupancyByTarget.get(target.id) ?? null;
+              const names = resolveReplacementTargetNames(target.displayNames, locale);
+              // #274: the filter also matches aliases and other locales' display names,
+              // none of which the row renders; say what was hit so the row does not look wrong.
+              const matchHint = matchedHiddenReplacementTargetNames(target, names, query);
               return (
                 <label
                   className="replacement-panel__target-row"
@@ -677,9 +685,16 @@ export function ReplacementTargetPanel({
                     }
                   />
                   <span className="replacement-panel__target-name">
-                    <strong>{resolveReplacementTargetNames(target.displayNames, locale).displayName}</strong>
-                    {resolveReplacementTargetNames(target.displayNames, locale).secondaryName ? (
-                      <small>{resolveReplacementTargetNames(target.displayNames, locale).secondaryName}</small>
+                    <strong>{names.displayName}</strong>
+                    {names.secondaryName ? <small>{names.secondaryName}</small> : null}
+                    {matchHint ? (
+                      <small className="replacement-panel__target-match">
+                        <Search size={11} aria-hidden="true" />
+                        <span>{rCopy.panel.matchedNames(matchHint.names)}</span>
+                        {matchHint.hiddenCount > 0 ? (
+                          <em>{rCopy.panel.matchedNamesMore(matchHint.hiddenCount)}</em>
+                        ) : null}
+                      </small>
                     ) : null}
                   </span>
                   <span className="replacement-panel__target-facts">

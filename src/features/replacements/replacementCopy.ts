@@ -58,6 +58,9 @@ export type ReplacementCopy = {
     targetsAria: string;
     currentInstalled: string;
     noMatches: string;
+    // 搜索命中了行里没渲染的名字（别名 / 其他语言展示名）时的行内提示（#274）。
+    matchedNames: (names: string[]) => string;
+    matchedNamesMore: (count: number) => string;
     // 跨 Mod 同目标占用：仅用于 UI 提示（硬门禁在预览/任务/commit 三层）。
     targetOccupied: (name: string) => string;
     targetOccupiedTag: string;
@@ -309,6 +312,8 @@ export const replacementCopy = {
       targetsAria: "替换目标",
       currentInstalled: "当前已安装",
       noMatches: "没有匹配的替换目标。",
+      matchedNames: (names: string[]) => `匹配：${names.join("、")}`,
+      matchedNamesMore: (count: number) => `+${count} 个`,
       targetOccupied: (name: string) =>
         `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
       targetOccupiedTag: "已被占用",
@@ -558,6 +563,8 @@ export const replacementCopy = {
       targetsAria: "Replacement targets",
       currentInstalled: "Currently installed",
       noMatches: "No matching replacement targets.",
+      matchedNames: (names: string[]) => `Matches: ${names.join(", ")}`,
+      matchedNamesMore: (count: number) => `+${count} more`,
       targetOccupied: (name: string) =>
         `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
       targetOccupiedTag: "Occupied",
@@ -808,6 +815,8 @@ export const replacementCopy = {
       targetsAria: "置換ターゲット",
       currentInstalled: "インストール済み",
       noMatches: "一致する置換ターゲットがありません。",
+      matchedNames: (names: string[]) => `一致：${names.join("、")}`,
+      matchedNamesMore: (count: number) => `+${count} 件`,
       targetOccupied: (name: string) =>
         `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
       targetOccupiedTag: "占有済み",

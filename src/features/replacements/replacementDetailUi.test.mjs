@@ -107,6 +107,41 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   );
 });
 
+test("搜索命中别名或其他语言展示名时，目标行给出「匹配：…」提示（#274）", () => {
+  const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
+  const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
+
+  // 命中判定与过滤共用同一个判据函数，提示才不会与过滤结果打架。
+  assert.match(
+    panel,
+    /import \{\s*matchedHiddenReplacementTargetNames,\s*replacementTargetSearchHit,\s*\} from "\.\/replacementTargetMatch"/,
+  );
+  assert.match(panel, /\.some\(\(value\) => replacementTargetSearchHit\(value, keyword\)\)/);
+  assert.doesNotMatch(panel, /toLocaleLowerCase\(\)\.includes\(keyword\)/);
+  // 行内：按当前语言解析一次名字，再用同一份「已渲染的名字」判断哪些命中没显示出来。
+  assert.match(panel, /const names = resolveReplacementTargetNames\(target\.displayNames, locale\);/);
+  assert.match(panel, /const matchHint = matchedHiddenReplacementTargetNames\(target, names, query\);/);
+  assert.match(panel, /<strong>\{names\.displayName\}<\/strong>/);
+  const hint = panel.match(
+    /\{matchHint \? \(\s*<small className="replacement-panel__target-match">([\s\S]*?)<\/small>\s*\) : null\}/,
+  );
+  assert.ok(hint, "提示行必须只在 matchHint 非空时渲染");
+  assert.match(hint[1], /rCopy\.panel\.matchedNames\(matchHint\.names\)/);
+  assert.match(
+    hint[1],
+    /\{matchHint\.hiddenCount > 0 \? \(\s*<em>\{rCopy\.panel\.matchedNamesMore\(matchHint\.hiddenCount\)\}<\/em>\s*\) : null\}/,
+  );
+  // 单行省略：提示不得把行撑成多行，列表一屏可见行数不因搜索而缩水。
+  const matchRule = panelCss.match(/\.replacement-panel__target-match > span\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(matchRule, /white-space:\s*nowrap/);
+  assert.match(matchRule, /text-overflow:\s*ellipsis/);
+  assert.match(
+    panelCss,
+    /\.replacement-panel__target-name \.replacement-panel__target-match\s*\{[^}]*color:\s*var\(--color-accent-strong\)/,
+    "提示行要用父级选择器压过 small 的 muted 色，否则与副名一个颜色分不出来",
+  );
+});
+
 test("MOD file edit context action opens the existing detail panel on replacement tab", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const refresh = readSource("src/features/mods/modLibraryRefresh.ts");
