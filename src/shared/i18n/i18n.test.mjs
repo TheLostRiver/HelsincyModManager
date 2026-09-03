@@ -155,6 +155,8 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/mods/external-import/useExternalImportTaskProgress.ts",
     "src/features/mods/ModDetailDialog.tsx",
     "src/features/mods/ExternalStateSection.tsx",
+    "src/features/mods/ExternalAdoptConfirmDialog.tsx",
+    "src/features/mods/externalAdoptView.ts",
     "src/features/mods/useExternalModState.ts",
     "src/features/mods/ModLifecycleFeedback.tsx",
     "src/features/mods/modLifecycleFeedbackState.ts",

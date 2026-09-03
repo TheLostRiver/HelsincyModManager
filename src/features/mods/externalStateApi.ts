@@ -52,3 +52,31 @@ export async function getExternalModState(
     modId: input.modId,
   });
 }
+
+// #286 adopt: the only write in this command family. It claims the scanned,
+// matched, unclaimed files as manifest entries — no game file is touched.
+// Same `{ task, modId }` shape as the scan start; the outcome only arrives as
+// terminal task events (no result getter).
+
+export type ExternalModAdoptStartedDto = {
+  task: ExternalStateScanTaskDto;
+  modId: string;
+};
+
+/**
+ * Manifest layer for adopted entries. Adopted entries must look exactly like
+ * GUI installs, and the install flow passes `base` / `0` (ModLibraryPage).
+ */
+export const EXTERNAL_ADOPT_LAYER = { layerName: "base", layerPriority: 0 } as const;
+
+export async function startExternalModAdopt(
+  input: ExternalModStateRequest,
+): Promise<ExternalModAdoptStartedDto> {
+  return invoke<ExternalModAdoptStartedDto>("start_external_mod_adopt", {
+    gameId: input.gameId,
+    profileId: input.profileId,
+    modId: input.modId,
+    layerName: EXTERNAL_ADOPT_LAYER.layerName,
+    layerPriority: EXTERNAL_ADOPT_LAYER.layerPriority,
+  });
+}
