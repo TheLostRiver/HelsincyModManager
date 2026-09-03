@@ -36,6 +36,16 @@ export type ExternalInstallState =
 export type ExternalInstallFileFact = {
   targetPath: string;
   state: ExternalFileState;
+  /** 占用归因（#286 第三层）：该路径被哪个其他 MOD 的清单条目认领；缺席 = 无主。 */
+  claimedByModId?: string;
+  /** 占用者显示名（后端 getter 时解析）；MOD 已删时缺席，展示回退 id。 */
+  claimedByModName?: string;
+};
+
+/** 比对集内出现过的占用者（按文件序首现去重，后端已算好）。 */
+export type ExternalStateOccupier = {
+  modId: string;
+  modName?: string;
 };
 
 export type ExternalInstallStateSummary = {
@@ -44,6 +54,8 @@ export type ExternalInstallStateSummary = {
   missingFileCount: number;
   changedFileCount: number;
   unreadableFileCount: number;
+  /** 空数组 = 无占用。哈希判定（state 与各计数）不因占用而改变。 */
+  occupiedBy: ExternalStateOccupier[];
   files: ExternalInstallFileFact[];
 };
 
@@ -214,4 +226,21 @@ export function externalStatusAriaLabel(
   copy: ExternalStatusBadgeCopy,
 ): string {
   return `${copy.externalOrigin} · ${badge.detail}`;
+}
+
+/**
+ * 占用者展示名：解析不到（如 MOD 已删）回退 id。
+ *
+ * 回退规则集中在这一处——事实必须始终可见，绝不因为名字缺席显示空白。
+ */
+export function occupierDisplayName(occupier: ExternalStateOccupier): string {
+  return occupier.modName ?? occupier.modId;
+}
+
+/** 文件行的占用者展示名；该文件无占用时为 `null`（行内不渲染标签）。 */
+export function fileClaimantDisplayName(fact: ExternalInstallFileFact): string | null {
+  if (fact.claimedByModId === undefined) {
+    return null;
+  }
+  return fact.claimedByModName ?? fact.claimedByModId;
 }

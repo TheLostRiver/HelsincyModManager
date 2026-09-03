@@ -9,6 +9,8 @@
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import {
   externalStatusAriaLabel,
+  fileClaimantDisplayName,
+  occupierDisplayName,
   projectExternalStatusBadge,
 } from "./externalInstallStatusView";
 import type { ExternalModStateDto } from "./externalStateApi";
@@ -105,6 +107,16 @@ export function ExternalStateSection({
                   {copy.unknownHint}
                 </p>
               ) : null}
+              {summary.occupiedBy.length > 0 ? (
+                // #286 attribution: these paths belong to HMM-managed mods, so
+                // "externally installed" would be misleading — say who owns them.
+                <p className="mod-detail-dialog__external-notice is-occupied">
+                  {copy.occupiedNotice(
+                    summary.occupiedBy.map(occupierDisplayName),
+                    summary.files.filter((file) => file.claimedByModId !== undefined).length,
+                  )}
+                </p>
+              ) : null}
               {summary.files.length > 0 ? (
                 <div className="mod-detail-dialog__external-files">
                   <table>
@@ -116,12 +128,22 @@ export function ExternalStateSection({
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.files.map((file) => (
-                        <tr key={file.targetPath} data-state={file.state}>
-                          <td>{file.targetPath}</td>
-                          <td>{copy.fileState[file.state]}</td>
-                        </tr>
-                      ))}
+                      {summary.files.map((file) => {
+                        const claimant = fileClaimantDisplayName(file);
+                        return (
+                          <tr key={file.targetPath} data-state={file.state}>
+                            <td>{file.targetPath}</td>
+                            <td>
+                              {copy.fileState[file.state]}
+                              {claimant !== null ? (
+                                <span className="mod-detail-dialog__external-claimed">
+                                  {copy.fileClaimedBy(claimant)}
+                                </span>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
