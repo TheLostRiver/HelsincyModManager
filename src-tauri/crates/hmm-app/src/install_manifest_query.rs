@@ -47,6 +47,11 @@ pub struct InstallManifestStatusSummary {
     /// The exact installed revision when the manifest records revisioned facts (schema v2);
     /// `None` for legacy manifests, not-installed mods and recovery-derived summaries.
     pub installed_revision_id: Option<ModRevisionId>,
+    /// Entries claimed from an external installation (#286 adopt): no `backup_ref`, so
+    /// uninstalling deletes them with nothing to restore. `None` when the summary comes
+    /// from a source that does not carry the fact (the library projection); manifest and
+    /// recovery-scan reads always report a count.
+    pub adopted_file_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +186,7 @@ fn summary_for_mod(
     mod_id: &ModId,
     manifest: Option<&InstallManifest>,
 ) -> InstallManifestStatusSummary {
-    let (managed_file_count, backup_count, installed_revision_id) = manifest
+    let (managed_file_count, backup_count, adopted_file_count, installed_revision_id) = manifest
         .map(|manifest| {
             let entries = manifest
                 .entries
@@ -209,10 +214,11 @@ fn summary_for_mod(
                     .iter()
                     .filter(|entry| entry.backup_ref.is_some())
                     .count(),
+                entries.iter().filter(|entry| entry.adopted).count(),
                 revision_consistent.then_some(revision).flatten(),
             )
         })
-        .unwrap_or((0, 0, None));
+        .unwrap_or((0, 0, 0, None));
 
     let status = if managed_file_count == 0 {
         InstallManifestStatus::NotInstalled
@@ -237,6 +243,7 @@ fn summary_for_mod(
         managed_file_count,
         backup_count,
         installed_revision_id,
+        adopted_file_count: Some(adopted_file_count),
     }
 }
 
@@ -361,8 +368,60 @@ mod tests {
                 managed_file_count: 2,
                 backup_count: 1,
                 installed_revision_id: None,
+                adopted_file_count: Some(0),
             }]
         );
+    }
+
+    #[test]
+    fn query_counts_adopted_entries_per_mod_and_reports_zero_without_a_manifest() {
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
+                manifest_entry("mod-a", "nativePC/a.mod3", None),
+                manifest_entry("mod-a", "nativePC/b.mod3", Some("backup-original-b")),
+                manifest_entry("mod-a", "nativePC/c.mod3", None),
+                manifest_entry("mod-b", "nativePC/d.mod3", None),
+            ],
+        );
+        for entry in &mut manifest.entries {
+            entry.adopted = matches!(
+                entry.target_path.as_str(),
+                "nativePC/a.mod3" | "nativePC/c.mod3" | "nativePC/d.mod3"
+            );
+        }
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+
+        let summaries = service
+            .query_statuses(InstallManifestQueryRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![
+                    ModId::new("mod-a"),
+                    ModId::new("mod-b"),
+                    ModId::new("mod-c"),
+                ],
+            })
+            .expect("manifest query should succeed");
+
+        assert_eq!(summaries[0].managed_file_count, 3);
+        assert_eq!(summaries[0].backup_count, 1);
+        assert_eq!(summaries[0].adopted_file_count, Some(2));
+        assert_eq!(summaries[1].adopted_file_count, Some(1));
+        assert_eq!(summaries[2].status, InstallManifestStatus::NotInstalled);
+        assert_eq!(summaries[2].adopted_file_count, Some(0));
+
+        let without_manifest =
+            InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+                manifest: None,
+            }))
+            .query_statuses(InstallManifestQueryRequest {
+                profile_id: ProfileId::new("default"),
+                mod_ids: vec![ModId::new("mod-a")],
+            })
+            .expect("missing manifest is a valid empty install state");
+        assert_eq!(without_manifest[0].adopted_file_count, Some(0));
     }
 
     #[test]

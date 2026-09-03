@@ -2294,6 +2294,7 @@ mod tests {
             status,
             managed_file_count: usize::from(status == hmm_app::InstallRecoveryStatus::Completed),
             backup_count: 0,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }

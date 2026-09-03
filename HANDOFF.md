@@ -295,16 +295,23 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    **互斥**（接管消费的正是那份记录），completed **先重查再回调**（后端已丢记录，重查让
    会话表不再把这只 MOD 说成「外部已安装」）。
    **后续（按优先级）**：
-   - 卸载确认弹窗对接管条目补一句「这些文件不会被还原」——先要让 `get_install_manifest_status`
-     或卸载预览 DTO 暴露 `adopted` 计数（契约已如实注明 `adopted` 尚未进任何 DTO）；
+   - ~~卸载确认弹窗对接管条目补提示~~ → 收尾①已在分支 `hy/adopt-uninstall-warning` 落地（见下）；
+     顺带纠正了「重装后卸载可还原」这条错误建议。CLI `install uninstall` 预览
+     （`UninstallPlanSnapshot`）还没带 `adoptedFileCount`，与 GUI 对齐是一行映射 + 一行人读输出，
+     留给 CLI/批量 adopt 那一片一起做；
    - 契约里 `external_state_scan_*` 仍只登记通配族（adopt 已逐个登记）、`install_audit_unavailable`
      未在契约出现——可顺手补；`ExternalStateSessionProvider` / `externalStateSession.ts` 已在
      i18n 无硬编码中文清单（PR #322）；
    - CLI / 批量 adopt；#304（写锁判据的失效条件）；#300 孤儿文件。
    **验收时确认过、拍板不改的既有行为**：接管后手改文件再卸载会被哈希门挡住
    （`install_uninstall_failed:uninstall`，恢复扫描报「目标变更」，一个文件不删），把文件复原后
-   卸载即可（真机验过）；「接管 → 重装 → 卸载」理论可行但**尚未真机验过**——与正常安装被手改后
-   一致，对没有备份的接管条目尤其正确（排障手册 3.5）。
+   卸载即可（真机验过）——与正常安装被手改后一致，对没有备份的接管条目尤其正确（排障手册 3.5）。
+   **「接管 → 重装 → 卸载」不是还原原版的路径**（读代码纠正，不再写「理论可行」）：重装沿用旧条目
+   的 `backup_ref`（接管为空 → 仍为空），单修订版重装预览被 `candidate_already_installed` 挡；
+   两处确认文案已删掉这条建议，只留 Steam 验证。收尾①（分支 `hy/adopt-uninstall-warning`）：
+   `InstallRecoverySummary` / `InstallManifestStatusSummary` 增 `adopted_file_count`（后者
+   `Option`，投影派生为 `None`，DTO 省略键），卸载确认弹窗在接管数 > 0 时加「接管文件」指标与
+   三语提示，并纳入漂移比对。
    **9a/9b 已落地的归因事实（不要重造）**：占用是**正交事实**，哈希四态判定一个不动；
    归因在三段式 stage 3 与指纹复核**同一锁窗口**读清单（写锁在手 = 无安装在改清单）；
    清单读失败以 `external_state_scan_manifest_unavailable` 整体失败（fail-closed，

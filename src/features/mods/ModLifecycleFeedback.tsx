@@ -39,6 +39,8 @@ export type UninstallConfirmationState = {
   modName: string;
   managedFileCount: number;
   backupCount: number;
+  /** Adopted (#286) entries among the managed files; absent when the durable summary did not carry it. */
+  adoptedFileCount?: number;
 };
 
 type InstallPlanDetailSheetProps = {
@@ -236,6 +238,14 @@ export function UninstallConfirmationDialog({
   if (state === null) {
     return null;
   }
+  const adoptedFileCount = state.adoptedFileCount ?? 0;
+  const metrics = [
+    { label: lifecycle.planSheet.metricManagedFiles, value: state.managedFileCount },
+    { label: lifecycle.planSheet.metricBackups, value: state.backupCount },
+    ...(adoptedFileCount > 0
+      ? [{ label: lifecycle.planSheet.metricAdoptedFiles, value: adoptedFileCount }]
+      : []),
+  ];
 
   return (
     <Dialog
@@ -267,12 +277,12 @@ export function UninstallConfirmationDialog({
     >
       <div className="mod-lifecycle-feedback__dialog-copy">
         <p>{uninstallCopy.body}</p>
-        <SummaryMetrics
-          items={[
-            { label: lifecycle.planSheet.metricManagedFiles, value: state.managedFileCount },
-            { label: lifecycle.planSheet.metricBackups, value: state.backupCount },
-          ]}
-        />
+        <SummaryMetrics items={metrics} />
+        {adoptedFileCount > 0 ? (
+          <p className="mod-lifecycle-feedback__status is-warning">
+            {uninstallCopy.adoptedWarning(adoptedFileCount)}
+          </p>
+        ) : null}
         {blockerMessage ? (
           <p className="mod-lifecycle-feedback__status is-danger" role="alert">{blockerMessage}</p>
         ) : null}
