@@ -4,7 +4,13 @@
 // - three tiers, ordered by decision criticality (changed before missing);
 // - the minimal tier says "needs attention N" without pretending to know the
 //   breakdown — it must not lie in 96px;
-// - "external origin" is an orthogonal short label attached to the pill.
+// - "external origin" is an orthogonal short label attached to the pill;
+// - `occupied` (9c) replaces the hash badge on the card when every compared
+//   file is claimed by other HMM-managed mods. Full tier reads as a sentence
+//   and names a single occupier (count for several); the compact tier puts
+//   the fact first and the name last, so ellipsis truncation drops the name
+//   (fully available in title/aria) rather than the fact; the minimal tier
+//   states the fact only — 96px has no room for a name.
 
 import type { LocaleDictionary } from "../../shared/i18n/locales";
 import type { ExternalStatusBadgeCopy } from "./externalInstallStatusView";
@@ -97,6 +103,13 @@ export const externalStateCopy = {
             : `已改动 ${n.changed + n.unreadable}`,
         minimal: (n) => `需注意 ${n.changed + n.unreadable + n.missing}`,
       },
+      occupied: {
+        full: (names) =>
+          names.length === 1 ? `已被「${names[0]}」占用` : `已被 ${names.length} 个 MOD 占用`,
+        compact: (names) =>
+          names.length === 1 ? `已被占用 · ${names[0]}` : `已被占用 · ${names.length} 个 MOD`,
+        minimal: () => "已被占用",
+      },
     },
     title: "游戏目录状态",
     intro: "以游戏目录的实际文件为准，与本 MOD 的导入包逐个比对。只读检查，不会修改任何文件。",
@@ -156,6 +169,13 @@ export const externalStateCopy = {
             ? `Modified ${n.changed + n.unreadable} · missing ${n.missing}`
             : `Modified ${n.changed + n.unreadable}`,
         minimal: (n) => `Attention ${n.changed + n.unreadable + n.missing}`,
+      },
+      occupied: {
+        full: (names) =>
+          names.length === 1 ? `Claimed by "${names[0]}"` : `Claimed by ${names.length} mods`,
+        compact: (names) =>
+          names.length === 1 ? `Claimed · ${names[0]}` : `Claimed · ${names.length} mods`,
+        minimal: () => "Claimed",
       },
     },
     title: "Game directory status",
@@ -220,6 +240,13 @@ export const externalStateCopy = {
             ? `変更 ${n.changed + n.unreadable} · 欠損 ${n.missing}`
             : `変更 ${n.changed + n.unreadable}`,
         minimal: (n) => `要確認 ${n.changed + n.unreadable + n.missing}`,
+      },
+      occupied: {
+        full: (names) =>
+          names.length === 1 ? `「${names[0]}」が占有中` : `${names.length} 個の MOD が占有中`,
+        compact: (names) =>
+          names.length === 1 ? `占有中 · ${names[0]}` : `占有中 · ${names.length} 個`,
+        minimal: () => "占有中",
       },
     },
     title: "ゲームディレクトリの状態",

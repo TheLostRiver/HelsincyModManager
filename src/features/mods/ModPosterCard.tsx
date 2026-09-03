@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { Check, TriangleAlert } from "lucide-react";
+import { Check, Lock, TriangleAlert } from "lucide-react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
@@ -97,9 +97,14 @@ export function ModPosterCard({
     viewMode,
     copy: resolveCopy(externalStateCopy, locale).badge,
   });
+  // 9c: every compared file belongs to other HMM-managed mods. Neither a
+  // check mark (reads as "installed") nor a warning (nothing is broken) fits;
+  // the lock says the paths are taken.
+  const externalBadgeOccupied = externalBadge?.case === "occupied";
   // 「需要用户留意」的判定换警示图标；installed / not_installed 维持对勾基线。
   const externalBadgeAlerts =
     externalBadge !== null &&
+    !externalBadgeOccupied &&
     externalBadge.case !== "installed" &&
     externalBadge.case !== "not_installed";
   // Adapter display names live in externalImportCopy (single source for the
@@ -263,7 +268,9 @@ export function ModPosterCard({
             title={externalBadge?.label}
             aria-label={externalBadge?.label}
           >
-            {externalBadgeAlerts ? (
+            {externalBadgeOccupied ? (
+              <Lock size={13} strokeWidth={2.6} aria-hidden="true" />
+            ) : externalBadgeAlerts ? (
               <TriangleAlert size={13} strokeWidth={2.6} aria-hidden="true" />
             ) : (
               <Check size={13} strokeWidth={2.6} aria-hidden="true" />
