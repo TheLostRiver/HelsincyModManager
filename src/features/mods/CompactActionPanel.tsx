@@ -30,6 +30,8 @@ type CompactActionPanelProps = {
   selectionInteractionDisabledReason?: string;
   batchPreviewUnavailableReason?: string;
   batchWriteUnavailableReason?: string;
+  /** #275: import / delete are refused while the storage root migrates or awaits a restart. */
+  storageWriteFreezeReason?: string;
   selectedModId?: string | null;
   installTaskActive?: boolean;
   libraryQueryBusy: boolean;
@@ -63,6 +65,7 @@ export function CompactActionPanel({
   selectionInteractionDisabledReason,
   batchPreviewUnavailableReason,
   batchWriteUnavailableReason,
+  storageWriteFreezeReason,
   selectedModId = null,
   installTaskActive = false,
   libraryQueryBusy,
@@ -93,7 +96,9 @@ export function CompactActionPanel({
   const addAction = compactActions.find((a) => a.id === "add");
   const addRevisionAction = compactActions.find((a) => a.id === "add-revision");
   const revisionImportDisabledReason =
-    libraryQueryBusy
+    storageWriteFreezeReason !== undefined
+      ? storageWriteFreezeReason
+      : libraryQueryBusy
       ? compact.queryBusy
       : batchSelectionActive
         ? compact.exitBatchToImportRevision
@@ -122,9 +127,10 @@ export function CompactActionPanel({
   };
   const batchCapabilityDisabledReason = (actionId: string) => {
     // Delete is a page-side loop over the single delete command and never enters the batch
-    // lifecycle framework, so the sandbox-gated write capability does not apply to it.
+    // lifecycle framework, so the sandbox-gated write capability does not apply to it; the
+    // storage write freeze does (deletion reclaims a package sandbox).
     if (actionId === "delete") {
-      return undefined;
+      return storageWriteFreezeReason;
     }
     return batchSelectionActive && actionId === "preview-plan"
       ? batchPreviewUnavailableReason
@@ -156,11 +162,12 @@ export function CompactActionPanel({
         {addAction ? (
           <ModImportAction
             label={buttonText.add}
+            disabledReason={storageWriteFreezeReason}
             onImported={onImportCompleted}
             tourId="mods.import-action"
           />
         ) : null}
-        <ExternalImportAction onImported={onImportCompleted} />
+        <ExternalImportAction onImported={onImportCompleted} disabledReason={storageWriteFreezeReason} />
         {addRevisionAction ? (
           <ModImportAction
             label={buttonText["add-revision"]}

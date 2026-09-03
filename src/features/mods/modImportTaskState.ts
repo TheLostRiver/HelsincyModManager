@@ -18,7 +18,9 @@ export type ModImportFailedMessageKind =
   | "picker-failed"
   | "invalid-start-state"
   | "invalid-archive"
-  | "start-failed";
+  | "start-failed"
+  | "storage-frozen-migration"
+  | "storage-frozen-restart";
 
 const modImportPhaseCopyKeys: Readonly<Record<string, keyof ModImportCopy["phases"]>> = {
   "mod_import.queued": "queued",
@@ -59,6 +61,10 @@ export function getModImportFailedMessage(
       return copy.errors.invalidArchive;
     case "start-failed":
       return copy.errors.startFailed;
+    case "storage-frozen-migration":
+      return copy.errors.storageFrozenMigration;
+    case "storage-frozen-restart":
+      return copy.errors.storageFrozenRestart;
   }
 }
 

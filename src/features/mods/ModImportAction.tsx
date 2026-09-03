@@ -39,6 +39,13 @@ function startErrorMessageKind(error: unknown): ModImportFailedMessageKind {
   if (code === "archive_path_empty" || code === "archive_path_not_absolute") {
     return "invalid-archive";
   }
+  // #275 storage write gate: the code tells the user what to wait for.
+  if (code === "mod_storage_migration_in_progress") {
+    return "storage-frozen-migration";
+  }
+  if (code === "mod_storage_restart_required") {
+    return "storage-frozen-restart";
+  }
   return "start-failed";
 }
 
