@@ -399,6 +399,7 @@ impl AppClock for FixedClock {
 
 struct DeletionHarness {
     service: ModDeletionService,
+    write_gate: Arc<ModStorageWriteGate>,
     selections:
         Arc<crate::replacement_selection_test_support::InMemoryReplacementSelectionRepository>,
     results_impl: Arc<FakeImportResultRepository>,
@@ -435,6 +436,7 @@ fn harness(
     let metadata = Arc::new(FakeMetadataRepository::default());
     let categories = Arc::new(FakeCategoryRepository::default());
     let audit = Arc::new(RecordingAuditLogWriter::default());
+    let write_gate = Arc::new(ModStorageWriteGate::new());
     let service = ModDeletionService::new(
         Arc::new(FakeProfileRepository { profiles }),
         Arc::clone(&manifests) as Arc<dyn InstallManifestRepository>,
@@ -447,9 +449,11 @@ fn harness(
         Arc::clone(&categories) as Arc<dyn CategoryRepository>,
         Arc::clone(&audit) as Arc<dyn AuditLogWriter>,
         Arc::new(FixedClock),
-    );
+    )
+    .with_write_gate(Arc::clone(&write_gate));
     DeletionHarness {
         service,
+        write_gate,
         selections,
         results_impl: Arc::clone(&results),
         sandbox_impl: Arc::clone(&sandbox),
@@ -488,6 +492,52 @@ fn installed_binding(mod_id: &ModId) -> ReplacementBindingSnapshot {
         hmm_core::ReplacementTargetKind::parse("weapon").expect("target kind"),
     )
     .expect("installed binding")
+}
+
+#[test]
+fn delete_is_refused_while_storage_writes_are_frozen_before_touching_anything() {
+    let mod_id = mod_id();
+    let harness = harness(&mod_id, HashMap::new(), true);
+    harness
+        .write_gate
+        .begin_migration(|| Ok::<(), ModStorageWriteGateError>(()))
+        .expect("migration admitted");
+
+    let error = harness
+        .service
+        .delete_mod(&mod_id)
+        .expect_err("frozen gate refuses deletion");
+
+    assert_eq!(error.code(), "mod_storage_migration_in_progress");
+    assert!(harness
+        .sandbox_impl
+        .cleaned
+        .lock()
+        .expect("lock")
+        .is_empty());
+    assert!(
+        harness
+            .results_impl
+            .list_revisions(&mod_id)
+            .expect("list revisions")
+            .len()
+            == 2
+    );
+    assert!(harness
+        .selections
+        .load_selection(&ProfileId::new("p1"), &mod_id)
+        .expect("load selection")
+        .is_some());
+
+    harness.write_gate.end_migration(true);
+    assert_eq!(
+        harness
+            .service
+            .delete_mod(&mod_id)
+            .expect_err("switched root refuses until restart")
+            .code(),
+        "mod_storage_restart_required"
+    );
 }
 
 #[test]

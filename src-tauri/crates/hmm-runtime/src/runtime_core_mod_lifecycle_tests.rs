@@ -290,6 +290,230 @@ fn headless_composition_imports_into_the_configured_mod_storage_root_and_survive
 }
 
 #[test]
+fn headless_composition_migrates_the_library_to_a_new_root_and_cleans_the_source_after_restart() {
+    use crate::ModStorageRootSource;
+    use hmm_app::{ModStorageSettingsError, ModStorageWriteFreeze};
+    use hmm_ports::ModStorageMigrationState;
+
+    let temp = tempfile::tempdir().expect("create migration temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let new_root = temp.path().join("HMMMods");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("lifecycle-v1.zip");
+    prepare_game_root(&game_root);
+    create_fixture_zip(&archive_path, V1_FILES);
+
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state on the default storage root");
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register fixture import task");
+    state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path.clone())
+        .expect("prepare and persist fixture import");
+    let mod_id = ModId::new(import_task.task_id.clone());
+    let source_package = app_data_dir
+        .join("mod-import")
+        .join("sandboxes")
+        .join(&import_task.task_id);
+    let target_package = new_root.join("sandboxes").join(&import_task.task_id);
+    assert!(source_package.join(V1_FILES[0].0).is_file());
+
+    assert_eq!(
+        state.mod_storage_settings.set(Some(new_root.clone())),
+        Err(ModStorageSettingsError::MigrationRequired),
+        "a populated library cannot switch roots without migrating"
+    );
+
+    let launch = state
+        .mod_storage_migration_tasks
+        .start(Some(new_root.clone()))
+        .expect("start migration");
+    assert_eq!(launch.task.kind, TaskKind::ModStorageMigration);
+    assert_eq!(
+        state
+            .mod_import_tasks
+            .start_import_mod_task(StartImportModTaskRequest {
+                archive_path: archive_path.clone(),
+            })
+            .expect_err("imports are frozen while migrating")
+            .error_code(),
+        "mod_storage_migration_in_progress"
+    );
+    let events = state
+        .mod_storage_migration_tasks
+        .run(launch)
+        .expect("run migration");
+    assert_eq!(
+        events.last().map(|event| event.phase.as_str()),
+        Some(hmm_app::MOD_STORAGE_MIGRATION_COMPLETED_PHASE),
+        "events: {events:?}"
+    );
+    assert_eq!(
+        events.last().and_then(|event| event.current),
+        Some(1),
+        "one package copied"
+    );
+    for (relative, bytes) in V1_FILES {
+        assert_eq!(
+            fs::read(target_package.join(relative)).expect("read migrated file"),
+            *bytes,
+            "{relative} must be byte-identical in the new root"
+        );
+    }
+    assert!(
+        source_package.join(V1_FILES[0].0).is_file(),
+        "the source copy stays until the next start; this process still reads it"
+    );
+    assert!(new_root.join(hmm_ports::MOD_STORAGE_MARKER_NAME).is_file());
+    let journal = hmm_infra::JsonModStorageMigrationJournalRepository::new(
+        app_data_dir.join("mod-import").join("migration.json"),
+    );
+    assert_eq!(
+        hmm_ports::ModStorageMigrationJournalRepository::load(&journal)
+            .expect("load journal")
+            .map(|journal| journal.state),
+        Some(ModStorageMigrationState::Switched)
+    );
+    let snapshot = state.mod_storage_settings.get().expect("snapshot");
+    assert_eq!(snapshot.configured, Some(new_root.clone()));
+    assert!(snapshot.restart_required);
+    assert_eq!(
+        snapshot.writes_frozen,
+        ModStorageWriteFreeze::RestartRequired
+    );
+    assert_eq!(
+        snapshot.effective_root,
+        app_data_dir.join("mod-import"),
+        "the running process keeps the old root"
+    );
+    assert_eq!(
+        state
+            .mod_deletion
+            .delete_mod(&mod_id)
+            .expect_err("deletion is frozen until restart")
+            .code(),
+        "mod_storage_restart_required"
+    );
+    assert_eq!(
+        build_target_paths(&state, mod_id.clone()),
+        expected_v1_targets(),
+        "reads keep working from the old root in the same session"
+    );
+    drop(state);
+
+    let restarted = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+        .expect("recompose on the migrated root");
+    assert_eq!(restarted.mod_storage.root, new_root);
+    assert_eq!(
+        restarted.mod_storage.source,
+        ModStorageRootSource::Configured
+    );
+    assert_eq!(restarted.mod_storage.degraded, None);
+    assert!(
+        !source_package.exists(),
+        "startup settlement removes the source copy once the new root is in effect"
+    );
+    assert!(
+        !app_data_dir
+            .join("mod-import")
+            .join("migration.json")
+            .exists(),
+        "the journal is cleared after the source was cleaned"
+    );
+    assert!(
+        app_data_dir
+            .join("mod-import")
+            .join("results.json")
+            .is_file(),
+        "the catalog never moves"
+    );
+    assert_eq!(
+        build_target_paths(&restarted, mod_id.clone()),
+        expected_v1_targets(),
+        "the library is served from the new root"
+    );
+    assert_eq!(
+        restarted
+            .mod_storage_settings
+            .get()
+            .expect("snapshot")
+            .writes_frozen,
+        ModStorageWriteFreeze::None
+    );
+    restarted
+        .mod_deletion
+        .delete_mod(&mod_id)
+        .expect("deletion works again after the restart");
+    assert!(!target_package.exists());
+}
+
+#[test]
+fn headless_composition_rolls_back_a_copying_journal_left_by_a_crash() {
+    use hmm_ports::{
+        ModStorageMigrationJournal, ModStorageMigrationJournalRepository, ModStorageMigrationState,
+        MOD_STORAGE_MIGRATION_JOURNAL_VERSION,
+    };
+
+    let temp = tempfile::tempdir().expect("create rollback temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let default_root = app_data_dir.join("mod-import");
+    let target_root = temp.path().join("HMMMods");
+    let source_package = default_root.join("sandboxes").join("mod-import-1-0");
+    let partial_copy = target_root.join("sandboxes").join("mod-import-1-0");
+    fs::create_dir_all(source_package.join("nativePC")).expect("create source package");
+    fs::write(source_package.join("nativePC").join("a.bin"), b"source").expect("write source");
+    fs::create_dir_all(partial_copy.join("nativePC")).expect("create partial copy");
+    fs::write(partial_copy.join("nativePC").join("a.bin"), b"partial").expect("write partial");
+    fs::write(
+        target_root.join(hmm_ports::MOD_STORAGE_MARKER_NAME),
+        hmm_ports::MOD_STORAGE_MARKER_SCHEMA,
+    )
+    .expect("write marker");
+    hmm_infra::JsonModStorageMigrationJournalRepository::new(default_root.join("migration.json"))
+        .save(&ModStorageMigrationJournal {
+            version: MOD_STORAGE_MIGRATION_JOURNAL_VERSION,
+            state: ModStorageMigrationState::Copying,
+            source_root: default_root.clone(),
+            target_root: target_root.clone(),
+            packages: vec!["mod-import-1-0".to_owned()],
+            started_at_unix_millis: 1,
+        })
+        .expect("seed journal");
+
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+        .expect("compose after a crash while copying");
+
+    assert_eq!(state.mod_storage.root, default_root);
+    assert!(
+        !partial_copy.exists(),
+        "the partial copy in the target is removed"
+    );
+    assert!(
+        source_package.join("nativePC").join("a.bin").is_file(),
+        "the source package is untouched"
+    );
+    assert!(
+        !default_root.join("migration.json").exists(),
+        "the journal is cleared once the rollback finished"
+    );
+    assert!(
+        target_root
+            .join(hmm_ports::MOD_STORAGE_MARKER_NAME)
+            .is_file(),
+        "rollback removes packages, never the claimed directory itself"
+    );
+}
+
+#[test]
 fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot() {
     let temp = tempfile::tempdir().expect("create retarget lifecycle temp root");
     let app_data_dir = temp.path().join("app-data");

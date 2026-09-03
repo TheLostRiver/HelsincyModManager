@@ -82,7 +82,8 @@ use mod_import_commands::{
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use mod_storage_commands::{
-    get_mod_storage_settings, set_mod_storage_dir, validate_mod_storage_dir,
+    get_mod_storage_settings, set_mod_storage_dir, start_mod_storage_migration_task,
+    validate_mod_storage_dir,
 };
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
@@ -232,6 +233,7 @@ pub fn run() {
             get_mod_storage_settings,
             validate_mod_storage_dir,
             set_mod_storage_dir,
+            start_mod_storage_migration_task,
             update_mod_metadata,
             delete_mod_metadata,
             create_category,

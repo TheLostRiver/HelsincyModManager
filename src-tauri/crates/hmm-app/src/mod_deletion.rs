@@ -11,6 +11,7 @@
 //! 元数据/分类清理失败只会留下无害的孤儿行，随重试清除。审计历史按治理
 //! 约定 append-only 保留，删除只追加事件。
 
+use crate::{ModStorageWriteGate, ModStorageWriteGateError};
 use hmm_core::{InstallManifestStatusConsumption, ModId, Profile, ProfileId};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, CategoryRepository, InstallManifestRepository,
@@ -31,6 +32,9 @@ pub enum ModDeletionError {
     BlockedRecovery,
     #[error("mod deletion storage is unavailable")]
     StoreUnavailable,
+    /// #275：存储根迁移中或已切换待重启，沙盒回收会撕碎正在复制 / 已作废的根。
+    #[error("{0}")]
+    StorageWriteFrozen(ModStorageWriteGateError),
 }
 
 impl ModDeletionError {
@@ -41,6 +45,7 @@ impl ModDeletionError {
             Self::BlockedInstalled { .. } => "mod_delete_blocked_installed",
             Self::BlockedRecovery => "mod_delete_blocked_recovery",
             Self::StoreUnavailable => "mod_delete_store_unavailable",
+            Self::StorageWriteFrozen(error) => error.code(),
         }
     }
 }
@@ -74,6 +79,7 @@ pub struct ModDeletionService {
     categories: Arc<dyn CategoryRepository>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
+    write_gate: Arc<ModStorageWriteGate>,
 }
 
 impl ModDeletionService {
@@ -103,7 +109,14 @@ impl ModDeletionService {
             categories,
             audit_log,
             clock,
+            write_gate: Arc::new(ModStorageWriteGate::new()),
         }
+    }
+
+    /// 与迁移任务、其他沙盒写入者共用同一把存储写门闩。
+    pub fn with_write_gate(mut self, write_gate: Arc<ModStorageWriteGate>) -> Self {
+        self.write_gate = write_gate;
+        self
     }
 
     /// 删除确认弹窗的数据源：删除什么、影响哪些 profile。
@@ -147,6 +160,9 @@ impl ModDeletionService {
 
     /// 删除一个 logical Mod：门禁通过后按序回收全部存储。
     pub fn delete_mod(&self, mod_id: &ModId) -> Result<ModDeletionResult, ModDeletionError> {
+        self.write_gate
+            .ensure_open()
+            .map_err(ModDeletionError::StorageWriteFrozen)?;
         let revisions = self
             .import_results
             .list_revisions(mod_id)

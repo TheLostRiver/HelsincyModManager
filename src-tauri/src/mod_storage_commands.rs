@@ -1,10 +1,17 @@
-use crate::dto::CommandErrorDto;
+use crate::dto::{CommandErrorDto, TaskStartedDto};
 use crate::state::AppState;
-use hmm_app::{ModStorageDirectoryValidation, ModStorageSettingsError, ModStorageSettingsSnapshot};
+use crate::task_events::{emit_task_progress, TauriTaskProgressObserver};
+use hmm_app::{
+    queued_mod_storage_migration_event, ModStorageDirectoryValidation, ModStorageMigrationLaunch,
+    ModStorageMigrationTaskError, ModStorageMigrationTaskService, ModStorageSettingsError,
+    ModStorageSettingsSnapshot, ModStorageWriteFreeze, TaskManager, TaskProgressEvent, TaskStatus,
+    MOD_STORAGE_MIGRATION_CANCELLED_PHASE, MOD_STORAGE_MIGRATION_FAILED_PHASE,
+};
 use hmm_runtime::{ModStorageDegradedReason, ModStorageRootSource};
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::State;
+use std::sync::Arc;
+use tauri::{AppHandle, State};
 
 /// #275: what the settings page shows. The directories are the user's own choices (or the
 /// default below app-data), the same class of path `get_game_setup_status` already returns;
@@ -22,6 +29,8 @@ pub struct ModStorageSettingsDto {
     pub degraded_detail: Option<&'static str>,
     pub library_empty: bool,
     pub restart_required: bool,
+    /// `none` | `migration` | `restart_required` — why import / delete are refused right now.
+    pub writes_frozen: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -49,6 +58,15 @@ pub(crate) fn settings_to_dto(
         degraded_detail: degraded.and_then(ModStorageDegradedReason::detail_code),
         library_empty: snapshot.library_empty,
         restart_required: snapshot.restart_required,
+        writes_frozen: writes_frozen_code(snapshot.writes_frozen),
+    }
+}
+
+fn writes_frozen_code(freeze: ModStorageWriteFreeze) -> &'static str {
+    match freeze {
+        ModStorageWriteFreeze::None => "none",
+        ModStorageWriteFreeze::Migration => "migration",
+        ModStorageWriteFreeze::RestartRequired => "restart_required",
     }
 }
 
@@ -123,6 +141,97 @@ pub fn set_mod_storage_dir(
         .map_err(CommandErrorDto::from_mod_storage_settings_error)
 }
 
+/// #275 slice 2: moves the library to `directory` (`null` = back to the default root). Returns
+/// the queued task; progress and the terminal outcome arrive as `hmm://task-progress` events
+/// with the `mod_storage.migration.*` phases. Sandbox writes stay refused until restart once
+/// the migration switched the setting.
+#[tauri::command]
+pub fn start_mod_storage_migration_task(
+    directory: Option<String>,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let directory = directory.map(parse_directory).transpose()?;
+    let launch = state
+        .mod_storage_migration_tasks
+        .start(directory)
+        .map_err(mod_storage_migration_task_error)?;
+    let response = TaskStartedDto::from(launch.task.clone());
+
+    if let Err(error) = emit_task_progress(&app_handle, queued_mod_storage_migration_event(&launch))
+    {
+        // No queued event means the frontend never learns the task id; closing the launch also
+        // reopens the write gate the start froze.
+        let _ = state.mod_storage_migration_tasks.abort_queued(&launch);
+        return Err(error);
+    }
+    spawn_mod_storage_migration_runner(
+        Arc::clone(&state.mod_storage_migration_tasks),
+        Arc::clone(&state.task_manager),
+        app_handle,
+        launch,
+    );
+    Ok(response)
+}
+
+fn spawn_mod_storage_migration_runner(
+    service: Arc<ModStorageMigrationTaskService>,
+    task_manager: Arc<TaskManager>,
+    app_handle: AppHandle,
+    launch: ModStorageMigrationLaunch,
+) {
+    std::thread::spawn(move || {
+        let task = launch.task.clone();
+        let observer = TauriTaskProgressObserver::new(&app_handle);
+        // Live events go out through the observer; only a broken runner needs the fallback.
+        if let Err(error) = service.run_with_observer(launch, &observer) {
+            let _ = emit_task_progress(
+                &app_handle,
+                fallback_migration_terminal_event(&task_manager, task, error),
+            );
+        }
+    });
+}
+
+/// The runner itself failed (task registry refused a transition): the task must not stay
+/// queued/running, and the frontend needs a terminal event with a stable code.
+fn fallback_migration_terminal_event(
+    task_manager: &TaskManager,
+    task: hmm_app::TaskStarted,
+    error: ModStorageMigrationTaskError,
+) -> TaskProgressEvent {
+    if matches!(
+        task_manager.task_status(&task.task_id),
+        Some(TaskStatus::Queued | TaskStatus::Running)
+    ) {
+        let _ = task_manager.fail_task(&task.task_id);
+    }
+    let status = task_manager
+        .task_status(&task.task_id)
+        .unwrap_or(TaskStatus::Failed);
+    let mut event = TaskProgressEvent::new(
+        task.task_id,
+        task.kind,
+        status,
+        if status == TaskStatus::Cancelled {
+            MOD_STORAGE_MIGRATION_CANCELLED_PHASE
+        } else {
+            MOD_STORAGE_MIGRATION_FAILED_PHASE
+        },
+    );
+    if status != TaskStatus::Cancelled {
+        event.error = Some(error.code().to_owned());
+    }
+    event
+}
+
+fn mod_storage_migration_task_error(error: ModStorageMigrationTaskError) -> CommandErrorDto {
+    CommandErrorDto {
+        code: error.code().to_owned(),
+        message: error.to_string(),
+    }
+}
+
 /// Only the trivially cheap shape rule lives here; everything else (links, markers, overlap,
 /// write probe) is the inspector's job so the CLI and GUI cannot drift apart.
 fn parse_directory(value: String) -> Result<PathBuf, CommandErrorDto> {
@@ -150,6 +259,11 @@ mod tests {
             configured: configured.map(PathBuf::from),
             library_empty: true,
             restart_required,
+            writes_frozen: if restart_required {
+                ModStorageWriteFreeze::RestartRequired
+            } else {
+                ModStorageWriteFreeze::None
+            },
         }
     }
 
@@ -164,6 +278,7 @@ mod tests {
         assert_eq!(value["source"], "default");
         assert_eq!(value["libraryEmpty"], true);
         assert_eq!(value["restartRequired"], false);
+        assert_eq!(value["writesFrozen"], "none");
         assert!(value.get("degradedReason").is_none());
         assert!(value.get("degradedDetail").is_none());
     }
@@ -184,6 +299,11 @@ mod tests {
         assert_eq!(value["degradedReason"], "configured_dir_unavailable");
         assert_eq!(value["degradedDetail"], "mod_storage_dir_marker_required");
         assert_eq!(value["restartRequired"], true);
+        assert_eq!(value["writesFrozen"], "restart_required");
+        assert_eq!(
+            writes_frozen_code(ModStorageWriteFreeze::Migration),
+            "migration"
+        );
     }
 
     #[test]
@@ -223,5 +343,67 @@ mod tests {
             ModStorageSettingsError::Directory(ModStorageDirectoryError::NotWritable),
         );
         assert_eq!(directory.code, "mod_storage_dir_not_writable");
+        let frozen =
+            CommandErrorDto::from_mod_storage_settings_error(ModStorageSettingsError::WriteFrozen(
+                hmm_app::ModStorageWriteGateError::MigrationInProgress,
+            ));
+        assert_eq!(frozen.code, "mod_storage_migration_in_progress");
+        let imports_active =
+            mod_storage_migration_task_error(ModStorageMigrationTaskError::ImportsActive);
+        assert_eq!(imports_active.code, "mod_storage_migration_imports_active");
+        assert!(!imports_active.message.is_empty());
+    }
+
+    #[test]
+    fn fallback_terminal_event_fails_a_running_migration_task_with_a_stable_code() {
+        let task_manager = TaskManager::new();
+        let task = task_manager
+            .create_task(hmm_app::TaskKind::ModStorageMigration)
+            .expect("task");
+        task_manager.start_task(&task.task_id).expect("start");
+        let started = hmm_app::TaskStarted {
+            task_id: task.task_id.clone(),
+            kind: task.kind,
+            status: task.status,
+        };
+
+        let event = fallback_migration_terminal_event(
+            &task_manager,
+            started.clone(),
+            ModStorageMigrationTaskError::TaskUnavailable,
+        );
+
+        assert_eq!(event.status, TaskStatus::Failed);
+        assert_eq!(event.phase, MOD_STORAGE_MIGRATION_FAILED_PHASE);
+        assert_eq!(
+            event.error.as_deref(),
+            Some("mod_storage_migration_task_unavailable")
+        );
+        assert_eq!(
+            task_manager.task_status(&task.task_id),
+            Some(TaskStatus::Failed)
+        );
+
+        let cancelled = task_manager
+            .create_task(hmm_app::TaskKind::ModStorageMigration)
+            .expect("task");
+        task_manager
+            .cancel_task(&cancelled.task_id)
+            .expect("cancel queued");
+        let event = fallback_migration_terminal_event(
+            &task_manager,
+            hmm_app::TaskStarted {
+                task_id: cancelled.task_id,
+                kind: cancelled.kind,
+                status: cancelled.status,
+            },
+            ModStorageMigrationTaskError::TaskUnavailable,
+        );
+        assert_eq!(event.status, TaskStatus::Cancelled);
+        assert_eq!(event.phase, MOD_STORAGE_MIGRATION_CANCELLED_PHASE);
+        assert_eq!(event.error, None);
+        let value =
+            serde_json::to_value(crate::dto::TaskProgressEventDto::from(event)).expect("serialize");
+        assert_eq!(value["kind"], "mod_storage_migration");
     }
 }

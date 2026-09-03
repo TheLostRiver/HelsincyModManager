@@ -29,6 +29,7 @@ pub(super) fn compose(
     category_repository: Arc<dyn CategoryRepository>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     prepare_service: Arc<ModImportPrepareService>,
+    write_gate: Arc<hmm_app::ModStorageWriteGate>,
 ) -> Result<ExternalImportComposition, String> {
     let source_registry = Arc::new(
         HuntingBoxDirectorySourceRegistry::new(&app_data_dir.join("external-import"))
@@ -60,17 +61,20 @@ pub(super) fn compose(
             app_data_dir.to_path_buf(),
             package_preparer,
         ));
-    let batches = Arc::new(ExternalImportBatchService::new(
-        Arc::clone(task_manager),
-        source_registry_for_batches,
-        materializer,
-        batch_repository,
-        catalog,
-        category_repository,
-        sandbox_locator,
-        prepare_service,
-        Arc::new(SystemClock),
-    ));
+    let batches = Arc::new(
+        ExternalImportBatchService::new(
+            Arc::clone(task_manager),
+            source_registry_for_batches,
+            materializer,
+            batch_repository,
+            catalog,
+            category_repository,
+            sandbox_locator,
+            prepare_service,
+            Arc::new(SystemClock),
+        )
+        .with_write_gate(write_gate),
+    );
     batches
         .recover_interrupted_batches()
         .map_err(|_| "failed to recover interrupted external import batches".to_owned())?;
