@@ -3,7 +3,7 @@
 新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
 `HANDOFF.md` 需要提交就提交，不需要就删掉。
 
-> 本文件最后更新：2026-09-03，HEAD = `868dccd`。
+> 本文件最后更新：2026-09-03（晚），HEAD = `99ec9b6`（PR #322 在开、未合并）。
 > **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
 > 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
 > 照旧文档接手会往错误方向做。2026-09-03 又订正一处：one001 双胞胎的
@@ -106,14 +106,27 @@ docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先
 - **路由切换会卸载页面组件**（`RouterOutlet` 退出动画后 `completeRouteExit` 移除 layer），
   页面内 `useState` / `useReducer` 的工作态——选区、搜索词、筛选、视图模式——**全部重置**。
   偏好落 localStorage、工作态不落，是既有区分（全页只有 `showCardCategoryLabels` 落盘）。
-  **别把「切侧边栏丢多选」当 bug 修。**
+  **别把「切侧边栏丢多选」当 bug 修。** 唯一提到应用级的工作态是外部状态扫描结果的
+  会话表（PR #322，`ExternalStateSessionProvider` 挂在 `RouterOutlet` 之上）——那是维护者
+  验收时被绊到后专门拍板的 A+，不是先例，别照着把别的工作态也往上提。
 
-## 四、当前进度（2026-09-03，HEAD = `868dccd`）
+## 四、当前进度（2026-09-03 晚，HEAD = `99ec9b6`）
 
 最近提交（由新到旧）：
 
 | commit | 说明 |
 |---|---|
+| （PR #322，未合并） | feat(mods) 外部状态会话表提到应用级 Provider，路由切换不再丢徽标（**#286 3b-2 A+**，分支 `hy/external-state-session-store`，已 verify + 真机验收） |
+| `99ec9b6` | Merge PR #321（hy/external-mod-adopt-ui，**#286 adopt PR B**：详情弹窗接入接管——按钮、alertdialog 二次确认、三语文案） |
+| `16c4921` | Merge PR #320（hy/external-mod-adopt-backend，**#286 adopt PR A**：后端全链路，4 个提交逐层向上） |
+| `335d526` | feat(tauri) `start_external_mod_adopt` 命令 + 契约/LOGGING/SECURITY 登记 + 契约覆盖用例逐个盯稳定码 |
+| `01aab2e` | feat(runtime) `ConfiguredExternalModAdopter`（锁外前置拒绝 → 准入 → 阻塞写锁 → 锁内双重验 → 提交屏障 → 原子写清单 → 审计）+ 任务服务 + 31 条集成测试 |
+| `bbc9cb2` | feat(app) 认领集派生纯函数 `derive_external_adopt_plan` + `append_adopted_entries` + 扫描服务返回游戏侧摘要 |
+| `f2e8931` | feat(core) 清单条目新增 `adopted` 标记（serde default，老清单逐字节不变） |
+| `438926d` | Merge PR #319（**#305**，方案 A：沙箱侧读失败标成「读不到」留在原位，不再静默丢弃、不再错位） |
+| `af21836` | Merge PR #318（**#309**，方案 D：外部导入物化保留路径原始大小写；存量包删了重导） |
+| `5df03df` | Merge PR #317（**#286 切片 9c**：卡片徽标全占用改口「已被 X 占用」） |
+| `afd1607` | Merge PR #316（docs/handoff-286-attribution，上一版 HANDOFF + 排障手册三坑） |
 | `868dccd` | Merge PR #315（hy/external-state-occupier-ui，**#286 切片 9b**：弹窗展示占用归因） |
 | `180e5ae` | feat(mods) 详情弹窗展示占用归因（占用提示行 + 文件行小胶囊，三语） |
 | `f8dbf15` | Merge PR #314（hy/external-state-attribution，**#286 切片 9a**：归因后端事实链） |
@@ -200,21 +213,22 @@ Issue 状态：
 | **284** | **CLOSED** | 主线在 #291（内容根解析 + 合集包单独报错）；**真机验收又抓出 R5**，已由 #294/#295 修完。遗留 R4 已单独开 #292 |
 | **285** | **CLOSED** | PR #290 合并：空计划在 commit 前拦截为 `install_failed:empty_plan` |
 | **288** | **CLOSED** | 「检查更新」真的查询最新版本（PR #297）。不下载/不校验/不写文件，网络请求留在 Rust 侧，**CSP 与 capability 一行未改** |
-| **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施。**取向须重估：见 #309**——变体不只来自用户手工包，是 HMM 自己的物化管线批量制造的，「只改提示」救不了主流程 |
-| **286** | **进行中** | 外部 MOD 接管。切片 1、2a、2b、3a、**3b-1**（卡片「外部来源」短标，PR #312）、**3b-2**（卡片三档徽标消费扫描结果，方案 A 会话级共享，PR #313）、**9a**（占用归因后端事实链，PR #314）、**9b**（弹窗展示归因，PR #315）**已全部合并**（PR #301/#303/#307/#308/#310/#312/#313/#314/#315）。**剩余**：**9c 卡片徽标全占用改口**（拍板：比对集全部被其他 MOD 占用时卡片显示「已被 X 占用」而非绿色已安装，部分占用维持哈希徽标；数据已在 3b-2 会话链路里——`occupiedBy` 随 summary 进了页级 Map，卡片零新数据源，主要改 `externalCardBadge.ts` 投影 + 徽标文案）→ adopt（前置见第六节）。拍板记录：3b-2 方案 A（评论 5512751059）、归因三点拍板 + 9a 设计（5513829324）、实现期修正（5514092714，共享助手会弱化门禁）都在 issue 评论里 |
+| **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施。#309 已修（HMM 自己不再制造小写变体），#292 回到「用户手工包的边角案例」，取向可按原三选一重估 |
+| **286** | **进行中（收尾）** | 外部 MOD 接管。切片 1 → 9c **全部合并**（PR #301/#303/#307/#308/#310/#312/#313/#314/#315/#317），**adopt 已落地**：PR #320（后端全链路）+ PR #321（前端接线）均已 verify + 真机验收 + 合并。**3b-2 A+**（会话表提到应用级，PR #322）在开、已验收待合并。拍板记录都在 issue 评论：3b-2 方案 A（5512751059）、归因（5513829324 / 5514092714）、adopt 4 条规则（5522790071，规则 3 unreadable = **阻断**）、adopt 设计要点（5522985219）、完成汇报 + A+/哈希门两条拍板（5524997376：A+ 做；哈希门不改只记录）。**剩余**：见第六节第 1 条的后续清单 |
 | **298** | OPEN | #288 遗留：启动时检查更新 + 导航提示（要动导航项与引导锚点，维护者决定暂缓） |
 | **300** | OPEN | #286 后续：孤儿文件检测（只读报告，不给删除动作） |
 | **304** | OPEN | #286 缺口：「写锁即判据」的失效条件——`save_game_instance` 不走 game/profile 写锁。含三种修法与代价，等拍板 |
-| **305** | OPEN | #286 缺口：沙箱侧读失败的文件被静默丢弃（`let expected = expected?;`），判定基于残缺事实。含三种修法与代价，等拍板 |
-| **309** | OPEN | **T17 外部导入物化把路径段转小写**：`external_import_scanner.rs:753` 的 `normalized_path_segment` 做 NFKC + `to_lowercase`，而**物化落盘沿用了归一化后的路径** ⇒ 沙箱内容根变成 `nativepc`。于是经狩技盒子导入的每个 MOD 既**装不上**（`allowed_install_roots` 只有 `["nativePC"]` 且大小写敏感 → 空计划，被 #285 拦成失败）**也比不了**（#286 的比对集为空 → 如实报 unknown）。修法 A/B/D 与各自代价写在 issue 里，**倾向 D**（归一化只用于碰撞检测与指纹，落盘用原始段；**存量已物化包不会自愈**，要重导入或补迁移）。它把 #292 从「用户包边角案例」升级为**主流程缺陷**，拍板时两条一并考虑 |
+| **305** | **CLOSED** | PR #319 方案 A：沙箱侧读不到 → 该文件一律 `Unreadable`（与游戏侧对称），`files[]` 与比对集恒等长同序——原实现不只少一个文件，还会让后面每个状态**错位**到前一个文件名上 |
+| **309** | **CLOSED** | PR #318 方案 D：物化 ZIP 条目名改用原始段，NFKC + 小写的归一化键只用于碰撞检测与指纹。**存量已物化包不自愈、不迁移**（拍板：从未发布正式版，存量只在开发机）——删了重导（排障手册 3.4） |
 | **287** | OPEN | 国内分发渠道——#288 负责「告知有没有新版」，#287 负责「从哪里下」 |
 | **275** | OPEN | Mod 存储目录可配置。**依赖 #273，现在可以开工**，但「存储目录必须落在沙箱根内」的校验语义要按新准入模型重新确认（app-data 根已豁免） |
 | 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
 | 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
 
-工作区：**干净**。PR #289 至 #315 的功能分支远程与本地均已清理，本地残留
-`docs/handoff-2b-scanner`（可删）与若干历史 `codex/*`、`feature/*` 分支（与当前任务无关）。
-本文件这次的改动落在本地分支 `docs/handoff-286-attribution`。
+工作区：**干净**。PR #316 至 #321 的功能分支远程已清理；`hy/external-state-session-store`（PR #322）
+在开。本地还残留 `hy/external-mod-adopt-backend`、`hy/external-mod-adopt-ui` 等已合并分支与若干历史
+`codex/*`、`feature/*` 分支，删前用 `git log main..<b> --no-merges` 确认为空。
+本文件这次的改动落在本地分支 `docs/handoff-286-adopt`。
 
 ## 五、沙箱模式与验收（#273 落地后的新常识）
 
@@ -250,7 +264,7 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
 
 ## 六、待办（挑一个开工，别一次铺开）
 
-1. **#286 外部 MOD 接管**（**当前在做，下一片是 9c**）。已定的口径：按需扫描（不做进
+1. **#286 外部 MOD 接管**（**主线已完成，剩收尾**）。已定的口径：按需扫描（不做进
    每次翻页）、扫描做成**后台任务 + 有界并发**（`std::thread::scope`，worker 数
    `min(4, available_parallelism)`，**不引 rayon**）、徽标**三档降级**（tech 完整 /
    classic·grid 精简 / list 极简）、「外部来源」放 pill 内、接管后允许重装、
@@ -261,11 +275,36 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    `external_import_adapter_id`，schema 1→2 自动重建）→ ⑧3b-2 卡片三档徽标
    （PR #313，**方案 A 会话级共享**：弹窗每拿到 getter 结果就上报页级 Map，
    翻页保留、路由切换消失、换配置档清空，零后端改动）→ ⑨9a 归因后端（PR #314）
-   ＋ 9b 弹窗展示归因（PR #315）——**以上全部已合并**。
-   **剩余**：**9c 卡片徽标全占用改口**（全占用显示「已被 X 占用」，单占用者带名字、
-   多占用者报数量；部分占用维持哈希徽标。`occupiedBy` 已随 summary 进了 3b-2 的
-   页级 Map，卡片零新数据源，主要改 `externalCardBadge.ts` 投影 + `externalStateCopy`
-   徽标文案，记得三档宽度语义）→ 接管 adopt。
+   ＋ 9b 弹窗展示归因（PR #315）→ ⑩9c 卡片徽标全占用改口（PR #317）→ ⑪**adopt**：
+   PR #320 后端（core `adopted` 标记 → app 纯判定 → runtime 接管器 + 任务服务 → tauri 命令 +
+   契约/LOGGING/SECURITY 登记）+ PR #321 前端（按钮按可用性亮灭、alertdialog 二次确认、
+   三语稳定码文案、完成后先刷库再置 installed）——**以上全部已合并**。
+   ⑫**3b-2 A+**（PR #322，待合并）：会话表从页级 Map 提到应用级 `ExternalStateSessionProvider`，
+   按 (game, profile) 作用域记账，路由切换不丢、切配置档整表换新。
+   **adopt 已落地的不变量（不要重造）**：接管 = **只写安装清单不碰文件**；可认领集 =
+   `matched` ∧ 无主（清单任一条目引用即占用，fail-closed 口径）；changed / missing 只计数；
+   任一 unreadable **阻断**（拍板，非强确认）；空集拒绝；该 MOD 已有条目拒绝（走重装）；
+   清单 status 非 TrustEntries 拒绝。写事务：锁外前置拒绝（零副作用）→ 跨进程准入 →
+   **阻塞**写锁（写操作不像扫描那样 try_lock）→ 写入准入（与 install 同一条 lifecycle 链）→
+   锁内双重验（stat 指纹 vs 扫描记录；以当下清单重算认领集并与用户确认的预览比对，任一漂移
+   `external_mod_adopt_stale`）→ 提交屏障 → 原子 `save_manifest`（**带投影追踪的装饰仓储**，
+   库列表才会刷成已安装）→ 审计 `adopt_external_mod`（成功写审计失败 → completed 事件带
+   `external_mod_adopt_audit_unavailable`，不改写成功事实）。成功后**丢弃**该 MOD 的扫描记录。
+   条目形状与 GUI 安装同形：`backup_ref` 空、`installed_file` 必填、`revision_id` 空、
+   `adopted: true`（条目级标记，重装/替换整体换条目时自动消失）。前端 hook 里扫描与接管
+   **互斥**（接管消费的正是那份记录），completed **先重查再回调**（后端已丢记录，重查让
+   会话表不再把这只 MOD 说成「外部已安装」）。
+   **后续（按优先级）**：
+   - 卸载确认弹窗对接管条目补一句「这些文件不会被还原」——先要让 `get_install_manifest_status`
+     或卸载预览 DTO 暴露 `adopted` 计数（契约已如实注明 `adopted` 尚未进任何 DTO）；
+   - 契约里 `external_state_scan_*` 仍只登记通配族（adopt 已逐个登记）、`install_audit_unavailable`
+     未在契约出现——可顺手补；`ExternalStateSessionProvider` / `externalStateSession.ts` 已在
+     i18n 无硬编码中文清单（PR #322）；
+   - CLI / 批量 adopt；#304（写锁判据的失效条件）；#300 孤儿文件。
+   **验收时确认过、拍板不改的既有行为**：接管后手改文件再卸载会被哈希门挡住
+   （`install_uninstall_failed:uninstall`，恢复扫描报「目标变更」，一个文件不删），把文件复原后
+   卸载即可（真机验过）；「接管 → 重装 → 卸载」理论可行但**尚未真机验过**——与正常安装被手改后
+   一致，对没有备份的接管条目尤其正确（排障手册 3.5）。
    **9a/9b 已落地的归因事实（不要重造）**：占用是**正交事实**，哈希四态判定一个不动；
    归因在三段式 stage 3 与指纹复核**同一锁窗口**读清单（写锁在手 = 无安装在改清单）；
    清单读失败以 `external_state_scan_manifest_unavailable` 整体失败（fail-closed，
@@ -277,18 +316,10 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    `get_mod_detail` 取名链解析（analysis 取名 + 用户改名覆盖），结果只存 mod_id、
    MOD 已删回退显示 id；DTO：文件级 `claimedByModId/claimedByModName`（None 省略键）、
    汇总级恒在的去重 `occupiedBy`。
-   **adopt 的前置四项，记录在 issue #286 评论（2026-09-02）里**：
-   - **第三层归因**——✅ 已落地（9a/9b），9c 是展示收尾不阻塞 adopt 开工评估；
-   - **#305**——沙箱侧读失败静默丢弃 ⇒ 认领清单静默漏文件 ⇒ 卸载漏删，**未修**；
-   - **#309**——物化转小写，#286 的原始场景（狩技盒子导入的泡狐太刀）整体被它阻塞，
-     **等拍板**（倾向 D + 存量策略二选一）；
-   - **4 条认领规则待拍板**：被 HMM 其他 MOD 占用的文件（无论 matched/changed）绝不认领 /
-     来源不明的 changed 建议不认领、要包版本走重装（重装会把改动版存成 `previous_bytes`，
-     之后可还原）/ unreadable 阻断接管或强确认 / 全部缺失拒绝接管，且写清单前要在
-     写锁内做 stage-3 同款指纹复核（扫描结果到点击接管之间有时间窗；adopt 不得信任
-     缓存的归因副本，执行时锁内重算）。
-   接线时还有一个约束：**结果不能进进度事件**——契约明确禁止 payload 携带
-   `target_path`，所以必须落存储 + 单独 getter（与 `get_external_import_preview` 同构）。
+   **adopt 的前置四项（2026-09-02 评论）全部关闭**：第三层归因（9a/9b/9c）、#305（PR #319）、
+   #309（PR #318）、4 条认领规则（评论 5522790071 拍板）。接线约束仍然成立：**结果不能进进度事件**
+   ——契约禁止 payload 携带 `target_path`，扫描结果落存储 + 单独 getter；接管没有独立 getter，
+   事件只带 `resultRef = modId`，成功即等于用户确认的预览。
 
    **已落地部分的关键不变量**：`ConfiguredExternalStateScanner`（PR #303）
    挂在 `HmmRuntime.external_state_scanner`。三段式加锁——锁内只 stat、锁外才 hash；
@@ -300,17 +331,18 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    淘汰按 `computedAt` 且时间戳并列时按 key tie-break——不 tie-break 会「单独跑过、
    整组跑挂」）；`query()` 刻意**不拿锁**，因为看到并发修改正是这次 stat 的目的，
    撕裂只会多报 stale、方向 fail-closed。
-   两个已知缺口已转 issue：**#304**（写锁判据的失效条件）、**#305**（沙箱侧读失败被静默丢弃）。
+   已知缺口：**#304**（写锁判据的失效条件）仍 OPEN；#305 已由 PR #319 关闭。
 
    **动手前先读 issue 评论**：里面有一张已核实的代码事实表（哪几处可复用、哪几处是坑）。
 
-   两条最关键的既有能力，**不要新造**：
-   - 卸载已有「无 `backup_ref` → 删除文件」语义 ⇒ **接管只写无 backup_ref 的清单条目，
-     不用改卸载代码**；
-   - `InstalledFileSummary { size_bytes, sha256 }` 已存在（`hmm-core`）⇒ 接管直接复用。
+   adopt 复用而非新造的两条既有能力（已按此落地）：卸载的「无 `backup_ref` → 删除文件」语义
+   （接管条目就是无 backup_ref 条目，卸载代码零改动）；`hmm_core::installed_file_summary`
+   产出的 `InstalledFileSummary { size_bytes, sha256 }`（接管条目的 `installed_file` 来自扫描那次
+   读取，接管在写锁内只 stat 不读文件）。
 
 2. **#292（#284 的 R4）大小写变体的 `nativePC` 装不上**——已开 issue，三种修法与代价都写在里面，
-   **等维护者拍板取向再动代码**。倾向 C（只把报错说清楚，不动匹配规则）：放宽匹配会让清单同时
+   **等维护者拍板取向再动代码**。#309 修掉了 HMM 自己制造变体的路径，#292 回到用户手工包的
+   边角案例。倾向 C（只把报错说清楚，不动匹配规则）：放宽匹配会让清单同时
    出现 `nativePC/x` 与 `NATIVEpc/x`，在 NTFS 上指向同一文件，冲突检测会失效；归一化又要改清单
    事实口径，牵动 #278 的占用判定。带修法进 #292 时，一并补「安装侧大小写混合端到端」用例
    （现在补会固化现状，故 #291 未补）。
@@ -390,7 +422,8 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   `weapon-mod-one001-flat` = 沙箱 `mod-import-1787939077192-1`。
   **名字 ↔ 沙箱的对应以 `mod-import/results.json` 的 `display_name` 为准**——
   本文件旧版本把两者写反过，据文档直接下结论会指错 MOD。
-  2026-09-03（9b 验收）后**两只都未安装**，游戏根下 one001 路径干净；
+  2026-09-03（adopt 验收收尾）后**两只都未安装**，游戏根下 one001 路径干净，清单只剩
+  `mod-import-1788182264438-0` 一条；
   `nativePC/wp/one/one002/mod/` 下有一组**无主外部文件**（manifest 零引用，
   历次验收遗留的场景素材，别当垃圾清掉）。另有 5 个狩技盒子导入包
   （受 #309 影响扫描恒「无法判定」）
@@ -442,5 +475,14 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
   - 验收清单里**破坏性步骤（卸载/删文件）排到所有依赖该场景的检查之后**，
     多语言核对紧挨场景搭建做——2026-09-03 就因为「先卸载再看英文文案」误报过一次
     （排障手册 4.10）。
-  - 狩技盒子导入的那 5 个包受 **#309** 影响，扫描结果恒为「无法判定」，
-    **修复前别拿它们验收**。
+  - 狩技盒子导入的那 5 个包是 **#309 修复前**的存量物化包（沙箱内容根 `nativepc`），
+    扫描恒「无法判定」，**不会自愈**——要用它们验收先在 HMM 里删掉再从狩技盒子重导。
+  - **接管（adopt）的标准脚本**：flat 版沙箱两文件复制进游戏根 → 检查 → 「接管 2 个文件」
+    → 确认 → 清单多两条 `adopted: true` / `backup_ref` 空、审计 `adopt_external_mod -> success`
+    → wrapped 版重扫显示「已被「flat」占用」→ 卸载删掉两个文件。**负例**：改 mrl3 长度后
+    **不重扫**直接接管 → `external_mod_adopt_stale`。注意顺序：改文件必须在点接管**之前**；
+    先接管后改文件会撞卸载的哈希门（排障手册 3.5），那是既有保护不是 bug。
+  - **验收命令里的 PowerShell 变量（`$game` / `$sb` / `$mf`）是窗口级的**：换一个窗口执行
+    `Add-Content "$game\one001.mrl3"` 时 `$game` 为空，路径展开成 `\one001.mrl3` 写到当前盘根目录，
+    命令照样成功、游戏目录纹丝不动——2026-09-03 就这样把「接管应被拒」误看成「接管成功了」。
+    所有验收命令在同一窗口跑，改完文件先 `(Get-Item ...).Length` 核对再回应用点按钮（排障手册 4.12）。
