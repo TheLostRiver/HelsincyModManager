@@ -150,6 +150,11 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   重启之间，导入 / 外部导入 / 删除等沙箱写入一律拒绝（`mod_storage_migration_in_progress` /
   `mod_storage_restart_required`），读路径不受影响；有导入任务在跑时拒绝启动迁移。任务事件与日志
   只带包计数与稳定码，不带路径或包名。
+- 「移动导入」（#275 切片④，默认关）是 install executor 之外唯一会删除用户文件的路径，且只删用户自己在
+  系统文件选择器里选中的那个源压缩包：导入前取指纹（长度、修改时间、卷 + 文件索引），目录写入 durable
+  后 no-follow 重开、比对指纹一致才删；目录 / 链接 / reparse point、导入期间被替换、位于任一游戏根 /
+  当前存储根 / app-data 之内、游戏配置读不到，全部保留不删并以 `mod_import_archive_kept_*` 降级码上报。
+  外部导入（HuntingBox 目录）的压缩包永不删除。
 - lifecycle preview 只在 ready/available 时签发 5 分钟 opaque token；Sandbox 与 Production
   各自签发（CLI-3B），环境标签参与 digest，跨环境重放一律 `plan_token_invalid`。提交同时要求
   `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery

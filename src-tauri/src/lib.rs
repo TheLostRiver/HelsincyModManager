@@ -19,6 +19,7 @@ mod installer_cleanup;
 mod log_storage_commands;
 mod mod_deletion_commands;
 mod mod_import_commands;
+mod mod_import_settings_commands;
 mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
@@ -79,6 +80,7 @@ use mod_import_commands::{
     select_preview_image_candidate, set_thumbnail_cache_settings, start_import_mod_revision_task,
     start_import_mod_task,
 };
+use mod_import_settings_commands::{get_mod_import_settings, set_mod_import_settings};
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use mod_storage_commands::{
@@ -230,6 +232,8 @@ pub fn run() {
             set_log_storage_settings,
             get_debug_log_settings,
             set_debug_log_settings,
+            get_mod_import_settings,
+            set_mod_import_settings,
             get_mod_storage_settings,
             validate_mod_storage_dir,
             set_mod_storage_dir,
