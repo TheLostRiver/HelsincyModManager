@@ -214,6 +214,43 @@ hmm-mhw-equipment-candidate-v1\0mhw\0weapon\0<path_family>\0<lowercase_resource_
 - `hidden` 保留但默认不进入普通搜索；`dummy` 阻断 bundled artifact。
 - 旧人工 slug 只能进入 `legacy_ids` resolver；歧义 legacy id 必须使 catalog 加载失败。
 
+### 别名覆盖核对（#274，2026-09-03）
+
+issue #274 最初的前提是「bundled catalog 别名覆盖不足，最终强化形态名缺失」。按 CAT-01 先核对来源，
+结论是**数据没有缺口**：本地三语名称表 `armor-data/weapon-names.json`（3695 条目，其中 572 条是
+皇金 / 铠罗 / 金色的 / 赤龙四个系列在 HR/MR 各列一条的同名双条目，去重后 zh_cn / en / ja 各 3123 个名）
+与 bundled 武器 artifact（601 个展示名
++ 2522 个别名 = 每语 3123 个名）逐语言比对，缺失 0 / 多出 0；`armor-data/weapon.json`（中文名 →
+模型路径，剔除 `HARDUMMY` 后 3123 名）与两边交叉核对同样为 0。`Black Fatalis Blade`、
+`True Fatalis Charger`、`Wyvern Ignition "Impact"` 以及 Safi / Kjárr / Taroth 系全部已在 artifact 里，
+只是作为别名。
+
+真机上感觉「以初级形态为主」来自两层展示事实，都不是数据问题：
+
+- 生成器的展示名规则是「剥掉尾部阶数后**最短**的词干」（`scripts/generate-weapon-catalog.mjs`
+  的 `rootName`），初级名通常最短，所以 601 条里多数展示名是树根；它只是启发式（two010 三个名同长，
+  字典序抽到了 MR 终阶）。不取终阶是有意的：601 个目标里 130 个只有一个名字，471 个有别名的目标中
+  只有 2 个（bs_ham008、bs_hue008）是单一升级线，其余 469 个都是多条武器线共用一个模型，「终阶」不唯一。
+- 替换目标面板的搜索匹配全部语言展示名 + 内部 ID + 全部别名，但行里只渲染当前语言展示名、英文副名
+  与内部 ID。搜「黑龙玄刃」命中 two029 的别名，结果行却写着「黑龙刃」，看起来像没有这把武器。
+  修法是展示层的「匹配：…」提示（`ReplacementTargetPanel`，纯前端，不改 catalog、不需要重签）。
+  另一个与此相关的事实：`hmm-games-mhw` 把 artifact 里按语言分开的别名压成一个 `BTreeSet<String>`
+  再进 DTO（`weapon_target_from_metadata`），前端拿到的 `aliases` 不带 locale，ASCII 排在 CJK 前——
+  任何「非搜索命中」的别名展示都要先把别名按语言送到前端。
+
+复跑方式（只读本地数据，不联网；`armor-data/` 在 `.git/info/exclude` 里、不入库，缺文件时脚本以
+退出码 2 说明去哪里重新抓取，因此**不在** `verify.ps1` 里，它的纯函数由
+`scripts/check-weapon-alias-coverage.test.mjs` 用内联夹具覆盖）：
+
+```text
+node scripts/check-weapon-alias-coverage.mjs            # 0 = 三语零缺口且无多出，1 = 有缺口，2 = 读不到输入
+node scripts/check-weapon-alias-coverage.mjs --json     # 机读结果
+```
+
+以后再有「别名不够」的疑问先跑这条命令。核对为零缺口时问题在展示层；确实要改任何名称文本，走候选
+→ `validate_equipment_candidates --require-bundled` 校验 → 重生成 artifact →
+`GAME_TERMINOLOGY_SIGNOFF.md` 重签（签核只对 artifact 版本有效）。
+
 ## 路径 Schema
 
 ### Resource Root
