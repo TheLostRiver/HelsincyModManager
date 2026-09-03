@@ -33,6 +33,9 @@ pub const MOD_STORAGE_MIGRATION_VERIFYING_PHASE: &str = "mod_storage.migration.v
 pub const MOD_STORAGE_MIGRATION_SWITCHING_PHASE: &str = "mod_storage.migration.switching";
 pub const MOD_STORAGE_MIGRATION_COMPLETED_PHASE: &str = "mod_storage.migration.completed";
 pub const MOD_STORAGE_MIGRATION_FAILED_PHASE: &str = "mod_storage.migration.failed";
+/// Emitted by `cancel_task` the moment the request is accepted; the runner is still removing
+/// the copies it made. The terminal `cancelled` follows once the rollback finished.
+pub const MOD_STORAGE_MIGRATION_CANCELLING_PHASE: &str = "mod_storage.migration.cancelling";
 pub const MOD_STORAGE_MIGRATION_CANCELLED_PHASE: &str = "mod_storage.migration.cancelled";
 
 /// A registered, not yet running migration.

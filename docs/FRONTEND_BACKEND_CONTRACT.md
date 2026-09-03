@@ -833,7 +833,8 @@ TaskProgressEventDto
 | `mod_storage_migration` | `mod_storage.migration.switching` | 全部包校验通过，journal 置 `switched` 并写 `settings.json`；取消已进入屏障、会被拒绝 |
 | `mod_storage_migration` | `mod_storage.migration.completed` | 设置已指向新根，`current = total` = 包数；**需重启生效**，重启前沙箱写入保持冻结（`writesFrozen = "restart_required"`） |
 | `mod_storage_migration` | `mod_storage.migration.failed` | 迁移未切换设置，目标里本次复制的包已删除；`error` 只携带稳定 `mod_storage_migration_*` code |
-| `mod_storage_migration` | `mod_storage.migration.cancelled` | 在包与包 / 文件与文件之间协作式取消；已复制的包已删除，设置未变，沙箱写入解冻 |
+| `mod_storage_migration` | `mod_storage.migration.cancelling` | `cancel_task` 受理后的即时事件（status 已是 cancelled）；runner 仍在删除已复制的副本，**不是终态** |
+| `mod_storage_migration` | `mod_storage.migration.cancelled` | 在包与包 / 文件与文件之间协作式取消；已复制的包已删除，设置未变，沙箱写入解冻（终态） |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -1896,7 +1897,7 @@ start_mod_storage_migration_task({ directory: string | null })
   - **写门闩**：从迁移登记起到重启，`start_import_mod_task` / `start_import_mod_revision_task` / `start_external_import_batch` / `retry_external_import_batch` / `delete_mod` 一律拒绝，code 为 `mod_storage_migration_in_progress`（迁移进行中）或 `mod_storage_restart_required`（设置已切换待重启；库为空时 `set_mod_storage_dir` 成功后同样进入此态）。读路径不受影响。`ModStorageSettingsDto` 新增 `writesFrozen: "none" | "migration" | "restart_required"` 供设置页与入口按钮投影；前端只按码取词，不复算。
   - **启动前置**：有 `mod_import` 任务 queued / running 时拒绝启动，code `mod_storage_migration_imports_active`（用户先等导入结束）；目标与当前存储根相同、互相包含或位于其 `sandboxes/` 之下返回 `mod_storage_dir_overlaps_current_root`（`validate_mod_storage_dir` 同样报此码；切片① 的 `set_mod_storage_dir` 也遵守）；其余 `mod_storage_dir_*` 与切片① 一致；目标目录在登记时即被认领（写 marker），迁移失败或取消也不会撤销认领——空目录 + marker 无害。`mod_storage_migration_task_unavailable`、`game_config_unavailable` 为编排自身失败。
   - **终态 `error` 码**（`failed` 事件）：`mod_storage_migration_source_unavailable`（旧根打不开）、`mod_storage_migration_target_unavailable`（新根 / 其 `sandboxes/` 打不开或残留清不掉）、`mod_storage_migration_package_unreadable`（包名非法、包内有 link / reparse、`sandboxes/` 下有非目录条目）、`mod_storage_migration_copy_failed`、`mod_storage_migration_verify_mismatch`、`mod_storage_migration_journal_unavailable`（journal 读写失败——不写 journal 就不复制）、`mod_storage_migration_settings_unavailable`（全部包通过但 `settings.json` 写失败，副本已回滚）。`cancelled` 事件不带 `error`。回滚若删不掉某个目标副本，事件仍报原始失败码，journal 保留交给下次启动重试。
-  - **取消**：`cancel_task` 在包与包、文件与文件之间生效，`switching` 之后被屏障拒绝（`task_cannot_be_cancelled` 语义与安装提交屏障相同）。
+  - **取消**：`cancel_task` 在包与包、文件与文件之间生效，`switching` 之后被屏障拒绝（`task_cannot_be_cancelled` 语义与安装提交屏障相同）。受理后先收到 `mod_storage.migration.cancelling`（副本仍在删除，写门闩仍冻结），rollback 完成后 runner 再发终态 `mod_storage.migration.cancelled`；前端须等终态，与 `external_import.import.cancelled` 的处理一致。
   - 启动期收尾写安全 App Log 事件 `mod_storage_migration_settled`（`operation = settle_mod_storage_migration`，`result` ∈ `source_cleaned` / `cleanup_blocked` / `rolled_back` / `rollback_blocked` / `deferred` / `journal_unreadable`，`item_count` = 包数，`error_code` = 阻塞原因的 `mod_storage_migration_*` 码；无 journal 时不写）。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
