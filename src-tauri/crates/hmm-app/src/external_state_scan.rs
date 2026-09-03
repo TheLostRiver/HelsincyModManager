@@ -26,7 +26,7 @@ use anyhow::Result;
 use hmm_core::{
     installed_file_summary, summarize_external_install_state, ExternalExpectedSummary,
     ExternalFileObservation, ExternalInstallStateSummary, ExternalTargetPresence, InstallManifest,
-    InstallTargetPath, ModId,
+    InstallTargetPath, InstalledFileSummary, ModId,
 };
 use hmm_ports::{
     CancellationToken, InstallGameFileSystem, ModPackageInstallFileReadRequest,
@@ -68,6 +68,16 @@ pub struct PreparedExternalTarget {
     /// 原始目标路径。**排序与展示都用它**——它与 `target_path` 可能只差大小写
     /// 或分隔符，而展示必须是玩家在包里看到的那个字符串。
     pub display_path: String,
+}
+
+/// 一次判定连同游戏目录侧的每文件摘要（与 `prepared` 同序等长）。
+///
+/// `summary.files` 只有状态；摘要是接管写清单条目时的 `installed_file` 来源（#286 adopt）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScannedExternalState {
+    pub summary: ExternalInstallStateSummary,
+    /// 游戏目录侧摘要；缺失或读不到的文件为 `None`。
+    pub game_files: Vec<Option<InstalledFileSummary>>,
 }
 
 /// 只做「准备」所需的输入。
@@ -185,14 +195,45 @@ impl ExternalModStateScanService {
         sandbox_root: &Path,
         cancellation_token: &dyn CancellationToken,
     ) -> Result<ExternalInstallStateSummary, ExternalStateScanError> {
+        self.summarize_prepared_with_game_files(
+            prepared,
+            package_id,
+            sandbox_root,
+            cancellation_token,
+        )
+        .map(|scanned| scanned.summary)
+    }
+
+    /// 与 [`Self::summarize_prepared`] 相同，但连同**游戏目录侧**每文件摘要一起返回。
+    ///
+    /// 接管（#286 adopt）写清单条目时需要卸载可核对的 `installed_file` 摘要，而它只能来自
+    /// 这次读取——接管本身在写锁内只 stat 不读文件。返回的摘要与 `prepared` 同序等长，
+    /// 缺失/读不到的文件为 `None`。
+    pub fn summarize_prepared_with_game_files(
+        &self,
+        prepared: &[PreparedExternalTarget],
+        package_id: &str,
+        sandbox_root: &Path,
+        cancellation_token: &dyn CancellationToken,
+    ) -> Result<ScannedExternalState, ExternalStateScanError> {
         if cancellation_token.is_cancelled() {
             return Err(ExternalStateScanError::Cancelled);
         }
 
         let observations =
             self.observe_targets(prepared, package_id, sandbox_root, cancellation_token)?;
+        let game_files = observations
+            .iter()
+            .map(|observation| match &observation.actual {
+                ExternalTargetPresence::Present(summary) => Some(summary.clone()),
+                ExternalTargetPresence::Missing | ExternalTargetPresence::Unreadable => None,
+            })
+            .collect();
 
-        Ok(summarize_external_install_state(&observations))
+        Ok(ScannedExternalState {
+            summary: summarize_external_install_state(&observations),
+            game_files,
+        })
     }
 
     /// 逐文件读取两侧摘要。**有界并发**，并按输入顺序回收结果。
@@ -610,6 +651,61 @@ mod tests {
         );
         assert_eq!(summary.unreadable_file_count, 1);
         assert_eq!(summary.state, hmm_core::ExternalInstallState::Mixed);
+    }
+
+    #[test]
+    fn game_side_summaries_align_with_the_comparison_set_for_adopt() {
+        // #286 adopt：接管条目的 installed_file 来自这次读到的游戏侧摘要，必须与比对集
+        // 同序等长；缺失的文件占位 None 而不是被跳过。
+        let scanner = FakeScanner {
+            files: vec![
+                file("a", "nativePC/a.mod3"),
+                file("b", "nativePC/b.mod3"),
+                file("c", "nativePC/c.mod3"),
+            ],
+            fail: false,
+        };
+        let reader = FakePackageReader::with(&[("a", b"same"), ("b", b"x"), ("c", b"pkg")]);
+        let mut game = FakeGameFs::default();
+        game.files
+            .insert("nativePC/a.mod3".to_owned(), Some(b"same".to_vec()));
+        game.files
+            .insert("nativePC/c.mod3".to_owned(), Some(b"game".to_vec()));
+
+        let service = service_with(Arc::new(scanner), Arc::new(reader), Arc::new(game), 4);
+        let prepared = service
+            .prepare_targets(ExternalStateScanPrepareRequest {
+                package_id: "pkg",
+                sandbox_root: Path::new("sandbox"),
+                allowed_roots: &["nativePC".to_owned()],
+            })
+            .expect("prepare");
+        let scanned = service
+            .summarize_prepared_with_game_files(
+                &prepared,
+                "pkg",
+                Path::new("sandbox"),
+                &NeverCancelled,
+            )
+            .expect("scan succeeds");
+
+        assert_eq!(scanned.game_files.len(), prepared.len());
+        assert_eq!(
+            scanned.game_files,
+            vec![
+                Some(installed_file_summary(b"same")),
+                None,
+                Some(installed_file_summary(b"game")),
+            ]
+        );
+        assert_eq!(
+            scanned.summary.files,
+            vec![
+                hmm_core::ExternalFileState::Matched,
+                hmm_core::ExternalFileState::Missing,
+                hmm_core::ExternalFileState::Changed,
+            ]
+        );
     }
 
     #[test]
