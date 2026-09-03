@@ -6,7 +6,9 @@
 
 use crate::dto::TaskStartedDto;
 use hmm_core::{ExternalFileState, ExternalInstallState, ExternalInstallStateSummary, ModId};
-use hmm_runtime::{ExternalStateScanQuery, ExternalStateScanTaskLaunch};
+use hmm_runtime::{
+    ExternalModAdoptTaskLaunch, ExternalStateScanQuery, ExternalStateScanTaskLaunch,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -19,6 +21,24 @@ pub struct ExternalStateScanStartedDto {
 
 impl From<&ExternalStateScanTaskLaunch> for ExternalStateScanStartedDto {
     fn from(launch: &ExternalStateScanTaskLaunch) -> Self {
+        Self {
+            task: launch.task.clone().into(),
+            mod_id: launch.mod_id.as_str().to_owned(),
+        }
+    }
+}
+
+/// `start_external_mod_adopt` 的返回：与扫描同形，只有任务身份与 opaque `modId`。
+/// 接管的结果没有独立 getter——成功即等于用户确认的预览，前端完成后重查安装状态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalModAdoptStartedDto {
+    pub task: TaskStartedDto,
+    pub mod_id: String,
+}
+
+impl From<&ExternalModAdoptTaskLaunch> for ExternalModAdoptStartedDto {
+    fn from(launch: &ExternalModAdoptTaskLaunch) -> Self {
         Self {
             task: launch.task.clone().into(),
             mod_id: launch.mod_id.as_str().to_owned(),
