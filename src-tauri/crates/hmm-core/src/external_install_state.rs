@@ -16,6 +16,8 @@
 //!    所以必须比对**内容摘要**（size + sha256）。
 //! 2. **读不到的文件不能算「一致」，也不能算「缺失」**。它单独成一类，
 //!    界面必须呈现——一个读不到的文件很可能就是被改动过的那个。
+//!    这条对**两侧**都成立：导入包沙箱副本读不到时同样没有比对基准（#305），
+//!    该文件必须留在结果里并标成读不到，而不是从列表里消失。
 //!
 //! ## 确定性
 //!
@@ -63,6 +65,18 @@ pub enum ExternalTargetPresence {
     Unreadable,
 }
 
+/// 导入包（HMM 沙箱副本）里某个目标文件的观测结果。
+///
+/// 与 [`ExternalTargetPresence`] 对称，但没有「缺失」变体：能进比对集的文件都是
+/// 沙箱扫描刚刚列出来的，读不到只可能是 IO 错误、超出大小上限或副本已损坏。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalExpectedSummary {
+    /// 读到了摘要，可作比对基准。
+    Available(InstalledFileSummary),
+    /// 沙箱副本读不到。**没有基准就没有比对**（#305）。
+    Unreadable,
+}
+
 /// 单个目标文件在「导入包（HMM 沙箱副本）」与「游戏目录」之间的比对结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalFileState {
@@ -72,7 +86,8 @@ pub enum ExternalFileState {
     Missing,
     /// 文件存在，但内容与导入包不同。
     Changed,
-    /// 文件存在但读不到，无法判定。**不能并入上面任何一类。**
+    /// 任一侧读不到（游戏目录文件读失败，或导入包沙箱副本读失败），无法判定。
+    /// **不能并入上面任何一类。**
     Unreadable,
 }
 
@@ -81,8 +96,8 @@ pub enum ExternalFileState {
 pub struct ExternalFileObservation<'a> {
     /// 仅用于诊断与展示，不参与判定。
     pub target_path: &'a str,
-    /// 导入包（沙箱副本）里该文件的摘要。
-    pub expected: InstalledFileSummary,
+    /// 导入包（沙箱副本）里该文件的摘要，或读不到。
+    pub expected: ExternalExpectedSummary,
     /// 游戏目录里该文件的实际状态。
     pub actual: ExternalTargetPresence,
 }
@@ -120,12 +135,18 @@ pub struct ExternalInstallStateSummary {
 
 /// 判定单个文件。
 pub fn classify_external_file(observation: &ExternalFileObservation<'_>) -> ExternalFileState {
+    let expected = match &observation.expected {
+        ExternalExpectedSummary::Available(expected) => expected,
+        // 沙箱副本读不到就没有比对基准：游戏侧在位也判不出一致/改动；游戏侧缺失也
+        // 不下「缺失」结论——这次比对本身不完整，不能拿单侧观测去猜（#305）。
+        ExternalExpectedSummary::Unreadable => return ExternalFileState::Unreadable,
+    };
     match &observation.actual {
         ExternalTargetPresence::Missing => ExternalFileState::Missing,
         // 读不到就是读不到，不能拿 expected 去猜。
         ExternalTargetPresence::Unreadable => ExternalFileState::Unreadable,
         ExternalTargetPresence::Present(actual) => {
-            if actual == &observation.expected {
+            if actual == expected {
                 ExternalFileState::Matched
             } else {
                 ExternalFileState::Changed
@@ -219,7 +240,19 @@ mod tests {
     ) -> ExternalFileObservation<'a> {
         ExternalFileObservation {
             target_path: path,
-            expected,
+            expected: ExternalExpectedSummary::Available(expected),
+            actual,
+        }
+    }
+
+    /// 沙箱副本读不到的观测（#305）。
+    fn unreadable_package_copy(
+        path: &str,
+        actual: ExternalTargetPresence,
+    ) -> ExternalFileObservation<'_> {
+        ExternalFileObservation {
+            target_path: path,
+            expected: ExternalExpectedSummary::Unreadable,
             actual,
         }
     }
@@ -348,6 +381,41 @@ mod tests {
         assert_eq!(summary.state, ExternalInstallState::Mixed);
         assert_eq!(summary.unreadable_file_count, 1);
         assert_eq!(summary.matched_file_count, 1);
+    }
+
+    #[test]
+    fn an_unreadable_package_copy_is_unreadable_even_when_the_game_file_is_present() {
+        // #305：沙箱副本读不到 = 没有比对基准。游戏目录里那份读到了也判不出一致/改动，
+        // 更不能因为「有文件」就报 Matched。
+        let observations = vec![
+            matched("a.mod3"),
+            unreadable_package_copy("b.mrl3", ExternalTargetPresence::Present(digest(20, "bb"))),
+        ];
+        let summary = summarize_external_install_state(&observations);
+
+        assert_eq!(
+            summary.files,
+            vec![ExternalFileState::Matched, ExternalFileState::Unreadable]
+        );
+        assert_eq!(summary.unreadable_file_count, 1);
+        assert_eq!(summary.changed_file_count, 0);
+        assert_eq!(summary.state, ExternalInstallState::Mixed);
+    }
+
+    #[test]
+    fn an_unreadable_package_copy_is_not_reported_as_missing() {
+        // #305：游戏目录侧缺失是单侧观测，沙箱侧读不到时这次比对本身不完整——
+        // 报「缺失」会让聚合态落成干净的 NotInstalled/Partial，掩盖沙箱副本已损坏的事实。
+        let observations = vec![unreadable_package_copy(
+            "a.mod3",
+            ExternalTargetPresence::Missing,
+        )];
+        let summary = summarize_external_install_state(&observations);
+
+        assert_eq!(summary.files, vec![ExternalFileState::Unreadable]);
+        assert_eq!(summary.missing_file_count, 0);
+        assert_eq!(summary.unreadable_file_count, 1);
+        assert_eq!(summary.state, ExternalInstallState::Mixed);
     }
 
     #[test]

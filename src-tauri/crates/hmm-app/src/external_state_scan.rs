@@ -5,11 +5,12 @@
 //!
 //! ## 输入的两个来源都是 trait，因此可注入假实现
 //!
-//! - 沙箱侧：`ModPackageInstallFileReader::read_install_file`
+//! - 沙箱侧：`ModPackageInstallFileReader::read_install_file`（`Err` = 读不到）
 //! - 游戏目录侧：`InstallGameFileSystem::read_game_file`
 //!   （`Ok(None)` = 文件不存在，`Err` = 读不到）
 //!
-//! 所以本模块可以在**没有真实文件系统**的情况下完整测试。
+//! 两侧的读失败都映射成「读不到」并**留在结果里**，结果与比对集一一对应、同序
+//! （#305）。所以本模块可以在**没有真实文件系统**的情况下完整测试。
 //!
 //! ## 与安装路径保持一致
 //!
@@ -23,9 +24,9 @@ use std::thread::available_parallelism;
 
 use anyhow::Result;
 use hmm_core::{
-    installed_file_summary, summarize_external_install_state, ExternalFileObservation,
-    ExternalInstallStateSummary, ExternalTargetPresence, InstallManifest, InstallTargetPath,
-    InstalledFileSummary, ModId,
+    installed_file_summary, summarize_external_install_state, ExternalExpectedSummary,
+    ExternalFileObservation, ExternalInstallStateSummary, ExternalTargetPresence, InstallManifest,
+    InstallTargetPath, ModId,
 };
 use hmm_ports::{
     CancellationToken, InstallGameFileSystem, ModPackageInstallFileReadRequest,
@@ -211,7 +212,7 @@ impl ExternalModStateScanService {
 
         // 每个 worker 处理一段连续区间，把结果（带原始下标）交回来。
         // `thread::scope` 可以借用当前栈，因此闭包不需要 'static。
-        let mut collected: Vec<(usize, Option<InstalledFileSummary>, ExternalTargetPresence)> =
+        let mut collected: Vec<(usize, ExternalExpectedSummary, ExternalTargetPresence)> =
             Vec::with_capacity(targets.len());
 
         std::thread::scope(|scope| {
@@ -219,7 +220,7 @@ impl ExternalModStateScanService {
                 .into_iter()
                 .map(|range| {
                     scope.spawn(
-                        move || -> Vec<(usize, Option<InstalledFileSummary>, ExternalTargetPresence)> {
+                        move || -> Vec<(usize, ExternalExpectedSummary, ExternalTargetPresence)> {
                             let mut chunk = Vec::with_capacity(range.len());
                             for index in range {
                                 if token.is_cancelled() {
@@ -258,15 +259,15 @@ impl ExternalModStateScanService {
 
         collected.sort_by_key(|(index, _, _)| *index);
 
+        // 与 `targets` 一一对应、同序。这里曾用 filter_map 把沙箱侧读失败的文件丢掉
+        // （#305）：结果比 `prepared` 短一项，而调用方按位置配路径与占用者，被丢文件
+        // 之后的每个状态都会配到错的文件上。读不到的文件必须留在原位、标成读不到。
         Ok(collected
             .into_iter()
-            .filter_map(|(index, expected, actual)| {
-                let expected = expected?;
-                Some(ExternalFileObservation {
-                    target_path: &targets[index].display_path,
-                    expected,
-                    actual,
-                })
+            .map(|(index, expected, actual)| ExternalFileObservation {
+                target_path: &targets[index].display_path,
+                expected,
+                actual,
             })
             .collect())
     }
@@ -280,22 +281,24 @@ impl ExternalModStateScanService {
         }
     }
 
-    /// 读取导入包（沙箱）侧摘要。读不到返回 `None`（调用方收敛为「读不到」）。
+    /// 读取导入包（沙箱）侧摘要：读到了 / 读不到，与游戏目录侧对称。
     fn expected_summary(
         &self,
         target: &PreparedExternalTarget,
         package_id: &str,
         sandbox_root: &Path,
-    ) -> Option<InstalledFileSummary> {
-        self.package_reader
+    ) -> ExternalExpectedSummary {
+        match self
+            .package_reader
             .read_install_file(ModPackageInstallFileReadRequest {
                 package_id,
                 sandbox_root,
                 package_file_id: &hmm_core::PackageFileId::new(target.package_file_id.clone()),
                 max_bytes: self.max_file_bytes,
-            })
-            .ok()
-            .map(|bytes| installed_file_summary(&bytes))
+            }) {
+            Ok(bytes) => ExternalExpectedSummary::Available(installed_file_summary(&bytes)),
+            Err(_) => ExternalExpectedSummary::Unreadable,
+        }
     }
 
     fn worker_count_for(&self, file_count: usize) -> usize {
@@ -561,6 +564,50 @@ mod tests {
             .expect("scan succeeds");
 
         assert_eq!(summary.missing_file_count, 1);
+        assert_eq!(summary.unreadable_file_count, 1);
+        assert_eq!(summary.state, hmm_core::ExternalInstallState::Mixed);
+    }
+
+    #[test]
+    fn an_unreadable_package_copy_stays_in_place_as_unreadable() {
+        // #305：沙箱侧读失败的文件曾被 filter_map 丢掉——结果比比对集短一项，而调用方
+        // 按位置配路径与占用者，被丢文件之后的状态全部错位。b 的沙箱副本读不到
+        // （reader 里没有它），它必须留在第 2 位并标成读不到，c 仍在第 3 位。
+        let scanner = FakeScanner {
+            files: vec![
+                file("a", "nativePC/a.mod3"),
+                file("b", "nativePC/b.mod3"),
+                file("c", "nativePC/c.mod3"),
+            ],
+            fail: false,
+        };
+        let reader = FakePackageReader::with(&[("a", b"same"), ("c", b"from-package")]);
+        let mut game = FakeGameFs::default();
+        game.files
+            .insert("nativePC/a.mod3".to_owned(), Some(b"same".to_vec()));
+        game.files
+            .insert("nativePC/b.mod3".to_owned(), Some(b"whatever".to_vec()));
+        game.files
+            .insert("nativePC/c.mod3".to_owned(), Some(b"from-game".to_vec()));
+
+        let summary = service_with(Arc::new(scanner), Arc::new(reader), Arc::new(game), 4)
+            .scan(ExternalStateScanRequest {
+                package_id: "pkg",
+                sandbox_root: Path::new("sandbox"),
+                allowed_roots: &["nativePC".to_owned()],
+                cancellation_token: &NeverCancelled,
+            })
+            .expect("scan succeeds");
+
+        assert_eq!(
+            summary.files,
+            vec![
+                hmm_core::ExternalFileState::Matched,
+                hmm_core::ExternalFileState::Unreadable,
+                hmm_core::ExternalFileState::Changed,
+            ],
+            "结果必须与比对集等长、同序：读不到的文件留在原位"
+        );
         assert_eq!(summary.unreadable_file_count, 1);
         assert_eq!(summary.state, hmm_core::ExternalInstallState::Mixed);
     }
