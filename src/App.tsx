@@ -8,6 +8,7 @@ import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
 import { ExternalStateSessionProvider } from "./features/mods/ExternalStateSessionProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
+import { ModStorageSettingsProvider } from "./features/settings/ModStorageSettingsProvider";
 import { FeedbackProvider } from "./shared/feedback";
 import { I18nProvider } from "./shared/i18n";
 
@@ -28,9 +29,13 @@ export function App() {
                       {/* #286 3b-2 A+：外部状态扫描结果的会话表要活过路由切换，
                           RouterOutlet 会卸载页面，所以表挂在它之上。 */}
                       <ExternalStateSessionProvider>
-                        <AppShell>
-                          <RouterOutlet />
-                        </AppShell>
+                        {/* #275：存储目录快照与迁移进度要活过路由切换，且库页要读同一份
+                            writesFrozen 来禁用导入 / 删除入口。 */}
+                        <ModStorageSettingsProvider>
+                          <AppShell>
+                            <RouterOutlet />
+                          </AppShell>
+                        </ModStorageSettingsProvider>
                       </ExternalStateSessionProvider>
                     </ProfileSaveDirectoryDiscoveryProvider>
                   </ActiveProfileProvider>
