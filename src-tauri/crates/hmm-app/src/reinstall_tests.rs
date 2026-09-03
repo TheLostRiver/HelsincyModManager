@@ -1065,6 +1065,7 @@ fn manifest_entry(
         layer: FileLayer::new("base", 0),
         backup_ref: backup_ref.map(str::to_owned),
         installed_file: Some(summary(bytes)),
+        adopted: false,
     }
 }
 

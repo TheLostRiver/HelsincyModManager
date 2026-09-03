@@ -1682,6 +1682,7 @@ mod tests {
                     layer: base_file_layer(),
                     backup_ref: None,
                     installed_file: None,
+                    adopted: false,
                 }],
             ))
             .expect("write manifest");

@@ -296,6 +296,7 @@ fn entry(
         layer: FileLayer::new("default", 0),
         backup_ref: backup_ref.map(str::to_owned),
         installed_file: Some(summary(installed_bytes)),
+        adopted: false,
     }
 }
 

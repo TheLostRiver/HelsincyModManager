@@ -407,6 +407,7 @@ fn manifest_entry(
         layer: FileLayer::new("base", 0),
         backup_ref: None,
         installed_file: Some(summary(bytes)),
+        adopted: false,
     }
 }
 

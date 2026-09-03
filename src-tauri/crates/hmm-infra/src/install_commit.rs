@@ -777,6 +777,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some(backup_ref.clone()),
                 installed_file: None,
+                adopted: false,
             }],
         );
         manifest_repository
@@ -993,6 +994,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: None,
+                adopted: false,
             }],
         );
         let second_manifest = InstallManifest::completed(
@@ -1005,6 +1007,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: None,
+                adopted: false,
             }],
         );
 
@@ -1083,6 +1086,7 @@ mod tests {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: None,
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: InstallTargetPath::parse("content/revisioned.bin", ["content"])
@@ -1093,6 +1097,7 @@ mod tests {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: None,
+                    adopted: false,
                 },
             ],
         );
@@ -1140,6 +1145,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-player".to_owned()),
                 installed_file: None,
+                adopted: false,
             }],
             replacement_bindings: Vec::new(),
         };

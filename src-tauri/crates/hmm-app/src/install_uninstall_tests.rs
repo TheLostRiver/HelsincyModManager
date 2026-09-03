@@ -18,6 +18,7 @@ fn uninstall_mod_removes_manifest_owned_new_file_when_summary_matches() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -61,6 +62,7 @@ fn revision_bound_uninstall_rejects_manifest_drift_before_writing() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     existing_manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
@@ -112,6 +114,7 @@ fn manifest_bound_uninstall_rejects_same_revision_binding_drift_before_writing()
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     expected_manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
@@ -181,6 +184,7 @@ fn uninstall_mod_restores_manifest_owned_overwrite_from_backup_when_summary_matc
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"modded model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -238,6 +242,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(installed_file_summary(b"remove model")),
+                adopted: false,
             },
             InstallManifestEntry {
                 target_path: keep_target,
@@ -247,6 +252,7 @@ fn uninstall_mod_preserves_manifest_origin_metadata_for_remaining_entries() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-keep".to_owned()),
                 installed_file: Some(installed_file_summary(b"keep model")),
+                adopted: false,
             },
         ],
         Some("install_plan".to_owned()),
@@ -309,6 +315,7 @@ fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries()
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(installed_file_summary(b"remove model")),
+                adopted: false,
             },
             InstallManifestEntry {
                 target_path: keep_target,
@@ -318,6 +325,7 @@ fn uninstall_mod_preserves_non_completed_manifest_status_for_remaining_entries()
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(installed_file_summary(b"keep model")),
+                adopted: false,
             },
         ],
         Some("install_plan".to_owned()),
@@ -364,6 +372,7 @@ fn uninstall_mod_rolls_back_removed_file_when_manifest_save_fails() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -407,6 +416,7 @@ fn uninstall_mod_revalidates_target_before_removing_new_file() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(
@@ -453,6 +463,7 @@ fn uninstall_mod_reports_rollback_failure_when_manifest_save_rollback_fails() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_failing_writes([(
@@ -496,6 +507,7 @@ fn uninstall_mod_blocks_legacy_manifest_entry_without_installed_file_summary() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -539,6 +551,7 @@ fn uninstall_mod_blocks_when_target_summary_differs_from_manifest() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -582,6 +595,7 @@ fn uninstall_mod_blocks_when_manifest_backup_is_missing() {
             layer: FileLayer::new("base", 0),
             backup_ref: Some("missing-backup".to_owned()),
             installed_file: Some(installed_file_summary(b"new model")),
+            adopted: false,
         }],
     );
     let game_files = Arc::new(RecordingInstallGameFileSystem::with_files([(
@@ -626,6 +640,7 @@ fn uninstall_mod_removes_only_the_requested_mod_replacement_snapshot() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(installed_file_summary(b"mod-a")),
+                adopted: false,
             },
             InstallManifestEntry {
                 target_path: InstallTargetPath::parse("nativePC/mod-b.bin", ["nativePC"])
@@ -636,6 +651,7 @@ fn uninstall_mod_removes_only_the_requested_mod_replacement_snapshot() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(installed_file_summary(b"mod-b")),
+                adopted: false,
             },
         ],
     );

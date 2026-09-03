@@ -853,6 +853,7 @@ fn manifest_entry(target: &str, mod_id: &str) -> InstallManifestEntry {
         layer: FileLayer::new("base", 0),
         backup_ref: None,
         installed_file: None,
+        adopted: false,
     }
 }
 

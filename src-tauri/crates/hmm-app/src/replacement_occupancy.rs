@@ -231,6 +231,7 @@ mod tests {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }
     }
 
