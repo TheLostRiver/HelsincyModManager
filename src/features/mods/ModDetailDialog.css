@@ -665,6 +665,7 @@
 
 .mod-detail-dialog__external-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -771,4 +772,36 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* #286 adopt：接管确认（alertdialog，叠在详情弹窗之上）的正文。 */
+.mod-detail-dialog__adopt-copy {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mod-detail-dialog__adopt-copy > p {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 「卸载即删除、不能自动还原」是确认前唯一必须看到的后果，用警示底色而不是弱化色。 */
+.mod-detail-dialog__adopt-copy > .mod-detail-dialog__adopt-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: 1px solid color-mix(in srgb, var(--color-warning-dot) 32%, transparent);
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.mod-detail-dialog__adopt-warning > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
