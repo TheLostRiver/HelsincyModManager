@@ -277,8 +277,23 @@ batch/result 事实或伪造导入失败。
     `external_state_scan_manifest_unavailable` 整体失败（fail-closed，不静默少报占用）。
   - `stale`：getter 重新 stat 与存档指纹不一致（或游戏实例暂不可读、stat 失败）时为 `true`，
     此时 `summary` 仍是上次结果——**保留而不是清空**（#286 拍板的降级口径）。
-  - `lastError`：上次扫描没做成的稳定错误码（`external_state_scan_*`）。与 `summary` 可同时存在，
+  - `lastError`：上次扫描没做成的稳定错误码。与 `summary` 可同时存在，
     语义正交——「上次没扫成」≠「结果可能过期」，前端不得合并展示。
+- 扫描的稳定错误码（`ConfiguredExternalStateScanError::code()`，逐个登记，前端 complete-set 与
+  契约覆盖测试都盯着这张表）：`external_state_scan_game_instance_unavailable`（游戏目录未配置或
+  读取失败）、`external_state_scan_mod_unavailable`（导入记录不存在或读不出）、
+  `external_state_scan_sandbox_unavailable`（导入记录在但沙箱已回收）、
+  `external_state_scan_package_scan_failed`（沙箱侧扫描没做完）、
+  `external_state_scan_game_file_unavailable`（游戏目录侧 stat 失败：权限 / 符号链接 / 路径穿越，
+  连基线都建不起来）、`external_state_scan_cancelled`（用户取消——只出现在 `lastError`，事件侧取消走
+  `external_state.scan.cancelled` 终态而不是 failed）、`external_state_scan_unavailable`（底层扫描
+  服务读取失败）、`external_state_scan_manifest_unavailable`（清单读失败，占用归因 fail-closed）、
+  `external_state_scan_admission_order_violation`（跨进程准入获取顺序被违反——调用方 bug，不降级为
+  stale）、`external_state_scan_stale`（拿不到准入 / 有写入进行中 / 期间被改动，保留上次结果）。
+  任务编排自身失败（TaskManager 不可用或状态机拒绝转移）为 `external_state_scan_task_unavailable`：
+  `start_external_mod_state_scan` 以它作 command 错误码返回，runner 兜底终态则把它放进
+  `external_state.scan.failed` 的 `error`。前端对 stale / cancelled / mod_unavailable /
+  game_instance_unavailable 有专属文案，其余以通用文案带原码展示（未知码不吞）。
 - 查询是纯读缓存 + 重新 stat，**不触发扫描**；扫描只由显式 `start_external_mod_state_scan`
   发起（按需触发，不做进列表翻页）。
 
@@ -762,19 +777,19 @@ TaskProgressEventDto
 | `install` | `install.queued` | 安装任务已登记，等待后续执行 |
 | `install` | `install.plan.building` | 后端正在从已导入 Mod 和游戏 adapter 重建 `InstallPlan` |
 | `install` | `install.commit.processing` | 后端正在执行受写锁保护的 backup / commit / manifest 流程 |
-| `install` | `install.completed` | 安装提交已完成，manifest 已写入 |
+| `install` | `install.completed` | 安装提交已完成，manifest 已写入；`error` 可仅为降级码 `install_audit_unavailable`（审计写入失败，安装事实不变） |
 | `install` | `install.failed` | 安装提交失败；后端会 best-effort 走回滚或保留可恢复状态 |
 | `install` | `install.cancelled` | 安装任务被取消；已进入 commit 阶段后不保证抢占式中断 |
 | `install` | `install.uninstall.queued` | 卸载任务已登记，等待后续执行 |
 | `install` | `install.uninstall.processing` | 后端正在执行受写锁保护的 manifest 驱动卸载 |
-| `install` | `install.uninstall.completed` | 卸载完成，manifest 已移除对应 Mod 的托管条目 |
+| `install` | `install.uninstall.completed` | 卸载完成，manifest 已移除对应 Mod 的托管条目；`error` 可仅为降级码 `install_audit_unavailable` |
 | `install` | `install.uninstall.failed` | 卸载失败；后端会 best-effort 回滚已应用的删除或恢复 |
 | `install` | `install.reinstall.queued` | 真正重装任务已登记，等待后续执行 |
 | `install` | `install.reinstall.plan.building` | 后端正在写锁外重建 candidate revision 的 plan/source facts |
 | `install` | `install.reinstall.preflight.processing` | 后端正在完成四类 target 聚合与进入 commit 前的预检 |
 | `install` | `install.reinstall.commit.processing` | 后端正在写锁内执行 snapshot / mutation / manifest entry-set replacement |
 | `install` | `install.reinstall.rollback.processing` | 同步失败后正在恢复 pre-reinstall revision |
-| `install` | `install.reinstall.completed` | candidate manifest entry set 已固化并完成受控收尾 |
+| `install` | `install.reinstall.completed` | candidate manifest entry set 已固化并完成受控收尾；`error` 可仅为降级码 `install_audit_unavailable` |
 | `install` | `install.reinstall.failed` | 重装失败，或已越过 commit point 但仍需受控 reconciliation |
 | `install` | `install.recovery.queued` | 恢复动作任务已登记，等待后续执行 |
 | `install` | `install.recovery.planning` | 后端正在等待写锁并准备受控恢复动作 |
@@ -1502,7 +1517,7 @@ cancel_task(taskId)
   provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前
   fail closed；锁内只重验已封存 plan/token、write admission 和当前写入状态。
 - `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。失败事件的 `error` 使用稳定前缀 `install_failed:<phase>`，当前 phase 可为 `planning`、`ambiguous_content_root`、`empty_plan`、`prerequisite`、`replacement_selection_pending`、`lock`、`commit`、`complete`、`recovery_pending`、`recovery_unavailable`、`write_safety_rejected`，或 `CrossProcessWriteAdmissionError::code()` 给出的 `write_admission_busy` / `write_admission_cancelled` / `write_admission_order_violation` / `write_admission_unavailable` 之一；`ambiguous_content_root` 表示包内有多个 `nativePC`（合集包），不替玩家挑一个，需要拆包后分别导入——它由 #284 R1 新增的扫描错误变体一路映射而来，**不得**与笼统的 `planning` 混为一谈（否则玩家只会看到「无法生成安装计划」，会以为包坏了），且只用于普通导入安装，revision 安装沿用 `planning`；`write_safety_rejected` 表示写入准入拒绝了本次操作（见 #273）；后五者均由**写入准入层**直接产生，其中四个 `write_admission_*` 的语义见 [跨进程写许可设计](CROSS_PROCESS_WRITE_ADMISSION_DESIGN.md)：`busy` 为等待 deadline 到达（另一进程/任务持有同一 game/profile 写 scope）、`cancelled` 为等待期间任务被取消、`order_violation` 为固定获取顺序校验失败（内部不变量）、`unavailable` 为其他平台错误（不输出原始错误）；`prerequisite` 表示前置依赖判定阻断或发生漂移；`replacement_selection_pending` 表示替换目标面板仍有未完成的选择意图，普通安装会 fail closed 并引导用户回到该面板；`recovery_pending` / `recovery_unavailable` 表示在 commit 前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed，`empty_plan` 表示计划内没有任何可安装文件（见 #285，例如包内 `nativePC` 套了包装目录导致文件全被过滤）。它在 commit 之前拦截，**不产生安装副作用**——无文件写入、无写锁、无 recovery 记录；但任务会被置为 failed，并通过 `fail_with_audit` 写一条审计，`action_count` 为 `0`、`result` 为 `failure` 而不是 `success`。该判定只用于普通导入安装：revision 安装（retarget / 重装）的空计划沿用 `install.rs` 的 `PlanHasInvalidRevisionIdentity`。**新增 phase 必须同步在前端 `installFailures` 补三语文案**——缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，后端单测与三语 key 检查都仍然全绿，只有真机看得见（#284 R5 的教训）。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
-- `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。
+- `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。安装已提交而审计写入失败时任务仍为 completed，`install.completed` 的 `error` 携带显式降级码 `install_audit_unavailable`（`install.uninstall.completed` / `install.reinstall.completed` 同口径；证据失败必须显式可见，不伪造回滚）；前端按完成处理并照常重查耐久状态。
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的条目（本工具新增的文件，或 #286 接管认领的文件）会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。接管条目没有可还原的原版，删除即删除——接管确认弹窗提前告知（见「外部 MOD 接管」一节），卸载确认弹窗再次告知：`get_install_manifest_status` / `scan_install_recovery` 的摘要携带 `adoptedFileCount`（该 MOD 清单条目中 `adopted: true` 的数量），前端在它大于 0 时必须展示「接管文件」指标与三语提示，并把它纳入确认态与当前摘要的漂移比对（漂移即阻断确认）。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
 - `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall`、`complete`、`recovery_pending` 或 `recovery_unavailable`；后两者表示在卸载前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed。写入准入层还可能直接给出 `write_safety_rejected` 与四个 `write_admission_*`（`busy` / `cancelled` / `order_violation` / `unavailable`），语义同上。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。

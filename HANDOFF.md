@@ -3,7 +3,7 @@
 新开会话时，把下面「提示词正文」整段粘进去即可。文件本身留在仓库根目录方便更新，
 `HANDOFF.md` 需要提交就提交，不需要就删掉。
 
-> 本文件最后更新：2026-09-03（晚），HEAD = `99ec9b6`（PR #322 在开、未合并）。
+> 本文件最后更新：2026-09-03（深夜），HEAD = `f47426b`（PR #322–#324 已合并；本次改动在分支 `hy/contract-scan-codes`）。
 > **可信度用 `git log` 交叉验证**：对比文档里出现的 commit 短号与实际 HEAD 的差集。
 > 2026-08-30 曾发现本文件漏了 8 个提交、且 #278 状态写反（写「待做」实际已做完），
 > 照旧文档接手会往错误方向做。2026-09-03 又订正一处：one001 双胞胎的
@@ -110,13 +110,16 @@ docs/TROUBLESHOOTING.md（症状速查表，遇到「报错指不到原因」先
   会话表（PR #322，`ExternalStateSessionProvider` 挂在 `RouterOutlet` 之上）——那是维护者
   验收时被绊到后专门拍板的 A+，不是先例，别照着把别的工作态也往上提。
 
-## 四、当前进度（2026-09-03 晚，HEAD = `99ec9b6`）
+## 四、当前进度（2026-09-03 深夜，HEAD = `f47426b`）
 
 最近提交（由新到旧）：
 
 | commit | 说明 |
 |---|---|
-| （PR #322，未合并） | feat(mods) 外部状态会话表提到应用级 Provider，路由切换不再丢徽标（**#286 3b-2 A+**，分支 `hy/external-state-session-store`，已 verify + 真机验收） |
+| （本分支，未合并） | docs(contract) `external_state_scan_*` 逐个登记、`install_audit_unavailable` 登记到三条 completed 行 + 契约覆盖用例两条；HANDOFF 追到 f47426b |
+| `f47426b` | Merge PR #324（hy/adopt-uninstall-warning，**#286 收尾①**：摘要 DTO 增 `adoptedFileCount`，卸载确认识别接管条目并纠正「重装可还原」；已 verify + 三语真机验收） |
+| `c7e8697` | Merge PR #323（docs/handoff-286-adopt：HANDOFF 更新到 99ec9b6 + 排障 3.5 / 4.12） |
+| `b92bdd5` | Merge PR #322（hy/external-state-session-store，**#286 3b-2 A+**：会话表提到应用级 Provider，路由切换不再丢徽标） |
 | `99ec9b6` | Merge PR #321（hy/external-mod-adopt-ui，**#286 adopt PR B**：详情弹窗接入接管——按钮、alertdialog 二次确认、三语文案） |
 | `16c4921` | Merge PR #320（hy/external-mod-adopt-backend，**#286 adopt PR A**：后端全链路，4 个提交逐层向上） |
 | `335d526` | feat(tauri) `start_external_mod_adopt` 命令 + 契约/LOGGING/SECURITY 登记 + 契约覆盖用例逐个盯稳定码 |
@@ -214,7 +217,7 @@ Issue 状态：
 | **285** | **CLOSED** | PR #290 合并：空计划在 commit 前拦截为 `install_failed:empty_plan` |
 | **288** | **CLOSED** | 「检查更新」真的查询最新版本（PR #297）。不下载/不校验/不写文件，网络请求留在 Rust 侧，**CSP 与 capability 一行未改** |
 | **292** | OPEN | #284 的 R4，三种修法（放宽匹配 / 归一化 / 只改提示）**等维护者拍板**，未实施。#309 已修（HMM 自己不再制造小写变体），#292 回到「用户手工包的边角案例」，取向可按原三选一重估 |
-| **286** | **进行中（收尾）** | 外部 MOD 接管。切片 1 → 9c **全部合并**（PR #301/#303/#307/#308/#310/#312/#313/#314/#315/#317），**adopt 已落地**：PR #320（后端全链路）+ PR #321（前端接线）均已 verify + 真机验收 + 合并。**3b-2 A+**（会话表提到应用级，PR #322）在开、已验收待合并。拍板记录都在 issue 评论：3b-2 方案 A（5512751059）、归因（5513829324 / 5514092714）、adopt 4 条规则（5522790071，规则 3 unreadable = **阻断**）、adopt 设计要点（5522985219）、完成汇报 + A+/哈希门两条拍板（5524997376：A+ 做；哈希门不改只记录）。**剩余**：见第六节第 1 条的后续清单 |
+| **286** | **进行中（收尾）** | 外部 MOD 接管。切片 1 → 9c **全部合并**（PR #301/#303/#307/#308/#310/#312/#313/#314/#315/#317），**adopt 已落地**：PR #320（后端全链路）+ PR #321（前端接线）均已 verify + 真机验收 + 合并。**3b-2 A+**（会话表提到应用级，PR #322）与**收尾①**（卸载确认识别接管条目，PR #324）均已合并。拍板记录都在 issue 评论：3b-2 方案 A（5512751059）、归因（5513829324 / 5514092714）、adopt 4 条规则（5522790071，规则 3 unreadable = **阻断**）、adopt 设计要点（5522985219）、完成汇报 + A+/哈希门两条拍板（5524997376：A+ 做；哈希门不改只记录）。**剩余**：见第六节第 1 条的后续清单 |
 | **298** | OPEN | #288 遗留：启动时检查更新 + 导航提示（要动导航项与引导锚点，维护者决定暂缓） |
 | **300** | OPEN | #286 后续：孤儿文件检测（只读报告，不给删除动作） |
 | **304** | OPEN | #286 缺口：「写锁即判据」的失效条件——`save_game_instance` 不走 game/profile 写锁。含三种修法与代价，等拍板 |
@@ -225,10 +228,9 @@ Issue 状态：
 | 274 | OPEN | catalog 武器目标别名，依赖外部数据来源审计 + 签核 |
 | 277 | OPEN | vite 冷启动偶发卡死，复现不稳定，诊断型 |
 
-工作区：**干净**。PR #316 至 #321 的功能分支远程已清理；`hy/external-state-session-store`（PR #322）
-在开。本地还残留 `hy/external-mod-adopt-backend`、`hy/external-mod-adopt-ui` 等已合并分支与若干历史
-`codex/*`、`feature/*` 分支，删前用 `git log main..<b> --no-merges` 确认为空。
-本文件这次的改动落在本地分支 `docs/handoff-286-adopt`。
+工作区：**干净**。PR #316 至 #324 的功能分支本地与远程都已清理（每条删前 `git log main..<b> --no-merges`
+为空）。本地仍残留七十余条历史 `hy/*`、`codex/*`、`feature/*` 分支（含 `hy/recovery-main-wip-*` 这类可能
+带未合并工作的），不是这轮的，未动。本文件这次的改动落在本地分支 `hy/contract-scan-codes`。
 
 ## 五、沙箱模式与验收（#273 落地后的新常识）
 
@@ -279,7 +281,7 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    PR #320 后端（core `adopted` 标记 → app 纯判定 → runtime 接管器 + 任务服务 → tauri 命令 +
    契约/LOGGING/SECURITY 登记）+ PR #321 前端（按钮按可用性亮灭、alertdialog 二次确认、
    三语稳定码文案、完成后先刷库再置 installed）——**以上全部已合并**。
-   ⑫**3b-2 A+**（PR #322，待合并）：会话表从页级 Map 提到应用级 `ExternalStateSessionProvider`，
+   ⑫**3b-2 A+**（PR #322，已合并）：会话表从页级 Map 提到应用级 `ExternalStateSessionProvider`，
    按 (game, profile) 作用域记账，路由切换不丢、切配置档整表换新。
    **adopt 已落地的不变量（不要重造）**：接管 = **只写安装清单不碰文件**；可认领集 =
    `matched` ∧ 无主（清单任一条目引用即占用，fail-closed 口径）；changed / missing 只计数；
@@ -295,20 +297,22 @@ app-data = %APPDATA%\dev.helsincy.modmanager         ← 沙箱外 → 豁免
    **互斥**（接管消费的正是那份记录），completed **先重查再回调**（后端已丢记录，重查让
    会话表不再把这只 MOD 说成「外部已安装」）。
    **后续（按优先级）**：
-   - ~~卸载确认弹窗对接管条目补提示~~ → 收尾①已在分支 `hy/adopt-uninstall-warning` 落地（见下）；
-     顺带纠正了「重装后卸载可还原」这条错误建议。CLI `install uninstall` 预览
+   - ~~卸载确认弹窗对接管条目补提示~~ → 收尾①已合并（PR #324，见下）；顺带纠正了「重装后卸载
+     可还原」这条错误建议。CLI `install uninstall` 预览
      （`UninstallPlanSnapshot`）还没带 `adoptedFileCount`，与 GUI 对齐是一行映射 + 一行人读输出，
      留给 CLI/批量 adopt 那一片一起做；
-   - 契约里 `external_state_scan_*` 仍只登记通配族（adopt 已逐个登记）、`install_audit_unavailable`
-     未在契约出现——可顺手补；`ExternalStateSessionProvider` / `externalStateSession.ts` 已在
-     i18n 无硬编码中文清单（PR #322）；
+   - ~~契约 `external_state_scan_*` 通配族、`install_audit_unavailable` 未登记~~ → 本分支补齐：扫描 11 个
+     稳定码逐个登记（含 `task_unavailable` 的两种出口），`install_audit_unavailable` 登记到三条
+     `install.*.completed` 行与 `start_install_task` 审计段；`tauriContractCoverage.test.mjs` 新增两条
+     完备性用例（扫描器 + 任务服务 `code()`；completed 事件降级字面量）。前端对 7 个扫描码仍走
+     通用文案带原码（设计如此，不是漏），要不要像 adopt 那样三语逐个配文案由维护者定；
    - CLI / 批量 adopt；#304（写锁判据的失效条件）；#300 孤儿文件。
    **验收时确认过、拍板不改的既有行为**：接管后手改文件再卸载会被哈希门挡住
    （`install_uninstall_failed:uninstall`，恢复扫描报「目标变更」，一个文件不删），把文件复原后
    卸载即可（真机验过）——与正常安装被手改后一致，对没有备份的接管条目尤其正确（排障手册 3.5）。
    **「接管 → 重装 → 卸载」不是还原原版的路径**（读代码纠正，不再写「理论可行」）：重装沿用旧条目
    的 `backup_ref`（接管为空 → 仍为空），单修订版重装预览被 `candidate_already_installed` 挡；
-   两处确认文案已删掉这条建议，只留 Steam 验证。收尾①（分支 `hy/adopt-uninstall-warning`）：
+   两处确认文案已删掉这条建议，只留 Steam 验证。收尾①（PR #324，已合并）：
    `InstallRecoverySummary` / `InstallManifestStatusSummary` 增 `adopted_file_count`（后者
    `Option`，投影派生为 `None`，DTO 省略键），卸载确认弹窗在接管数 > 0 时加「接管文件」指标与
    三语提示，并纳入漂移比对。
