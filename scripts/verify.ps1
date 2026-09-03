@@ -90,6 +90,12 @@ try {
         exit $LASTEXITCODE
     }
 
+    Write-Host "Running weapon alias coverage checker tests..."
+    node --test scripts/check-weapon-alias-coverage.test.mjs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+
     Write-Host "Running thumbnail protocol checker tests..."
     node --test scripts/check-thumbnail-protocol.test.mjs
     if ($LASTEXITCODE -ne 0) {
