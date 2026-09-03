@@ -1377,6 +1377,7 @@ fn record_at(computed_at_unix_millis: u128) -> ExternalStateScanRecord {
         prepared: Vec::new(),
         fingerprints: Vec::new(),
         claimed_by: Vec::new(),
+        game_files: Vec::new(),
         computed_at_unix_millis,
     }
 }

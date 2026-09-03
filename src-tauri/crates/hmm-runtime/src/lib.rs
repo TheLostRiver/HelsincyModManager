@@ -7,6 +7,8 @@ mod batch_token_secret;
 mod composition;
 mod diagnostics_automation;
 mod external_import;
+pub mod external_mod_adopt;
+pub mod external_mod_adopt_tasks;
 pub mod external_state_scan;
 pub mod external_state_scan_tasks;
 mod game_automation;
@@ -33,6 +35,17 @@ pub use diagnostics_automation::{
     ReadOnlyDiagnosticsAutomationError,
 };
 pub use external_import::ExternalImportComposition;
+pub use external_mod_adopt::{
+    ConfiguredExternalModAdoptError, ConfiguredExternalModAdoptRequest,
+    ConfiguredExternalModAdopter, ExternalModAdoptOutcome,
+};
+pub use external_mod_adopt_tasks::{
+    queued_adopt_event, ExternalModAdoptTaskError, ExternalModAdoptTaskLaunch,
+    ExternalModAdoptTaskService, EXTERNAL_MOD_ADOPT_AUDIT_UNAVAILABLE_CODE,
+    EXTERNAL_MOD_ADOPT_CANCELLED_PHASE, EXTERNAL_MOD_ADOPT_COMPLETED_PHASE,
+    EXTERNAL_MOD_ADOPT_FAILED_PHASE, EXTERNAL_MOD_ADOPT_PROCESSING_PHASE,
+    EXTERNAL_MOD_ADOPT_QUEUED_PHASE,
+};
 pub use external_state_scan::{
     ConfiguredExternalStateScanError, ConfiguredExternalStateScanRequest,
     ConfiguredExternalStateScanner, ExternalStateScanQuery, GameFileSystemFactory,

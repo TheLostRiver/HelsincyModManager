@@ -13,6 +13,8 @@ pub enum TaskKind {
     SaveRestore,
     /// 外部 MOD 状态扫描（#286）：只读比对导入包与游戏目录，绝不写游戏目录。
     ExternalStateScan,
+    /// 外部 MOD 接管（#286 adopt）：只写安装清单，不写游戏目录、不备份。
+    ExternalModAdopt,
 }
 
 impl TaskKind {
@@ -23,6 +25,7 @@ impl TaskKind {
             Self::SaveBackup => "save-backup",
             Self::SaveRestore => "save-restore",
             Self::ExternalStateScan => "external-state-scan",
+            Self::ExternalModAdopt => "external-mod-adopt",
         }
     }
 }

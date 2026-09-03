@@ -53,7 +53,7 @@ use hmm_app::external_state_scan::{
     ExternalStateScanPrepareRequest, PreparedExternalTarget,
 };
 use hmm_app::GameProfileWriteLockRegistry;
-use hmm_core::{ExternalInstallStateSummary, GameId, ModId, ProfileId};
+use hmm_core::{ExternalInstallStateSummary, GameId, InstalledFileSummary, ModId, ProfileId};
 use hmm_games_mhw::MHW_WEAPON_BINARY_MAX_BYTES;
 use hmm_infra::{FileSystemInstallGameFileSystem, SandboxModPackageInstallFileScanner};
 use hmm_ports::{
@@ -130,13 +130,14 @@ impl ConfiguredExternalStateScanError {
     }
 }
 
-/// 一次成功扫描的产物：判定结果 + 复核所需的指纹与目标列表 + 占用归因。
-type SuccessfulExternalStateScan = (
-    ExternalInstallStateSummary,
-    Vec<PreparedExternalTarget>,
-    Vec<Option<GameFileFingerprint>>,
-    Vec<Option<ModId>>,
-);
+/// 一次成功扫描的产物：判定结果 + 复核所需的指纹与目标列表 + 占用归因 + 游戏侧摘要。
+struct SuccessfulExternalStateScan {
+    summary: ExternalInstallStateSummary,
+    prepared: Vec<PreparedExternalTarget>,
+    fingerprints: Vec<Option<GameFileFingerprint>>,
+    claimed_by: Vec<Option<ModId>>,
+    game_files: Vec<Option<InstalledFileSummary>>,
+}
 
 pub struct ConfiguredExternalStateScanRequest<'a> {
     pub game_id: &'a GameId,
@@ -251,17 +252,19 @@ impl ConfiguredExternalStateScanner {
         } = request;
 
         match self.scan_inner(game_id, profile_id, mod_id, cancellation_token) {
-            Ok((summary, prepared, fingerprints, claimed_by)) => {
+            Ok(scan) => {
                 let computed_at = self.cache_clock_now();
+                let summary = scan.summary.clone();
                 self.cache.record_success(
                     game_id,
                     profile_id,
                     mod_id,
                     ExternalStateScanRecord {
-                        summary: summary.clone(),
-                        prepared,
-                        fingerprints,
-                        claimed_by,
+                        summary: scan.summary,
+                        prepared: scan.prepared,
+                        fingerprints: scan.fingerprints,
+                        claimed_by: scan.claimed_by,
+                        game_files: scan.game_files,
                         computed_at_unix_millis: computed_at,
                     },
                 );
@@ -357,8 +360,15 @@ impl ConfiguredExternalStateScanner {
         }
 
         // ---- stage 2（锁外）：长时间工作（读两侧文件 + hash）----
-        let summary = service
-            .summarize_prepared(&prepared, &package_id, &sandbox_root, cancellation_token)
+        // 连同游戏侧每文件摘要一起要：接管（adopt）写清单条目时用它做 `installed_file`，
+        // 接管本身在写锁内只 stat 不读文件，摘要只能来自这一次读取。
+        let scanned = service
+            .summarize_prepared_with_game_files(
+                &prepared,
+                &package_id,
+                &sandbox_root,
+                cancellation_token,
+            )
             .map_err(map_scan_error)?;
 
         // ---- stage 3（锁内）：复核指纹 + 占用归因。有漂移就丢弃结果 ----
@@ -382,7 +392,19 @@ impl ConfiguredExternalStateScanner {
 
         // 存的是 stage 3 **复核通过**的指纹：它才是「这个结果成立时的文件状态」。
         // 存 stage 1 的 `before` 会漏掉扫描期间的改动，而那正是要检测的东西。
-        Ok((summary, prepared, after, claimed_by))
+        Ok(SuccessfulExternalStateScan {
+            summary: scanned.summary,
+            prepared,
+            fingerprints: after,
+            claimed_by,
+            game_files: scanned.game_files,
+        })
+    }
+
+    /// 结果缓存（进程内）。接管器（#286 adopt）与扫描器**必须**共享同一实例：
+    /// 接管消费的正是用户在弹窗里刚确认的那份记录。
+    pub fn cache(&self) -> Arc<ExternalStateScanCache> {
+        Arc::clone(&self.cache)
     }
 
     fn service_for(&self, game_root: &std::path::Path) -> ExternalModStateScanService {
@@ -566,6 +588,10 @@ pub struct ExternalStateScanRecord {
     /// 与 `prepared` **同序**的占用归因（#286 第三层）：该路径被哪个**其他**
     /// MOD 的清单条目认领。`None` = 无主或归被扫 MOD 自己。
     pub claimed_by: Vec<Option<ModId>>,
+    /// 与 `prepared` **同序**的游戏目录侧摘要（#286 adopt）：接管写清单条目时的
+    /// `installed_file` 来源。缺失/读不到的文件为 `None`。接管在写锁内只 stat 不读文件，
+    /// 所以摘要必须跟着扫描记录一起存。
+    pub game_files: Vec<Option<InstalledFileSummary>>,
     pub computed_at_unix_millis: u128,
 }
 
@@ -669,6 +695,30 @@ impl ExternalStateScanCache {
             },
         );
         sweep_to_limit(&mut entries, self.max_entries);
+    }
+
+    /// 上一次成功扫描的原始记录（接管在写锁内复核与派生认领集要用它）。
+    ///
+    /// 从未成功扫过、或条目已被淘汰时为 `None`——调用方据此报「先检查再接管」，
+    /// 而不是自己再扫一遍：用户确认的是**这份**结果。
+    pub fn record(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Option<ExternalStateScanRecord> {
+        let entries = self.entries.lock().ok()?;
+        entries
+            .get(&cache_key(game_id, profile_id, mod_id))
+            .and_then(|entry| entry.record.clone())
+    }
+
+    /// 丢弃某个 MOD 的记录。接管成功后清单已认领它，「外部状态」这个问题不再成立；
+    /// 留着旧记录只会在它日后被卸载时先冒出一份过期的「外部已安装」。
+    pub fn forget(&self, game_id: &GameId, profile_id: &ProfileId, mod_id: &ModId) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.remove(&cache_key(game_id, profile_id, mod_id));
+        }
     }
 
     /// 记录一次失败的扫描。**保留上一次成功的结果**——清空它会让玩家在
