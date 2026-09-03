@@ -279,6 +279,35 @@
   font-size: 11px;
 }
 
+/*
+ * 搜索命中提示（#274）：过滤命中的是别名或其他语言的展示名时，这一行看起来像搜错了，
+ * 于是在名字下补一行「匹配：…」。只在有命中时渲染、单行省略，不改变未命中行的高度。
+ * 选择器带上父级是为了压过上面 `small` 的 muted 色。
+ */
+.replacement-panel__target-name .replacement-panel__target-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-accent-strong);
+}
+
+.replacement-panel__target-match > svg {
+  flex: none;
+}
+
+.replacement-panel__target-match > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replacement-panel__target-match > em {
+  flex: none;
+  color: var(--color-text-muted);
+  font-style: normal;
+}
+
 .replacement-panel__target-status {
   display: inline-flex;
   align-items: center;
