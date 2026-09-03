@@ -6,10 +6,11 @@
 //! must go through migration (a later slice), because switching the root underneath existing
 //! packages would leave them unreachable — the service refuses with `MigrationRequired`.
 
+use crate::AppSettingsService;
 use hmm_core::GameId;
 use hmm_ports::{
-    AppSettingsRepository, GameConfigRepository, ModImportResultRepository,
-    ModStorageDirectoryError, ModStorageDirectoryInspectionRequest, ModStorageDirectoryInspector,
+    GameConfigRepository, ModImportResultRepository, ModStorageDirectoryError,
+    ModStorageDirectoryInspectionRequest, ModStorageDirectoryInspector,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -72,7 +73,7 @@ pub struct ModStorageDirectoryValidation {
 }
 
 pub struct ModStorageSettingsService {
-    settings: Arc<dyn AppSettingsRepository>,
+    app_settings: Arc<AppSettingsService>,
     inspector: Arc<dyn ModStorageDirectoryInspector>,
     game_config: Arc<dyn GameConfigRepository>,
     game_ids: Vec<GameId>,
@@ -84,7 +85,8 @@ pub struct ModStorageSettingsService {
 }
 
 pub struct ModStorageSettingsServiceDependencies {
-    pub settings: Arc<dyn AppSettingsRepository>,
+    /// Single writer for `settings.json`; see `AppSettingsService::update_mod_storage_dir`.
+    pub app_settings: Arc<AppSettingsService>,
     pub inspector: Arc<dyn ModStorageDirectoryInspector>,
     pub game_config: Arc<dyn GameConfigRepository>,
     pub game_ids: Vec<GameId>,
@@ -99,7 +101,7 @@ pub struct ModStorageSettingsServiceDependencies {
 impl ModStorageSettingsService {
     pub fn new(dependencies: ModStorageSettingsServiceDependencies) -> Self {
         Self {
-            settings: dependencies.settings,
+            app_settings: dependencies.app_settings,
             inspector: dependencies.inspector,
             game_config: dependencies.game_config,
             game_ids: dependencies.game_ids,
@@ -161,11 +163,11 @@ impl ModStorageSettingsService {
             .update_lock
             .lock()
             .map_err(|_| ModStorageSettingsError::SettingsUnavailable)?;
-        let mut settings = self
-            .settings
-            .load_settings()
+        let current = self
+            .app_settings
+            .get_settings()
             .map_err(|_| ModStorageSettingsError::SettingsUnavailable)?;
-        if settings.mod_storage_dir == directory {
+        if current.mod_storage_dir == directory {
             let library_empty = self.library_is_empty()?;
             return Ok(self.snapshot(directory, library_empty));
         }
@@ -181,9 +183,8 @@ impl ModStorageSettingsService {
                 })?;
             self.inspector.claim(directory)?;
         }
-        settings.mod_storage_dir = directory.clone();
-        self.settings
-            .save_settings(&settings)
+        self.app_settings
+            .update_mod_storage_dir(directory.clone())
             .map_err(|_| ModStorageSettingsError::SettingsUnavailable)?;
         Ok(self.snapshot(directory, true))
     }
@@ -203,8 +204,8 @@ impl ModStorageSettingsService {
     }
 
     fn persisted_configured(&self) -> Result<Option<PathBuf>, ModStorageSettingsError> {
-        self.settings
-            .load_settings()
+        self.app_settings
+            .get_settings()
             .map(|settings| settings.mod_storage_dir)
             .map_err(|_| ModStorageSettingsError::SettingsUnavailable)
     }
@@ -242,10 +243,10 @@ mod tests {
     use super::*;
     use hmm_core::{GameDirectoryStatus, GameInstance};
     use hmm_ports::{
-        AppSettings, AppSettingsRepositoryError, AppSettingsRepositoryResult,
-        GameConfigRepositoryResult, ModImportCatalogSnapshot, ModStorageDirectoryInspection,
-        StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
-        StoredModOriginProvenance, StoredModRevision,
+        AppSettings, AppSettingsRepository, AppSettingsRepositoryError,
+        AppSettingsRepositoryResult, GameConfigRepositoryResult, ModImportCatalogSnapshot,
+        ModStorageDirectoryInspection, StoredImportPreviewImage, StoredLogicalMod,
+        StoredModImportAnalysis, StoredModOriginProvenance, StoredModRevision,
     };
     use std::collections::BTreeMap;
     use std::sync::Mutex;
@@ -436,7 +437,7 @@ mod tests {
         let settings = Arc::new(settings);
         let inspector = Arc::new(inspector);
         let service = ModStorageSettingsService::new(ModStorageSettingsServiceDependencies {
-            settings: settings.clone(),
+            app_settings: Arc::new(AppSettingsService::new(settings.clone())),
             inspector: inspector.clone(),
             game_config: Arc::new(FakeGameConfig {
                 instances: vec![GameInstance {
