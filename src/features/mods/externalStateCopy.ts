@@ -21,6 +21,14 @@ export type ExternalStateSectionCopy = {
   /** Shown for the `unknown` state: the comparison set was empty. */
   unknownHint: string;
   staleNotice: string;
+  /**
+   * Summary line when some compared files are claimed by HMM-managed mods
+   * (#286 attribution). Joins the occupier names itself: list separators
+   * differ per locale. `names` are already display-name-or-id resolved.
+   */
+  occupiedNotice: (names: string[], claimedFileCount: number) => string;
+  /** Per-file-row claim tag; `name` is already display-name-or-id resolved. */
+  fileClaimedBy: (name: string) => string;
   /** Shown instead of the action when no profile is selected. */
   profileRequired: string;
   fileListCaption: string;
@@ -100,6 +108,9 @@ export const externalStateCopy = {
     unknownHint:
       "导入包里没有解析出任何可安装文件，无法比对。这通常是包的目录结构问题（例如 nativePC 目录的大小写变体）。",
     staleNotice: "游戏目录的文件可能已发生变化，以下结果仅供参考，建议重新检查。",
+    occupiedNotice: (names, claimedFileCount) =>
+      `比对集中有 ${claimedFileCount} 个文件已被 HMM 名下的 MOD 占用：${names.join("、")}。它们是 HMM 管理的安装内容，不是外部安装的文件。`,
+    fileClaimedBy: (name) => `已被「${name}」占用`,
     profileRequired: "当前没有可用的配置档，无法检查。",
     fileListCaption: "文件明细",
     fileHeaderPath: "文件",
@@ -159,6 +170,9 @@ export const externalStateCopy = {
       "The imported package yielded no installable files, so there is nothing to compare. This usually means a package layout problem (for example a case variant of the nativePC directory).",
     staleNotice:
       "Files in the game directory may have changed. Treat the result below as a hint and check again.",
+    occupiedNotice: (names, claimedFileCount) =>
+      `${claimedFileCount} of the compared files are claimed by HMM-managed mods: ${names.join(", ")}. They are managed installs, not external content.`,
+    fileClaimedBy: (name) => `Claimed by "${name}"`,
     profileRequired: "No profile is available, so the check cannot run.",
     fileListCaption: "File details",
     fileHeaderPath: "File",
@@ -220,6 +234,9 @@ export const externalStateCopy = {
       "インポートパッケージから導入可能なファイルを解析できず、照合できません。パッケージ構造の問題（例：nativePC ディレクトリの大文字小文字の違い）が原因のことが多いです。",
     staleNotice:
       "ゲームディレクトリのファイルが変化した可能性があります。以下は参考情報として扱い、再確認してください。",
+    occupiedNotice: (names, claimedFileCount) =>
+      `比較対象のうち ${claimedFileCount} 件は HMM 管理下の MOD が占有しています：${names.join("、")}。外部導入の内容ではなく、HMM が管理するファイルです。`,
+    fileClaimedBy: (name) => `「${name}」が占有中`,
     profileRequired: "利用可能なプロファイルがないため、確認できません。",
     fileListCaption: "ファイル詳細",
     fileHeaderPath: "ファイル",

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   externalStatusAriaLabel,
+  fileClaimantDisplayName,
+  occupierDisplayName,
   projectExternalStatusBadge,
 } from "./externalInstallStatusView.ts";
 import {
@@ -91,4 +96,70 @@ test("三语字典的徽标函数在同一输入下都产出非空文案", () =>
       }
     }
   }
+});
+
+// ---- 占用归因（#286 第三层）----
+
+test("占用者展示名：有名用名，MOD 已删回退 id，绝不空白", () => {
+  assert.equal(
+    occupierDisplayName({ modId: "mod-flat", modName: "Flat 武器" }),
+    "Flat 武器",
+  );
+  assert.equal(occupierDisplayName({ modId: "mod-gone" }), "mod-gone");
+});
+
+test("文件行占用标签：无占用为 null，有占用按名字回退 id", () => {
+  const base = { targetPath: "nativePC/a.mod3", state: "matched" };
+  assert.equal(fileClaimantDisplayName(base), null);
+  assert.equal(
+    fileClaimantDisplayName({ ...base, claimedByModId: "mod-flat", claimedByModName: "Flat 武器" }),
+    "Flat 武器",
+  );
+  assert.equal(
+    fileClaimantDisplayName({ ...base, claimedByModId: "mod-gone" }),
+    "mod-gone",
+  );
+});
+
+test("三语占用文案：提示行织入全部占用者名与数量，行内标签织入名字", () => {
+  const expectations = {
+    zh_cn: { joined: "甲、乙", tagProbe: "PROBE_NAME" },
+    en: { joined: "甲, 乙", tagProbe: "PROBE_NAME" },
+    ja: { joined: "甲、乙", tagProbe: "PROBE_NAME" },
+  };
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const copy = externalStateCopy[locale];
+    const notice = copy.occupiedNotice(["甲", "乙"], 3);
+    assert.ok(
+      notice.includes(expectations[locale].joined),
+      `${locale} 提示行必须按本语言分隔符连接占用者名：${notice}`,
+    );
+    assert.ok(notice.includes("3"), `${locale} 提示行必须织入占用文件数`);
+    assert.match(
+      copy.fileClaimedBy("PROBE_NAME"),
+      /PROBE_NAME/,
+      `${locale} 行内标签必须包含占用者名`,
+    );
+  }
+});
+
+test("Section 形状：提示行按 occupiedBy 门禁，行内标签经回退助手取名", () => {
+  const currentDirectory = dirname(fileURLToPath(import.meta.url));
+  const sectionSource = readFileSync(
+    join(currentDirectory, "ExternalStateSection.tsx"),
+    "utf8",
+  );
+
+  // 提示行只在存在占用者时渲染，数量取「有占用标记的文件数」而非占用者数。
+  assert.match(sectionSource, /summary\.occupiedBy\.length > 0 \?/);
+  assert.match(sectionSource, /summary\.occupiedBy\.map\(occupierDisplayName\)/);
+  assert.match(
+    sectionSource,
+    /summary\.files\.filter\(\(file\) => file\.claimedByModId !== undefined\)\.length/,
+  );
+  // 行内标签：经 fileClaimantDisplayName（名字 ?? id）取名，null 不渲染。
+  assert.match(sectionSource, /fileClaimantDisplayName\(file\)/);
+  assert.match(sectionSource, /copy\.fileClaimedBy\(claimant\)/);
+  assert.match(sectionSource, /mod-detail-dialog__external-claimed/);
+  assert.match(sectionSource, /is-occupied/);
 });
