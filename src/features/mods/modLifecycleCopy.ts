@@ -43,6 +43,7 @@ export type ModLifecycleCopy = {
     recoveryIssuesAria: string;
     metricManagedFiles: string;
     metricBackups: string;
+    metricAdoptedFiles: string;
     metricChecks: string;
     planDetailsAria: string;
     prerequisiteResultsAria: string;
@@ -58,6 +59,8 @@ export type ModLifecycleCopy = {
     cancel: string;
     confirm: string;
     body: string;
+    /** 接管条目（#286 adopt）没有备份：卸载只删除，HMM 无法还原被外部安装覆盖的原文件。 */
+    adoptedWarning: (adoptedFileCount: number) => string;
   };
   taskFeedback: {
     noticeViewportAria: string;
@@ -169,6 +172,7 @@ export const modLifecycleCopy = {
       recoveryIssuesAria: "恢复扫描问题",
       metricManagedFiles: "托管文件",
       metricBackups: "备份恢复点",
+      metricAdoptedFiles: "接管文件",
       metricChecks: "检查项",
       planDetailsAria: "安装计划详情",
       prerequisiteResultsAria: "安装前置检查结果",
@@ -184,6 +188,8 @@ export const modLifecycleCopy = {
       cancel: "取消",
       confirm: "确认卸载",
       body: "将删除本工具新增的托管文件，并从受控备份恢复被覆盖文件。",
+      adoptedWarning: (adoptedFileCount) =>
+        `其中 ${adoptedFileCount} 个文件是接管来的：不是由 HMM 写入，也没有备份，卸载只会删除它们。若它们只是外部安装新增的文件，删掉即是原样；若当时覆盖了游戏自带文件，HMM 无法替你还原，请用 Steam 验证游戏文件完整性。`,
     },
     taskFeedback: {
       noticeViewportAria: "Mod 任务进度",
@@ -298,6 +304,7 @@ export const modLifecycleCopy = {
       recoveryIssuesAria: "Recovery scan issues",
       metricManagedFiles: "Managed files",
       metricBackups: "Backup restore points",
+      metricAdoptedFiles: "Adopted files",
       metricChecks: "Checks",
       planDetailsAria: "Install plan details",
       prerequisiteResultsAria: "Install prerequisite check results",
@@ -313,6 +320,8 @@ export const modLifecycleCopy = {
       cancel: "Cancel",
       confirm: "Confirm uninstall",
       body: "Managed files added by this tool will be deleted, and overwritten files will be restored from controlled backups.",
+      adoptedWarning: (adoptedFileCount) =>
+        `${adoptedFileCount} of these files were adopted: HMM never wrote them and holds no backup, so uninstalling only deletes them. If the external install merely added them, deleting restores the original state; if it overwrote files shipped with the game, HMM cannot bring those back — verify the game files through Steam.`,
     },
     taskFeedback: {
       noticeViewportAria: "Mod task progress",
@@ -428,6 +437,7 @@ export const modLifecycleCopy = {
       recoveryIssuesAria: "復旧スキャンの問題",
       metricManagedFiles: "管理ファイル",
       metricBackups: "バックアップ復元ポイント",
+      metricAdoptedFiles: "引き継ぎファイル",
       metricChecks: "チェック項目",
       planDetailsAria: "インストールプランの詳細",
       prerequisiteResultsAria: "インストール前提チェック結果",
@@ -443,6 +453,8 @@ export const modLifecycleCopy = {
       cancel: "キャンセル",
       confirm: "アンインストールを確定",
       body: "本ツールが追加した管理ファイルを削除し、上書きされたファイルを管理バックアップから復元します。",
+      adoptedWarning: (adoptedFileCount) =>
+        `このうち ${adoptedFileCount} 個は引き継いだファイルです。HMM が書き込んだものではなくバックアップもないため、アンインストールでは削除のみ行います。外部インストールが追加しただけのファイルなら削除で元の状態に戻りますが、ゲーム同梱のファイルを上書きしていた場合は HMM では復元できません。Steam でゲームファイルの整合性を確認してください。`,
     },
     taskFeedback: {
       noticeViewportAria: "Mod タスクの進行状況",

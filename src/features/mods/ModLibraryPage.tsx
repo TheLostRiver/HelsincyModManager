@@ -671,6 +671,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
     return currentSummary.managedFileCount === uninstallConfirmation.managedFileCount
       && currentSummary.backupCount === uninstallConfirmation.backupCount
+      && currentSummary.adoptedFileCount === uninstallConfirmation.adoptedFileCount
       ? null
       : copy.page.uninstallBlocked.backendSummaryChanged;
   }, [activeProfile.status, activeProfileId, copy, libraryItems, libraryQueryBusy, uninstallConfirmation]);
@@ -1327,6 +1328,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       modName: item.name,
       managedFileCount: item.installSummary.managedFileCount,
       backupCount: item.installSummary.backupCount,
+      adoptedFileCount: item.installSummary.adoptedFileCount,
     });
     setTrackedInstallTaskState({ status: "idle" });
   };

@@ -8,6 +8,8 @@ export type ModInstallSummary = {
   status: ModInstallSummaryStatus;
   managedFileCount: number;
   backupCount: number;
+  /** Adopted (#286) entries: no backup, uninstall only deletes. Absent when the source did not carry it. */
+  adoptedFileCount?: number;
   recoveryStatus?: InstallRecoveryStatus;
   issueCount?: number;
   issues?: InstallRecoveryIssueSummary[];

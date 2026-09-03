@@ -676,6 +676,42 @@ fn scan_all_includes_mod_known_only_by_reinstall_transaction() {
 }
 
 #[test]
+fn scan_counts_adopted_entries_from_the_pre_reinstall_manifest_when_only_a_transaction_exists() {
+    let (_old_manifest, _candidate_manifest, mut transaction, _target) =
+        reinstall_recovery_fixture();
+    transaction.status = ReinstallRecoveryTransactionStatus::RepairRequired;
+    let entry = transaction
+        .pre_reinstall_manifest
+        .entries
+        .iter_mut()
+        .find(|entry| entry.mod_id == ModId::new("mod-a"))
+        .expect("fixture has a pre-reinstall entry for mod-a");
+    entry.adopted = true;
+    let transactions = Arc::new(FakeReinstallTransactions::default());
+    transactions.insert(transaction);
+    let service = InstallRecoveryScanService::new(
+        Arc::new(FakeGameFiles::default()),
+        Arc::new(FakeBackups::default()),
+        Arc::new(FakeManifests { manifest: None }),
+    )
+    .with_reinstall_recovery_transactions(
+        transactions,
+        Arc::new(FakeReinstallSnapshots::default()),
+    );
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("scan should fall back to the pre-reinstall manifest");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RepairRequired);
+    assert_eq!(summaries[0].adopted_file_count, 1);
+    assert_eq!(summaries[0].managed_file_count, 1);
+}
+
+#[test]
 fn reconcile_rollback_required_reinstall_restores_pre_state_then_cleans() {
     let (service, game_files, transactions, snapshots, replaced, added) =
         reinstall_rollback_fixture(b"installed-v1", false);
@@ -992,6 +1028,7 @@ fn scan_marks_rollback_required_from_committing_recovery_record_without_manifest
             status: InstallRecoveryStatus::RollbackRequired,
             managed_file_count: 1,
             backup_count: 0,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }]
@@ -1035,6 +1072,7 @@ fn scan_does_not_promote_planned_recovery_record_to_rollback_required() {
             status: InstallRecoveryStatus::NotInstalled,
             managed_file_count: 0,
             backup_count: 0,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }]
@@ -1078,6 +1116,7 @@ fn scan_empty_mod_ids_includes_recovery_record_mods_when_manifest_is_missing() {
             status: InstallRecoveryStatus::RollbackRequired,
             managed_file_count: 1,
             backup_count: 1,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }]
@@ -1597,6 +1636,7 @@ fn scan_marks_completed_when_target_summary_matches_and_backup_exists() {
             status: InstallRecoveryStatus::Completed,
             managed_file_count: 1,
             backup_count: 1,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }]
@@ -1679,6 +1719,116 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
     assert_eq!(summaries[0].status, InstallRecoveryStatus::Completed);
     assert_eq!(summaries[1].managed_file_count, 1);
     assert_eq!(summaries[1].status, InstallRecoveryStatus::Completed);
+}
+
+fn adopted_scan_fixture() -> (Arc<FakeGameFiles>, Arc<FakeBackups>, InstallManifest) {
+    let adopted_a =
+        InstallTargetPath::parse("nativePC/models/adopted-a.mod3", ["nativePC"]).expect("target");
+    let written_with_backup =
+        InstallTargetPath::parse("nativePC/models/written.mod3", ["nativePC"]).expect("target");
+    let written_without_backup =
+        InstallTargetPath::parse("nativePC/models/added.mod3", ["nativePC"]).expect("target");
+    let adopted_b =
+        InstallTargetPath::parse("nativePC/models/adopted-b.mod3", ["nativePC"]).expect("target");
+    let bytes = b"model bytes".to_vec();
+    let game_files = Arc::new(FakeGameFiles::default());
+    {
+        let mut files = game_files.files.lock().expect("files lock");
+        for target in [
+            &adopted_a,
+            &written_with_backup,
+            &written_without_backup,
+            &adopted_b,
+        ] {
+            files.insert(target.as_str().to_owned(), bytes.clone());
+        }
+    }
+    let backups = Arc::new(FakeBackups::default());
+    backups
+        .backups
+        .lock()
+        .expect("backups lock")
+        .insert("backup-original".to_owned(), b"original".to_vec());
+    let entry = |target: InstallTargetPath, mod_id: &str, backup_ref: Option<&str>, adopted| {
+        InstallManifestEntry {
+            package_file_id: PackageFileId::new(target.as_str()),
+            target_path: target,
+            mod_id: ModId::new(mod_id),
+            revision_id: None,
+            layer: FileLayer::new("base", 0),
+            backup_ref: backup_ref.map(str::to_owned),
+            installed_file: Some(summary(&bytes)),
+            adopted,
+        }
+    };
+    let manifest = InstallManifest::completed(
+        ProfileId::new("default"),
+        vec![
+            entry(adopted_a, "mod-a", None, true),
+            entry(written_with_backup, "mod-a", Some("backup-original"), false),
+            entry(written_without_backup, "mod-a", None, false),
+            entry(adopted_b, "mod-b", None, true),
+        ],
+    );
+    (game_files, backups, manifest)
+}
+
+#[test]
+fn scan_counts_adopted_entries_per_mod_without_changing_status_or_backup_counts() {
+    let (game_files, backups, manifest) = adopted_scan_fixture();
+    let service = InstallRecoveryScanService::new(
+        game_files,
+        backups,
+        Arc::new(FakeManifests {
+            manifest: Some(manifest),
+        }),
+    );
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![
+                ModId::new("mod-a"),
+                ModId::new("mod-b"),
+                ModId::new("mod-c"),
+            ],
+        })
+        .expect("scan should succeed");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::Completed);
+    assert_eq!(summaries[0].managed_file_count, 3);
+    assert_eq!(summaries[0].backup_count, 1);
+    assert_eq!(summaries[0].adopted_file_count, 1);
+    assert_eq!(summaries[1].status, InstallRecoveryStatus::Completed);
+    assert_eq!(summaries[1].managed_file_count, 1);
+    assert_eq!(summaries[1].backup_count, 0);
+    assert_eq!(summaries[1].adopted_file_count, 1);
+    assert_eq!(summaries[2].status, InstallRecoveryStatus::NotInstalled);
+    assert_eq!(summaries[2].adopted_file_count, 0);
+}
+
+#[test]
+fn scan_keeps_the_adopted_count_when_the_manifest_status_gates_entry_checks() {
+    let (game_files, backups, mut manifest) = adopted_scan_fixture();
+    manifest.status = InstallManifestStatus::RollbackRequired;
+    let service = InstallRecoveryScanService::new(
+        game_files,
+        backups,
+        Arc::new(FakeManifests {
+            manifest: Some(manifest),
+        }),
+    );
+
+    let summaries = service
+        .scan(InstallRecoveryScanRequest {
+            profile_id: ProfileId::new("default"),
+            mod_ids: vec![ModId::new("mod-a")],
+        })
+        .expect("scan should succeed");
+
+    assert_eq!(summaries[0].status, InstallRecoveryStatus::RollbackRequired);
+    assert_eq!(summaries[0].issue_count, 0);
+    assert_eq!(summaries[0].adopted_file_count, 1);
 }
 
 #[test]

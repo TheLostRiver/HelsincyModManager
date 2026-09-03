@@ -501,12 +501,18 @@ MOD 用 zip 导入就一切正常。
 
 **处理**：让磁盘回到接管时的内容，卸载即恢复正常——
 
-1. 有原始文件（开发机：沙箱副本 `mod-import/sandboxes/<id>/nativePC/...` 与接管时逐字节相同）
-   → 复制回去覆盖，`(Get-Item ...).Length` 核对后再卸载；
-2. 没有原始文件 → 用 HMM 对本 MOD 走**重装**再卸载。理论依据：接管条目与 GUI 安装同形，都是
-   无修订号的 legacy 条目集，`resolve_installed_revision` 按 legacy provenance 解析（单修订版
-   MOD 可直接解析）；**「接管 → 重装」的组合尚未真机验过**，验过再把这条转正；
-3. 只想恢复游戏原版 → Steam 验证游戏文件完整性（接管确认弹窗里就是这么告知的）。
+1. 复制接管时的原样回去：接管只认领与导入包**逐字节一致**的文件，所以只要该 MOD 的导入包还在
+   HMM 里，`mod-import/sandboxes/<package_id>/nativePC/...` 就是接管时的内容（真机验过）；覆盖后
+   `(Get-Item ...).Length` 核对再卸载；
+2. 只想恢复游戏原版 → Steam 验证游戏文件完整性。接管确认与卸载确认两处弹窗都是这么告知的。
+
+**「先用 HMM 重装再卸载」不是出路**（读代码得出，2026-09-03 之前的文案与本节旧版曾这么建议，已改）：
+重装为同一目标路径写出的新条目沿用旧条目的 `backup_ref`（`build_prepared_targets` 的
+`original_backup_ref`，接管条目为空 → 仍为空），卸载依旧只是删除；而且单修订版 MOD 的重装预览
+会以 `candidate_already_installed` 阻断，文件已被改过时还会撞 `target_changed`。接管条目
+`revision_id` 为空，批量卸载/重装也把它当 legacy 条目排除（`installed_revision_unavailable`）。
+接管文件的「原版」HMM 手里从来没有过——外部安装当时若覆盖了游戏自带文件，只有 Steam 能还原；
+若只是新增文件（MHW 的 `nativePC` 松散文件绝大多数如此），删掉就是原样。
 
 判断是不是这条：`logs/audit/audit-*.log` 里该 MOD 最近一条是 `adopt_external_mod -> success`，
 之后目标文件的 mtime 晚于那条审计的时间戳，且清单里该条目 `adopted: true`、`backup_ref: null`。

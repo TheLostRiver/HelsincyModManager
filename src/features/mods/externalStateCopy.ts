@@ -173,7 +173,7 @@ export const externalStateCopy = {
           return `以下文件不会被接管：${parts.join("、")}。`;
         },
         uninstallWarning:
-          "接管后卸载会直接删除这些文件，且无法自动还原原版——它们不是由 HMM 写入的，没有备份。需要恢复原版时，请用 HMM 重新安装本 MOD 后再卸载，或用 Steam 验证游戏文件完整性。",
+          "接管后卸载只会删除这些文件——它们不是由 HMM 写入的，没有备份。若它们只是外部安装新增的文件，删掉即是原样；若当时覆盖了游戏自带文件，HMM 无法替你还原，请用 Steam 验证游戏文件完整性。",
         cancel: "取消",
         confirm: (claimable) => `确认接管 ${claimable} 个文件`,
       },
@@ -300,7 +300,7 @@ export const externalStateCopy = {
           return `Not adopted: ${parts.join(", ")}.`;
         },
         uninstallWarning:
-          "Uninstalling after adoption deletes these files and cannot restore the originals — HMM never wrote them, so there is no backup. To get the originals back, reinstall this mod with HMM and uninstall it, or verify the game files through Steam.",
+          "Uninstalling after adoption only deletes these files — HMM never wrote them, so there is no backup. If the external install merely added them, deleting restores the original state; if it overwrote files shipped with the game, HMM cannot bring those back — verify the game files through Steam.",
         cancel: "Cancel",
         confirm: (claimable) => `Adopt ${claimable} files`,
       },
@@ -438,7 +438,7 @@ export const externalStateCopy = {
           return `次のファイルは引き継ぎません：${parts.join("、")}。`;
         },
         uninstallWarning:
-          "引き継ぎ後にアンインストールすると、これらのファイルは削除され、元のファイルを自動で復元できません。HMM が書き込んだものではないためバックアップがありません。元に戻す必要がある場合は、HMM でこの MOD を再インストールしてからアンインストールするか、Steam でゲームファイルの整合性を確認してください。",
+          "引き継ぎ後にアンインストールすると、これらのファイルは削除されるだけです。HMM が書き込んだものではないためバックアップがありません。外部インストールが追加しただけのファイルなら削除で元の状態に戻りますが、ゲーム同梱のファイルを上書きしていた場合は HMM では復元できません。Steam でゲームファイルの整合性を確認してください。",
         cancel: "キャンセル",
         confirm: (claimable) => `${claimable} 件を引き継ぐ`,
       },

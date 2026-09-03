@@ -728,6 +728,7 @@ mod install_recovery_dto_tests {
             managed_file_count: 1,
             backup_count: 0,
             installed_revision_id: None,
+            adopted_file_count: Some(0),
         }
         .into();
 
@@ -739,6 +740,54 @@ mod install_recovery_dto_tests {
     }
 
     #[test]
+    fn manifest_status_summary_serializes_adopted_count_and_omits_it_when_not_carried() {
+        let summary = |adopted_file_count| InstallManifestStatusSummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: InstallManifestStatus::Installed,
+            managed_file_count: 3,
+            backup_count: 1,
+            installed_revision_id: None,
+            adopted_file_count,
+        };
+
+        let carried = serde_json::to_value(InstallManifestStatusSummaryDto::from(summary(Some(2))))
+            .expect("serialize manifest status summary");
+        assert_eq!(carried["adoptedFileCount"], 2);
+
+        let zero = serde_json::to_value(InstallManifestStatusSummaryDto::from(summary(Some(0))))
+            .expect("serialize manifest status summary");
+        assert_eq!(zero["adoptedFileCount"], 0, "零也是事实，不能省略");
+
+        let not_carried =
+            serde_json::to_value(InstallManifestStatusSummaryDto::from(summary(None)))
+                .expect("serialize manifest status summary");
+        assert!(
+            not_carried.get("adoptedFileCount").is_none(),
+            "来源不携带该事实时省略键，不能写成 0：{not_carried}"
+        );
+    }
+
+    #[test]
+    fn recovery_summary_serializes_adopted_count() {
+        let dto: InstallRecoverySummaryDto = hmm_app::InstallRecoverySummary {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            status: hmm_app::InstallRecoveryStatus::Completed,
+            managed_file_count: 2,
+            backup_count: 0,
+            adopted_file_count: 2,
+            issue_count: 0,
+            issues: Vec::new(),
+        }
+        .into();
+
+        let value = serde_json::to_value(dto).expect("serialize recovery summary");
+
+        assert_eq!(value["adoptedFileCount"], 2);
+    }
+
+    #[test]
     fn serializes_install_recovery_summary_without_paths_or_backup_refs() {
         let dto: InstallRecoverySummaryDto = hmm_app::InstallRecoverySummary {
             profile_id: ProfileId::new("default"),
@@ -746,6 +795,7 @@ mod install_recovery_dto_tests {
             status: hmm_app::InstallRecoveryStatus::RepairRequired,
             managed_file_count: 1,
             backup_count: 1,
+            adopted_file_count: 0,
             issue_count: 1,
             issues: vec![hmm_app::InstallRecoveryIssueSummary {
                 issue: hmm_app::InstallRecoveryIssue::BackupMissing,
@@ -778,6 +828,7 @@ mod install_recovery_dto_tests {
             status: hmm_app::InstallRecoveryStatus::RollbackRequired,
             managed_file_count: 1,
             backup_count: 0,
+            adopted_file_count: 0,
             issue_count: 0,
             issues: Vec::new(),
         }

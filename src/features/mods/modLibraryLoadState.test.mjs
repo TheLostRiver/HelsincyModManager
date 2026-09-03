@@ -147,6 +147,7 @@ test("install recovery summaries map completed status to installed without paths
       status: "completed",
       managedFileCount: 2,
       backupCount: 1,
+      adoptedFileCount: 0,
       issueCount: 0,
       issues: [],
     },
@@ -157,6 +158,7 @@ test("install recovery summaries map completed status to installed without paths
     status: "installed",
     managedFileCount: 2,
     backupCount: 1,
+    adoptedFileCount: 0,
     recoveryStatus: "completed",
     issueCount: 0,
     issues: [],
@@ -174,6 +176,7 @@ test("install recovery summaries surface unsafe states and issue counts", () => 
       status: "repair_required",
       managedFileCount: 3,
       backupCount: 1,
+      adoptedFileCount: 1,
       issueCount: 2,
       issues: [{ issue: "target_changed", count: 2 }],
     },
@@ -184,6 +187,7 @@ test("install recovery summaries surface unsafe states and issue counts", () => 
     status: "repair_required",
     managedFileCount: 3,
     backupCount: 1,
+    adoptedFileCount: 1,
     recoveryStatus: "repair_required",
     issueCount: 2,
     issues: [{ issue: "target_changed", count: 2 }],
@@ -198,6 +202,7 @@ test("install recovery summaries surface rollback-required state as unsafe witho
       status: "rollback_required",
       managedFileCount: 2,
       backupCount: 1,
+      adoptedFileCount: 0,
       issueCount: 0,
       issues: [],
     },
@@ -208,6 +213,7 @@ test("install recovery summaries surface rollback-required state as unsafe witho
     status: "rollback_required",
     managedFileCount: 2,
     backupCount: 1,
+    adoptedFileCount: 0,
     recoveryStatus: "rollback_required",
     issueCount: 0,
     issues: [],
@@ -358,4 +364,60 @@ test("unavailable manifest status preserves existing durable counters while fail
     issueCount: 0,
     issues: [],
   });
+});
+
+// #286 adopt 收尾：接管计数只从后端摘要透传，缺席就缺席，不补 0（0 与「不知道」是两回事）。
+test("manifest summaries carry the adopted count through and leave it absent when the backend omits it", () => {
+  const [carried, omitted] = applyInstallManifestStatusSummaries(
+    [
+      { id: "adopted-mod", name: "Adopted", status: "installed", sizeLabel: "1 KB", categoryLabels: [] },
+      { id: "plain-mod", name: "Plain", status: "installed", sizeLabel: "1 KB", categoryLabels: [] },
+    ],
+    [
+      {
+        profileId: "default",
+        modId: "adopted-mod",
+        status: "installed",
+        managedFileCount: 3,
+        backupCount: 1,
+        installedRevisionId: null,
+        adoptedFileCount: 2,
+      },
+      {
+        profileId: "default",
+        modId: "plain-mod",
+        status: "installed",
+        managedFileCount: 1,
+        backupCount: 1,
+        installedRevisionId: null,
+      },
+    ],
+  );
+
+  assert.equal(carried.installSummary.adoptedFileCount, 2);
+  assert.equal("adoptedFileCount" in omitted.installSummary, false);
+});
+
+test("unavailable manifest status keeps a previously known adopted count and never invents one", () => {
+  const [known, unknown] = applyInstallManifestUnavailable([
+    {
+      id: "adopted-mod",
+      name: "Adopted",
+      status: "installed",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+      installSummary: { status: "installed", managedFileCount: 3, backupCount: 1, adoptedFileCount: 2 },
+    },
+    {
+      id: "plain-mod",
+      name: "Plain",
+      status: "installed",
+      sizeLabel: "1 KB",
+      categoryLabels: [],
+      installSummary: { status: "installed", managedFileCount: 1, backupCount: 1 },
+    },
+  ]);
+
+  assert.equal(known.installSummary.adoptedFileCount, 2);
+  assert.equal("adoptedFileCount" in unknown.installSummary, false);
 });
