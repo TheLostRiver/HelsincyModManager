@@ -380,6 +380,7 @@ fn recovery_summary_to_manifest_status_summary(
         managed_file_count: summary.managed_file_count,
         backup_count: summary.backup_count,
         installed_revision_id: None,
+        adopted_file_count: Some(summary.adopted_file_count),
     }
 }
 
@@ -745,6 +746,7 @@ mod tests {
             status: InstallRecoveryStatus::RollbackRequired,
             managed_file_count: 2,
             backup_count: 1,
+            adopted_file_count: 1,
             issue_count: 0,
             issues: Vec::new(),
         };
@@ -758,6 +760,11 @@ mod tests {
         assert_eq!(manifest_summary.managed_file_count, 2);
         assert_eq!(manifest_summary.backup_count, 1);
         assert_eq!(manifest_summary.installed_revision_id, None);
+        assert_eq!(
+            manifest_summary.adopted_file_count,
+            Some(1),
+            "recovery scan 路径的接管计数必须原样进入 get_install_manifest_status"
+        );
     }
 
     #[test]

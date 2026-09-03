@@ -59,6 +59,7 @@ export function applyInstallManifestStatusSummaries(
         status: summary.status,
         managedFileCount: summary.managedFileCount,
         backupCount: summary.backupCount,
+        ...(summary.adoptedFileCount === undefined ? {} : { adoptedFileCount: summary.adoptedFileCount }),
       },
     };
   });
@@ -98,6 +99,7 @@ export function applyInstallRecoverySummaries(
         status: installStatus,
         managedFileCount: summary.managedFileCount,
         backupCount: summary.backupCount,
+        adoptedFileCount: summary.adoptedFileCount,
         recoveryStatus: summary.status,
         issueCount: summary.issueCount,
         issues: summary.issues,
@@ -138,6 +140,7 @@ export function applyInstallManifestUnavailable(items: ModLibraryItem[]): ModLib
         status: "unknown",
         managedFileCount: summary?.managedFileCount ?? 0,
         backupCount: summary?.backupCount ?? 0,
+        ...(summary?.adoptedFileCount === undefined ? {} : { adoptedFileCount: summary.adoptedFileCount }),
         recoveryStatus: "unknown",
         issueCount: summary?.issueCount ?? 0,
         issues: summary?.issues ?? [],

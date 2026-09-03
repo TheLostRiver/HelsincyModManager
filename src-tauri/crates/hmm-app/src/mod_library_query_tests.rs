@@ -187,6 +187,7 @@ impl ModLibraryStatusProvider for FakeStatusProvider {
                 ),
                 backup_count: 0,
                 installed_revision_id: None,
+                adopted_file_count: Some(0),
             })
             .collect())
     }
