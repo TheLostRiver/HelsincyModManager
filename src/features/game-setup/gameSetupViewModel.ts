@@ -21,6 +21,7 @@ const GAME_SETUP_ERROR_CODES = [
   "directory_not_found",
   "directory_not_absolute",
   "missing_executable",
+  "directory_overlaps_mod_storage",
   "storage_failed",
   "storage_corrupted",
   "scan_failed",
