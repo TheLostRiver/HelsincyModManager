@@ -27,8 +27,8 @@ const DEFAULT_ZIP_MAX_ENTRIES: usize = 64 * 1024;
 const DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const DIAGNOSTIC_PACKAGE_DIR: &str = "diagnostics";
-const MOD_IMPORT_APP_DATA_DIRECTORY: &str = "mod-import";
-const MOD_IMPORT_SANDBOX_DIRECTORY: &str = "sandboxes";
+const MOD_IMPORT_APP_DATA_DIRECTORY: &str = hmm_ports::DEFAULT_MOD_STORAGE_DIRECTORY;
+const MOD_IMPORT_SANDBOX_DIRECTORY: &str = hmm_ports::MOD_STORAGE_SANDBOX_DIRECTORY;
 
 #[cfg(windows)]
 fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
@@ -49,7 +49,7 @@ fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
 
 pub struct ZipModImportPackagePreparer {
     sandbox_root: PathBuf,
-    app_data_root: Option<PathBuf>,
+    storage_root: Option<PathBuf>,
     limits: ZipExtractionLimits,
 }
 
@@ -59,30 +59,32 @@ pub struct FileSystemDiagnosticPackageExporter {
 
 pub struct TaskScopedModImportSandboxLocator {
     sandbox_root: PathBuf,
-    app_data_root: Option<PathBuf>,
+    storage_root: Option<PathBuf>,
 }
 
 impl ZipModImportPackagePreparer {
     pub fn new(sandbox_root: PathBuf) -> Self {
         Self {
             sandbox_root,
-            app_data_root: None,
+            storage_root: None,
             limits: ZipExtractionLimits::default(),
         }
     }
 
-    /// Uses an app-data capability root and fixed child names for production sandboxes.
-    pub fn new_in_app_data(app_data_root: PathBuf) -> Self {
+    /// Production composition: `storage_root` is the resolved Mod storage root (default
+    /// `<app-data>/mod-import`, or the user-configured directory, #275); sandboxes live in its
+    /// fixed `sandboxes/` child and every component is opened no-follow.
+    pub fn new_in_storage_root(storage_root: PathBuf) -> Self {
         Self {
-            sandbox_root: mod_import_sandbox_root_path(&app_data_root),
-            app_data_root: Some(app_data_root),
+            sandbox_root: mod_import_sandbox_root_path(&storage_root),
+            storage_root: Some(storage_root),
             limits: ZipExtractionLimits::default(),
         }
     }
 
     fn open_sandbox_root(&self) -> Result<Dir> {
-        match self.app_data_root.as_deref() {
-            Some(app_data_root) => open_managed_sandbox_root(app_data_root, true),
+        match self.storage_root.as_deref() {
+            Some(storage_root) => open_managed_sandbox_root(storage_root, true),
             None => {
                 open_or_create_directory_nofollow(&self.sandbox_root, "mod import sandbox root")
             }
@@ -104,21 +106,27 @@ impl TaskScopedModImportSandboxLocator {
     pub fn new(sandbox_root: PathBuf) -> Self {
         Self {
             sandbox_root,
-            app_data_root: None,
+            storage_root: None,
         }
     }
 
-    /// Keeps cleanup rooted below a verified app-data directory in production composition.
-    pub fn new_in_app_data(app_data_root: PathBuf) -> Self {
+    /// Keeps cleanup rooted below the resolved Mod storage root in production composition
+    /// (see `ZipModImportPackagePreparer::new_in_storage_root`).
+    pub fn new_in_storage_root(storage_root: PathBuf) -> Self {
         Self {
-            sandbox_root: mod_import_sandbox_root_path(&app_data_root),
-            app_data_root: Some(app_data_root),
+            sandbox_root: mod_import_sandbox_root_path(&storage_root),
+            storage_root: Some(storage_root),
         }
+    }
+
+    /// The `sandboxes/` directory this locator resolves packages under.
+    pub fn sandbox_root(&self) -> &Path {
+        &self.sandbox_root
     }
 
     fn open_existing_sandbox_root(&self) -> Result<Dir> {
-        match self.app_data_root.as_deref() {
-            Some(app_data_root) => open_managed_sandbox_root(app_data_root, false),
+        match self.storage_root.as_deref() {
+            Some(storage_root) => open_managed_sandbox_root(storage_root, false),
             None => open_existing_directory_nofollow(&self.sandbox_root, "mod import sandbox root"),
         }
     }
@@ -542,28 +550,32 @@ fn sandbox_root_is_missing(root: &Path) -> bool {
     matches!(fs::symlink_metadata(root), Err(error) if error.kind() == io::ErrorKind::NotFound)
 }
 
-fn mod_import_sandbox_root_path(app_data_root: &Path) -> PathBuf {
-    app_data_root
-        .join(MOD_IMPORT_APP_DATA_DIRECTORY)
-        .join(MOD_IMPORT_SANDBOX_DIRECTORY)
+/// Default Mod storage root: the app-data child that historically held `results.json` and
+/// `sandboxes/`. A user-configured root replaces this directory, not its `sandboxes/` child.
+pub fn default_mod_storage_root(app_data_root: &Path) -> PathBuf {
+    app_data_root.join(MOD_IMPORT_APP_DATA_DIRECTORY)
 }
 
-fn open_managed_sandbox_root(app_data_root: &Path, create: bool) -> Result<Dir> {
-    let app_data = if create {
-        open_or_create_directory_nofollow(app_data_root, "mod import app data root")?
+fn mod_import_sandbox_root_path(storage_root: &Path) -> PathBuf {
+    storage_root.join(MOD_IMPORT_SANDBOX_DIRECTORY)
+}
+
+fn open_managed_sandbox_root(storage_root: &Path, create: bool) -> Result<Dir> {
+    let storage = if create {
+        open_or_create_directory_nofollow(storage_root, "mod storage root")?
     } else {
-        open_existing_directory_nofollow(app_data_root, "mod import app data root")?
+        open_existing_directory_nofollow(storage_root, "mod storage root")?
     };
     if create {
         open_or_create_directory_chain(
-            &app_data,
-            &[MOD_IMPORT_APP_DATA_DIRECTORY, MOD_IMPORT_SANDBOX_DIRECTORY],
+            &storage,
+            &[MOD_IMPORT_SANDBOX_DIRECTORY],
             "mod import sandbox root",
         )
     } else {
         open_existing_directory_chain(
-            &app_data,
-            &[MOD_IMPORT_APP_DATA_DIRECTORY, MOD_IMPORT_SANDBOX_DIRECTORY],
+            &storage,
+            &[MOD_IMPORT_SANDBOX_DIRECTORY],
             "mod import sandbox root",
         )
     }
@@ -978,6 +990,122 @@ mod tests {
     }
 
     #[test]
+    fn storage_root_preparer_creates_sandboxes_child_under_the_storage_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let storage_root = temp.path().join("HMMMods");
+        fs::create_dir(&storage_root).expect("create storage root");
+        let archive_path = temp.path().join("sample.zip");
+        create_zip(
+            &archive_path,
+            &[("nativePC/readme.txt", b"hello".as_slice())],
+        );
+
+        let preparer = ZipModImportPackagePreparer::new_in_storage_root(storage_root.clone());
+        let prepared =
+            prepare_package(&preparer, "task-1", &archive_path).expect("prepare package");
+
+        assert_eq!(
+            prepared.sandbox_root,
+            storage_root.join("sandboxes").join("task-1")
+        );
+        assert_eq!(
+            fs::read_to_string(prepared.sandbox_root.join("nativePC/readme.txt"))
+                .expect("read extracted file"),
+            "hello"
+        );
+        assert!(
+            !storage_root.join("mod-import").exists(),
+            "a configured storage root must not grow a nested mod-import directory"
+        );
+    }
+
+    #[test]
+    fn storage_root_preparer_creates_a_missing_default_root_below_app_data() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app_data = temp.path().join("app-data");
+        fs::create_dir(&app_data).expect("create app data");
+        let archive_path = temp.path().join("sample.zip");
+        create_zip(
+            &archive_path,
+            &[("nativePC/readme.txt", b"hello".as_slice())],
+        );
+
+        let preparer =
+            ZipModImportPackagePreparer::new_in_storage_root(default_mod_storage_root(&app_data));
+        let prepared =
+            prepare_package(&preparer, "task-1", &archive_path).expect("prepare package");
+
+        assert_eq!(
+            prepared.sandbox_root,
+            app_data.join("mod-import").join("sandboxes").join("task-1")
+        );
+    }
+
+    #[test]
+    fn storage_root_locator_resolves_and_cleans_below_the_storage_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let storage_root = temp.path().join("HMMMods");
+        let package_root = storage_root.join("sandboxes").join("task-1");
+        fs::create_dir_all(package_root.join("nested")).expect("create package sandbox");
+        fs::write(package_root.join("nested").join("fixture.bin"), b"fixture")
+            .expect("write fixture");
+        let sibling = storage_root.join("sandboxes").join("task-2");
+        fs::create_dir_all(&sibling).expect("create sibling sandbox");
+
+        let locator = TaskScopedModImportSandboxLocator::new_in_storage_root(storage_root.clone());
+        assert_eq!(locator.sandbox_root(), storage_root.join("sandboxes"));
+        assert_eq!(
+            locator
+                .sandbox_root_for_package("task-1")
+                .expect("resolve package"),
+            package_root
+        );
+
+        locator
+            .cleanup_sandbox_for_package("task-1")
+            .expect("cleanup task sandbox");
+
+        assert!(!package_root.exists());
+        assert!(sibling.exists());
+    }
+
+    #[test]
+    fn storage_root_locator_cleanup_is_a_no_op_when_the_root_is_missing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let storage_root = temp.path().join("unplugged-drive").join("HMMMods");
+
+        let locator = TaskScopedModImportSandboxLocator::new_in_storage_root(storage_root);
+
+        locator
+            .cleanup_sandbox_for_package("task-1")
+            .expect("missing root has nothing to clean");
+    }
+
+    #[test]
+    fn storage_root_locator_rejects_a_linked_storage_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside root");
+        fs::create_dir_all(outside.path().join("sandboxes").join("task-1"))
+            .expect("create outside package");
+        let linked_root = temp.path().join("HMMMods");
+        if !try_create_directory_link(outside.path(), &linked_root) {
+            return;
+        }
+
+        let locator = TaskScopedModImportSandboxLocator::new_in_storage_root(linked_root.clone());
+        let error = locator
+            .cleanup_sandbox_for_package("task-1")
+            .expect_err("linked storage root must be rejected");
+
+        remove_directory_link(&linked_root);
+        assert!(error.to_string().contains("mod storage root"));
+        assert!(
+            outside.path().join("sandboxes").join("task-1").exists(),
+            "cleanup through a linked root must not delete the target"
+        );
+    }
+
+    #[test]
     fn sandbox_locator_rejects_a_linked_task_scope_without_touching_outside_sentinel() {
         let temp = tempfile::tempdir().expect("temp dir");
         let sandbox_root = temp.path().join("sandboxes");
@@ -1020,7 +1148,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
-            app_data_root: None,
+            storage_root: None,
             limits,
         };
 
@@ -1044,7 +1172,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
-            app_data_root: None,
+            storage_root: None,
             limits,
         };
 
@@ -1076,7 +1204,7 @@ mod tests {
         };
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
-            app_data_root: None,
+            storage_root: None,
             limits,
         };
 

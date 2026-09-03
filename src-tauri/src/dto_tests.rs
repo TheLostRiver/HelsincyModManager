@@ -26,6 +26,7 @@ mod app_settings_dto_tests {
             thumbnail_cache_max_age_days: Some(14),
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: false,
+            mod_storage_dir: None,
         }
         .into();
 
@@ -64,6 +65,7 @@ mod app_settings_dto_tests {
             thumbnail_cache_max_age_days: Some(14),
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: false,
+            mod_storage_dir: None,
         }
         .into();
 

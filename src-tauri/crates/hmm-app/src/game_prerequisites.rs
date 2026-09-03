@@ -257,7 +257,10 @@ fn decision_from_service_error(
         GameSetupServiceError::ValidationFailed(_)
         | GameSetupServiceError::ScanFailed(_)
         | GameSetupServiceError::ScanNotImplemented
-        | GameSetupServiceError::ClockFailed(_) => GamePrerequisiteDecisionCode::DecisionInvalid,
+        | GameSetupServiceError::ClockFailed(_)
+        | GameSetupServiceError::OverlapsModStorage => {
+            GamePrerequisiteDecisionCode::DecisionInvalid
+        }
     };
 
     GamePrerequisiteDecision {

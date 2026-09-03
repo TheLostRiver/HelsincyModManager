@@ -192,6 +192,104 @@ fn headless_composition_imports_v1_and_rebuilds_plan_after_restart() {
 }
 
 #[test]
+fn headless_composition_imports_into_the_configured_mod_storage_root_and_survives_restart() {
+    use crate::ModStorageRootSource;
+    use hmm_infra::FileSystemModStorageDirectoryInspector;
+    use hmm_ports::ModStorageDirectoryInspector;
+
+    let temp = tempfile::tempdir().expect("create storage root temp root");
+    let app_data_dir = temp.path().join("app-data");
+    let storage_root = temp.path().join("HMMMods");
+    let game_root = temp.path().join("game");
+    let archive_path = temp.path().join("lifecycle-v1.zip");
+    prepare_game_root(&game_root);
+    create_fixture_zip(&archive_path, V1_FILES);
+    FileSystemModStorageDirectoryInspector
+        .claim(&storage_root)
+        .expect("claim storage root");
+    fs::create_dir_all(app_data_dir.join("config")).expect("create config dir");
+    fs::write(
+        app_data_dir.join("config").join("settings.json"),
+        serde_json::json!({ "version": 1, "modStorageDir": storage_root }).to_string(),
+    )
+    .expect("write settings");
+
+    let state = HmmRuntime::from_app_data_dir(app_data_dir.clone())
+        .expect("compose headless state with a configured storage root");
+    assert_eq!(state.mod_storage.root, storage_root);
+    assert_eq!(state.mod_storage.source, ModStorageRootSource::Configured);
+    assert_eq!(state.mod_storage.degraded, None);
+    assert_eq!(
+        state.mod_storage.default_root,
+        app_data_dir.join("mod-import")
+    );
+    state
+        .game_setup
+        .save_game_directory(GameId::mhw(), game_root.clone())
+        .expect("save validated temp game directory");
+
+    let import_task = state
+        .mod_import_tasks
+        .start_import_mod_task(StartImportModTaskRequest {
+            archive_path: archive_path.clone(),
+        })
+        .expect("register fixture import task");
+    let import_events = state
+        .mod_import_task_runner
+        .run_prepare_task(&import_task.task_id, archive_path)
+        .expect("prepare and persist fixture import");
+    assert_eq!(
+        import_events.last().map(|event| event.phase.as_str()),
+        Some("mod_import.prepare.completed")
+    );
+
+    let package_root = storage_root.join("sandboxes").join(&import_task.task_id);
+    assert!(
+        package_root.join(V1_FILES[0].0).is_file(),
+        "the package must be unpacked below the configured storage root"
+    );
+    assert!(
+        !app_data_dir.join("mod-import").join("sandboxes").exists(),
+        "the default sandbox root must stay untouched once a storage root is configured"
+    );
+    assert!(
+        app_data_dir
+            .join("mod-import")
+            .join("results.json")
+            .is_file(),
+        "the catalog stays in app-data; only packages move"
+    );
+    let mod_id = ModId::new(import_task.task_id.clone());
+    assert_eq!(
+        build_target_paths(&state, mod_id.clone()),
+        expected_v1_targets()
+    );
+    drop(state);
+
+    let restarted = HmmRuntime::from_app_data_dir(app_data_dir)
+        .expect("recompose headless state from persisted AppData");
+    assert_eq!(restarted.mod_storage.root, storage_root);
+    assert_eq!(
+        build_target_paths(&restarted, mod_id),
+        expected_v1_targets()
+    );
+    restarted
+        .mod_deletion
+        .delete_mod(&ModId::new(import_task.task_id.clone()))
+        .expect("delete the imported mod");
+    assert!(
+        !package_root.exists(),
+        "deletion must reclaim the package below the configured storage root"
+    );
+    assert!(
+        storage_root
+            .join(hmm_ports::MOD_STORAGE_MARKER_NAME)
+            .is_file(),
+        "deleting a package must never touch the storage marker"
+    );
+}
+
+#[test]
 fn headless_composition_retargets_staging_commits_and_persists_binding_snapshot() {
     let temp = tempfile::tempdir().expect("create retarget lifecycle temp root");
     let app_data_dir = temp.path().join("app-data");

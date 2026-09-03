@@ -1614,6 +1614,7 @@ fn fake_app_settings_repository(
             thumbnail_cache_max_age_days: Some(max_age_days),
             log_storage_max_bytes: None,
             debug_log_enabled: false,
+            mod_storage_dir: None,
         },
         load_count: Mutex::new(0),
     })
