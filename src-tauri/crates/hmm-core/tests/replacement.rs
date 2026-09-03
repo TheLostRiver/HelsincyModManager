@@ -1,7 +1,7 @@
 use hmm_core::{
     GameId, LocalizedText, ModId, ProfileId, ReplacementBinding, ReplacementBindingId,
-    ReplacementCatalog, ReplacementCatalogVersion, ReplacementSourceId, ReplacementTarget,
-    ReplacementTargetId, ReplacementTargetKind,
+    ReplacementCatalog, ReplacementCatalogVersion, ReplacementError, ReplacementSourceId,
+    ReplacementTarget, ReplacementTargetId, ReplacementTargetKind,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -68,6 +68,93 @@ fn replacement_target_round_trips_structured_opaque_metadata() {
         decoded.metadata().get("parts"),
         Some(&json!(["head", "body", "arms", "waist", "legs"]))
     );
+}
+
+#[test]
+fn replacement_target_without_localized_aliases_serializes_without_the_key() {
+    // 铠甲 catalog 的别名是不带语言的平表：不知道就不写，不伪造成空表；老 JSON 也照常读回。
+    let target = target("mhw:armor:fatalis-alpha", "pl129_0000");
+    assert_eq!(target.localized_aliases(), None);
+
+    let value = serde_json::to_value(&target).expect("serialize target");
+    assert!(value.get("localized_aliases").is_none());
+
+    let decoded: ReplacementTarget =
+        serde_json::from_value(value).expect("deserialize target without the key");
+    assert_eq!(decoded.localized_aliases(), None);
+}
+
+#[test]
+fn replacement_target_carries_localized_aliases_and_round_trips_them() {
+    let localized = BTreeMap::from([
+        ("en".to_owned(), vec!["Fatalis Alpha".to_owned()]),
+        ("zh_cn".to_owned(), vec![" 黑龙α ".to_owned()]),
+    ]);
+    let target = target("mhw:armor:fatalis-alpha", "pl129_0000")
+        .with_localized_aliases(localized)
+        .expect("localized aliases");
+
+    let expected = BTreeMap::from([
+        ("en".to_owned(), vec!["Fatalis Alpha".to_owned()]),
+        ("zh_cn".to_owned(), vec!["黑龙α".to_owned()]),
+    ]);
+    assert_eq!(target.localized_aliases(), Some(&expected));
+    // 平表不受影响：检索语义不变。
+    assert_eq!(target.aliases(), ["黑龙α", "Fatalis Alpha"]);
+
+    let encoded = serde_json::to_string(&target).expect("serialize target");
+    let decoded: ReplacementTarget = serde_json::from_str(&encoded).expect("deserialize target");
+    assert_eq!(decoded, target);
+    assert_eq!(decoded.localized_aliases(), Some(&expected));
+}
+
+#[test]
+fn localized_aliases_fail_closed_on_unknown_locale_blank_alias_and_unsearchable_alias() {
+    let base = || target("mhw:armor:fatalis-alpha", "pl129_0000");
+
+    // locale 没有展示名：前端沿展示名 fallback 链取词，孤儿 locale 永远显示不出来。
+    assert_eq!(
+        base()
+            .with_localized_aliases(BTreeMap::from([(
+                "ja".to_owned(),
+                vec!["黑龙α".to_owned()],
+            )]))
+            .expect_err("unknown locale"),
+        ReplacementError::LocalizedAliasLocaleUnknown {
+            locale: "ja".to_owned(),
+        }
+    );
+    assert_eq!(
+        base()
+            .with_localized_aliases(BTreeMap::from([
+                (" ".to_owned(), vec!["黑龙α".to_owned()],)
+            ]))
+            .expect_err("blank locale"),
+        ReplacementError::EmptyLocale
+    );
+    assert_eq!(
+        base()
+            .with_localized_aliases(BTreeMap::from([("en".to_owned(), vec!["  ".to_owned()])]))
+            .expect_err("blank alias"),
+        ReplacementError::EmptyAlias
+    );
+    // 行内展示的名字必须能被搜索命中：不在平表里的别名拒绝。
+    assert_eq!(
+        base()
+            .with_localized_aliases(BTreeMap::from([(
+                "en".to_owned(),
+                vec!["Black Fatalis Alpha".to_owned()],
+            )]))
+            .expect_err("unsearchable alias"),
+        ReplacementError::LocalizedAliasNotSearchable {
+            alias: "Black Fatalis Alpha".to_owned(),
+        }
+    );
+
+    // 同一条规则也守住 JSON 入口。
+    let mut value = serde_json::to_value(base()).expect("serialize target");
+    value["localized_aliases"] = json!({ "en": ["Black Fatalis Alpha"] });
+    assert!(serde_json::from_value::<ReplacementTarget>(value).is_err());
 }
 
 #[test]
