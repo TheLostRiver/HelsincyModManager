@@ -263,3 +263,74 @@ test("documents every external mod adopt error code the runtime can emit", () =>
     `undocumented external mod adopt codes: ${undocumented.join(", ")}`,
   );
 });
+
+// 扫描族此前只在契约里写了一个通配 `external_state_scan_*`，新增一个变体不会有任何东西变红。
+// 两个来源：扫描器 `code()` 与任务服务 `code()`（后者是 command 错误码 + runner 兜底终态）。
+test("documents every external state scan error code the runtime can emit", () => {
+  const scanSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-runtime/src/external_state_scan.rs"),
+    "utf8",
+  );
+  const scanTasksSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-runtime/src/external_state_scan_tasks.rs"),
+    "utf8",
+  );
+
+  const codes = [
+    ...extractMappingValues(
+      extractFunctionBody(scanSource, "pub const fn code(self) -> &'static str"),
+    ),
+    ...extractMappingValues(
+      extractFunctionBody(scanTasksSource, "pub const fn code(self) -> &'static str"),
+    ),
+  ];
+
+  assert.ok(
+    codes.includes("external_state_scan_stale") &&
+      codes.includes("external_state_scan_admission_order_violation") &&
+      codes.includes("external_state_scan_task_unavailable"),
+    "extraction must cover the scanner and the task service",
+  );
+
+  const undocumented = codes.filter((code) => !contractSource.includes(code));
+  assert.deepEqual(
+    undocumented,
+    [],
+    `undocumented external state scan codes: ${undocumented.join(", ")}`,
+  );
+});
+
+// completed 事件上的显式降级码不是失败 phase，上面按 `failure_phase()` 取值的用例抓不到它；
+// 三个任务服务各写一次字面量，任何一处改名都必须回到契约登记。
+test("documents the audit degradation code carried by completed install events", () => {
+  const sources = [
+    "src-tauri/crates/hmm-app/src/install_task.rs",
+    "src-tauri/crates/hmm-app/src/reinstall_task.rs",
+  ].map((relative) => readFileSync(join(repositoryRoot, relative), "utf8"));
+
+  const codes = [
+    ...new Set(
+      sources.flatMap((source) =>
+        [...source.matchAll(/event\.error = Some\("([a-z_]+)"\.to_owned\(\)\)/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    ),
+  ];
+
+  assert.deepEqual(
+    codes,
+    ["install_audit_unavailable"],
+    "the completed-event degradation literal moved or gained siblings; update this extraction",
+  );
+  for (const code of codes) {
+    assert.ok(contractSource.includes(code), `undocumented completed-event degradation code: ${code}`);
+    for (const phase of ["install.completed", "install.uninstall.completed", "install.reinstall.completed"]) {
+      assert.match(
+        contractSource,
+        new RegExp(`\\| \`install\` \\| \`${phase.replaceAll(".", "\\.")}\` \\|[^\\n]*${code}`),
+        `${code} must be documented on the ${phase} phase-table row`,
+      );
+    }
+  }
+});
