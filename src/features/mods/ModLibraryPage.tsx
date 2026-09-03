@@ -80,7 +80,7 @@ import {
   shouldFailClosedManagedInstallTerminal,
   type ModLifecycleToast,
 } from "./modLifecycleFeedbackState";
-import type { ExternalModStateDto } from "./externalStateApi";
+import { useExternalStateSession } from "./ExternalStateSessionProvider";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModRevisions, queryModLibrary } from "./modLibraryApi";
@@ -364,14 +364,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [installPlanDetailState, setInstallPlanDetailState] = useState<InstallPlanDetailSheetState>({
     status: "idle",
   });
-  /*
-   * #286 3b-2（方案 A）：外部状态扫描结果的会话级共享。详情弹窗每次拿到
-   * getter 结果就上报到这里，卡片据此在状态位显示徽标。只存内存、不落盘、
-   * 不主动失效——路由切换即消失，重开详情弹窗会重新上报（后端进程内缓存仍在）。
-   */
-  const [externalStateResults, setExternalStateResults] = useState<
-    ReadonlyMap<string, ExternalModStateDto>
-  >(new Map());
   const [previewModId, setPreviewModId] = useState<string | null>(null);
   const [uninstallConfirmation, setUninstallConfirmation] = useState<PendingUninstallConfirmation | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<ModDeletionConfirmation | null>(null);
@@ -393,22 +385,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
   }, [activeProfile.status, activeProfileId]);
 
-  // 扫描结果按 (game, profile, mod) 记账；切换配置档后旧结果不再适用，整表清空。
-  useEffect(() => {
-    setExternalStateResults(new Map());
-  }, [activeProfileId]);
-
-  const recordExternalStateResult = useCallback(
-    (modId: string, state: ExternalModStateDto) => {
-      setExternalStateResults((previous) => {
-        const next = new Map(previous);
-        next.set(modId, state);
-        return next;
-      });
-    },
-    [],
-  );
-
   const setTrackedInstallTaskState = useCallback((update: ManagedInstallTaskStateUpdate) => {
     const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;
     installTaskStateRef.current = nextState;
@@ -429,6 +405,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       : null,
     [activeProfile.status, activeProfileId],
   );
+  /*
+   * #286 3b-2（A+）：外部状态扫描结果的会话级共享。详情弹窗每次拿到 getter 结果就
+   * 上报到应用级会话表，卡片据此在状态位显示徽标。表按 (game, profile) 作用域记账，
+   * 切换配置档后旧结果不再适用；路由切换不再丢（表挂在 RouterOutlet 之上）。
+   */
+  const { results: externalStateResults, record: recordExternalStateResult } =
+    useExternalStateSession(profileContext);
   const batchCapability = useBatchModLifecycleCapability();
   const batchCapabilityUnavailableReason = getBatchCapabilityUnavailableLabel(
     batchCapability.capability,
