@@ -170,6 +170,7 @@ test("试点页与设置页内嵌面板去注释后不再包含硬编码中文�
     "src/features/mods/batch-lifecycle/BatchModLifecyclePreviewPanel.tsx",
     "src/features/mods/batch-lifecycle/BatchModLifecycleResultPanel.tsx",
     "src/features/replacements/ReplacementTargetPanel.tsx",
+    "src/features/replacements/replacementTargetMatch.ts",
     "src/features/replacements/replacementWorkflow.ts",
     "src/features/replacements/replacementErrorText.ts",
     "src/features/profiles/ProfilePage.tsx",
