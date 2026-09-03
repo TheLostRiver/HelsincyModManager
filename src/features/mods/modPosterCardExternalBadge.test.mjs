@@ -62,9 +62,24 @@ test("提升链完整：hook 上报 → section 透传 → 弹窗透传 → 页�
   assert.match(pageSource, /externalState=\{externalStateResults\.get\(item\.id\) \?\? null\}/);
 });
 
-test("会话边界：切换配置档必须清空页级结果表", () => {
+test("会话边界（A+）：结果表挂在应用级 Provider、按 (game, profile) 作用域读写，页面不再自持 Map", () => {
+  const appSource = readFileSync(join(currentDirectory, "../../App.tsx"), "utf8");
+  const providerSource = readSource("ExternalStateSessionProvider.tsx");
+
+  // 页面：不再有页级 Map；结果与上报都来自会话表 hook，作用域就是 profileContext（无配置档时为 null）。
+  assert.doesNotMatch(pageSource, /setExternalStateResults|useState<\s*ReadonlyMap<string, ExternalModStateDto>/);
   assert.match(
     pageSource,
-    /setExternalStateResults\(new Map\(\)\);\s*\}, \[activeProfileId\]\)/,
+    /const \{ results: externalStateResults, record: recordExternalStateResult \} =\s*useExternalStateSession\(profileContext\)/,
   );
+  // Provider 必须在 RouterOutlet 之上：路由切换卸载页面，表要活过切页。
+  const providerOpen = appSource.indexOf("<ExternalStateSessionProvider>");
+  const outlet = appSource.indexOf("<RouterOutlet />");
+  const providerClose = appSource.indexOf("</ExternalStateSessionProvider>");
+  assert.ok(providerOpen !== -1 && outlet !== -1 && providerClose !== -1);
+  assert.ok(providerOpen < outlet && outlet < providerClose, "ExternalStateSessionProvider 必须包住 RouterOutlet");
+  // Provider 只持有与派发，语义走纯逻辑模块：读按作用域隔离、写按作用域换新。
+  assert.match(providerSource, /externalStateResultsForScope\(/);
+  assert.match(providerSource, /recordExternalStateResult\(previous, currentScope, modId, state\)/);
+  assert.match(providerSource, /if \(currentScope === null\) \{\s*return;/);
 });
