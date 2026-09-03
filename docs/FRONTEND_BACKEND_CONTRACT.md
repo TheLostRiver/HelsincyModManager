@@ -77,7 +77,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 导出审计日志诊断包：`export_audit_log_diagnostics`
 - 导出完整支持诊断包：`export_support_diagnostics`
 - 手动后端维护：`maintain_thumbnail_cache`
-- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`
+- 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`、`get_mod_import_settings`、`set_mod_import_settings`
 - Mod 存储目录（#275）：`get_mod_storage_settings`、`validate_mod_storage_dir`、`set_mod_storage_dir`、`start_mod_storage_migration_task`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
@@ -762,7 +762,7 @@ TaskProgressEventDto
 | `mod_import` | `mod_import.unpack.started` / `.completed` / `.failed` | 安全解压阶段 |
 | `mod_import` | `mod_import.preview_image.processing` | 预览图候选扫描和处理 |
 | `mod_import` | `mod_import.preview_image.fallback` | 预览图降级为 fallback，导入继续 |
-| `mod_import` | `mod_import.prepare.completed` | prepare 阶段已完成，后续结果通过查询或持久化链路获取 |
+| `mod_import` | `mod_import.prepare.completed` | prepare 阶段已完成，后续结果通过查询或持久化链路获取；`error` 可仅为「移动导入」降级码 `mod_import_archive_kept_*`（导入已成功，只是源压缩包没删；见「移动导入（#275 切片④）」） |
 | `mod_import` | `mod_import.analyze.processing` | 包结构和依赖分析 |
 | `mod_import` | `mod_import.commit.processing` | 写入游戏实例前的 plan 落地 |
 | `mod_import` | `external_import.scan.queued` | 第三方来源只读扫描已登记，`resultRef` 为 opaque batch ID |
@@ -1863,6 +1863,8 @@ get_log_storage_settings()
 set_log_storage_settings({ maxBytes })
 get_debug_log_settings()
 set_debug_log_settings({ enabled })
+get_mod_import_settings()
+set_mod_import_settings({ deleteArchiveAfterImport })
 get_mod_storage_settings()
 validate_mod_storage_dir({ directory })
 set_mod_storage_dir({ directory: string | null })
@@ -1893,6 +1895,7 @@ start_mod_storage_migration_task({ directory: string | null })
   - `validate_mod_storage_dir({ directory })` 只读校验并返回 `ModStorageDirValidationDto { ok, code: string | null, exists, claimed }`，校验不通过**不抛错**、以 `code` 表达：`mod_storage_dir_not_absolute` / `mod_storage_dir_unsafe`（含 `.` `..`）/ `mod_storage_dir_filesystem_root` / `mod_storage_dir_parent_missing` / `mod_storage_dir_not_directory` / `mod_storage_dir_link_rejected`（目录本身或任一祖先是 symlink / junction / reparse point）/ `mod_storage_dir_marker_required`（非空目录且不含 HMM marker、也不只含 HMM 自己的 `sandboxes/` 布局）/ `mod_storage_dir_marker_invalid` / `mod_storage_dir_not_writable`（`create_new` + 删除的试写探针失败）/ `mod_storage_dir_overlaps_game_root`（与任一已配置游戏根双向包含）/ `mod_storage_dir_unavailable`。`claimed` 表示目录已带合法 marker。`directory` 只能来自系统目录选择器，命令自行再校验。
   - `set_mod_storage_dir({ directory: string | null })` 持久化设置并返回 `ModStorageSettingsDto`（`restartRequired: true`）。**只在库为空时允许**——目录 catalog 无任何 revision 且当前存储根的 `sandboxes/` 无任何条目——否则返回 `mod_storage_migration_required`（迁移由后续切片提供）。通过校验后先在目标目录写入 marker `.hmm-mod-storage.json`（字节精确 `{"kind":"hmm.mod-storage","schemaVersion":1}` + 换行；空目录或仅含 `sandboxes/` 的目录才会被认领，其他非空目录拒绝），再保存设置；marker 写入失败则设置不变。`null` 表示回到默认根。其余稳定码：上述 `mod_storage_dir_*`、`app_settings_unavailable`、`mod_library_unavailable`、`game_config_unavailable`。与 `save_game_directory` 互为反向约束：游戏目录落在存储根内或包含存储根时返回 `directory_overlaps_mod_storage`。
   - 启动时若解析降级，后端写安全 App Log 事件 `mod_storage_root_degraded`（`operation = resolve_mod_storage_root`，`error_code` = 上述降级原因，`phase` = `mod_storage_dir_*` 细分码；不含路径）。
+- **移动导入（#275 切片④）**。HMM 导入从不保留压缩包（解包进存储根即为副本），所以「移动而非复制」= 解包落库后删除用户的源压缩包，省掉一份磁盘占用。`get_mod_import_settings()` / `set_mod_import_settings({ deleteArchiveAfterImport: boolean })` 读写 `ModImportSettingsDto { deleteArchiveAfterImport }`（persist 在 `settings.json` 的 `deleteArchiveAfterImport`，**默认 false**；settings 读不到时视为关闭，破坏性选项绝不推断）。前端开启前必须弹 `alertdialog` 说明「原始文件会被删除、不可撤销；跨盘时先复制再删除」。生效范围只有 `start_import_mod_task` / `start_import_mod_revision_task` 的 zip 导入；外部导入（HuntingBox 目录）的压缩包属于另一管理器，永不删除。时序：runner 在读压缩包之前取指纹（长度、修改时间、卷 + 文件索引），目录写入 durable 之后才删，且只删「与指纹一致的同一常规文件」；位于任一已配置游戏根、当前存储根或 app-data 之内的压缩包一律保留；导入失败或取消不删。删不成不算导入失败：`mod_import.prepare.completed` 的 `error` 携带降级码 `mod_import_archive_kept_not_regular_file`（目录 / 链接 / reparse point）、`mod_import_archive_kept_protected_location`、`mod_import_archive_kept_changed`（导入期间文件被替换或已不存在）、`mod_import_archive_kept_unavailable`（无法检查 / 游戏配置读不到）、`mod_import_archive_kept_remove_failed`；前端按码 toast 提示、不改导入结果。事件与日志不带路径。
 - **Mod 存储目录迁移（#275 切片②）**。库非空时改目录走 `start_mod_storage_migration_task({ directory: string | null })`（`null` = 迁回默认根），返回 `TaskStartedDto`（`kind = mod_storage_migration`）并先发 `mod_storage.migration.queued`，随后按上表 phase 推进；全部事件只带任务身份、`current / total`（包计数）与稳定 code，不带任何路径或包名。策略是**复制 → 逐包校验 → 切设置 → 重启 → 启动期删源**：包目录逐文件复制并 fsync、回读比对文件集合 / 大小 / SHA-256；任一包失败即整体失败并删掉目标里本次复制的包，设置不变；`settings.json` 只在最后一个包校验通过后才写，写之前 `<app-data>/mod-import/migration.json` 先落 `switched` journal。本进程继续从旧根读（安装、预览图、外部状态扫描、接管照常），**下次启动**解析出新根后再由启动期收尾确认每个包都在新根里、逐包删除旧根副本并清 journal；崩在复制中（journal = `copying`）或崩在 journal 与设置之间（journal = `switched` 但设置未变）都在下次启动回滚目标副本。源根不可用（外接盘未插）或某包在新根缺失时保留 journal、不删源，下次再试。
   - **写门闩**：从迁移登记起到重启，`start_import_mod_task` / `start_import_mod_revision_task` / `start_external_import_batch` / `retry_external_import_batch` / `delete_mod` 一律拒绝，code 为 `mod_storage_migration_in_progress`（迁移进行中）或 `mod_storage_restart_required`（设置已切换待重启；库为空时 `set_mod_storage_dir` 成功后同样进入此态）。读路径不受影响。`ModStorageSettingsDto` 新增 `writesFrozen: "none" | "migration" | "restart_required"` 供设置页与入口按钮投影；前端只按码取词，不复算。
   - **启动前置**：有 `mod_import` 任务 queued / running 时拒绝启动，code `mod_storage_migration_imports_active`（用户先等导入结束）；目标与当前存储根相同、互相包含或位于其 `sandboxes/` 之下返回 `mod_storage_dir_overlaps_current_root`（`validate_mod_storage_dir` 同样报此码；切片① 的 `set_mod_storage_dir` 也遵守）；其余 `mod_storage_dir_*` 与切片① 一致；目标目录在登记时即被认领（写 marker），迁移失败或取消也不会撤销认领——空目录 + marker 无害。`mod_storage_migration_task_unavailable`、`game_config_unavailable` 为编排自身失败。

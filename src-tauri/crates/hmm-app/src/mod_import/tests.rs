@@ -1615,6 +1615,7 @@ fn fake_app_settings_repository(
             log_storage_max_bytes: None,
             debug_log_enabled: false,
             mod_storage_dir: None,
+            delete_archive_after_import: false,
         },
         load_count: Mutex::new(0),
     })
@@ -1639,4 +1640,319 @@ fn sample_thumbnail_result() -> PreviewImageProcessingResult {
         height: 180,
         content_hash: "hash-1".to_owned(),
     })
+}
+
+// ─── #275 ④ "move instead of copy": archive consumption after a durable import ───
+
+#[derive(Default)]
+struct RecordingArchiveConsumer {
+    fingerprint_error: Option<hmm_ports::ModImportArchiveConsumeError>,
+    consume_error: Option<hmm_ports::ModImportArchiveConsumeError>,
+    fingerprinted: Mutex<Vec<std::path::PathBuf>>,
+    consumed: Mutex<Vec<(std::path::PathBuf, hmm_ports::ModImportArchiveFingerprint)>>,
+}
+
+impl hmm_ports::ModImportArchiveConsumer for RecordingArchiveConsumer {
+    fn fingerprint(
+        &self,
+        archive_path: &Path,
+    ) -> Result<hmm_ports::ModImportArchiveFingerprint, hmm_ports::ModImportArchiveConsumeError>
+    {
+        self.fingerprinted
+            .lock()
+            .expect("fingerprinted lock")
+            .push(archive_path.to_path_buf());
+        if let Some(error) = self.fingerprint_error {
+            return Err(error);
+        }
+        Ok(hmm_ports::ModImportArchiveFingerprint {
+            len: 7,
+            modified_unix_millis: Some(1),
+            identity: None,
+        })
+    }
+
+    fn consume(
+        &self,
+        archive_path: &Path,
+        expected: &hmm_ports::ModImportArchiveFingerprint,
+        _protected_roots: &[std::path::PathBuf],
+    ) -> Result<(), hmm_ports::ModImportArchiveConsumeError> {
+        self.consumed
+            .lock()
+            .expect("consumed lock")
+            .push((archive_path.to_path_buf(), *expected));
+        match self.consume_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+
+struct NoGameConfig;
+
+impl hmm_ports::GameConfigRepository for NoGameConfig {
+    fn load_game_instance(
+        &self,
+        _game_id: &hmm_core::GameId,
+    ) -> hmm_ports::GameConfigRepositoryResult<Option<hmm_core::GameInstance>> {
+        Ok(None)
+    }
+
+    fn save_game_instance(
+        &self,
+        _instance: &hmm_core::GameInstance,
+    ) -> hmm_ports::GameConfigRepositoryResult<()> {
+        Ok(())
+    }
+}
+
+struct ConsumingRunnerHarness {
+    task_manager: Arc<crate::TaskManager>,
+    task_id: String,
+    consumer: Arc<RecordingArchiveConsumer>,
+    result_repository: Arc<FakeModImportResultRepository>,
+    runner: ModImportTaskRunner,
+}
+
+fn consumed_archive_path() -> std::path::PathBuf {
+    Path::new("C:/Users/Alice/Downloads/sample.zip").to_path_buf()
+}
+
+fn consuming_runner(
+    delete_archive_after_import: bool,
+    consumer: RecordingArchiveConsumer,
+    preparer: impl FnOnce(&str) -> Box<dyn ModImportPackagePreparer>,
+) -> ConsumingRunnerHarness {
+    let task_manager = Arc::new(crate::TaskManager::new());
+    let task = task_manager
+        .create_task(crate::TaskKind::ModImport)
+        .expect("task can be created");
+    let consumer = Arc::new(consumer);
+    let result_repository = Arc::new(FakeModImportResultRepository::default());
+    let settings = Arc::new(FakeAppSettingsRepository {
+        settings: AppSettings {
+            delete_archive_after_import,
+            ..AppSettings::default()
+        },
+        load_count: Mutex::new(0),
+    });
+    let runner = ModImportTaskRunner::new(
+        Arc::clone(&task_manager),
+        Arc::new(ModImportPrepareService::new(
+            preparer(&task.task_id),
+            ModImportAnalysisService::new(
+                Box::new(FakePreviewImageProcessor {
+                    result: PreviewImageProcessingResult::Fallback(
+                        PreviewImageRejectionReason::Missing,
+                    ),
+                }),
+                Box::new(FakeThumbnailStore::default()),
+                Box::new(FakeMetadataAnalyzer::default()),
+            ),
+        )),
+        Arc::clone(&result_repository) as Arc<dyn ModImportResultRepository>,
+    )
+    .with_app_settings_repository(settings)
+    .with_archive_consumption(Arc::new(crate::ModImportArchiveConsumptionService::new(
+        Arc::clone(&consumer) as Arc<dyn hmm_ports::ModImportArchiveConsumer>,
+        Arc::new(NoGameConfig),
+        vec![hmm_core::GameId::mhw()],
+        Vec::new(),
+    )));
+    ConsumingRunnerHarness {
+        task_manager,
+        task_id: task.task_id,
+        consumer,
+        result_repository,
+        runner,
+    }
+}
+
+fn successful_preparer(task_id: &str) -> Box<dyn ModImportPackagePreparer> {
+    Box::new(FakePackagePreparer::new(
+        task_id,
+        &consumed_archive_path(),
+        "pkg-1",
+        Path::new("sandbox"),
+    ))
+}
+
+#[test]
+fn enabled_archive_consumption_deletes_the_fingerprinted_archive_after_the_catalog_write() {
+    let harness = consuming_runner(
+        true,
+        RecordingArchiveConsumer::default(),
+        successful_preparer,
+    );
+
+    let events = harness
+        .runner
+        .run_prepare_task(&harness.task_id, consumed_archive_path())
+        .expect("runner succeeds");
+
+    let completed = events.last().expect("completed event");
+    assert_eq!(completed.phase, "mod_import.prepare.completed");
+    assert_eq!(
+        completed.error, None,
+        "a consumed archive is not a degradation"
+    );
+    assert_eq!(
+        harness
+            .consumer
+            .fingerprinted
+            .lock()
+            .expect("fingerprinted")
+            .as_slice(),
+        [consumed_archive_path()]
+    );
+    let consumed = harness.consumer.consumed.lock().expect("consumed");
+    assert_eq!(consumed.len(), 1);
+    assert_eq!(consumed[0].0, consumed_archive_path());
+    assert_eq!(
+        consumed[0].1.len, 7,
+        "the fingerprint taken at start is what is checked"
+    );
+    assert_eq!(
+        harness
+            .result_repository
+            .list_analysis()
+            .expect("list")
+            .len(),
+        1,
+        "the catalog write landed before the archive went"
+    );
+    assert_eq!(
+        harness.task_manager.task_status(&harness.task_id),
+        Some(crate::TaskStatus::Completed)
+    );
+}
+
+#[test]
+fn disabled_archive_consumption_never_touches_the_archive() {
+    let harness = consuming_runner(
+        false,
+        RecordingArchiveConsumer::default(),
+        successful_preparer,
+    );
+
+    let events = harness
+        .runner
+        .run_prepare_task(&harness.task_id, consumed_archive_path())
+        .expect("runner succeeds");
+
+    assert_eq!(events.last().expect("completed").error, None);
+    assert!(harness
+        .consumer
+        .fingerprinted
+        .lock()
+        .expect("fingerprinted")
+        .is_empty());
+    assert!(harness
+        .consumer
+        .consumed
+        .lock()
+        .expect("consumed")
+        .is_empty());
+}
+
+#[test]
+fn a_kept_archive_rides_on_the_completed_event_as_a_degradation_code() {
+    let harness = consuming_runner(
+        true,
+        RecordingArchiveConsumer {
+            consume_error: Some(hmm_ports::ModImportArchiveConsumeError::ProtectedLocation),
+            ..RecordingArchiveConsumer::default()
+        },
+        successful_preparer,
+    );
+
+    let events = harness
+        .runner
+        .run_prepare_task(&harness.task_id, consumed_archive_path())
+        .expect("the import itself still succeeds");
+
+    let completed = events.last().expect("completed event");
+    assert_eq!(completed.status, crate::TaskStatus::Completed);
+    assert_eq!(completed.phase, "mod_import.prepare.completed");
+    assert_eq!(
+        completed.error.as_deref(),
+        Some("mod_import_archive_kept_protected_location")
+    );
+    assert_eq!(
+        harness.task_manager.task_status(&harness.task_id),
+        Some(crate::TaskStatus::Completed)
+    );
+    assert_eq!(
+        harness
+            .result_repository
+            .list_analysis()
+            .expect("list")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn a_failed_fingerprint_keeps_the_archive_and_still_imports() {
+    let harness = consuming_runner(
+        true,
+        RecordingArchiveConsumer {
+            fingerprint_error: Some(hmm_ports::ModImportArchiveConsumeError::NotRegularFile),
+            ..RecordingArchiveConsumer::default()
+        },
+        successful_preparer,
+    );
+
+    let events = harness
+        .runner
+        .run_prepare_task(&harness.task_id, consumed_archive_path())
+        .expect("runner succeeds");
+
+    assert_eq!(
+        events.last().expect("completed").error.as_deref(),
+        Some("mod_import_archive_kept_not_regular_file")
+    );
+    assert!(harness
+        .consumer
+        .consumed
+        .lock()
+        .expect("consumed")
+        .is_empty());
+}
+
+#[test]
+fn a_failed_import_never_consumes_the_archive() {
+    let harness = consuming_runner(true, RecordingArchiveConsumer::default(), |_| {
+        Box::new(FailingPackagePreparer)
+    });
+
+    let error = harness
+        .runner
+        .run_prepare_task(&harness.task_id, consumed_archive_path())
+        .expect_err("runner fails");
+
+    assert_eq!(
+        event_phases(&error.events),
+        vec!["mod_import.unpack.failed"]
+    );
+    assert_eq!(
+        harness
+            .consumer
+            .fingerprinted
+            .lock()
+            .expect("fingerprinted")
+            .len(),
+        1,
+        "the fingerprint is taken up front"
+    );
+    assert!(
+        harness
+            .consumer
+            .consumed
+            .lock()
+            .expect("consumed")
+            .is_empty(),
+        "nothing is deleted when the import did not land"
+    );
 }

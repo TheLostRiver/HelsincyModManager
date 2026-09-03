@@ -20,6 +20,7 @@ mod log_retention;
 mod log_storage_budget;
 mod managed_log;
 mod mod_import;
+mod mod_import_archive_consumer;
 mod mod_import_install_files;
 #[cfg(test)]
 mod mod_library_projection_tests;
@@ -97,6 +98,7 @@ pub use mod_import::{
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
+pub use mod_import_archive_consumer::FileSystemModImportArchiveConsumer;
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
 pub use mod_revision_catalog::JsonModImportResultRepository;
 pub use mod_storage_inspector::FileSystemModStorageDirectoryInspector;

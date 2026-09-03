@@ -27,13 +27,13 @@ use hmm_app::{
     InstallRecoverySummary, InstallTaskRunner, InstallTaskService, InstallWriteAdmission,
     InstallWriteAdmissionError, InstalledReplacementReinstallResolution,
     LimitedPreviewImageProcessor, ModDeletionService, ModDependencyGraphService,
-    ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
-    ModLibraryQueryService, ModLibraryService, ModMetadataService, ModStorageMigrationSettlement,
-    ModStorageMigrationTaskService, ModStorageMigrationTaskServiceDependencies,
-    ModStorageSettingsService, ModStorageSettingsServiceDependencies, ModStorageWriteGate,
-    PlannedInitialRetargetInstall, PreparedReinstall, PreviewImageCandidateListService,
-    PreviewImageCandidateSelectionService, PreviewImageDetailService,
-    PreviewImageDiagnosticsExportService, PreviewImageService,
+    ModImportAnalysisService, ModImportArchiveConsumptionService, ModImportPrepareService,
+    ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService, ModLibraryService,
+    ModMetadataService, ModStorageMigrationSettlement, ModStorageMigrationTaskService,
+    ModStorageMigrationTaskServiceDependencies, ModStorageSettingsService,
+    ModStorageSettingsServiceDependencies, ModStorageWriteGate, PlannedInitialRetargetInstall,
+    PreparedReinstall, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
     RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
@@ -72,11 +72,11 @@ use hmm_infra::{
     DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
-    FileSystemModStorageDirectoryInspector, FileSystemModStorageMigrator,
-    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupDirectoryLocator,
-    FileSystemSaveBackupWriter, FileSystemSaveRestoreFileSystem,
-    FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter, FileSystemTextLogReader,
-    FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
+    FileSystemModImportArchiveConsumer, FileSystemModStorageDirectoryInspector,
+    FileSystemModStorageMigrator, FileSystemRetargetStagingMaterializer,
+    FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter,
+    FileSystemSaveRestoreFileSystem, FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter,
+    FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonModStorageMigrationJournalRepository,
@@ -769,7 +769,7 @@ impl HmmRuntime {
         ));
         let save_backup_background_worker =
             Arc::new(SaveBackupBackgroundWorker::new_with_settings_repository(
-                game_ids,
+                game_ids.clone(),
                 profile_repository_for_save_backup_background_worker,
                 profile_save_settings_repository_for_save_backup_background_worker,
                 Arc::clone(&save_backup_auto_scheduler),
@@ -999,7 +999,17 @@ impl HmmRuntime {
             )
             .with_thumbnail_cache_maintenance(thumbnail_cache_maintenance)
             .with_app_settings_repository(app_settings_repository)
-            .with_metadata_repository(Arc::clone(&mod_metadata_repository)),
+            .with_metadata_repository(Arc::clone(&mod_metadata_repository))
+            // #275 slice 4: the source archive may go only after the catalog write, never when
+            // it lies inside app-data, the storage root or a configured game root.
+            .with_archive_consumption(Arc::new(
+                ModImportArchiveConsumptionService::new(
+                    Arc::new(FileSystemModImportArchiveConsumer),
+                    Arc::clone(&game_config_repository),
+                    game_ids.clone(),
+                    vec![app_data_dir.clone(), mod_storage.root.clone()],
+                ),
+            )),
         );
         let state = Self {
             game_setup,

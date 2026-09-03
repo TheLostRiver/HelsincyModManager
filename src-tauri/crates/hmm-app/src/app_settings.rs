@@ -102,6 +102,17 @@ impl AppSettingsService {
         })
     }
 
+    /// #275 slice 4: "move instead of copy" for zip imports. Destructive for the user's source
+    /// archive, so the UI confirms before turning it on; the service just persists the choice.
+    pub fn update_delete_archive_after_import(
+        &self,
+        enabled: bool,
+    ) -> Result<AppSettings, AppSettingsServiceError> {
+        self.update_settings(|settings| {
+            settings.delete_archive_after_import = enabled;
+        })
+    }
+
     pub fn update_debug_log_enabled(
         &self,
         enabled: bool,
@@ -170,6 +181,7 @@ mod tests {
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })
         );
     }
@@ -183,6 +195,7 @@ mod tests {
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: true,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })),
             save_count: Mutex::new(0),
         });
@@ -210,6 +223,7 @@ mod tests {
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: true,
                 mod_storage_dir: Some(directory),
+                delete_archive_after_import: false,
             })
         );
         let cleared = service
@@ -217,6 +231,32 @@ mod tests {
             .expect("clearing the storage dir succeeds");
         assert_eq!(cleared.mod_storage_dir, None);
         assert!(cleared.debug_log_enabled);
+    }
+
+    #[test]
+    fn delete_archive_after_import_toggles_without_touching_other_settings() {
+        let repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            saved_settings: Mutex::new(Some(AppSettings {
+                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                debug_log_enabled: true,
+                ..AppSettings::default()
+            })),
+            save_count: Mutex::new(0),
+        });
+        let service = AppSettingsService::new(repository.clone());
+
+        let enabled = service
+            .update_delete_archive_after_import(true)
+            .expect("enable");
+        assert!(enabled.delete_archive_after_import);
+        assert_eq!(enabled.thumbnail_cache_max_bytes, Some(96 * 1024 * 1024));
+        assert!(enabled.debug_log_enabled);
+
+        let disabled = service
+            .update_delete_archive_after_import(false)
+            .expect("disable");
+        assert!(!disabled.delete_archive_after_import);
+        assert_eq!(*repository.save_count.lock().expect("save count lock"), 2);
     }
 
     #[test]
@@ -228,6 +268,7 @@ mod tests {
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })),
             save_count: Mutex::new(0),
         });
@@ -257,6 +298,7 @@ mod tests {
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })),
             save_count: Mutex::new(0),
         });
@@ -281,6 +323,7 @@ mod tests {
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })
         );
     }
@@ -294,6 +337,7 @@ mod tests {
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
                 mod_storage_dir: None,
+                delete_archive_after_import: false,
             })),
             save_count: Mutex::new(0),
         });

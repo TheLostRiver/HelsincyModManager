@@ -464,6 +464,11 @@ CLI-2B Sandbox 写许可测试只使用测试进程创建的临时根，必须�
   拒绝启动、当前根重叠拒绝，以及启动期收尾的六种结论；三类沙箱写入者各有一条「门闩冻结即拒绝且不留
   副作用」用例；`hmm-runtime` 端到端覆盖真实文件系统上的迁移 → 同会话仍读旧根且写入冻结 → 重启后
   新根生效、源副本清除、journal 清空，以及 `copying` journal 崩溃后的启动回滚。
+- #275 切片④ 移动导入：`hmm-infra` 的 consumer 用例覆盖同一文件删除且不碰同目录其他文件、导入期间被替换
+  / 已不存在则保留、受保护根（含此刻不存在的根按词法保护）内保留、目录与相对路径拒绝、junction 路径拒绝；
+  `hmm-app` 用假 consumer 覆盖 runner 的「落库后才删」「设置关闭从不触碰」「删不成挂 completed 的 error」
+  「指纹失败仍导入」「导入失败不删」，以及策略服务把当前游戏根并入受保护根、配置读不到即保留。对照组
+  CG-N…CG-Q（指纹比对、受保护根、设置门、降级码）见红后还原。
 - 正向、拒绝、marker 篡改、根替换和 link/junction fixture 都验证 Sandbox 外 sentinel bytes 不变。
 - 测试不得读取真实 Steam、AppData、游戏、存档、日志或 Scheduled Task；marker/capability 不得被
   表述为 Production admission，也不得自动解锁 backup create 或 diagnostics export。

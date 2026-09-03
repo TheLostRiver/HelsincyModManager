@@ -26,6 +26,7 @@ mod log_diagnostics;
 mod mod_deletion;
 mod mod_dependency_graph;
 mod mod_import;
+mod mod_import_archive;
 mod mod_import_diagnostics;
 mod mod_import_task;
 mod mod_library_projection;
@@ -229,6 +230,7 @@ pub use mod_import::{
     ModPackageMetadataSummary, ModRevisionList, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
+pub use mod_import_archive::ModImportArchiveConsumptionService;
 pub use mod_import_diagnostics::{
     PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,
     PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
