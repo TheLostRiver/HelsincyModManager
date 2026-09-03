@@ -66,7 +66,13 @@ export type ReplacementTarget = {
   gameId: string;
   targetType: string;
   displayNames: Record<string, string>;
+  /** 跨语言压平的检索平表（不带 locale），只供过滤匹配。 */
   aliases: string[];
+  /**
+   * 按语言分组的别名（locale -> 别名列表），键集 ⊆ displayNames 键集，供展示（#274）。
+   * 来源不按语言给别名时（铠甲 catalog）后端省略该键：缺席 = 不知道，不等于空表。
+   */
+  aliasesByLocale?: Record<string, string[]>;
   internalId: string;
 };
 

@@ -78,6 +78,7 @@
 
 .replacement-panel__source,
 .replacement-panel__catalog,
+.replacement-panel__aliases,
 .replacement-panel__preview {
   display: grid;
   gap: 11px;
@@ -85,6 +86,7 @@
 }
 
 .replacement-panel__catalog,
+.replacement-panel__aliases,
 .replacement-panel__preview {
   padding-top: 15px;
   border-top: 1px solid var(--color-border-muted);
@@ -330,6 +332,12 @@
   background: var(--color-warning-bg);
 }
 
+/* 「+N 个名称」是信息不是状态：用中性色，别与绿色已安装 / 琥珀色占用抢注意力（#274）。 */
+.replacement-panel__target-status.is-aliases {
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+}
+
 /* 被占用的行与"当前已安装"的绿色左条对称，改用警示色左条。 */
 .replacement-panel__target-row[data-occupied="true"] {
   box-shadow: inset 3px 0 0 var(--color-warning-dot);
@@ -347,9 +355,62 @@
   overflow-wrap: anywhere;
 }
 
-.replacement-panel__target-row code {
+.replacement-panel__target-row code,
+.replacement-panel__aliases-target code {
   overflow-wrap: anywhere;
   color: var(--color-text-soft);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+}
+
+/*
+ * 选中目标的别名摘要（#274）：列表里的行只放得下一个计数药丸，共用同一模型的名字在这里
+ * 全部铺开——用户点完目标视线本来就往下走到预览与安装按钮，放在这里不会引起列表内滚动跳动。
+ * 只在选中目标且本语言有别名时渲染，零别名的目标不重复行内已有的信息。
+ */
+.replacement-panel__aliases-target {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+}
+
+.replacement-panel__aliases-target strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.replacement-panel__aliases-target code {
+  flex: none;
+  margin-left: auto;
+}
+
+.replacement-panel__alias-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.replacement-panel__alias-list li {
+  padding: 3px 9px;
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.replacement-panel__aliases-hint {
+  margin: 0;
+  color: var(--color-text-muted);
   font-size: 11px;
 }
 
