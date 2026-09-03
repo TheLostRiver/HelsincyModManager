@@ -359,6 +359,7 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
   retry，不把已提交的玩家文件伪造成失败或回滚。
 - `rollback_install` 与 `reconcile_reinstall` 事件只记录 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数；`reconcile_reinstall` 的计数既可表示 post-commit cleanup，也可表示受控恢复到 pre-reinstall 状态的 remove/restore/snapshot cleanup 数量。事件不记录完整本地路径、backup/snapshot ref 或 root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - `reinstall_mod` 事件只允许 `task_id`、`game_id`、`profile_id`、`mod_id`、`previous_revision_id`、`candidate_revision_id`、四类 target 聚合计数，以及失败时的稳定 `error_code` / `rollback_result`。ARMOR 同 revision target switch 在这份既有白名单上唯一新增可选 `target_id`；不记录 target 列表、binding、staging、plan token、完整路径、backup/snapshot ref、manifest/source 正文、hash 列表或第三方 Mod 内容。
+- `adopt_external_mod`（#286 接管，category `install`）事件只允许 `task_id`、`game_id`、`mod_id`、`profile_id`、`claimed_file_count`、`skipped_claimed_count`、`skipped_changed_count`、`skipped_missing_count`，以及失败时与 task event 一致的稳定 `error_code`；取消不写审计。清单已写成而审计写入失败时不伪造 `failure`，任务仍 completed，事件携带 `external_mod_adopt_audit_unavailable`。不记录目标路径、清单正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
 - SAVE-05 retention 的物理清理完成后，若 retention Audit 写入失败，显式维护报告的
   `evidence_degraded` 为 `true`，自动备份的 `save_backup.completed` event 只携带稳定
