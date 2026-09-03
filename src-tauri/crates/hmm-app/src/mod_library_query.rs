@@ -326,6 +326,9 @@ fn projection_page_item_to_app(
                 // The library projection does not carry revisioned manifest facts; batch
                 // flows read revisions through `get_install_manifest_status` instead.
                 installed_revision_id: None,
+                // Same for adopted entries: the uninstall confirmation reads the count
+                // through `get_install_manifest_status`, never from the projection.
+                adopted_file_count: None,
             })
         }
         None if page_item.status.is_none() => None,

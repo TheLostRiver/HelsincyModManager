@@ -56,6 +56,9 @@ pub struct InstallRecoverySummary {
     pub status: InstallRecoveryStatus,
     pub managed_file_count: usize,
     pub backup_count: usize,
+    /// Manifest entries claimed from an external installation (#286 adopt). They carry no
+    /// `backup_ref`, so uninstalling deletes them without anything to restore.
+    pub adopted_file_count: usize,
     pub issue_count: usize,
     pub issues: Vec<InstallRecoveryIssueSummary>,
 }
@@ -317,6 +320,7 @@ impl InstallRecoveryScanService {
                 status: InstallRecoveryStatus::NotInstalled,
                 managed_file_count: 0,
                 backup_count: 0,
+                adopted_file_count: 0,
                 issue_count: 0,
                 issues: Vec::new(),
             };
@@ -332,6 +336,7 @@ impl InstallRecoveryScanService {
             .iter()
             .filter(|entry| entry.backup_ref.is_some())
             .count();
+        let adopted_file_count = entries.iter().filter(|entry| entry.adopted).count();
 
         if managed_file_count == 0 {
             return InstallRecoverySummary {
@@ -340,6 +345,7 @@ impl InstallRecoveryScanService {
                 status: InstallRecoveryStatus::NotInstalled,
                 managed_file_count,
                 backup_count,
+                adopted_file_count,
                 issue_count: 0,
                 issues: Vec::new(),
             };
@@ -364,6 +370,7 @@ impl InstallRecoveryScanService {
                 status,
                 managed_file_count,
                 backup_count,
+                adopted_file_count,
                 issue_count: 0,
                 issues: Vec::new(),
             };
@@ -420,6 +427,7 @@ impl InstallRecoveryScanService {
             },
             managed_file_count,
             backup_count,
+            adopted_file_count,
             issue_count,
             issues: issue_summaries,
         }
@@ -432,7 +440,7 @@ impl InstallRecoveryScanService {
         manifest: Option<&InstallManifest>,
         transaction: &ReinstallRecoveryTransaction,
     ) -> InstallRecoverySummary {
-        let (managed_file_count, backup_count) = reinstall_manifest_counts(
+        let (managed_file_count, backup_count, adopted_file_count) = reinstall_manifest_counts(
             manifest.unwrap_or(&transaction.pre_reinstall_manifest),
             mod_id,
         );
@@ -451,6 +459,7 @@ impl InstallRecoveryScanService {
             status,
             managed_file_count,
             backup_count,
+            adopted_file_count,
             issue_count: 0,
             issues: Vec::new(),
         }
@@ -657,15 +666,16 @@ impl ReinstallTargetObservation {
     }
 }
 
-fn reinstall_manifest_counts(manifest: &InstallManifest, mod_id: &ModId) -> (usize, usize) {
+fn reinstall_manifest_counts(manifest: &InstallManifest, mod_id: &ModId) -> (usize, usize, usize) {
     manifest
         .entries
         .iter()
         .filter(|entry| entry.mod_id == *mod_id)
-        .fold((0, 0), |(managed, backups), entry| {
+        .fold((0, 0, 0), |(managed, backups, adopted), entry| {
             (
                 managed + 1,
                 backups + usize::from(entry.backup_ref.is_some()),
+                adopted + usize::from(entry.adopted),
             )
         })
 }
@@ -1713,6 +1723,9 @@ fn recovery_record_summary(
             .iter()
             .filter(|entry| entry.backup_ref.is_some())
             .count(),
+        // Counts in this branch describe the recovery record, whose entries are files this
+        // tool is writing itself; adopted entries only ever live in the manifest.
+        adopted_file_count: 0,
         issue_count: 0,
         issues: Vec::new(),
     })

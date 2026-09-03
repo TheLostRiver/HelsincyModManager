@@ -55,6 +55,12 @@ export type InstallManifestStatusSummary = {
   backupCount: number;
   /** Exact installed revision from revisioned manifest facts; null for legacy/not-installed. */
   installedRevisionId: string | null;
+  /**
+   * Entries claimed from an external installation (#286 adopt): no backup, uninstall only
+   * deletes them. Both command paths report it; omitted only when the summary source does
+   * not carry the fact.
+   */
+  adoptedFileCount?: number;
 };
 
 export type InstallRecoveryStatus =
@@ -92,6 +98,7 @@ export type InstallRecoverySummary = {
   status: InstallRecoveryStatus;
   managedFileCount: number;
   backupCount: number;
+  adoptedFileCount: number;
   issueCount: number;
   issues: InstallRecoveryIssueSummary[];
 };

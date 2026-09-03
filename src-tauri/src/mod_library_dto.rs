@@ -315,6 +315,7 @@ mod tests {
                     managed_file_count: 2,
                     backup_count: 1,
                     installed_revision_id: None,
+                    adopted_file_count: None,
                 }),
             }],
             page: 1,
