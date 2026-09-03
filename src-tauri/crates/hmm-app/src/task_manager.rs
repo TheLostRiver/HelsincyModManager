@@ -15,6 +15,8 @@ pub enum TaskKind {
     ExternalStateScan,
     /// 外部 MOD 接管（#286 adopt）：只写安装清单，不写游戏目录、不备份。
     ExternalModAdopt,
+    /// Mod 存储根迁移（#275）：把 `<源根>/sandboxes/*` 复制校验到新根后切设置；不写游戏目录。
+    ModStorageMigration,
 }
 
 impl TaskKind {
@@ -26,6 +28,7 @@ impl TaskKind {
             Self::SaveRestore => "save-restore",
             Self::ExternalStateScan => "external-state-scan",
             Self::ExternalModAdopt => "external-mod-adopt",
+            Self::ModStorageMigration => "mod-storage-migration",
         }
     }
 }
@@ -170,6 +173,18 @@ impl TaskManager {
             .lock()
             .ok()
             .and_then(|tasks| tasks.get(task_id).map(|task| task.status))
+    }
+
+    /// Whether any task of `kind` is still queued or running. The storage-root migration uses
+    /// this (under the write gate) to refuse starting while an import may still write sandboxes.
+    pub fn has_active_task_of_kind(&self, kind: TaskKind) -> Result<bool, TaskManagerError> {
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| TaskManagerError::TaskStoreUnavailable)?;
+        Ok(tasks.values().any(|task| {
+            task.kind == kind && matches!(task.status, TaskStatus::Queued | TaskStatus::Running)
+        }))
     }
 
     pub fn start_task(&self, task_id: &str) -> Result<TaskSnapshot, TaskManagerError> {
@@ -427,6 +442,54 @@ mod tests {
         assert_eq!(task.kind, TaskKind::Install);
         assert_eq!(task.status, TaskStatus::Queued);
         assert_eq!(manager.task_status(&task.task_id), Some(TaskStatus::Queued));
+    }
+
+    #[test]
+    fn reports_active_tasks_per_kind_until_they_reach_a_terminal_status() {
+        let manager = TaskManager::new();
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModImport),
+            Ok(false)
+        );
+
+        let import = manager
+            .create_task(TaskKind::ModImport)
+            .expect("import task can be created");
+        let migration = manager
+            .create_task(TaskKind::ModStorageMigration)
+            .expect("migration task can be created");
+        assert!(migration.task_id.starts_with("mod-storage-migration-"));
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModImport),
+            Ok(true)
+        );
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::Install),
+            Ok(false)
+        );
+
+        manager.start_task(&import.task_id).expect("import starts");
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModImport),
+            Ok(true)
+        );
+
+        manager.fail_task(&import.task_id).expect("import fails");
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModImport),
+            Ok(false)
+        );
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModStorageMigration),
+            Ok(true)
+        );
+        manager
+            .cancel_task(&migration.task_id)
+            .expect("queued migration can be cancelled");
+        assert_eq!(
+            manager.has_active_task_of_kind(TaskKind::ModStorageMigration),
+            Ok(false)
+        );
     }
 
     #[test]

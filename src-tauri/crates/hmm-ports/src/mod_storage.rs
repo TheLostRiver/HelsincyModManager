@@ -34,6 +34,11 @@ pub enum ModStorageDirectoryError {
     NotWritable,
     #[error("mod storage directory overlaps a configured game directory")]
     OverlapsGameRoot,
+    /// The candidate is, contains, or lies inside the storage root currently in effect. A root
+    /// nested in another root would make one root's packages appear as foreign entries of the
+    /// other, so neither `set` nor a migration ever accepts it.
+    #[error("mod storage directory overlaps the current storage root")]
+    OverlapsCurrentRoot,
     #[error("mod storage directory could not be inspected")]
     Unavailable,
 }
@@ -51,6 +56,7 @@ impl ModStorageDirectoryError {
             Self::MarkerInvalid => "mod_storage_dir_marker_invalid",
             Self::NotWritable => "mod_storage_dir_not_writable",
             Self::OverlapsGameRoot => "mod_storage_dir_overlaps_game_root",
+            Self::OverlapsCurrentRoot => "mod_storage_dir_overlaps_current_root",
             Self::Unavailable => "mod_storage_dir_unavailable",
         }
     }
@@ -68,6 +74,9 @@ pub struct ModStorageDirectoryInspectionRequest<'a> {
     pub path: &'a Path,
     /// Directories the storage root may neither contain nor live inside (configured game roots).
     pub exclusive_roots: &'a [PathBuf],
+    /// Storage root in effect for the running process; a candidate overlapping it fails with
+    /// [`ModStorageDirectoryError::OverlapsCurrentRoot`]. `None` skips the check.
+    pub current_root: Option<&'a Path>,
 }
 
 /// File-system facts about Mod storage directories. Implementations own every IO decision
@@ -115,6 +124,10 @@ pub enum ModStorageMigrationError {
     CopyFailed,
     #[error("a copied package does not match its source")]
     VerifyMismatch,
+    /// Startup cleanup found a switched journal whose target lacks a listed package; the source
+    /// copy is kept and the journal stays until the target is complete again.
+    #[error("a migrated package is missing from the target storage root")]
+    TargetPackageMissing,
     #[error("the migration journal could not be read or written")]
     JournalUnavailable,
     #[error("migration was cancelled")]
@@ -129,6 +142,7 @@ impl ModStorageMigrationError {
             Self::PackageUnreadable => "mod_storage_migration_package_unreadable",
             Self::CopyFailed => "mod_storage_migration_copy_failed",
             Self::VerifyMismatch => "mod_storage_migration_verify_mismatch",
+            Self::TargetPackageMissing => "mod_storage_migration_target_package_missing",
             Self::JournalUnavailable => "mod_storage_migration_journal_unavailable",
             Self::Cancelled => "mod_storage_migration_cancelled",
         }
@@ -307,6 +321,7 @@ mod tests {
             ModStorageDirectoryError::MarkerInvalid,
             ModStorageDirectoryError::NotWritable,
             ModStorageDirectoryError::OverlapsGameRoot,
+            ModStorageDirectoryError::OverlapsCurrentRoot,
             ModStorageDirectoryError::Unavailable,
         ];
         let codes = all.iter().map(|error| error.code()).collect::<Vec<_>>();
@@ -315,5 +330,25 @@ mod tests {
         assert!(codes
             .iter()
             .all(|code| code.starts_with("mod_storage_dir_")));
+    }
+
+    #[test]
+    fn every_migration_error_code_is_unique_and_prefixed() {
+        let all = [
+            ModStorageMigrationError::SourceUnavailable,
+            ModStorageMigrationError::TargetUnavailable,
+            ModStorageMigrationError::PackageUnreadable,
+            ModStorageMigrationError::CopyFailed,
+            ModStorageMigrationError::VerifyMismatch,
+            ModStorageMigrationError::TargetPackageMissing,
+            ModStorageMigrationError::JournalUnavailable,
+            ModStorageMigrationError::Cancelled,
+        ];
+        let codes = all.iter().map(|error| error.code()).collect::<Vec<_>>();
+        let unique = codes.iter().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), all.len());
+        assert!(codes
+            .iter()
+            .all(|code| code.starts_with("mod_storage_migration_")));
     }
 }

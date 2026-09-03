@@ -57,6 +57,7 @@ fn cancelled_phase_for_kind(kind: TaskKind) -> &'static str {
         TaskKind::SaveRestore => SAVE_RESTORE_CANCELLED_PHASE,
         TaskKind::ExternalStateScan => hmm_runtime::EXTERNAL_STATE_SCAN_CANCELLED_PHASE,
         TaskKind::ExternalModAdopt => hmm_runtime::EXTERNAL_MOD_ADOPT_CANCELLED_PHASE,
+        TaskKind::ModStorageMigration => hmm_app::MOD_STORAGE_MIGRATION_CANCELLED_PHASE,
     }
 }
 

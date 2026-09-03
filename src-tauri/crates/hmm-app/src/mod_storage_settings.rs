@@ -3,10 +3,14 @@
 //! The effective storage root is fixed when the runtime composes (see `hmm-runtime`); this
 //! service only reads/writes the *setting* and validates candidate directories. Changing the
 //! setting therefore takes effect after a restart. While the library holds packages a change
-//! must go through migration (a later slice), because switching the root underneath existing
-//! packages would leave them unreachable — the service refuses with `MigrationRequired`.
+//! must go through migration (`mod_storage_migration`), because switching the root underneath
+//! existing packages would leave them unreachable — the service refuses with
+//! `MigrationRequired`. A successful `set` freezes sandbox writes until restart through the
+//! shared [`ModStorageWriteGate`], for the same reason.
 
-use crate::AppSettingsService;
+use crate::{
+    AppSettingsService, ModStorageWriteFreeze, ModStorageWriteGate, ModStorageWriteGateError,
+};
 use hmm_core::GameId;
 use hmm_ports::{
     GameConfigRepository, ModImportResultRepository, ModStorageDirectoryError,
@@ -22,6 +26,8 @@ pub enum ModStorageSettingsError {
     Directory(ModStorageDirectoryError),
     #[error("the library holds packages; changing the storage directory requires migration")]
     MigrationRequired,
+    #[error("{0}")]
+    WriteFrozen(ModStorageWriteGateError),
     #[error("app settings unavailable")]
     SettingsUnavailable,
     #[error("mod library unavailable")]
@@ -35,10 +41,17 @@ impl ModStorageSettingsError {
         match self {
             Self::Directory(error) => error.code(),
             Self::MigrationRequired => "mod_storage_migration_required",
+            Self::WriteFrozen(error) => error.code(),
             Self::SettingsUnavailable => "app_settings_unavailable",
             Self::LibraryUnavailable => "mod_library_unavailable",
             Self::GameConfigUnavailable => "game_config_unavailable",
         }
+    }
+}
+
+impl From<ModStorageWriteGateError> for ModStorageSettingsError {
+    fn from(error: ModStorageWriteGateError) -> Self {
+        Self::WriteFrozen(error)
     }
 }
 
@@ -61,6 +74,8 @@ pub struct ModStorageSettingsSnapshot {
     pub library_empty: bool,
     /// The persisted setting differs from what this process started with.
     pub restart_required: bool,
+    /// Whether sandbox writes (import, external import, delete) are refused right now.
+    pub writes_frozen: ModStorageWriteFreeze,
 }
 
 /// Result of a read-only directory check. Failures are facts to display, not errors.
@@ -78,6 +93,7 @@ pub struct ModStorageSettingsService {
     game_config: Arc<dyn GameConfigRepository>,
     game_ids: Vec<GameId>,
     catalog: Arc<dyn ModImportResultRepository>,
+    write_gate: Arc<ModStorageWriteGate>,
     effective_root: PathBuf,
     default_root: PathBuf,
     startup_configured: Option<PathBuf>,
@@ -91,6 +107,8 @@ pub struct ModStorageSettingsServiceDependencies {
     pub game_config: Arc<dyn GameConfigRepository>,
     pub game_ids: Vec<GameId>,
     pub catalog: Arc<dyn ModImportResultRepository>,
+    /// Shared with the sandbox writers and the migration task.
+    pub write_gate: Arc<ModStorageWriteGate>,
     /// Root the running process resolved at startup.
     pub effective_root: PathBuf,
     pub default_root: PathBuf,
@@ -106,6 +124,7 @@ impl ModStorageSettingsService {
             game_config: dependencies.game_config,
             game_ids: dependencies.game_ids,
             catalog: dependencies.catalog,
+            write_gate: dependencies.write_gate,
             effective_root: dependencies.effective_root,
             default_root: dependencies.default_root,
             startup_configured: dependencies.startup_configured,
@@ -136,6 +155,7 @@ impl ModStorageSettingsService {
                 .inspect(ModStorageDirectoryInspectionRequest {
                     path: directory,
                     exclusive_roots: &game_roots,
+                    current_root: Some(&self.effective_root),
                 }) {
                 Ok(inspection) => ModStorageDirectoryValidation {
                     ok: true,
@@ -154,7 +174,8 @@ impl ModStorageSettingsService {
     }
 
     /// Persists a new storage root (`None` = back to the default). Only allowed while the
-    /// library is empty; otherwise the caller must run a migration first.
+    /// library is empty; otherwise the caller must run a migration first. Refused while a
+    /// migration runs or another switch already waits for the restart.
     pub fn set(
         &self,
         directory: Option<PathBuf>,
@@ -171,6 +192,7 @@ impl ModStorageSettingsService {
             let library_empty = self.library_is_empty()?;
             return Ok(self.snapshot(directory, library_empty));
         }
+        self.write_gate.ensure_open()?;
         if !self.library_is_empty()? {
             return Err(ModStorageSettingsError::MigrationRequired);
         }
@@ -180,11 +202,12 @@ impl ModStorageSettingsService {
                 .inspect(ModStorageDirectoryInspectionRequest {
                     path: directory,
                     exclusive_roots: &game_roots,
+                    current_root: Some(&self.effective_root),
                 })?;
             self.inspector.claim(directory)?;
         }
-        self.app_settings
-            .update_mod_storage_dir(directory.clone())
+        self.write_gate
+            .admit_root_switch(|| self.app_settings.update_mod_storage_dir(directory.clone()))?
             .map_err(|_| ModStorageSettingsError::SettingsUnavailable)?;
         Ok(self.snapshot(directory, true))
     }
@@ -200,6 +223,7 @@ impl ModStorageSettingsService {
             restart_required: configured != self.startup_configured,
             configured,
             library_empty,
+            writes_frozen: self.write_gate.freeze(),
         }
     }
 
@@ -271,12 +295,15 @@ mod tests {
         }
     }
 
+    /// (candidate, exclusive game roots, current root) as passed to `inspect`.
+    type InspectionRecord = (PathBuf, Vec<PathBuf>, Option<PathBuf>);
+
     struct FakeInspector {
         inspect_result: Mutex<Result<ModStorageDirectoryInspection, ModStorageDirectoryError>>,
         claim_result: Mutex<Result<(), ModStorageDirectoryError>>,
         sandbox_has_entries: bool,
         overlap_pairs: Vec<(PathBuf, PathBuf)>,
-        inspected: Mutex<Vec<(PathBuf, Vec<PathBuf>)>>,
+        inspected: Mutex<Vec<InspectionRecord>>,
         claimed: Mutex<Vec<PathBuf>>,
     }
 
@@ -301,13 +328,19 @@ mod tests {
             &self,
             request: ModStorageDirectoryInspectionRequest<'_>,
         ) -> Result<ModStorageDirectoryInspection, ModStorageDirectoryError> {
-            self.inspected
-                .lock()
-                .expect("inspected lock")
-                .push((request.path.to_path_buf(), request.exclusive_roots.to_vec()));
+            self.inspected.lock().expect("inspected lock").push((
+                request.path.to_path_buf(),
+                request.exclusive_roots.to_vec(),
+                request.current_root.map(Path::to_path_buf),
+            ));
             for root in request.exclusive_roots {
                 if self.directories_overlap(request.path, root) {
                     return Err(ModStorageDirectoryError::OverlapsGameRoot);
+                }
+            }
+            if let Some(current_root) = request.current_root {
+                if self.directories_overlap(request.path, current_root) {
+                    return Err(ModStorageDirectoryError::OverlapsCurrentRoot);
                 }
             }
             *self.inspect_result.lock().expect("inspect lock")
@@ -425,6 +458,7 @@ mod tests {
     struct Harness {
         settings: Arc<FakeSettings>,
         inspector: Arc<FakeInspector>,
+        write_gate: Arc<ModStorageWriteGate>,
         service: ModStorageSettingsService,
     }
 
@@ -436,9 +470,11 @@ mod tests {
     ) -> Harness {
         let settings = Arc::new(settings);
         let inspector = Arc::new(inspector);
+        let write_gate = Arc::new(ModStorageWriteGate::new());
         let service = ModStorageSettingsService::new(ModStorageSettingsServiceDependencies {
             app_settings: Arc::new(AppSettingsService::new(settings.clone())),
             inspector: inspector.clone(),
+            write_gate: write_gate.clone(),
             game_config: Arc::new(FakeGameConfig {
                 instances: vec![GameInstance {
                     id: "mhw-default".to_owned(),
@@ -458,6 +494,7 @@ mod tests {
         Harness {
             settings,
             inspector,
+            write_gate,
             service,
         }
     }
@@ -505,6 +542,7 @@ mod tests {
                 configured: None,
                 library_empty: true,
                 restart_required: false,
+                writes_frozen: ModStorageWriteFreeze::None,
             }
         );
     }
@@ -536,7 +574,27 @@ mod tests {
                 .lock()
                 .expect("inspected")
                 .as_slice(),
-            [(candidate(), vec![game_root()])]
+            [(candidate(), vec![game_root()], Some(default_root()))]
+        );
+    }
+
+    #[test]
+    fn validate_reports_a_candidate_overlapping_the_current_root() {
+        let inspector = FakeInspector {
+            overlap_pairs: vec![(candidate(), default_root())],
+            ..accepting_inspector()
+        };
+        let harness = harness(FakeSettings::default(), inspector, Vec::new(), None);
+
+        let verdict = harness.service.validate(&candidate()).expect("validate");
+
+        assert_eq!(verdict.code, Some("mod_storage_dir_overlaps_current_root"));
+        assert_eq!(
+            harness
+                .service
+                .set(Some(candidate()))
+                .expect_err("set enforces the same rule"),
+            ModStorageSettingsError::Directory(ModStorageDirectoryError::OverlapsCurrentRoot)
         );
     }
 
@@ -599,6 +657,68 @@ mod tests {
             snapshot.effective_root,
             default_root(),
             "the running process keeps its startup root until restart"
+        );
+        assert_eq!(
+            snapshot.writes_frozen,
+            ModStorageWriteFreeze::RestartRequired,
+            "imports after the switch would land in the old root"
+        );
+        assert_eq!(
+            harness
+                .write_gate
+                .ensure_open()
+                .map_err(|error| error.code()),
+            Err("mod_storage_restart_required")
+        );
+    }
+
+    #[test]
+    fn set_is_refused_while_a_migration_runs_and_after_a_switch_without_touching_the_directory() {
+        let harness = harness(
+            FakeSettings::default(),
+            accepting_inspector(),
+            Vec::new(),
+            None,
+        );
+        harness
+            .write_gate
+            .begin_migration(|| Ok::<(), ModStorageWriteGateError>(()))
+            .expect("migration admitted");
+
+        let error = harness
+            .service
+            .set(Some(candidate()))
+            .expect_err("frozen gate refuses the change");
+
+        assert_eq!(error.code(), "mod_storage_migration_in_progress");
+        assert!(harness
+            .inspector
+            .claimed
+            .lock()
+            .expect("claimed")
+            .is_empty());
+        assert_eq!(
+            harness
+                .settings
+                .stored
+                .lock()
+                .expect("settings")
+                .mod_storage_dir,
+            None
+        );
+
+        harness.write_gate.end_migration(true);
+        assert_eq!(
+            harness
+                .service
+                .set(Some(candidate()))
+                .expect_err("a switched root waits for the restart")
+                .code(),
+            "mod_storage_restart_required"
+        );
+        assert_eq!(
+            harness.service.get().expect("snapshot").writes_frozen,
+            ModStorageWriteFreeze::RestartRequired
         );
     }
 
@@ -803,6 +923,11 @@ mod tests {
                 "game",
                 ModStorageSettingsError::GameConfigUnavailable.code(),
             ),
+            (
+                "frozen",
+                ModStorageSettingsError::WriteFrozen(ModStorageWriteGateError::RestartRequired)
+                    .code(),
+            ),
         ]
         .into_iter()
         .collect();
@@ -810,5 +935,6 @@ mod tests {
         assert_eq!(codes["settings"], "app_settings_unavailable");
         assert_eq!(codes["library"], "mod_library_unavailable");
         assert_eq!(codes["game"], "game_config_unavailable");
+        assert_eq!(codes["frozen"], "mod_storage_restart_required");
     }
 }

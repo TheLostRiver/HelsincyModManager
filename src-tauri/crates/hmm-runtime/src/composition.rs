@@ -10,11 +10,11 @@ use crate::{
     RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
 };
 use hmm_app::{
-    is_identity_replacement_binding, AppSettingsService, ApplicationExitGuard,
-    AuditLogDiagnosticsExportService, CategoryService, CommitInstallPlanRequest,
-    CrossProcessWriteAdmissionCoordinator, GameLaunchService, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry, GameSetupService,
-    ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
+    is_identity_replacement_binding, settle_pending_mod_storage_migration, AppSettingsService,
+    ApplicationExitGuard, AuditLogDiagnosticsExportService, CategoryService,
+    CommitInstallPlanRequest, CrossProcessWriteAdmissionCoordinator, GameLaunchService,
+    GamePrerequisiteDecision, GamePrerequisiteDecisionProvider, GameProfileWriteLockRegistry,
+    GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
@@ -28,10 +28,12 @@ use hmm_app::{
     InstallWriteAdmissionError, InstalledReplacementReinstallResolution,
     LimitedPreviewImageProcessor, ModDeletionService, ModDependencyGraphService,
     ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
-    ModLibraryQueryService, ModLibraryService, ModMetadataService, ModStorageSettingsService,
-    ModStorageSettingsServiceDependencies, PlannedInitialRetargetInstall, PreparedReinstall,
-    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    ModLibraryQueryService, ModLibraryService, ModMetadataService, ModStorageMigrationSettlement,
+    ModStorageMigrationTaskService, ModStorageMigrationTaskServiceDependencies,
+    ModStorageSettingsService, ModStorageSettingsServiceDependencies, ModStorageWriteGate,
+    PlannedInitialRetargetInstall, PreparedReinstall, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
     RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
@@ -70,18 +72,19 @@ use hmm_infra::{
     DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
-    FileSystemModStorageDirectoryInspector, FileSystemRetargetStagingMaterializer,
-    FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter,
-    FileSystemSaveRestoreFileSystem, FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter,
-    FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
+    FileSystemModStorageDirectoryInspector, FileSystemModStorageMigrator,
+    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupDirectoryLocator,
+    FileSystemSaveBackupWriter, FileSystemSaveRestoreFileSystem,
+    FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter, FileSystemTextLogReader,
+    FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
-    JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
-    JsonReplacementSelectionRepository, LogStorageBudgetOutcome, LogStorageBudgetReport,
-    PlatformCrossProcessWriteAdmission, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    ReqwestSteamProfileHttpTransport, RetargetStagingInstallSourceFileReader,
-    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SqliteProfileRepository,
+    JsonInstallRecoveryRecordRepository, JsonModStorageMigrationJournalRepository,
+    JsonReinstallRecoveryTransactionRepository, JsonReplacementSelectionRepository,
+    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
@@ -97,9 +100,10 @@ use hmm_ports::{
     GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageInstallFileReader, ModPackageInstallFileScanner,
-    ModStorageDirectoryInspector, ProfileRepository, ProfileSaveDirectoryValidator,
-    ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository, ReplacementAdapter,
-    ReplacementCatalogProvider, ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
+    ModStorageDirectoryInspector, ModStorageMigrationJournalRepository, ModStorageMigrator,
+    ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
+    ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
     SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
@@ -212,6 +216,7 @@ pub struct HmmRuntime {
     pub external_import: crate::external_import::ExternalImportComposition,
     pub app_settings: Arc<AppSettingsService>,
     pub mod_storage_settings: Arc<ModStorageSettingsService>,
+    pub mod_storage_migration_tasks: Arc<ModStorageMigrationTaskService>,
     pub debug_log: Arc<DebugLogController>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
@@ -282,6 +287,25 @@ impl HmmRuntime {
         if let Some(reason) = mod_storage.degraded {
             record_mod_storage_root_degraded(reason);
         }
+        // #275 slice 2: finish or roll back a migration the previous process did not complete,
+        // before any sandbox reader or writer exists. The journal lives next to `results.json`
+        // in app-data, never inside a user-chosen root.
+        let mod_storage_migrator: Arc<dyn ModStorageMigrator> =
+            Arc::new(FileSystemModStorageMigrator);
+        let mod_storage_migration_journal: Arc<dyn ModStorageMigrationJournalRepository> =
+            Arc::new(JsonModStorageMigrationJournalRepository::new(
+                app_data_dir.join("mod-import").join("migration.json"),
+            ));
+        let settlement_root = match mod_storage.degraded {
+            Some(ModStorageDegradedReason::SettingsUnreadable) => None,
+            _ => Some(mod_storage.root.as_path()),
+        };
+        record_mod_storage_migration_settlement(&settle_pending_mod_storage_migration(
+            mod_storage_migration_journal.as_ref(),
+            mod_storage_migrator.as_ref(),
+            settlement_root,
+        ));
+        let mod_storage_write_gate = Arc::new(ModStorageWriteGate::new());
 
         let db_path = app_data_dir.join("hmm.db");
         let db = hmm_infra::open_database(&db_path)
@@ -520,9 +544,25 @@ impl HmmRuntime {
                 game_config: Arc::clone(&game_config_repository),
                 game_ids: game_ids.clone(),
                 catalog: Arc::clone(&mod_import_result_repository),
+                write_gate: Arc::clone(&mod_storage_write_gate),
                 effective_root: mod_storage.root.clone(),
                 default_root: mod_storage.default_root.clone(),
                 startup_configured: mod_storage.configured.clone(),
+            },
+        ));
+        let mod_storage_migration_tasks = Arc::new(ModStorageMigrationTaskService::new(
+            ModStorageMigrationTaskServiceDependencies {
+                task_manager: Arc::clone(&task_manager),
+                write_gate: Arc::clone(&mod_storage_write_gate),
+                app_settings: Arc::clone(&app_settings),
+                inspector: Arc::clone(&mod_storage_inspector),
+                migrator: mod_storage_migrator,
+                journal: mod_storage_migration_journal,
+                game_config: Arc::clone(&game_config_repository),
+                game_ids: game_ids.clone(),
+                clock: Arc::new(SystemClock),
+                effective_root: mod_storage.root.clone(),
+                default_root: mod_storage.default_root.clone(),
             },
         ));
         let _ = debug_log.record(
@@ -560,6 +600,7 @@ impl HmmRuntime {
             Arc::clone(&category_repository),
             Arc::clone(&mod_import_sandbox_locator),
             Arc::clone(&mod_import_prepare_service),
+            Arc::clone(&mod_storage_write_gate),
         )?;
         let mod_library = mod_library_composition.library_service();
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
@@ -981,20 +1022,23 @@ impl HmmRuntime {
             install_preflight,
             install_manifest_query,
             replacement_occupancy,
-            mod_deletion: Arc::new(ModDeletionService::new(
-                Arc::clone(&profile_repository_for_profiles),
-                Arc::clone(&install_manifest_repository),
-                Arc::clone(&reinstall_recovery_repository),
-                Arc::clone(&replacement_selections),
-                Arc::clone(&mod_import_result_repository),
-                Arc::clone(&mod_import_sandbox_locator),
-                Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()))
-                    as Arc<dyn ThumbnailStore>,
-                Arc::clone(&mod_metadata_repository),
-                Arc::clone(&category_repository),
-                Arc::clone(&audit_log_writer),
-                Arc::new(SystemClock),
-            )),
+            mod_deletion: Arc::new(
+                ModDeletionService::new(
+                    Arc::clone(&profile_repository_for_profiles),
+                    Arc::clone(&install_manifest_repository),
+                    Arc::clone(&reinstall_recovery_repository),
+                    Arc::clone(&replacement_selections),
+                    Arc::clone(&mod_import_result_repository),
+                    Arc::clone(&mod_import_sandbox_locator),
+                    Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()))
+                        as Arc<dyn ThumbnailStore>,
+                    Arc::clone(&mod_metadata_repository),
+                    Arc::clone(&category_repository),
+                    Arc::clone(&audit_log_writer),
+                    Arc::new(SystemClock),
+                )
+                .with_write_gate(Arc::clone(&mod_storage_write_gate)),
+            ),
             install_recovery_scanner,
             install_recovery_action_previewer,
             external_state_scanner,
@@ -1020,10 +1064,14 @@ impl HmmRuntime {
             uninstall_task_runner,
             uninstall_tasks: Arc::new(UninstallTaskService::new(Arc::clone(&task_manager))),
             mod_import_task_runner,
-            mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
+            mod_import_tasks: Arc::new(
+                ModImportTaskService::new(Arc::clone(&task_manager))
+                    .with_write_gate(Arc::clone(&mod_storage_write_gate)),
+            ),
             external_import,
             app_settings,
             mod_storage_settings,
+            mod_storage_migration_tasks,
             debug_log,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
@@ -1230,6 +1278,40 @@ fn record_mod_storage_root_degraded(reason: ModStorageDegradedReason) {
         .with_error_code(reason.code());
     if let Some(detail) = reason.detail_code() {
         event = event.with_phase(detail);
+    }
+    emit_safe_app_log(event);
+}
+
+/// #275 slice 2: one line per start about what happened to an interrupted migration. Only
+/// stable codes and a package count — no path, no package id.
+fn record_mod_storage_migration_settlement(settlement: &ModStorageMigrationSettlement) {
+    let (result, error_code, item_count) = match settlement {
+        ModStorageMigrationSettlement::NoJournal => return,
+        ModStorageMigrationSettlement::SourceCleaned { package_count } => {
+            ("source_cleaned", None, Some(*package_count))
+        }
+        ModStorageMigrationSettlement::CleanupBlocked(error) => {
+            ("cleanup_blocked", Some(error.code()), None)
+        }
+        ModStorageMigrationSettlement::RolledBack { package_count } => {
+            ("rolled_back", None, Some(*package_count))
+        }
+        ModStorageMigrationSettlement::RollbackBlocked(error) => {
+            ("rollback_blocked", Some(error.code()), None)
+        }
+        ModStorageMigrationSettlement::Deferred => ("deferred", None, None),
+        ModStorageMigrationSettlement::JournalUnreadable(error) => {
+            ("journal_unreadable", Some(error.code()), None)
+        }
+    };
+    let mut event = AppLogEvent::warning("mod_storage_migration_settled")
+        .with_operation("settle_mod_storage_migration")
+        .with_result(result);
+    if let Some(code) = error_code {
+        event = event.with_error_code(code);
+    }
+    if let Some(count) = item_count {
+        event = event.with_item_count(count);
     }
     emit_safe_app_log(event);
 }
