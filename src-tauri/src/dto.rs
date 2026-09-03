@@ -611,6 +611,7 @@ pub enum TaskKindDto {
     SaveBackup,
     SaveRestore,
     ExternalStateScan,
+    ExternalModAdopt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1495,6 +1496,7 @@ impl From<TaskKind> for TaskKindDto {
             TaskKind::SaveBackup => Self::SaveBackup,
             TaskKind::SaveRestore => Self::SaveRestore,
             TaskKind::ExternalStateScan => Self::ExternalStateScan,
+            TaskKind::ExternalModAdopt => Self::ExternalModAdopt,
         }
     }
 }

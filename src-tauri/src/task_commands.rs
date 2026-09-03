@@ -56,6 +56,7 @@ fn cancelled_phase_for_kind(kind: TaskKind) -> &'static str {
         TaskKind::SaveBackup => SAVE_BACKUP_CANCELLED_PHASE,
         TaskKind::SaveRestore => SAVE_RESTORE_CANCELLED_PHASE,
         TaskKind::ExternalStateScan => hmm_runtime::EXTERNAL_STATE_SCAN_CANCELLED_PHASE,
+        TaskKind::ExternalModAdopt => hmm_runtime::EXTERNAL_MOD_ADOPT_CANCELLED_PHASE,
     }
 }
 
@@ -174,6 +175,23 @@ mod tests {
         assert_eq!(value["kind"], "external_state_scan");
         assert_eq!(value["status"], "cancelled");
         assert_eq!(value["phase"], "external_state.scan.cancelled");
+    }
+
+    #[test]
+    fn cancelled_event_for_external_mod_adopt_task_uses_external_mod_adopt_phase() {
+        let task = TaskSnapshot {
+            task_id: "external-mod-adopt-123".to_owned(),
+            kind: TaskKind::ExternalModAdopt,
+            status: TaskStatus::Cancelled,
+        };
+
+        let dto: TaskProgressEventDto = cancelled_event_for_task(&task).into();
+        let value: Value = serde_json::to_value(dto).expect("serialize event");
+
+        assert_eq!(value["taskId"], "external-mod-adopt-123");
+        assert_eq!(value["kind"], "external_mod_adopt");
+        assert_eq!(value["status"], "cancelled");
+        assert_eq!(value["phase"], "external_mod.adopt.cancelled");
     }
 
     #[test]
