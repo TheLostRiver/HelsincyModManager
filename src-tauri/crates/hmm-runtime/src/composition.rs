@@ -404,18 +404,6 @@ impl HmmRuntime {
             )
             .with_mod_storage_guard(Arc::clone(&mod_storage_inspector), mod_storage.root.clone()),
         );
-        let mod_storage_settings = Arc::new(ModStorageSettingsService::new(
-            ModStorageSettingsServiceDependencies {
-                settings: Arc::clone(&app_settings_repository),
-                inspector: Arc::clone(&mod_storage_inspector),
-                game_config: Arc::clone(&game_config_repository),
-                game_ids: game_ids.clone(),
-                catalog: Arc::clone(&mod_import_result_repository),
-                effective_root: mod_storage.root.clone(),
-                default_root: mod_storage.default_root.clone(),
-                startup_configured: mod_storage.configured.clone(),
-            },
-        ));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
             TaskScopedModImportSandboxLocator::new_in_storage_root(mod_storage.root.clone()),
         );
@@ -524,6 +512,18 @@ impl HmmRuntime {
         let app_settings = Arc::new(AppSettingsService::new_with_debug_log_control(
             Arc::clone(&app_settings_repository),
             debug_log_control,
+        ));
+        let mod_storage_settings = Arc::new(ModStorageSettingsService::new(
+            ModStorageSettingsServiceDependencies {
+                app_settings: Arc::clone(&app_settings),
+                inspector: Arc::clone(&mod_storage_inspector),
+                game_config: Arc::clone(&game_config_repository),
+                game_ids: game_ids.clone(),
+                catalog: Arc::clone(&mod_import_result_repository),
+                effective_root: mod_storage.root.clone(),
+                default_root: mod_storage.default_root.clone(),
+                startup_configured: mod_storage.configured.clone(),
+            },
         ));
         let _ = debug_log.record(
             DebugLogEvent::new("runtime.initialized")
