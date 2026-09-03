@@ -1,19 +1,35 @@
-// #286 external mod state: on-demand scan + cached query for the detail dialog.
+// #286 external mod state: on-demand scan + cached query + adopt for the detail dialog.
 //
 // The runner may emit the terminal event BEFORE the start invoke resolves in JS
 // (the scan takes seconds; the queued response and the terminal event race).
 // Mirroring `useExternalImportTaskProgress`, events that arrive while a start is
 // pending are buffered per task id and replayed once the task id is known —
 // without this the section can get stuck on "scanning" forever.
+//
+// Adopt (the only write in this family) is a second task flow on the SAME
+// listener: one subscription, dispatched by `kind`. Both flows share the
+// buffering rules above, so they are expressed once (`TaskFlow`) and the two
+// public actions differ only in which command they start and what a terminal
+// event means.
 
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getExternalModState,
+  startExternalModAdopt,
   startExternalModStateScan,
   type ExternalModStateDto,
 } from "./externalStateApi";
-import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
+import {
+  TASK_PROGRESS_EVENT_NAME,
+  type TaskKind,
+  type TaskProgressEventDto,
+} from "./modImportTypes";
+
+export type ExternalModAdoptCompletion = {
+  /** The completed event carried `external_mod_adopt_audit_unavailable`. */
+  auditDegraded: boolean;
+};
 
 export type ExternalModStateWorkflow = {
   /** Last stored query result; null until the first load answers. */
@@ -23,9 +39,14 @@ export type ExternalModStateWorkflow = {
   scanning: boolean;
   /** Stable code of a scan that failed to start or finished failed/cancelled. */
   scanErrorCode: string | null;
-  /** The progress listener must be ready before a scan may start. */
+  adopting: boolean;
+  /** Stable code of an adopt that failed to start or finished failed/cancelled. */
+  adoptErrorCode: string | null;
+  /** The progress listener must be ready before a scan or adopt may start. */
   listenerReady: boolean;
   startScan: () => void;
+  /** Writes manifest entries for the scanned, matched, unclaimed files. Confirm first. */
+  startAdopt: () => void;
   refresh: () => void;
 };
 
@@ -49,6 +70,50 @@ function isTerminal(event: TaskProgressEventDto): boolean {
   );
 }
 
+/** Mutable bookkeeping of one background task flow (scan or adopt). */
+type TaskFlow = {
+  kind: TaskKind;
+  taskId: string | null;
+  startPending: boolean;
+  /** Terminal events that raced ahead of the start response, by task id. */
+  pendingTerminal: Map<string, TaskProgressEventDto>;
+};
+
+function newTaskFlow(kind: TaskKind): TaskFlow {
+  return { kind, taskId: null, startPending: false, pendingTerminal: new Map() };
+}
+
+function resetTaskFlow(flow: TaskFlow): void {
+  flow.taskId = null;
+  flow.startPending = false;
+  flow.pendingTerminal.clear();
+}
+
+/** A start is in flight or a task is running: nothing else may start meanwhile. */
+function isFlowActive(flow: TaskFlow): boolean {
+  return flow.startPending || flow.taskId !== null;
+}
+
+/**
+ * Routes a terminal event of this flow's kind: dispatch when it is ours,
+ * buffer when our start is still pending, ignore otherwise (foreign task).
+ */
+function acceptTerminalEvent(
+  flow: TaskFlow,
+  event: TaskProgressEventDto,
+  finish: (event: TaskProgressEventDto) => void,
+): void {
+  if (flow.taskId === null) {
+    if (flow.startPending) {
+      flow.pendingTerminal.set(event.taskId, event);
+    }
+    return;
+  }
+  if (event.taskId === flow.taskId) {
+    finish(event);
+  }
+}
+
 export function useExternalModState(input: {
   gameId: string;
   profileId: string | null;
@@ -61,22 +126,31 @@ export function useExternalModState(input: {
    * the list cards (#286 3b-2, option A).
    */
   onResult?: (modId: string, state: ExternalModStateDto) => void;
+  /**
+   * The manifest now claims this mod. Called after the stored result was
+   * re-queried (the backend drops the record, so the session store sees the
+   * mod as never-scanned instead of keeping a stale "externally installed").
+   */
+  onAdoptCompleted?: (completion: ExternalModAdoptCompletion) => void | Promise<void>;
 }): ExternalModStateWorkflow {
-  const { gameId, profileId, modId, active, onResult } = input;
+  const { gameId, profileId, modId, active, onResult, onAdoptCompleted } = input;
   const [state, setState] = useState<ExternalModStateDto | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanErrorCode, setScanErrorCode] = useState<string | null>(null);
+  const [adopting, setAdopting] = useState(false);
+  const [adoptErrorCode, setAdoptErrorCode] = useState<string | null>(null);
   const [listenerReady, setListenerReady] = useState(false);
 
   const generationRef = useRef(0);
-  const taskIdRef = useRef<string | null>(null);
-  const startPendingRef = useRef(false);
-  const pendingTerminalRef = useRef(new Map<string, TaskProgressEventDto>());
+  const scanFlowRef = useRef<TaskFlow>(newTaskFlow("external_state_scan"));
+  const adoptFlowRef = useRef<TaskFlow>(newTaskFlow("external_mod_adopt"));
   const requestRef = useRef({ gameId, profileId, modId });
   requestRef.current = { gameId, profileId, modId };
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
+  const onAdoptCompletedRef = useRef(onAdoptCompleted);
+  onAdoptCompletedRef.current = onAdoptCompleted;
 
   const refresh = useCallback(() => {
     const { gameId: requestGameId, profileId: requestProfileId, modId: requestModId } =
@@ -112,13 +186,14 @@ export function useExternalModState(input: {
   // Reset per mod and load the stored result (cheap: cache + re-stat).
   useEffect(() => {
     generationRef.current += 1;
-    taskIdRef.current = null;
-    startPendingRef.current = false;
-    pendingTerminalRef.current.clear();
+    resetTaskFlow(scanFlowRef.current);
+    resetTaskFlow(adoptFlowRef.current);
     setState(null);
     setLoaded(false);
     setScanning(false);
     setScanErrorCode(null);
+    setAdopting(false);
+    setAdoptErrorCode(null);
     if (active && modId !== null && profileId !== null) {
       refresh();
     }
@@ -126,7 +201,7 @@ export function useExternalModState(input: {
 
   const finishScan = useCallback(
     (event: TaskProgressEventDto) => {
-      taskIdRef.current = null;
+      scanFlowRef.current.taskId = null;
       setScanning(false);
       if (event.status === "failed") {
         setScanErrorCode(event.error ?? "external_state_scan_unavailable");
@@ -142,26 +217,45 @@ export function useExternalModState(input: {
     [refresh],
   );
 
+  const finishAdopt = useCallback(
+    (event: TaskProgressEventDto) => {
+      adoptFlowRef.current.taskId = null;
+      setAdopting(false);
+      if (event.status === "failed") {
+        setAdoptErrorCode(event.error ?? "external_mod_adopt_unavailable");
+        // A stale rejection means the stored result no longer matches disk;
+        // the getter's re-stat surfaces that as `stale` — re-query to show it.
+        refresh();
+        return;
+      }
+      if (event.status === "cancelled") {
+        setAdoptErrorCode("external_mod_adopt_cancelled");
+        return;
+      }
+      setAdoptErrorCode(null);
+      // The backend dropped this mod's scan record: re-query so the session
+      // store stops saying "externally installed" for a mod HMM now manages.
+      refresh();
+      void onAdoptCompletedRef.current?.({
+        // Completed events carry an error only for the explicit audit degradation.
+        auditDegraded: event.error !== null,
+      });
+    },
+    [refresh],
+  );
+
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
     void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
-      if (disposed || event.payload.kind !== "external_state_scan") {
+      if (disposed || !isTerminal(event.payload)) {
         return;
       }
-      if (!isTerminal(event.payload)) {
-        return;
-      }
-      const taskId = taskIdRef.current;
-      if (taskId === null) {
-        if (startPendingRef.current) {
-          pendingTerminalRef.current.set(event.payload.taskId, event.payload);
-        }
-        return;
-      }
-      if (event.payload.taskId === taskId) {
-        finishScan(event.payload);
+      if (event.payload.kind === scanFlowRef.current.kind) {
+        acceptTerminalEvent(scanFlowRef.current, event.payload, finishScan);
+      } else if (event.payload.kind === adoptFlowRef.current.kind) {
+        acceptTerminalEvent(adoptFlowRef.current, event.payload, finishAdopt);
       }
     })
       .then((dispose) => {
@@ -182,62 +276,112 @@ export function useExternalModState(input: {
       disposed = true;
       unlisten?.();
     };
-  }, [finishScan]);
+  }, [finishAdopt, finishScan]);
 
+  /**
+   * Starts one flow: marks the start pending (so racing terminal events are
+   * buffered), invokes the command, then binds the task id and replays a
+   * buffered terminal event if one arrived first. Generation drift (the dialog
+   * switched mods meanwhile) discards everything — a start belongs to the mod
+   * it was issued for.
+   */
+  const launch = useCallback(
+    (
+      flow: TaskFlow,
+      start: (request: {
+        gameId: string;
+        profileId: string;
+        modId: string;
+      }) => Promise<{ task: { taskId: string } }>,
+      finish: (event: TaskProgressEventDto) => void,
+      setBusy: (busy: boolean) => void,
+      setErrorCode: (code: string | null) => void,
+      startFailureCode: string,
+    ) => {
+      const request = requestRef.current;
+      if (request.modId === null || request.profileId === null || isFlowActive(flow)) {
+        return;
+      }
+      const generation = generationRef.current;
+      flow.startPending = true;
+      flow.pendingTerminal.clear();
+      setBusy(true);
+      setErrorCode(null);
+      void start({
+        gameId: request.gameId,
+        profileId: request.profileId,
+        modId: request.modId,
+      })
+        .then((started) => {
+          if (generationRef.current !== generation) {
+            return;
+          }
+          flow.taskId = started.task.taskId;
+          const buffered = flow.pendingTerminal.get(started.task.taskId);
+          if (buffered) {
+            finish(buffered);
+          }
+        })
+        .catch((error: unknown) => {
+          if (generationRef.current !== generation) {
+            return;
+          }
+          setBusy(false);
+          setErrorCode(errorCodeFrom(error, startFailureCode));
+        })
+        .finally(() => {
+          if (generationRef.current === generation) {
+            flow.startPending = false;
+            flow.pendingTerminal.clear();
+          }
+        });
+    },
+    [],
+  );
+
+  // One background task per section at a time. Adopt consumes the stored scan
+  // record, so a scan in flight would replace it under the confirmation the
+  // user just gave; the reverse guard keeps the state machine symmetric.
   const startScan = useCallback(() => {
-    const request = requestRef.current;
-    if (
-      request.modId === null ||
-      request.profileId === null ||
-      startPendingRef.current ||
-      taskIdRef.current !== null
-    ) {
+    if (isFlowActive(adoptFlowRef.current)) {
       return;
     }
-    const generation = generationRef.current;
-    startPendingRef.current = true;
-    pendingTerminalRef.current.clear();
-    setScanning(true);
-    setScanErrorCode(null);
-    void startExternalModStateScan({
-      gameId: request.gameId,
-      profileId: request.profileId,
-      modId: request.modId,
-    })
-      .then((started) => {
-        if (generationRef.current !== generation) {
-          return;
-        }
-        taskIdRef.current = started.task.taskId;
-        const buffered = pendingTerminalRef.current.get(started.task.taskId);
-        if (buffered) {
-          finishScan(buffered);
-        }
-      })
-      .catch((error: unknown) => {
-        if (generationRef.current !== generation) {
-          return;
-        }
-        setScanning(false);
-        setScanErrorCode(
-          errorCodeFrom(error, "external_state_scan_task_unavailable"),
-        );
-      })
-      .finally(() => {
-        if (generationRef.current === generation) {
-          startPendingRef.current = false;
-          pendingTerminalRef.current.clear();
-        }
-      });
-  }, [finishScan]);
+    // A fresh scan supersedes whatever the last adopt attempt reported.
+    setAdoptErrorCode(null);
+    launch(
+      scanFlowRef.current,
+      startExternalModStateScan,
+      finishScan,
+      setScanning,
+      setScanErrorCode,
+      "external_state_scan_task_unavailable",
+    );
+  }, [finishScan, launch]);
+
+  const startAdopt = useCallback(() => {
+    if (isFlowActive(scanFlowRef.current)) {
+      return;
+    }
+    launch(
+      adoptFlowRef.current,
+      startExternalModAdopt,
+      finishAdopt,
+      setAdopting,
+      setAdoptErrorCode,
+      "external_mod_adopt_task_unavailable",
+    );
+  }, [finishAdopt, launch]);
 
   return {
     state,
     loaded,
     scanning,
     scanErrorCode,
+    adopting,
+    adoptErrorCode,
     listenerReady,
     startScan,
+    startAdopt,
     refresh,
   };
 }
