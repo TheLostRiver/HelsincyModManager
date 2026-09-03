@@ -208,11 +208,22 @@ CLI-2B 在 `hmm-runtime` 增加了 `SandboxWriteCapability`。只有显式 Sandb
 空 Sandbox 根会在申请时通过 no-follow 目录句柄创建固定 `.hmm-sandbox.json` v1 marker，非空根
 必须已经包含完全匹配的 marker。marker 不是授权秘密，不能替代 capability；真正的授权对象字段和
 构造器私有、不可序列化，并在存活期间保留打开的根目录句柄、canonical root 和目录身份。
-`SandboxWriteRoots` 对本次操作实际使用的 app-data、game、save、backup 根执行词法、canonical、
-symlink/junction/reparse-point containment，返回的 `SandboxWriteAdmission` 绑定原 capability
-生命周期。写侧可在安全阶段前重新调用 `revalidate`；Windows 通过打开句柄阻止祖先替换，其他平台
-在允许替换时通过目录身份变化 fail closed。该能力只由明确接线的 Sandbox lifecycle composition
-消费，不自动开放备份、诊断或 Production 写入。
+`SandboxWriteRoots` 对本次操作提交的 game、save、backup 根以及（批量 / CLI 沙箱链）app-data 根执行
+词法、canonical、symlink/junction/reparse-point containment，返回的 `SandboxWriteAdmission` 绑定原
+capability 生命周期。#273 起 GUI 组合用 `game_root_only` 只提交游戏根——GUI 的 app-data 由 Tauri
+解析到系统位置、不随沙箱环境迁移，要求它被包含会让 GUI 写入结构性不可通过；批量 / CLI 沙箱链的
+数据根就是沙箱根本身，语义不变。写侧可在安全阶段前重新调用 `revalidate`；Windows 通过打开句柄
+阻止祖先替换，其他平台在允许替换时通过目录身份变化 fail closed。该能力只由明确接线的 Sandbox
+lifecycle composition 消费，不自动开放备份、诊断或 Production 写入。
+
+#275 把「Mod 存储根」（承载 `mod-import/sandboxes/<packageId>/` 的目录）从 app-data 的字面子目录
+变成一次性解析的运行时事实：`hmm-runtime::resolve_mod_storage_root` 在 `HmmRuntime::from_builder`
+最前读一次 `settings.json`（同一份读取也供日志设置使用），默认 `<app-data>/mod-import`，用户配置
+时为该目录本身；`ZipModImportPackagePreparer::new_in_storage_root` / `TaskScopedModImportSandboxLocator::new_in_storage_root`
+与 CLI 只读链的 `ContainedReadOnlyModImportSandboxLocator` 都以它为锚点，`results.json`、SQLite、
+缩略图、`install/*`、`external-import/*` 仍在 app-data。目录规则（marker、link 链、与游戏根互不包含、
+试写探针）由 `hmm-ports::ModStorageDirectoryInspector` 表达、`hmm-infra::FileSystemModStorageDirectoryInspector`
+实现，`hmm-app::ModStorageSettingsService` 只组合判定；设置改动重启后生效。
 
 CLI lifecycle adapter 复用 `TaskManager` 处理 Ctrl+C。首个 signal 可以在 runtime/task 建立前锁存，
 task 出现后请求协作式取消；确认取消时 observer 只发一个 `install.cancelled` terminal。第二个 signal

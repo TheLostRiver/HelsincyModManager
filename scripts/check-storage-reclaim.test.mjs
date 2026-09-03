@@ -173,6 +173,51 @@ test("fails when the deleted package is still present", () => {
   assert.match(result.stdout, /still in: catalog, mods, sandboxes, thumbnails/);
 });
 
+test("reads sandboxes from the configured mod storage directory (#275)", () => {
+  const root = buildAppData({
+    mods: [{ mod_id: "pkg-1" }],
+    revisions: [{ package_id: "pkg-1" }],
+    sandboxes: [],
+    thumbnails: ["pkg-1"],
+    manifest: { entries: [] },
+  });
+  const storageRoot = mkdtempSync(join(tmpdir(), "hmm-storage-"));
+  cleanups.push(storageRoot);
+  mkdirSync(join(storageRoot, "sandboxes", "pkg-1"), { recursive: true });
+  mkdirSync(join(root, "config"), { recursive: true });
+  writeFileSync(
+    join(root, "config/settings.json"),
+    JSON.stringify({ version: 1, modStorageDir: storageRoot }),
+  );
+
+  const result = run(root);
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  assert.match(result.stdout, /all 4 checks passed/);
+  assert.ok(
+    result.stdout.includes(join(storageRoot, "sandboxes")),
+    `expected the configured sandboxes dir to be reported: ${result.stdout}`,
+  );
+});
+
+test("ignores a relative modStorageDir and falls back to app data", () => {
+  const root = buildAppData({
+    mods: [{ mod_id: "pkg-1" }],
+    revisions: [{ package_id: "pkg-1" }],
+    sandboxes: ["pkg-1"],
+    thumbnails: null,
+    manifest: null,
+  });
+  mkdirSync(join(root, "config"), { recursive: true });
+  writeFileSync(
+    join(root, "config/settings.json"),
+    JSON.stringify({ version: 1, modStorageDir: "relative/mods" }),
+  );
+
+  const result = run(root);
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  assert.ok(result.stdout.includes(join(root, "mod-import", "sandboxes")));
+});
+
 test("fails with a clear message when the app data dir is missing", () => {
   const result = spawnSync(process.execPath, [script], {
     env: { ...process.env, HMM_APP_DATA_DIR: join(tmpdir(), "hmm-does-not-exist-xyz") },
