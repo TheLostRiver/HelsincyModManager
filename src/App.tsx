@@ -5,6 +5,7 @@ import { AppRouteProvider } from "./app/routing/AppRouteProvider";
 import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
 import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
+import { ExternalStateSessionProvider } from "./features/mods/ExternalStateSessionProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
 import { FeedbackProvider } from "./shared/feedback";
@@ -24,9 +25,13 @@ export function App() {
                 <GameSetupProvider>
                   <ActiveProfileProvider>
                     <ProfileSaveDirectoryDiscoveryProvider>
-                      <AppShell>
-                        <RouterOutlet />
-                      </AppShell>
+                      {/* #286 3b-2 A+：外部状态扫描结果的会话表要活过路由切换，
+                          RouterOutlet 会卸载页面，所以表挂在它之上。 */}
+                      <ExternalStateSessionProvider>
+                        <AppShell>
+                          <RouterOutlet />
+                        </AppShell>
+                      </ExternalStateSessionProvider>
                     </ProfileSaveDirectoryDiscoveryProvider>
                   </ActiveProfileProvider>
                 </GameSetupProvider>
