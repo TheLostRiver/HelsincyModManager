@@ -266,6 +266,9 @@ batch/result 事实或伪造导入失败。
     `state ∈ installed | partial | changed | mixed | not_installed | unknown`；`files[]` 为
     `{ targetPath, state ∈ matched | missing | changed | unreadable, claimedByModId?, claimedByModName? }`，
     `targetPath` 是导入包内的相对展示路径，**不包含**游戏目录绝对路径、manifest 内容或第三方文件内容。
+    `unreadable` 覆盖**任一侧**读不到：游戏目录文件读失败，或导入包沙箱副本读失败（#305）。
+    `files[]` 与导入包的可安装文件**一一对应、同序**，不因读失败缩短——文件级占用字段按位置
+    配对，这条不变量一破就会把状态配到错的文件名上。
   - 占用归因（#286 第三层，正交事实——哈希判定不因占用而改变）：`claimedByModId` = 该路径被哪个
     **其他** MOD 的清单条目认领（键缺席 = 无主）；`claimedByModName` 是 getter 时按 `get_mod_detail`
     取名链解析的显示名，解析不到（如 MOD 已删）时键缺席、前端回退显示 id，**不回传不复算**。

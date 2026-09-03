@@ -54,8 +54,8 @@ pub use external_import::{
 };
 pub use external_install_state::{
     classify_external_file, installed_file_summary, summarize_external_install_state,
-    ExternalFileObservation, ExternalFileState, ExternalInstallState, ExternalInstallStateSummary,
-    ExternalTargetPresence,
+    ExternalExpectedSummary, ExternalFileObservation, ExternalFileState, ExternalInstallState,
+    ExternalInstallStateSummary, ExternalTargetPresence,
 };
 pub use game::{
     GameDirectoryEvidence, GameDirectoryEvidenceKind, GameDirectoryStatus, GameDirectoryValidation,
