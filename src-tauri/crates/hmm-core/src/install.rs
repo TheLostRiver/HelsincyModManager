@@ -278,6 +278,16 @@ pub struct InstallManifestEntry {
     pub backup_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_file: Option<InstalledFileSummary>,
+    /// 该条目由「接管」写入（#286）：文件早已在游戏目录里，本工具**没有**写过它，
+    /// 也没有 `backup_ref`。卸载走既有「无 backup_ref → 删除」语义，与本工具新增
+    /// 的文件无异；标记只用于事后区分来源（界面提示、审计），**不参与**卸载/修复判定。
+    /// 老清单缺该字段按 `false` 读；重装/替换会用新条目整体替换，标记随之消失。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub adopted: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -817,6 +827,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: None,
+                adopted: false,
             }],
         );
         manifest.schema_version = INSTALL_MANIFEST_SCHEMA_VERSION_V2;
@@ -832,6 +843,32 @@ mod tests {
             round_trip.entries[0].revision_id,
             Some(ModRevisionId::new("revision-v2"))
         );
+    }
+
+    /// #286 接管标记：老清单没有这个键，必须按「非接管」读；未接管条目序列化时不得多出
+    /// 一个键（清单 JSON 对既有安装保持逐字节同形）；接管条目往返保留 `true`。
+    #[test]
+    fn manifest_entry_adopted_flag_is_optional_and_only_serialized_when_set() {
+        let legacy: InstallManifestEntry =
+            serde_json::from_value(manifest_entry_json("legacy.bin", None))
+                .expect("legacy entry without adopted key must deserialize");
+        assert!(!legacy.adopted, "缺键必须按 false 读");
+
+        let serialized = serde_json::to_value(&legacy).expect("serialize legacy entry");
+        assert!(
+            serialized.get("adopted").is_none(),
+            "未接管条目不得序列化出 adopted 键：{serialized}"
+        );
+
+        let adopted = InstallManifestEntry {
+            adopted: true,
+            ..legacy
+        };
+        let serialized = serde_json::to_value(&adopted).expect("serialize adopted entry");
+        assert_eq!(serialized["adopted"], serde_json::json!(true));
+        let round_trip: InstallManifestEntry =
+            serde_json::from_value(serialized).expect("deserialize adopted entry");
+        assert!(round_trip.adopted);
     }
 
     #[test]

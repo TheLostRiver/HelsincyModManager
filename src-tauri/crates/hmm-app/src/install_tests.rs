@@ -452,6 +452,7 @@ fn commit_plan_for_revision_preserves_other_mod_legacy_entries_in_schema_v2_mani
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }],
     );
     existing_manifest
@@ -530,6 +531,7 @@ fn assert_revisioned_commit_rejects_existing_manifest(existing_revision: Option<
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }],
     );
     if existing_revision.is_some() {
@@ -735,6 +737,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: None,
+                adopted: false,
             },
             InstallManifestEntry {
                 target_path: InstallTargetPath::parse("nativePC/models/player.mod3", ["nativePC"])
@@ -747,6 +750,7 @@ fn commit_plan_merges_existing_manifest_by_target_path() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-old-player".to_owned()),
                 installed_file: None,
+                adopted: false,
             },
         ],
     );
@@ -820,6 +824,7 @@ fn commit_plan_blocks_target_owned_by_another_mod() {
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"old managed model")),
+            adopted: false,
         }],
     );
     let manifests = Arc::new(
@@ -886,6 +891,7 @@ fn commit_plan_preserves_non_completed_manifest_status_when_merging_entries() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"keep model")),
+            adopted: false,
         }],
         Some("install_plan".to_owned()),
         Some("2026-06-29T00:00:00Z".to_owned()),
@@ -947,6 +953,7 @@ fn commit_plan_preserves_existing_backup_ref_when_replacing_manifest_entry() {
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: None,
+            adopted: false,
         }],
     );
     let manifests = Arc::new(
@@ -1016,6 +1023,7 @@ fn commit_plan_keeps_absent_backup_ref_when_replacing_managed_new_file() {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }],
     );
     let manifests = Arc::new(
@@ -1542,6 +1550,7 @@ fn commit_plan_rollback_record_retains_only_unresolved_changes() {
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"old managed model")),
+            adopted: false,
         }],
     );
     let manifests = Arc::new(
@@ -1630,6 +1639,7 @@ fn commit_plan_persists_committing_record_after_later_pending_backup_update() {
             layer: FileLayer::new("base", 0),
             backup_ref: Some("backup-original-player".to_owned()),
             installed_file: Some(installed_file_summary(b"old managed model")),
+            adopted: false,
         }],
     );
     let manifests = Arc::new(

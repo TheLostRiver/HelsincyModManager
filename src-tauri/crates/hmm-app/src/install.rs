@@ -470,6 +470,7 @@ impl InstallCommitService {
                 layer: action.provider.layer.clone(),
                 backup_ref: manifest_backup_ref,
                 installed_file: Some(installed_file_summary(&source_bytes)),
+                adopted: false,
             };
 
             prepared_target_indexes.insert(action.target_path.clone(), prepared_changes.len());

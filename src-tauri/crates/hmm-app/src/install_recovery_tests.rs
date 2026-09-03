@@ -1109,6 +1109,7 @@ fn scan_empty_mod_ids_uses_listed_recovery_records_without_per_mod_record_probes
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(b"model a")),
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: target_b,
@@ -1118,6 +1119,7 @@ fn scan_empty_mod_ids_uses_listed_recovery_records_without_per_mod_record_probes
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(b"model b")),
+                    adopted: false,
                 },
             ],
         )),
@@ -1574,6 +1576,7 @@ fn scan_marks_completed_when_target_summary_matches_and_backup_exists() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-original".to_owned()),
                 installed_file: Some(summary(&modded_bytes)),
+                adopted: false,
             }],
         )),
     });
@@ -1631,6 +1634,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(&bytes_b)),
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: target_a,
@@ -1640,6 +1644,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(&bytes_a)),
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: target_a_extra,
@@ -1649,6 +1654,7 @@ fn scan_empty_mod_ids_scans_all_unique_manifest_mods_in_stable_order() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(&bytes_a)),
+                    adopted: false,
                 },
             ],
         )),
@@ -1698,6 +1704,7 @@ fn scan_marks_unknown_when_target_state_cannot_be_read() {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: Some(summary(&modded_bytes)),
+                adopted: false,
             }],
         )),
     });
@@ -1746,6 +1753,7 @@ fn scan_reports_repair_issue_when_backup_is_missing_without_exposing_backup_ref(
                 layer: FileLayer::new("base", 0),
                 backup_ref: Some("backup-original".to_owned()),
                 installed_file: Some(summary(&modded_bytes)),
+                adopted: false,
             }],
         )),
     });
@@ -1815,6 +1823,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: None,
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: missing_target,
@@ -1824,6 +1833,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(&expected_bytes)),
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: changed_target,
@@ -1833,6 +1843,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: None,
                     installed_file: Some(summary(&expected_bytes)),
+                    adopted: false,
                 },
                 InstallManifestEntry {
                     target_path: backup_error_target,
@@ -1842,6 +1853,7 @@ fn scan_aggregates_recovery_issues_without_exposing_paths_or_backup_refs() {
                     layer: FileLayer::new("base", 0),
                     backup_ref: Some(backup_error_ref.to_owned()),
                     installed_file: Some(summary(&expected_bytes)),
+                    adopted: false,
                 },
             ],
         )),
@@ -2011,6 +2023,7 @@ fn reinstall_recovery_with_stale_target() -> (
         layer: FileLayer::new("base", 0),
         backup_ref: Some("stale-original-backup".to_owned()),
         installed_file: Some(installed_file_summary(b"stale-installed-v1")),
+        adopted: false,
     });
     transaction.status = ReinstallRecoveryTransactionStatus::Completed;
     transaction.pre_reinstall_manifest = old_manifest.clone();
@@ -2086,6 +2099,7 @@ fn scan_status_for_manifest_status(
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(summary(&modded_bytes)),
+            adopted: false,
         }],
     );
     manifest.status = manifest_status;

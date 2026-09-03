@@ -326,6 +326,7 @@ mod tests {
                     layer: FileLayer::new("base", 0),
                     backup_ref: Some("original-retained".to_owned()),
                     installed_file: Some(summary("same")),
+                    adopted: false,
                 }],
             ),
             candidate_replacement_bindings: Vec::new(),

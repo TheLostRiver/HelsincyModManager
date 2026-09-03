@@ -1635,6 +1635,7 @@ fn sensitive_manifest() -> InstallManifest {
                 size_bytes: 7,
                 sha256: "sha256-sensitive".to_owned(),
             }),
+            adopted: false,
         }],
     )
 }
