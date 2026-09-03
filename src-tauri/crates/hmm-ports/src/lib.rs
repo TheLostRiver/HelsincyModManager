@@ -108,8 +108,10 @@ pub use mod_library_projection::{
 pub use mod_metadata::ModMetadataRepository;
 pub use mod_storage::{
     validate_mod_storage_directory_shape, ModStorageDirectoryError, ModStorageDirectoryInspection,
-    ModStorageDirectoryInspectionRequest, ModStorageDirectoryInspector,
-    DEFAULT_MOD_STORAGE_DIRECTORY, MOD_STORAGE_MARKER_NAME, MOD_STORAGE_MARKER_SCHEMA,
+    ModStorageDirectoryInspectionRequest, ModStorageDirectoryInspector, ModStorageMigrationError,
+    ModStorageMigrationJournal, ModStorageMigrationJournalRepository, ModStorageMigrationState,
+    ModStorageMigrator, ModStoragePackageCopyReport, DEFAULT_MOD_STORAGE_DIRECTORY,
+    MOD_STORAGE_MARKER_NAME, MOD_STORAGE_MARKER_SCHEMA, MOD_STORAGE_MIGRATION_JOURNAL_VERSION,
     MOD_STORAGE_SANDBOX_DIRECTORY,
 };
 pub use preview_image::{
