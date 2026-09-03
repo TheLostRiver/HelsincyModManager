@@ -12,7 +12,8 @@ Debug Log **默认关闭**，而它是诊断价值最高的一类。如果不开
 
 入口：设置页 → Debug 日志开关（`set_debug_log_settings`）。
 
-开启后确认写入 `%APPDATA%/HelsincyModManager/logs/debug/debug-YYYY-MM-DD.log`。
+开启后确认写入 `%APPDATA%\dev.helsincy.modmanager\logs\debug\debug-YYYY-MM-DD.log`
+（应用标识是 `dev.helsincy.modmanager`，不是产品名）。
 
 ### 2. 隔离测试数据
 

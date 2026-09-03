@@ -261,6 +261,9 @@ admission 使用以下稳定 tracing event：
 - `write_admission_release_failed`
 - `sandbox_write_admission_rejected`（沙箱 root admission 拒绝写请求；`operation` 承载受控
   阶段，`error_code` 为 `SandboxWriteCapabilityError` 的稳定 code。见 #273）
+- `mod_storage_root_degraded`（启动解析 Mod 存储根时降级，warning；`operation` 固定为
+  `resolve_mod_storage_root`，`error_code` ∈ `settings_unreadable | configured_dir_invalid |
+  configured_dir_unavailable`，`phase` 承载 `mod_storage_dir_*` 细分码；不含任何路径。见 #275）
 
 admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage 和
 `abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名或路径、SID、
