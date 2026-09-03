@@ -22,6 +22,7 @@ pub struct ExternalImportComposition {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn compose(
     app_data_dir: &Path,
+    mod_storage_root: &Path,
     db: &Arc<Mutex<rusqlite::Connection>>,
     task_manager: &Arc<TaskManager>,
     catalog: Arc<dyn ModImportResultRepository>,
@@ -48,8 +49,10 @@ pub(super) fn compose(
         Arc::clone(&batch_repository),
         Arc::new(SystemClock),
     ));
+    // Materialized archives stay app-private (`external-import/materialized`); the unpacked
+    // packages land in the Mod storage root like every other import (#275).
     let package_preparer: Arc<dyn ModImportPackagePreparer> = Arc::new(
-        ZipModImportPackagePreparer::new_in_app_data(app_data_dir.to_path_buf()),
+        ZipModImportPackagePreparer::new_in_storage_root(mod_storage_root.to_path_buf()),
     );
     let materializer: Arc<dyn ExternalImportMaterializer> =
         Arc::new(HuntingBoxDirectoryMaterializer::new(

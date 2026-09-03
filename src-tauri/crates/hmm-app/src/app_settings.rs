@@ -156,6 +156,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })
         );
     }
@@ -168,6 +169,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });
@@ -196,6 +198,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });
@@ -219,6 +222,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })
         );
     }
@@ -231,6 +235,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });

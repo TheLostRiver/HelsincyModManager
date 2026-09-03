@@ -15,6 +15,7 @@ mod install;
 mod mod_import;
 mod mod_library_projection;
 mod mod_metadata;
+mod mod_storage;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -105,6 +106,12 @@ pub use mod_library_projection::{
     MOD_LIBRARY_PROJECTION_SCHEMA_VERSION, MOD_LIBRARY_QUERY_KEY_VERSION,
 };
 pub use mod_metadata::ModMetadataRepository;
+pub use mod_storage::{
+    validate_mod_storage_directory_shape, ModStorageDirectoryError, ModStorageDirectoryInspection,
+    ModStorageDirectoryInspectionRequest, ModStorageDirectoryInspector,
+    DEFAULT_MOD_STORAGE_DIRECTORY, MOD_STORAGE_MARKER_NAME, MOD_STORAGE_MARKER_SCHEMA,
+    MOD_STORAGE_SANDBOX_DIRECTORY,
+};
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,

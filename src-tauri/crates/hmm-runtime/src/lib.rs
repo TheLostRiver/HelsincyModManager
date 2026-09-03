@@ -15,6 +15,7 @@ mod game_automation;
 mod install_automation;
 mod lifecycle_automation;
 mod mod_library;
+mod mod_storage;
 mod sandbox_write;
 mod uninstall;
 
@@ -74,6 +75,10 @@ pub use install_automation::{
 pub use lifecycle_automation::{
     CliLifecycleAutomation, CliLifecycleAutomationError, LifecycleTaskCancellationHandle,
     LifecycleTaskOutcome,
+};
+pub use mod_storage::{
+    resolve_mod_storage_root, ModStorageDegradedReason, ModStorageRootResolution,
+    ModStorageRootSource,
 };
 pub use sandbox_write::{
     SandboxWriteAdmission, SandboxWriteCapability, SandboxWriteCapabilityError, SandboxWriteRoots,

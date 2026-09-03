@@ -24,6 +24,8 @@ struct AppSettingsFile {
     log_storage_max_bytes: Option<u64>,
     #[serde(default)]
     debug_log_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mod_storage_dir: Option<PathBuf>,
 }
 
 impl Default for AppSettingsFile {
@@ -34,6 +36,7 @@ impl Default for AppSettingsFile {
             thumbnail_cache_max_age_days: None,
             log_storage_max_bytes: None,
             debug_log_enabled: false,
+            mod_storage_dir: None,
         }
     }
 }
@@ -156,6 +159,9 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             thumbnail_cache_max_age_days: config.thumbnail_cache_max_age_days,
             log_storage_max_bytes: config.log_storage_max_bytes,
             debug_log_enabled: config.debug_log_enabled,
+            mod_storage_dir: config
+                .mod_storage_dir
+                .filter(|path| !path.as_os_str().is_empty()),
         })
     }
 
@@ -169,6 +175,7 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             thumbnail_cache_max_age_days: settings.thumbnail_cache_max_age_days,
             log_storage_max_bytes: settings.log_storage_max_bytes,
             debug_log_enabled: settings.debug_log_enabled,
+            mod_storage_dir: settings.mod_storage_dir.clone(),
         })
     }
 }
@@ -233,6 +240,7 @@ mod tests {
             thumbnail_cache_max_age_days: Some(14),
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: true,
+            mod_storage_dir: None,
         })
         .expect("save settings");
         let settings = repo.load_settings().expect("load settings");
@@ -241,6 +249,52 @@ mod tests {
         assert_eq!(settings.thumbnail_cache_max_age_days, Some(14));
         assert_eq!(settings.log_storage_max_bytes, Some(64 * 1024 * 1024));
         assert!(settings.debug_log_enabled);
+        assert_eq!(settings.mod_storage_dir, None);
+    }
+
+    #[test]
+    fn mod_storage_dir_round_trips_and_is_omitted_when_unset() {
+        let path = test_file("mod-storage-dir");
+        let repo = JsonAppSettingsRepository::new(path.clone());
+        let storage_dir = PathBuf::from(if cfg!(windows) {
+            "D:\\HMMMods"
+        } else {
+            "/srv/hmm-mods"
+        });
+
+        repo.save_settings(&AppSettings {
+            mod_storage_dir: Some(storage_dir.clone()),
+            ..AppSettings::default()
+        })
+        .expect("save settings");
+        let settings = repo.load_settings().expect("load settings");
+        assert_eq!(settings.mod_storage_dir, Some(storage_dir));
+        let written = fs::read_to_string(&path).expect("read settings file");
+        assert!(written.contains("\"modStorageDir\""));
+
+        repo.save_settings(&AppSettings::default())
+            .expect("save default settings");
+        let written = fs::read_to_string(&path).expect("read settings file");
+        assert!(
+            !written.contains("modStorageDir"),
+            "unset storage dir must not be serialized as null: {written}"
+        );
+        assert_eq!(
+            repo.load_settings().expect("load settings").mod_storage_dir,
+            None
+        );
+    }
+
+    #[test]
+    fn empty_mod_storage_dir_string_loads_as_unset() {
+        let path = test_file("empty-mod-storage-dir");
+        fs::create_dir_all(path.parent().expect("settings parent")).expect("create parent");
+        fs::write(&path, r#"{ "version": 1, "modStorageDir": "" }"#).expect("write settings");
+        let repo = JsonAppSettingsRepository::new(path);
+
+        let settings = repo.load_settings().expect("load settings");
+
+        assert_eq!(settings.mod_storage_dir, None);
     }
 
     #[test]

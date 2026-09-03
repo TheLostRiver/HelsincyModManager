@@ -3,6 +3,9 @@ use crate::external_mod_adopt_tasks::ExternalModAdoptTaskService;
 use crate::external_state_scan::{ConfiguredExternalStateScanner, RealGameFileSystemFactory};
 use crate::external_state_scan_tasks::ExternalStateScanTaskService;
 use crate::mod_library::ModLibraryComposition;
+use crate::mod_storage::{
+    resolve_mod_storage_root, ModStorageDegradedReason, ModStorageRootResolution,
+};
 use crate::{
     RuntimeEnvironment, RuntimeEnvironmentKind, SandboxWriteCapability, SandboxWriteRoots,
 };
@@ -25,8 +28,9 @@ use hmm_app::{
     InstallWriteAdmissionError, InstalledReplacementReinstallResolution,
     LimitedPreviewImageProcessor, ModDeletionService, ModDependencyGraphService,
     ModImportAnalysisService, ModImportPrepareService, ModImportTaskRunner, ModImportTaskService,
-    ModLibraryQueryService, ModLibraryService, ModMetadataService, PlannedInitialRetargetInstall,
-    PreparedReinstall, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
+    ModLibraryQueryService, ModLibraryService, ModMetadataService, ModStorageSettingsService,
+    ModStorageSettingsServiceDependencies, PlannedInitialRetargetInstall, PreparedReinstall,
+    PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
     PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
@@ -66,10 +70,10 @@ use hmm_infra::{
     DiagnosticsEvidenceHealthState, FileSystemAuditLogWriter, FileSystemDiagnosticPackageExporter,
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, FileSystemLogRetention, FileSystemLogStorageBudget,
-    FileSystemRetargetStagingMaterializer, FileSystemSaveBackupDirectoryLocator,
-    FileSystemSaveBackupWriter, FileSystemSaveRestoreFileSystem,
-    FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter, FileSystemTextLogReader,
-    FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
+    FileSystemModStorageDirectoryInspector, FileSystemRetargetStagingMaterializer,
+    FileSystemSaveBackupDirectoryLocator, FileSystemSaveBackupWriter,
+    FileSystemSaveRestoreFileSystem, FileSystemSaveRestoreSourceValidator, FileSystemTaskLogWriter,
+    FileSystemTextLogReader, FileSystemThumbnailStore, ImageCratePreviewImageProcessor,
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonReinstallRecoveryTransactionRepository,
@@ -86,13 +90,14 @@ use hmm_infra::{
     DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
 use hmm_ports::{
-    AppClock, AppSettingsRepository, AuditLogEvent, AuditLogReader, AuditLogWriter,
-    AuditWriteFailurePolicy, ContentTransformer, ContentTransformerRegistry, DebugLogControl,
-    DiagnosticPackageExporter, DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth,
-    GameAdapter, GameConfigRepository, GameLauncher, GamePrerequisiteRuleRepository,
-    GameRunningDetector, InstallGameFileSystem, InstallManifestRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
-    ModPackageInstallFileScanner, ProfileRepository, ProfileSaveDirectoryValidator,
+    AppClock, AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AuditLogEvent,
+    AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy, ContentTransformer,
+    ContentTransformerRegistry, DebugLogControl, DiagnosticPackageExporter,
+    DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
+    GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
+    InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
+    ModImportSandboxLocator, ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ModStorageDirectoryInspector, ProfileRepository, ProfileSaveDirectoryValidator,
     ProfileSaveSettingsRepository, ReinstallRecoveryTransactionRepository, ReplacementAdapter,
     ReplacementCatalogProvider, ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
@@ -206,6 +211,7 @@ pub struct HmmRuntime {
     pub mod_import_tasks: Arc<ModImportTaskService>,
     pub external_import: crate::external_import::ExternalImportComposition,
     pub app_settings: Arc<AppSettingsService>,
+    pub mod_storage_settings: Arc<ModStorageSettingsService>,
     pub debug_log: Arc<DebugLogController>,
     pub mod_metadata: Arc<ModMetadataService>,
     pub categories: Arc<CategoryService>,
@@ -224,6 +230,10 @@ pub struct HmmRuntime {
     pub save_restore_task_runner: Arc<SaveRestoreTaskRunner>,
     pub save_restore_tasks: Arc<SaveRestoreTaskService>,
     pub task_manager: Arc<TaskManager>,
+    /// Effective Mod storage root for this process (#275); fixed at startup, changes apply after
+    /// a restart.
+    pub mod_storage: ModStorageRootResolution,
+    pub mod_storage_inspector: Arc<dyn ModStorageDirectoryInspector>,
     db: Arc<Mutex<rusqlite::Connection>>,
 }
 
@@ -257,6 +267,21 @@ impl HmmRuntime {
         let config_path = app_data_dir.join("config").join("games.json");
         let settings_path = app_data_dir.join("config").join("settings.json");
         let mod_import_results_path = app_data_dir.join("mod-import").join("results.json");
+        // Settings are read once, before anything that depends on the Mod storage root is
+        // composed (#275). The result feeds both the storage root and the log settings below.
+        let app_settings_repository: Arc<dyn AppSettingsRepository> =
+            Arc::new(JsonAppSettingsRepository::new(settings_path));
+        let loaded_settings = app_settings_repository.load_settings();
+        let mod_storage_inspector: Arc<dyn ModStorageDirectoryInspector> =
+            Arc::new(FileSystemModStorageDirectoryInspector);
+        let mod_storage = resolve_mod_storage_root(
+            &app_data_dir,
+            loaded_settings.as_ref(),
+            mod_storage_inspector.as_ref(),
+        );
+        if let Some(reason) = mod_storage.degraded {
+            record_mod_storage_root_degraded(reason);
+        }
 
         let db_path = app_data_dir.join("hmm.db");
         let db = hmm_infra::open_database(&db_path)
@@ -367,17 +392,32 @@ impl HmmRuntime {
         ));
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
-        let game_setup = Arc::new(GameSetupService::new(
-            clone_game_adapters(&game_adapters),
-            Arc::clone(&game_config_repository),
-            Arc::new(RealGameDirectoryProbeFactory),
-            Arc::new(SteamGameDiscoveryService::new(Arc::new(
-                PlatformSteamRootProvider,
-            ))),
-            Arc::new(SystemClock),
+        let game_setup = Arc::new(
+            GameSetupService::new(
+                clone_game_adapters(&game_adapters),
+                Arc::clone(&game_config_repository),
+                Arc::new(RealGameDirectoryProbeFactory),
+                Arc::new(SteamGameDiscoveryService::new(Arc::new(
+                    PlatformSteamRootProvider,
+                ))),
+                Arc::new(SystemClock),
+            )
+            .with_mod_storage_guard(Arc::clone(&mod_storage_inspector), mod_storage.root.clone()),
+        );
+        let mod_storage_settings = Arc::new(ModStorageSettingsService::new(
+            ModStorageSettingsServiceDependencies {
+                settings: Arc::clone(&app_settings_repository),
+                inspector: Arc::clone(&mod_storage_inspector),
+                game_config: Arc::clone(&game_config_repository),
+                game_ids: game_ids.clone(),
+                catalog: Arc::clone(&mod_import_result_repository),
+                effective_root: mod_storage.root.clone(),
+                default_root: mod_storage.default_root.clone(),
+                startup_configured: mod_storage.configured.clone(),
+            },
         ));
         let mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator> = Arc::new(
-            TaskScopedModImportSandboxLocator::new_in_app_data(app_data_dir.clone()),
+            TaskScopedModImportSandboxLocator::new_in_storage_root(mod_storage.root.clone()),
         );
         let thumbnail_cache_maintenance: Arc<dyn ThumbnailCacheMaintenance> =
             Arc::new(FileSystemThumbnailStore::new(app_data_dir.clone()));
@@ -396,10 +436,8 @@ impl HmmRuntime {
             ));
         let evidence_health: Arc<dyn DiagnosticsEvidenceHealth> =
             Arc::new(DiagnosticsEvidenceHealthState::default());
-        let app_settings_repository: Arc<dyn AppSettingsRepository> =
-            Arc::new(JsonAppSettingsRepository::new(settings_path));
         let (log_storage_max_bytes, log_storage_settings_degraded, debug_log_enabled) =
-            resolve_log_settings(app_settings_repository.as_ref(), evidence_health.as_ref());
+            resolve_log_settings(loaded_settings.as_ref(), evidence_health.as_ref());
         let debug_log = Arc::new(DebugLogController::new(
             app_data_dir.clone(),
             debug_log_enabled,
@@ -504,8 +542,8 @@ impl HmmRuntime {
             )),
         );
         let mod_import_prepare_service = Arc::new(ModImportPrepareService::new(
-            Box::new(ZipModImportPackagePreparer::new_in_app_data(
-                app_data_dir.clone(),
+            Box::new(ZipModImportPackagePreparer::new_in_storage_root(
+                mod_storage.root.clone(),
             )),
             ModImportAnalysisService::new(
                 Box::new(preview_image_service),
@@ -515,6 +553,7 @@ impl HmmRuntime {
         ));
         let external_import = crate::external_import::compose(
             &app_data_dir,
+            &mod_storage.root,
             &db,
             &task_manager,
             Arc::clone(&mod_import_result_repository),
@@ -984,6 +1023,7 @@ impl HmmRuntime {
             mod_import_tasks: Arc::new(ModImportTaskService::new(Arc::clone(&task_manager))),
             external_import,
             app_settings,
+            mod_storage_settings,
             debug_log,
             mod_metadata: Arc::new(ModMetadataService::new(
                 mod_metadata_repository,
@@ -1017,6 +1057,8 @@ impl HmmRuntime {
             save_restore_task_runner,
             save_restore_tasks,
             task_manager,
+            mod_storage,
+            mod_storage_inspector,
             db,
         };
 
@@ -1178,11 +1220,25 @@ impl InstallWriteAdmission for SandboxRuntimeWriteAdmission {
     }
 }
 
+/// #275: a degraded storage root is a startup fact worth a log line, but never a startup
+/// failure. Goes through the safe app-log layer so it lands in `logs/app/` (a plain
+/// `tracing::warn!` would only reach a dev terminal); no path is logged, only stable codes.
+fn record_mod_storage_root_degraded(reason: ModStorageDegradedReason) {
+    let mut event = AppLogEvent::warning("mod_storage_root_degraded")
+        .with_operation("resolve_mod_storage_root")
+        .with_result("degraded")
+        .with_error_code(reason.code());
+    if let Some(detail) = reason.detail_code() {
+        event = event.with_phase(detail);
+    }
+    emit_safe_app_log(event);
+}
+
 fn resolve_log_settings(
-    repository: &dyn AppSettingsRepository,
+    settings: Result<&AppSettings, &AppSettingsRepositoryError>,
     health: &dyn DiagnosticsEvidenceHealth,
 ) -> (u64, bool, bool) {
-    match repository.load_settings() {
+    match settings {
         Ok(settings) => {
             let (max_bytes, degraded) = match settings.log_storage_max_bytes {
                 None => (DEFAULT_LOG_STORAGE_MAX_BYTES, false),

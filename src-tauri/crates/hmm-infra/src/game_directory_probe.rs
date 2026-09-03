@@ -76,6 +76,15 @@ impl GameDirectoryProbe for RealGameDirectoryProbe {
     }
 }
 
+/// Same probe for any directory HMM must be able to create and delete files in (Mod storage
+/// root included); the game-directory doc comment above explains the create-then-remove rules.
+pub(crate) fn directory_is_writable(directory: &Path) -> bool {
+    if !directory.is_dir() {
+        return false;
+    }
+    writable_with_retries(|| probe_root_writable_once(directory))
+}
+
 /// 单次探针的三种结局。`RemoveBlocked` 携带路径：这个文件确属本次探针创建，
 /// 只是删除被瞬时句柄挡住——后续 attempt 成功后要再回收它，否则瞬态干扰
 /// 会在游戏根目录留下 0 字节残留，破坏 sandbox 契约测试的精确 tree baseline。

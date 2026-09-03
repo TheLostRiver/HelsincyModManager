@@ -338,7 +338,9 @@ fn map_service_error(error: GameSetupServiceError) -> ReadOnlyGameAutomationErro
         GameSetupServiceError::ScanFailed(_) | GameSetupServiceError::ScanNotImplemented => {
             ReadOnlyGameAutomationError::ScanUnavailable
         }
-        GameSetupServiceError::ValidationFailed(_) | GameSetupServiceError::ClockFailed(_) => {
+        GameSetupServiceError::ValidationFailed(_)
+        | GameSetupServiceError::ClockFailed(_)
+        | GameSetupServiceError::OverlapsModStorage => {
             ReadOnlyGameAutomationError::InternalUnavailable
         }
     }
