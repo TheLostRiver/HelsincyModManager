@@ -143,6 +143,28 @@ test("三语占用文案：提示行织入全部占用者名与数量，行内�
   }
 });
 
+test("三语全占用徽标（9c）：单占用者的完整/精简档织入名字、多占用者织入数量，极简档非空且不带名字", () => {
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const occupied = externalStateCopy[locale].badge.occupied;
+    for (const tier of ["full", "compact"]) {
+      assert.match(
+        occupied[tier](["PROBE_NAME"]),
+        /PROBE_NAME/,
+        `${locale}.occupied.${tier} 单占用者必须带名字`,
+      );
+      const several = occupied[tier](["甲", "乙", "丙"]);
+      assert.ok(several.includes("3"), `${locale}.occupied.${tier} 多占用者必须报数量：${several}`);
+      assert.ok(
+        !several.includes("甲"),
+        `${locale}.occupied.${tier} 多占用者不列名字（列不下，且细节在弹窗）：${several}`,
+      );
+    }
+    const minimal = occupied.minimal(["PROBE_NAME"]);
+    assert.ok(minimal.length > 0, `${locale}.occupied.minimal 不得为空`);
+    assert.ok(!minimal.includes("PROBE_NAME"), `${locale}.occupied.minimal 96px 里放不下名字`);
+  }
+});
+
 test("Section 形状：提示行按 occupiedBy 门禁，行内标签经回退助手取名", () => {
   const currentDirectory = dirname(fileURLToPath(import.meta.url));
   const sectionSource = readFileSync(
