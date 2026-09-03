@@ -264,6 +264,10 @@ admission 使用以下稳定 tracing event：
 - `mod_storage_root_degraded`（启动解析 Mod 存储根时降级，warning；`operation` 固定为
   `resolve_mod_storage_root`，`error_code` ∈ `settings_unreadable | configured_dir_invalid |
   configured_dir_unavailable`，`phase` 承载 `mod_storage_dir_*` 细分码；不含任何路径。见 #275）
+- `mod_storage_migration_settled`（启动期处理上次进程留下的存储根迁移 journal，warning；`operation`
+  固定为 `settle_mod_storage_migration`，`result` ∈ `source_cleaned | cleanup_blocked | rolled_back |
+  rollback_blocked | deferred | journal_unreadable`，`item_count` = 涉及的包数，`error_code` 为阻塞
+  原因的 `mod_storage_migration_*` 码；无 journal 时不写。不含路径、不含包名。见 #275 切片②）
 
 admission 日志只允许 scope kind、结果、等待毫秒、稳定 error code、受控 release stage 和
 `abandoned_owner | stale_owner_metadata | none`；禁止记录 mutex/object 名、lock 文件名或路径、SID、

@@ -457,6 +457,13 @@ CLI-2B Sandbox 写许可测试只使用测试进程创建的临时根，必须�
   覆盖五种 settings 状态的解析、配置根下的导入 / 重启 / 删除端到端，以及沙箱 CLI 拒绝 `--data-dir`
   外的存储根；`hmm-app` 用假 inspector 覆盖 set 的空库门禁、重叠拒绝、claim 失败不落设置。这些用例
   只用 temp 目录，不读取真实 AppData 或游戏目录。
+- #275 切片② 迁移：`hmm-infra` 的 migrator 用例覆盖复制 + 校验、包内 junction 拒绝、目标残留先清、
+  单字节篡改 / 多余文件被校验捕获、取消在文件边界生效、journal 原子往返与坏版本拒绝；`hmm-app`
+  用假 migrator / journal / inspector 覆盖事件序列与 journal 状态序列、复制失败 / 校验失败 / 设置写
+  失败 / journal 写失败的回滚、回滚删不掉时保留 journal、包间取消、切换期取消被屏障拒绝、导入进行中
+  拒绝启动、当前根重叠拒绝，以及启动期收尾的六种结论；三类沙箱写入者各有一条「门闩冻结即拒绝且不留
+  副作用」用例；`hmm-runtime` 端到端覆盖真实文件系统上的迁移 → 同会话仍读旧根且写入冻结 → 重启后
+  新根生效、源副本清除、journal 清空，以及 `copying` journal 崩溃后的启动回滚。
 - 正向、拒绝、marker 篡改、根替换和 link/junction fixture 都验证 Sandbox 外 sentinel bytes 不变。
 - 测试不得读取真实 Steam、AppData、游戏、存档、日志或 Scheduled Task；marker/capability 不得被
   表述为 Production admission，也不得自动解锁 backup create 或 diagnostics export。
