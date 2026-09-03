@@ -468,6 +468,7 @@ fn manifest_with_entry(mod_id: &str, status: InstallManifestStatus) -> InstallMa
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: None,
+            adopted: false,
         }],
         replacement_bindings: Vec::new(),
     }

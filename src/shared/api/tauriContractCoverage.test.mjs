@@ -225,3 +225,41 @@ test("documents every install failure phase produced by the admission layers", (
     `undocumented install failure phases: ${undocumented.join(", ")}`,
   );
 });
+
+// #286 adopt 是外部状态命令族里唯一有写入的一条，前端要按稳定码逐个映射文案
+// （complete-set 用例会盯着每个 key），所以契约必须**逐个**登记而不是只写一个通配族。
+// 三个来源：接管器 `code()`、任务服务 `code()`，以及 completed 事件上的显式降级码常量。
+test("documents every external mod adopt error code the runtime can emit", () => {
+  const adoptSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-runtime/src/external_mod_adopt.rs"),
+    "utf8",
+  );
+  const adoptTasksSource = readFileSync(
+    join(repositoryRoot, "src-tauri/crates/hmm-runtime/src/external_mod_adopt_tasks.rs"),
+    "utf8",
+  );
+
+  const codes = [
+    ...extractMappingValues(
+      extractFunctionBody(adoptSource, "pub fn code(&self) -> &'static str"),
+    ),
+    ...extractMappingValues(
+      extractFunctionBody(adoptTasksSource, "pub const fn code(self) -> &'static str"),
+    ),
+    ...[...adoptTasksSource.matchAll(/_CODE: &str = "([a-z_]+)"/g)].map((match) => match[1]),
+  ];
+
+  assert.ok(
+    codes.includes("external_mod_adopt_stale") &&
+      codes.includes("external_mod_adopt_task_unavailable") &&
+      codes.includes("external_mod_adopt_audit_unavailable"),
+    "extraction must cover the adopter, the task service and the degradation code",
+  );
+
+  const undocumented = codes.filter((code) => !contractSource.includes(code));
+  assert.deepEqual(
+    undocumented,
+    [],
+    `undocumented external mod adopt codes: ${undocumented.join(", ")}`,
+  );
+});

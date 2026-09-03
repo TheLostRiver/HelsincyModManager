@@ -1,4 +1,6 @@
-use crate::external_state_scan::ConfiguredExternalStateScanner;
+use crate::external_mod_adopt::ConfiguredExternalModAdopter;
+use crate::external_mod_adopt_tasks::ExternalModAdoptTaskService;
+use crate::external_state_scan::{ConfiguredExternalStateScanner, RealGameFileSystemFactory};
 use crate::external_state_scan_tasks::ExternalStateScanTaskService;
 use crate::mod_library::ModLibraryComposition;
 use crate::{
@@ -179,6 +181,9 @@ pub struct HmmRuntime {
     pub install_recovery_action_previewer: Arc<ConfiguredInstallRecoveryActionPreviewer>,
     pub external_state_scanner: Arc<ConfiguredExternalStateScanner>,
     pub external_state_scan_tasks: Arc<ExternalStateScanTaskService>,
+    /// #286 adopt：接管（只写清单）的编排入口，与扫描器共享结果缓存。
+    pub external_mod_adopter: Arc<ConfiguredExternalModAdopter>,
+    pub external_mod_adopt_tasks: Arc<ExternalModAdoptTaskService>,
     pub reinstall_executor: Arc<ConfiguredReinstallExecutor>,
     pub reinstall_task_runner: Arc<ReinstallTaskRunner<ConfiguredReinstallExecutor>>,
     pub reinstall_tasks: Arc<ReinstallTaskService>,
@@ -860,6 +865,24 @@ impl HmmRuntime {
                 Arc::clone(&install_write_locks),
                 Arc::clone(&sandbox_write_admission),
             ));
+        // #286 adopt：接管只写清单。与 install/uninstall 共用同一条写入准入链与写锁注册表；
+        // 扫描缓存与扫描器共享同一实例——接管消费的正是用户刚在弹窗里确认的那份记录。
+        let external_mod_adopter = Arc::new(ConfiguredExternalModAdopter::new(
+            Arc::clone(&game_config_repository),
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&install_manifest_repository),
+            Arc::clone(&install_write_locks),
+            Arc::clone(&lifecycle_write_admission),
+            Arc::new(RealGameFileSystemFactory),
+            external_state_scanner.cache(),
+            Arc::clone(&task_manager),
+            Arc::clone(&audit_log_writer),
+            Arc::new(SystemClock),
+        ));
+        let external_mod_adopt_tasks = Arc::new(ExternalModAdoptTaskService::new(
+            Arc::clone(&task_manager),
+            Arc::clone(&external_mod_adopter),
+        ));
         let uninstall_task_runner = Arc::new(UninstallTaskRunner::with_write_coordination(
             Arc::clone(&task_manager),
             mod_uninstaller,
@@ -937,6 +960,8 @@ impl HmmRuntime {
             install_recovery_action_previewer,
             external_state_scanner,
             external_state_scan_tasks,
+            external_mod_adopter,
+            external_mod_adopt_tasks,
             reinstall_executor,
             reinstall_task_runner,
             reinstall_tasks: Arc::new(ReinstallTaskService::new(Arc::clone(&task_manager))),

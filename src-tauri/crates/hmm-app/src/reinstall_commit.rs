@@ -832,6 +832,7 @@ fn build_candidate_manifest(
                 .cloned()
                 .flatten(),
             installed_file: Some(source.summary.clone()),
+            adopted: false,
         })
         .collect();
     let mut manifest = replace_entries_and_bindings_for_mod(

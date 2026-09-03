@@ -114,6 +114,7 @@ fn task_kind_code(kind: TaskKindDto) -> &'static str {
         TaskKindDto::SaveBackup => "save_backup",
         TaskKindDto::SaveRestore => "save_restore",
         TaskKindDto::ExternalStateScan => "external_state_scan",
+        TaskKindDto::ExternalModAdopt => "external_mod_adopt",
     }
 }
 

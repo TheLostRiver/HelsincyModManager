@@ -258,7 +258,9 @@ pub enum InstallWriteAdmissionError {
 }
 
 impl InstallWriteAdmissionError {
-    pub(crate) fn failure_phase(&self) -> &'static str {
+    /// 稳定失败码。`pub` 是因为 `hmm-runtime` 的接管任务（#286 adopt）复用同一条准入链，
+    /// 失败时要报出同一组码而不是再抄一份字符串映射。
+    pub fn failure_phase(&self) -> &'static str {
         match self {
             Self::RecoveryUnavailable => "recovery_unavailable",
             Self::RecoveryPending => "recovery_pending",
@@ -3076,6 +3078,7 @@ mod tests {
                 layer: FileLayer::new("base", 0),
                 backup_ref: None,
                 installed_file: None,
+                adopted: false,
             }],
         )
     }

@@ -246,7 +246,7 @@ batch/result 事实或伪造导入失败。
 ### #286 外部 MOD 状态扫描（只读判定）
 
 外部导入的 MOD 在 HMM 清单中没有记录，「已安装」语义必须由**游戏目录事实**给出。本节登记只读
-状态扫描的 transport 形状；接管 adopt（写 manifest）不在本节，实现时单独登记。
+状态扫描的 transport 形状；接管 adopt（写 manifest）见下一节。
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
@@ -281,6 +281,55 @@ batch/result 事实或伪造导入失败。
     语义正交——「上次没扫成」≠「结果可能过期」，前端不得合并展示。
 - 查询是纯读缓存 + 重新 stat，**不触发扫描**；扫描只由显式 `start_external_mod_state_scan`
   发起（按需触发，不做进列表翻页）。
+
+### #286 外部 MOD 接管（adopt，只写清单）
+
+扫描判定为「外部已安装」的 MOD，可由玩家显式确认后**接管**：把游戏目录里已经存在、且与导入包
+一致的文件登记为本工具的安装清单条目。接管**只写安装清单、不碰任何游戏文件**——不复制、不备份、
+不建 recovery 记录。拍板规则见 #286 评论 5522790071，设计取舍见评论 5522985219。
+
+| command | 输入 | 返回 |
+| --- | --- | --- |
+| `start_external_mod_adopt` | `gameId`、`profileId`、`modId`、`layerName`、`layerPriority` | `{ task: TaskStartedDto, modId }`；登记 `external_mod_adopt` 任务并发出 `external_mod.adopt.queued` |
+
+- `gameId` / `profileId` / `modId` 与扫描同一套校验（`external_state_*_invalid`）；`layerName`
+  与 `start_install_task` 同形（前端与安装一样传 `base` / `0`），按同一受限字符集校验，非法时
+  `external_mod_adopt_layer_name_invalid`。该 command 不接受任何路径。
+- 接管是**后台任务**，前置条件是本会话内该 MOD 有一次**成功**的 `start_external_mod_state_scan`
+  结果：用户在弹窗里确认的就是那一份，接管写出的必须等于它。顺序为：锁外前置拒绝（无记录 /
+  含 `unreadable` / 可认领集为空——零副作用，不拿锁）→ 跨进程写准入 → `gameId/profileId` 写锁
+  （**阻塞等待**，有安装进行中就等它结束，不像扫描那样报 stale）→ 写入准入（与安装同一条链）→
+  锁内重验（stat 指纹 vs 扫描记录；以当下清单重算可认领集并与记录比对）→ 提交屏障 → 追加条目 →
+  原子保存清单 → 审计。任一重验不通过以 `external_mod_adopt_stale` 失败并要求重扫。支持
+  `cancel_task`（`queued` / `running`，提交屏障内不可取消）。
+- 可认领集 = 与导入包**一致**（`matched`）且**无主**（清单里没有任何条目引用该路径）的文件；
+  `changed` / `missing` 不认领只计数；任一 `unreadable` 阻断整次；可认领集为空拒绝；该 MOD
+  在清单里已有条目拒绝（应走重装）；清单 status 非可信（进行中 / 失败态）拒绝。
+- 写出的清单条目与 GUI 安装同形：`layer` 取自请求，`revision_id` 为空，`installed_file` 为该文件
+  当前 size/SHA-256（卸载前靠它核对），`backup_ref` 为空（文件不是本工具写的，没有可还原的原版），
+  并带来源标记 `adopted: true`。**卸载接管条目会删除这些文件且不能自动还原原版**——前端确认
+  文案必须说明这一点（先重新装回本 MOD，或用 Steam 验证游戏文件）。其余条目、`plan_hash`、
+  `replacement_bindings` 等原样保留，只推进 `completed_at`。
+- 成功后该 MOD 的扫描记录被丢弃（清单已认领它，「外部状态」这个问题不再成立）；前端应重查
+  `get_install_manifest_status` 而不是再查 `get_external_mod_state`。
+- 事件 `resultRef` 只带 opaque `modId`，payload 不承载目标路径、清单内容或第三方 Mod 内容；接管
+  没有独立结果 getter。失败事件的 `error` 为下列稳定码之一：
+  `external_mod_adopt_game_instance_unavailable`、`external_mod_adopt_mod_unavailable`、
+  `external_mod_adopt_scan_required`、`external_mod_adopt_unreadable_files`、
+  `external_mod_adopt_nothing_to_adopt`、`external_mod_adopt_already_installed`、
+  `external_mod_adopt_manifest_not_trusted`、`external_mod_adopt_manifest_unavailable`、
+  `external_mod_adopt_manifest_write_failed`（原子写未完成，清单未变，可直接重试）、
+  `external_mod_adopt_game_file_unavailable`、`external_mod_adopt_stale`、
+  `external_mod_adopt_unavailable`，以及任务编排自身失败的 `external_mod_adopt_task_unavailable`；
+  写入准入与跨进程准入的拒绝沿用安装同一组码：`recovery_pending` / `recovery_unavailable` /
+  `write_safety_rejected` 与 `write_admission_*`（语义见 `start_install_task` 一节）。
+  `external_mod_adopt_cancelled` 只作内部映射，取消对外表现为 `external_mod.adopt.cancelled`
+  终态而不是失败。
+- 审计沿用安装口径：`category = install`、`operation = adopt_external_mod`，字段只有 `task_id`、
+  `game_id`、`mod_id`、`profile_id` 与 `claimed_file_count` / `skipped_claimed_count` /
+  `skipped_changed_count` / `skipped_missing_count` 计数，失败时附与事件一致的 `error_code`；
+  取消不记审计。清单已写成而审计写入失败时任务仍为 completed，`error` 携带显式降级码
+  `external_mod_adopt_audit_unavailable`（与 `install.completed` 的降级口径一致）。
 
 ### T13 批量生命周期规划契约
 
@@ -750,6 +799,11 @@ TaskProgressEventDto
 | `external_state_scan` | `external_state.scan.completed` | 判定已写入进程内结果存储，明细通过 `get_external_mod_state` 查询 |
 | `external_state_scan` | `external_state.scan.failed` | 扫描失败；`error` 只携带稳定 `external_state_scan_*` code（stale 降级也走此终态） |
 | `external_state_scan` | `external_state.scan.cancelled` | 扫描在取消检查点协作式停止；本次不产生结果，上次结果保留 |
+| `external_mod_adopt` | `external_mod.adopt.queued` | 外部 MOD 接管已登记，`resultRef` 为 opaque mod ID |
+| `external_mod_adopt` | `external_mod.adopt.processing` | 准入、写锁、锁内重验与清单追加进行中（只写清单，不碰游戏文件） |
+| `external_mod_adopt` | `external_mod.adopt.completed` | 清单已原子写入；`error` 可仅为降级码 `external_mod_adopt_audit_unavailable` |
+| `external_mod_adopt` | `external_mod.adopt.failed` | 接管未写入清单（失败即无副作用）；`error` 只携带稳定 `external_mod_adopt_*` 或准入码 |
+| `external_mod_adopt` | `external_mod.adopt.cancelled` | 接管在提交屏障前协作式取消；清单未变，扫描记录保留 |
 
 新增 task kind 时必须在此表登记对应 phase code，避免前端硬编码未登记值。
 
@@ -1446,7 +1500,7 @@ cancel_task(taskId)
 - `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。失败事件的 `error` 使用稳定前缀 `install_failed:<phase>`，当前 phase 可为 `planning`、`ambiguous_content_root`、`empty_plan`、`prerequisite`、`replacement_selection_pending`、`lock`、`commit`、`complete`、`recovery_pending`、`recovery_unavailable`、`write_safety_rejected`，或 `CrossProcessWriteAdmissionError::code()` 给出的 `write_admission_busy` / `write_admission_cancelled` / `write_admission_order_violation` / `write_admission_unavailable` 之一；`ambiguous_content_root` 表示包内有多个 `nativePC`（合集包），不替玩家挑一个，需要拆包后分别导入——它由 #284 R1 新增的扫描错误变体一路映射而来，**不得**与笼统的 `planning` 混为一谈（否则玩家只会看到「无法生成安装计划」，会以为包坏了），且只用于普通导入安装，revision 安装沿用 `planning`；`write_safety_rejected` 表示写入准入拒绝了本次操作（见 #273）；后五者均由**写入准入层**直接产生，其中四个 `write_admission_*` 的语义见 [跨进程写许可设计](CROSS_PROCESS_WRITE_ADMISSION_DESIGN.md)：`busy` 为等待 deadline 到达（另一进程/任务持有同一 game/profile 写 scope）、`cancelled` 为等待期间任务被取消、`order_violation` 为固定获取顺序校验失败（内部不变量）、`unavailable` 为其他平台错误（不输出原始错误）；`prerequisite` 表示前置依赖判定阻断或发生漂移；`replacement_selection_pending` 表示替换目标面板仍有未完成的选择意图，普通安装会 fail closed 并引导用户回到该面板；`recovery_pending` / `recovery_unavailable` 表示在 commit 前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed，`empty_plan` 表示计划内没有任何可安装文件（见 #285，例如包内 `nativePC` 套了包装目录导致文件全被过滤）。它在 commit 之前拦截，**不产生安装副作用**——无文件写入、无写锁、无 recovery 记录；但任务会被置为 failed，并通过 `fail_with_audit` 写一条审计，`action_count` 为 `0`、`result` 为 `failure` 而不是 `success`。该判定只用于普通导入安装：revision 安装（retarget / 重装）的空计划沿用 `install.rs` 的 `PlanHasInvalidRevisionIdentity`。**新增 phase 必须同步在前端 `installFailures` 补三语文案**——缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，后端单测与三语 key 检查都仍然全绿，只有真机看得见（#284 R5 的教训）。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
 - `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
-- `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的本工具新增文件会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
+- `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的条目（本工具新增的文件，或 #286 接管认领的文件）会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。接管条目没有可还原的原版，删除即删除——这一点在接管确认弹窗里提前告知（见「外部 MOD 接管」一节）；`adopted` 标记目前只在清单里，尚未进入任何 DTO，卸载确认按它补充提示属于后续切片。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
 - `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall`、`complete`、`recovery_pending` 或 `recovery_unavailable`；后两者表示在卸载前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed。写入准入层还可能直接给出 `write_safety_rejected` 与四个 `write_admission_*`（`busy` / `cancelled` / `order_violation` / `unavailable`），语义同上。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。
 - 正式前端卸载 UI 只能在 `get_install_manifest_status` 摘要显示 `installed` 时提供单选卸载入口；typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。若摘要返回 `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required` 或 `unknown`，必须阻断安装/重装和自动卸载入口。前端按 `taskId` 和 `install.uninstall.*` phase 展示任务状态，完成后重新查询 manifest 摘要；失败时不根据 Mod 包内容、展示标签或页面内存态推断修复动作。
 - 若前端额外调用 `scan_install_recovery` 摘要，只能用于展示 issue code、计数和恢复中心所需的聚合详情；不能用它推断未文档化修复动作，也不能根据 Mod 包内容、展示标签或页面内存态推断修复动作。
