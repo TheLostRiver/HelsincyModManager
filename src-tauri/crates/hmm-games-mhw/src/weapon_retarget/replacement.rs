@@ -463,6 +463,11 @@ fn weapon_target_from_metadata(
         target.root().main_id().as_str(),
         metadata,
     )
+    // 上面的平表是三语别名压成的 BTreeSet，丢了 locale；artifact 本来就按语言分（#274），
+    // 原样带过去供前端按界面语言展示，平表继续只做检索。
+    .and_then(|target_without_locales| {
+        target_without_locales.with_localized_aliases(target.aliases().clone())
+    })
     .map_err(|_| ReplacementCatalogError::CatalogInvalid)
 }
 
@@ -499,6 +504,50 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn bundled_weapon_targets_carry_aliases_per_locale_alongside_the_flat_search_list() {
+        // #274：平表是三语压平的 BTreeSet（ASCII 排前），界面按语言展示别名必须走 localized_aliases。
+        // 键集与展示名键集一致（三语齐全），每个按语言别名都在平表里（core 构造时已校验，这里
+        // 用真实分片再确认一次），且平表 = 三语别名的并集，不多不少。
+        let targets = weapon_targets().expect("bundled weapon targets");
+        assert_eq!(targets.len(), 601);
+        for target in &targets {
+            let localized = target
+                .localized_aliases()
+                .unwrap_or_else(|| panic!("{} must carry localized aliases", target.internal_id()));
+            let display_names: BTreeMap<String, String> = target.display_name().clone().into();
+            let display_locales: BTreeSet<&str> =
+                display_names.keys().map(String::as_str).collect();
+            let alias_locales: BTreeSet<&str> = localized.keys().map(String::as_str).collect();
+            assert_eq!(alias_locales, display_locales, "{}", target.internal_id());
+            assert_eq!(
+                alias_locales,
+                ["en", "ja", "zh_cn"].into_iter().collect::<BTreeSet<_>>(),
+                "{}",
+                target.internal_id()
+            );
+            let union: BTreeSet<&str> = localized.values().flatten().map(String::as_str).collect();
+            let flat: BTreeSet<&str> = target.aliases().iter().map(String::as_str).collect();
+            assert_eq!(union, flat, "{}", target.internal_id());
+        }
+
+        let fatalis_blade = targets
+            .iter()
+            .find(|target| target.internal_id() == "two029")
+            .expect("two029");
+        let localized = fatalis_blade
+            .localized_aliases()
+            .expect("two029 localized aliases");
+        assert_eq!(localized["zh_cn"], ["黑龙玄刃"]);
+        assert_eq!(localized["en"], ["Black Fatalis Blade"]);
+        assert_eq!(localized["ja"], ["ブラックミラブレイド"]);
+        // 平表把三语压在一起且按字节序排列——正是前端不能直接「取前两个」的原因。
+        assert_eq!(
+            fatalis_blade.aliases(),
+            ["Black Fatalis Blade", "ブラックミラブレイド", "黑龙玄刃"]
+        );
     }
 
     const MOD3_HEADER_SIZE: usize = 320;
