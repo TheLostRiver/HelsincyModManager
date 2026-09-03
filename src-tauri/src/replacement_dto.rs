@@ -94,7 +94,13 @@ pub struct ReplacementTargetDto {
     /// 全语言展示名（locale -> name）；键集即该游戏的名称 locale 能力声明，
     /// 展示投影与 fallback 链由前端按当前界面语言执行（I18N-08）。
     pub display_names: std::collections::BTreeMap<String, String>,
+    /// 跨语言压平的检索平表（三语别名合成一个集合，丢了 locale），只供匹配。
     pub aliases: Vec<String>,
+    /// 按语言分组的别名（locale -> aliases），键集 ⊆ `displayNames` 键集，每个别名同时出现在
+    /// `aliases` 里（后端构造时校验）。来源不按语言给别名时（铠甲 catalog）为 `None` 并省略键——
+    /// 「不知道」与「每个语言都是空表」是两回事，不伪造成空对象。前端按界面语言取本语言别名做展示。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases_by_locale: Option<std::collections::BTreeMap<String, Vec<String>>>,
     pub internal_id: String,
 }
 
@@ -333,6 +339,7 @@ mod replacement_dto_tests {
                 ("en".to_owned(), "Fatalis Alpha +".to_owned()),
             ]),
             aliases: vec!["黑龙".to_owned()],
+            aliases_by_locale: None,
             internal_id: "pl129_0000".to_owned(),
         };
         let analysis = ReplacementAnalysisDto {
@@ -365,6 +372,9 @@ mod replacement_dto_tests {
         // catalogScope 随 developer seed 退役（WR-05），不得再回到 DTO 契约。
         assert!(target_value.get("catalogScope").is_none());
         assert!(target_value.get("metadata").is_none());
+        // 铠甲 catalog 不按语言给别名：None 省略键，不写成 null 或空对象（#274）。
+        assert_eq!(target_value["aliases"], serde_json::json!(["黑龙"]));
+        assert!(target_value.get("aliasesByLocale").is_none());
         assert_eq!(analysis_value["matchedAssetCount"], 1);
         assert_eq!(
             analysis_value["installedTargetId"],
@@ -384,6 +394,34 @@ mod replacement_dto_tests {
             assert!(analysis_value.get(forbidden).is_none());
             assert!(action_value.get(forbidden).is_none());
         }
+    }
+
+    #[test]
+    fn replacement_target_serializes_aliases_by_locale_as_a_camel_case_map() {
+        // 武器 catalog 按语言给别名：键是 locale，值是该语言的别名列表；平表 aliases 原样并存。
+        let target = ReplacementTargetDto {
+            id: "mhw:weapon:two029".to_owned(),
+            game_id: "mhw".to_owned(),
+            target_type: "weapon".to_owned(),
+            display_names: std::collections::BTreeMap::from([
+                ("zh_cn".to_owned(), "黑龙刃".to_owned()),
+                ("en".to_owned(), "Fatalis Blade".to_owned()),
+            ]),
+            aliases: vec!["Black Fatalis Blade".to_owned(), "黑龙玄刃".to_owned()],
+            aliases_by_locale: Some(std::collections::BTreeMap::from([
+                ("zh_cn".to_owned(), vec!["黑龙玄刃".to_owned()]),
+                ("en".to_owned(), vec!["Black Fatalis Blade".to_owned()]),
+            ])),
+            internal_id: "two029".to_owned(),
+        };
+
+        let value = serde_json::to_value(target).expect("serialize target");
+        assert_eq!(
+            value["aliasesByLocale"],
+            json!({ "en": ["Black Fatalis Blade"], "zh_cn": ["黑龙玄刃"] })
+        );
+        assert_eq!(value["aliases"], json!(["Black Fatalis Blade", "黑龙玄刃"]));
+        assert!(value.get("aliases_by_locale").is_none());
     }
 
     #[test]
@@ -441,6 +479,7 @@ mod replacement_dto_tests {
                     "Target".to_owned(),
                 )]),
                 aliases: Vec::new(),
+                aliases_by_locale: None,
                 internal_id: "pl129_0000".to_owned(),
             },
             actions: Vec::new(),

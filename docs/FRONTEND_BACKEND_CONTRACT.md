@@ -989,6 +989,14 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
   名称 locale 能力声明；展示投影与 fallback 链（当前 locale -> fallback 链 -> en -> 任一可用）由前端
   `resolveReplacementTargetNames` 执行，语言切换不重拉目标列表。检索为跨语言语义：任一语言的
   展示名与全部 alias 都参与匹配，不随界面语言变化。
+- 目标 DTO 的 `aliases` 是跨语言压平的检索平表（三语别名合成一个集合，不带 locale），只供匹配；
+  另带**可选** `aliasesByLocale`（locale -> 该语言别名列表）供展示（#274）：键集 ⊆ `displayNames`
+  键集，每个别名同时出现在 `aliases` 里（后端 `ReplacementTarget::with_localized_aliases` 构造时校验，
+  保证行内展示的名字一定能被搜索命中）。来源不按语言给别名时（铠甲 catalog 的别名是不带语言的平表）
+  **省略该键**——「不知道」与「每个语言都是空表」是两回事，不伪造成空对象；前端对缺席与空表的展示
+  效果相同（不显示计数与摘要），但不得据缺席推断任何其他事实。前端按与展示名相同的 fallback 链
+  （当前 locale -> fallback 链 -> en）取本语言别名，用于目标行的「+N 个名称」计数与选中目标的
+  别名摘要，不参与过滤。
 - 分析响应只可附带可选稳定 `installedTargetId`；它是展示和同目标阻断事实，不是路径或 binding DTO。
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。

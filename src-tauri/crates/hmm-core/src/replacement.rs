@@ -28,6 +28,10 @@ pub enum ReplacementError {
     EmptyInternalId,
     #[error("replacement alias cannot be empty")]
     EmptyAlias,
+    #[error("localized alias locale has no display name: {locale}")]
+    LocalizedAliasLocaleUnknown { locale: String },
+    #[error("localized alias is not part of the searchable aliases: {alias}")]
+    LocalizedAliasNotSearchable { alias: String },
     #[error("replacement binding mod id cannot be empty")]
     EmptyModId,
     #[error("replacement binding profile id cannot be empty")]
@@ -600,6 +604,11 @@ pub struct ReplacementTarget {
     target_type: ReplacementTargetKind,
     display_name: LocalizedText,
     aliases: Vec<String>,
+    /// 按 locale 分组的别名。只有来源本身按语言给出别名时才有值（武器 catalog）；
+    /// 铠甲 catalog 的别名是一张不带语言的平表，这里保持 `None`——「不知道」不伪造成空表。
+    /// `aliases` 仍是跨语言压平的检索平表，两者并存：前者供展示，后者供匹配。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    localized_aliases: Option<BTreeMap<String, Vec<String>>>,
     internal_id: String,
     metadata: BTreeMap<String, Value>,
 }
@@ -611,6 +620,8 @@ struct ReplacementTargetWire {
     target_type: ReplacementTargetKind,
     display_name: LocalizedText,
     aliases: Vec<String>,
+    #[serde(default)]
+    localized_aliases: Option<BTreeMap<String, Vec<String>>>,
     internal_id: String,
     metadata: BTreeMap<String, Value>,
 }
@@ -650,9 +661,50 @@ impl ReplacementTarget {
             target_type,
             display_name,
             aliases,
+            localized_aliases: None,
             internal_id: internal_id.to_owned(),
             metadata,
         })
+    }
+
+    /// 附加按 locale 分组的别名。校验 fail closed：locale 必须已有展示名（前端沿展示名的
+    /// fallback 链取词，孤儿 locale 永远不会被显示），每个别名都必须出现在 `aliases` 平表里
+    /// （行内展示的名字必须能被搜索命中，否则又回到「看得见却搜不到」）。
+    pub fn with_localized_aliases(
+        mut self,
+        localized_aliases: BTreeMap<String, Vec<String>>,
+    ) -> Result<Self, ReplacementError> {
+        let searchable: BTreeSet<&str> = self.aliases.iter().map(String::as_str).collect();
+        let mut normalized = BTreeMap::new();
+        for (locale, aliases) in localized_aliases {
+            let locale = locale.trim();
+            if locale.is_empty() {
+                return Err(ReplacementError::EmptyLocale);
+            }
+            if self.display_name.get(locale).is_none() {
+                return Err(ReplacementError::LocalizedAliasLocaleUnknown {
+                    locale: locale.to_owned(),
+                });
+            }
+            let aliases = aliases
+                .into_iter()
+                .map(|alias| {
+                    let trimmed = alias.trim();
+                    if trimmed.is_empty() {
+                        return Err(ReplacementError::EmptyAlias);
+                    }
+                    if !searchable.contains(trimmed) {
+                        return Err(ReplacementError::LocalizedAliasNotSearchable {
+                            alias: trimmed.to_owned(),
+                        });
+                    }
+                    Ok(trimmed.to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            normalized.insert(locale.to_owned(), aliases);
+        }
+        self.localized_aliases = Some(normalized);
+        Ok(self)
     }
 
     pub fn id(&self) -> &ReplacementTargetId {
@@ -675,6 +727,11 @@ impl ReplacementTarget {
         &self.aliases
     }
 
+    /// 按 locale 分组的别名；来源不按语言给别名时为 `None`（区别于「每个语言都是空表」）。
+    pub fn localized_aliases(&self) -> Option<&BTreeMap<String, Vec<String>>> {
+        self.localized_aliases.as_ref()
+    }
+
     pub fn internal_id(&self) -> &str {
         &self.internal_id
     }
@@ -688,7 +745,7 @@ impl TryFrom<ReplacementTargetWire> for ReplacementTarget {
     type Error = ReplacementError;
 
     fn try_from(wire: ReplacementTargetWire) -> Result<Self, Self::Error> {
-        Self::new(
+        let target = Self::new(
             wire.id,
             wire.game_id,
             wire.target_type,
@@ -696,7 +753,11 @@ impl TryFrom<ReplacementTargetWire> for ReplacementTarget {
             wire.aliases,
             wire.internal_id,
             wire.metadata,
-        )
+        )?;
+        match wire.localized_aliases {
+            Some(localized_aliases) => target.with_localized_aliases(localized_aliases),
+            None => Ok(target),
+        }
     }
 }
 

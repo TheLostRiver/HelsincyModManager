@@ -529,6 +529,7 @@ impl From<ReplacementTarget> for ReplacementTargetDto {
             target_type: target.target_type().as_str().to_owned(),
             display_names,
             aliases: target.aliases().to_vec(),
+            aliases_by_locale: target.localized_aliases().cloned(),
             internal_id: target.internal_id().to_owned(),
         }
     }
@@ -632,6 +633,47 @@ mod tests {
             value.get("catalogScope").is_none(),
             "DTO 不应再投影 catalogScope"
         );
+    }
+
+    /// #274：按语言分组的别名原样透传；来源没给（铠甲）时 DTO 省略键，不伪造空对象。
+    #[test]
+    fn target_projection_passes_localized_aliases_through_and_omits_them_when_absent() {
+        let build = || {
+            ReplacementTarget::new(
+                ReplacementTargetId::parse("mhw:weapon:two029").expect("target id"),
+                GameId::mhw(),
+                ReplacementTargetKind::parse("weapon").expect("weapon kind"),
+                LocalizedText::new(BTreeMap::from([
+                    ("zh_cn".to_owned(), "黑龙刃".to_owned()),
+                    ("en".to_owned(), "Fatalis Blade".to_owned()),
+                ]))
+                .expect("display name"),
+                vec!["Black Fatalis Blade".to_owned(), "黑龙玄刃".to_owned()],
+                "two029",
+                BTreeMap::new(),
+            )
+            .expect("replacement target")
+        };
+
+        let without = serde_json::to_value(ReplacementTargetDto::from(build())).expect("dto json");
+        assert!(without.get("aliasesByLocale").is_none());
+        assert_eq!(
+            without["aliases"],
+            json!(["Black Fatalis Blade", "黑龙玄刃"])
+        );
+
+        let localized = build()
+            .with_localized_aliases(BTreeMap::from([
+                ("zh_cn".to_owned(), vec!["黑龙玄刃".to_owned()]),
+                ("en".to_owned(), vec!["Black Fatalis Blade".to_owned()]),
+            ]))
+            .expect("localized aliases");
+        let with = serde_json::to_value(ReplacementTargetDto::from(localized)).expect("dto json");
+        assert_eq!(
+            with["aliasesByLocale"],
+            json!({ "en": ["Black Fatalis Blade"], "zh_cn": ["黑龙玄刃"] })
+        );
+        assert_eq!(with["aliases"], json!(["Black Fatalis Blade", "黑龙玄刃"]));
     }
 
     #[test]
