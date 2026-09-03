@@ -368,6 +368,11 @@
   color: var(--color-warning-text);
 }
 
+/* #286 9c：全占用改口用强调色（指示器随 currentColor 变蓝），配色理由见 pill 段。 */
+.mod-grid.view-tech .mod-card__tech-status[data-external-case="occupied"] {
+  color: var(--color-accent);
+}
+
 /* ---------- 卡片网格 ---------- */
 
 .mod-grid {
@@ -873,6 +878,18 @@
 .mod-card__status-pill[data-external-case="mixed"] svg,
 .mod-card__status-pill[data-external-case="unknown"] svg {
   color: var(--color-warning-dot);
+}
+
+/* #286 9c：比对集全部被其他 HMM MOD 占用 → 改口「已被 X 占用」。既不是成功
+   （绿色会重现「外部已安装」的误导），也不是警示（没有东西坏了），用强调色
+   表示「信息性、与决策相关」，与弹窗里占用小胶囊的 accent-weak 底同源。 */
+.mod-card__status-pill[data-external-case="occupied"] {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+}
+
+.mod-card__status-pill[data-external-case="occupied"] svg {
+  color: var(--color-accent);
 }
 
 .mod-card__meta {

@@ -106,6 +106,12 @@ export type ExternalStatusBadgeCopy = {
   changed: Record<StatusBadgeTier, (numbers: ExternalStatusNumbers) => string>;
   /** 两者并存。 */
   mixed: Record<StatusBadgeTier, (numbers: ExternalStatusNumbers) => string>;
+  /**
+   * 比对集**全部**被其他 HMM MOD 占用时的卡片改口（#286 9c）。`names` 已按
+   * 「显示名 ?? id」回退且非空；单占用者带名字、多占用者报数量由文案自己分支。
+   * 只有卡片投影（externalCardBadge）消费它——弹窗按拍板维持哈希徽标 + 占用提示行。
+   */
+  occupied: Record<StatusBadgeTier, (names: string[]) => string>;
 };
 
 export type ExternalStatusBadge = {
@@ -243,4 +249,27 @@ export function fileClaimantDisplayName(fact: ExternalInstallFileFact): string |
     return null;
   }
   return fact.claimedByModName ?? fact.claimedByModId;
+}
+
+/**
+ * 比对集是否**全部**被其他 HMM MOD 占用（#286 9c 卡片改口的判据）。
+ * 成立时返回去重后的占用者列表（后端已按文件序首现去重），否则 `null`。
+ *
+ * 两条边界都刻意收紧为「不成立」：
+ * - 比对集为空（unknown 态）——空集上的 every 恒真，但它什么都没证明；
+ * - 每个文件都带占用标记、`occupiedBy` 却为空——DTO 自相矛盾，
+ *   宁可退回哈希徽标也不凭空说「已被 0 个 MOD 占用」。
+ *
+ * 部分占用（哪怕只差一个文件）也返回 `null`：卡片维持哈希徽标，细节看弹窗。
+ */
+export function fullyOccupiedBy(
+  summary: ExternalInstallStateSummary,
+): ExternalStateOccupier[] | null {
+  if (summary.files.length === 0 || summary.occupiedBy.length === 0) {
+    return null;
+  }
+  if (!summary.files.every((file) => file.claimedByModId !== undefined)) {
+    return null;
+  }
+  return summary.occupiedBy;
 }
