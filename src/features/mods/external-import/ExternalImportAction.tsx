@@ -69,9 +69,11 @@ function isScanActive(state: ExternalImportScanTaskState) {
 
 type ExternalImportActionProps = {
   onImported: () => Promise<void> | void;
+  /** Backend-fact reason the entry point is closed (#275 storage write freeze); shown, not recomputed. */
+  disabledReason?: string;
 };
 
-export function ExternalImportAction({ onImported }: ExternalImportActionProps) {
+export function ExternalImportAction({ onImported, disabledReason }: ExternalImportActionProps) {
   const { locale } = useI18n();
   const extCopy = resolveCopy(externalImportCopy, locale);
   const { dismissTaskNotice, pushToast, showTaskNotice } = useFeedback();
@@ -413,9 +415,10 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
   // 服务状态走 tooltip + 警示点(与其他工具栏按钮一致),不占工具栏红字;
   // 可访问播报由隐藏 live region 保留。
   const triggerStatusText =
-    listenerStatus === "failed"
+    disabledReason ??
+    (listenerStatus === "failed"
       ? getExternalImportScanErrorMessage("external_import_listener_unavailable", extCopy.scan)
-      : undefined;
+      : undefined);
   const triggerStatusId = useId();
 
   return (
@@ -426,7 +429,7 @@ export function ExternalImportAction({ onImported }: ExternalImportActionProps) 
             type="button"
             className="compact-action is-neutral external-import-action__trigger"
             data-listener-status={listenerStatus}
-            disabled={listenerStatus === "loading"}
+            disabled={listenerStatus === "loading" || disabledReason !== undefined}
             aria-label={extCopy.action.trigger}
             aria-describedby={triggerStatusText ? descriptionId : undefined}
             onClick={openDialog}

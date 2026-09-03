@@ -145,9 +145,11 @@ test("compact panel exposes delete as a batch-only action", () => {
   assert.match(panel, /\.filter\(\(a\) => a\.id !== "delete" \|\| batchSelectionActive\)/);
   // `batchWriteUnavailableReason` is set everywhere outside the sandbox, and batch delete
   // never uses the batch lifecycle framework. Applying that gate here disabled the button
-  // in production even though deletion itself works.
+  // in production even though deletion itself works. The only gate delete shares is the
+  // #275 storage write freeze (deletion reclaims a package sandbox).
   assert.match(panel, /const batchCapabilityDisabledReason = \(actionId: string\) => \{/);
-  assert.match(panel, /if \(actionId === "delete"\) \{\s*return undefined;/);
+  assert.match(panel, /if \(actionId === "delete"\) \{\s*return storageWriteFreezeReason;/);
+  assert.doesNotMatch(panel, /if \(actionId === "delete"\) \{\s*return batchWriteUnavailableReason/);
 });
 
 test("delete copy covers every stable backend error code in all three locales", () => {
@@ -158,6 +160,8 @@ test("delete copy covers every stable backend error code in all three locales", 
     "mod_delete_blocked_recovery",
     "mod_delete_target_not_found",
     "mod_delete_store_unavailable",
+    "mod_storage_migration_in_progress",
+    "mod_storage_restart_required",
   ]) {
     const occurrences = copy.match(new RegExp(code, "g")) ?? [];
     assert.equal(occurrences.length, 3, `${code} must be defined in zh_cn, en and ja`);

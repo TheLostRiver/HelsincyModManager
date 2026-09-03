@@ -122,6 +122,8 @@ import { ModContextMenu } from "./ModContextMenu";
 import { PreviewImageDialog } from "./PreviewImageDialog";
 import { previewImageViewCopy } from "./previewImageViewCopy";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModStorageSettings } from "../settings/ModStorageSettingsProvider";
+import { getModStorageFreezeReason } from "../settings/modStorageTypes";
 import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
 import {
@@ -326,6 +328,8 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheet
 
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const { locale } = useI18n();
+  const modStorage = useModStorageSettings();
+  const storageWriteFreezeReason = getModStorageFreezeReason(modStorage.writesFrozen, locale);
   const { pushToast } = useFeedback();
   const copy = resolveCopy(modLibraryCopy, locale);
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
@@ -1020,6 +1024,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (selectionInteractionDisabledReason !== undefined) {
       return { label, disabledReason: selectionInteractionDisabledReason } as const;
     }
+    // #275: the backend refuses sandbox writes while the storage root migrates / awaits restart.
+    if (storageWriteFreezeReason !== undefined) {
+      return { label, disabledReason: storageWriteFreezeReason } as const;
+    }
     // The cross-profile install gate is enforced in Rust; this mirrors the current-profile view.
     if (item.installSummary?.status === "installed") {
       return { label, disabledReason: deleteCopy.menu.deleteBlockedInstalled } as const;
@@ -1032,6 +1040,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     libraryItems,
     selectionInteractionDisabledReason,
     selectionMode,
+    storageWriteFreezeReason,
   ]);
 
   // Offered only when the mod actually has a preview image to show.
@@ -1735,6 +1744,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             selectionInteractionDisabledReason={selectionInteractionDisabledReason}
             batchPreviewUnavailableReason={batchPreviewUnavailableReason}
             batchWriteUnavailableReason={batchWriteUnavailableReason}
+            storageWriteFreezeReason={storageWriteFreezeReason}
             selectedModId={selectionMode === "single" ? selectedItem?.id ?? null : null}
             installTaskActive={installTaskActive}
             libraryQueryBusy={libraryQueryBusy}

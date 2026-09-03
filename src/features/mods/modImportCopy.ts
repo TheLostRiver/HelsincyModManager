@@ -9,6 +9,8 @@ export type ModImportCopy = {
     startFailed: string;
     pickerFailed: string;
     invalidStartState: string;
+    storageFrozenMigration: string;
+    storageFrozenRestart: string;
   };
   dialog: {
     revisionTitle: string;
@@ -72,6 +74,8 @@ export const modImportCopy = {
       startFailed: "无法启动导入任务",
       pickerFailed: "无法打开文件选择器",
       invalidStartState: "导入任务返回了无效状态",
+      storageFrozenMigration: "存储目录正在迁移，完成后再导入",
+      storageFrozenRestart: "存储目录已更改，请先重启 HMM",
     },
     dialog: {
       revisionTitle: "选择新版本 ZIP 压缩包",
@@ -133,6 +137,8 @@ export const modImportCopy = {
       startFailed: "Cannot start the import task",
       pickerFailed: "Cannot open the file picker",
       invalidStartState: "The import task returned an invalid state",
+      storageFrozenMigration: "The storage directory is being migrated; import after it finishes",
+      storageFrozenRestart: "The storage directory changed; restart HMM first",
     },
     dialog: {
       revisionTitle: "Choose the new version's ZIP archive",
@@ -195,6 +201,8 @@ export const modImportCopy = {
       startFailed: "インポートタスクを開始できません",
       pickerFailed: "ファイル選択ダイアログを開けません",
       invalidStartState: "インポートタスクが無効な状態を返しました",
+      storageFrozenMigration: "保存フォルダーの移行中です。完了後にインポートしてください",
+      storageFrozenRestart: "保存フォルダーが変更されました。先に HMM を再起動してください",
     },
     dialog: {
       revisionTitle: "新バージョンの ZIP アーカイブを選択",
