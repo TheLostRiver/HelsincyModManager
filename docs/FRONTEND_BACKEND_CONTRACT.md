@@ -78,6 +78,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 导出完整支持诊断包：`export_support_diagnostics`
 - 手动后端维护：`maintain_thumbnail_cache`
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`
+- Mod 存储目录（#275）：`get_mod_storage_settings`、`validate_mod_storage_dir`、`set_mod_storage_dir`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
@@ -523,9 +524,11 @@ Item reason 优先复用既有单项 code；批量调度新增
 
 Tauri 侧 batch command 只在 Sandbox 模式可用：GUI 启动时读取 `HMM_SANDBOX_DATA_DIR` 环境变量，
 指向一个绝对路径的 disposable Sandbox 数据根；未设置、为空或非法时 batch command 返回稳定错误
-`sandbox_batch_production_forbidden`（message 为固定脱敏文案），不开放 Production 写入。该目录的
-语义与 CLI `--sandbox-data-dir` 一致（游戏配置、mod 目录、manifest 与 batch journal 全部位于
-Sandbox 根内）。错误映射：`SandboxBatchAutomationError` 的稳定 `code` 原样透传为
+`sandbox_batch_production_forbidden`（message 为固定脱敏文案），不开放 Production 写入。该目录对应
+CLI 的 `--data-dir`（沙箱环境的数据根，Sandbox CLI 的游戏配置、mod 目录、manifest 与 batch journal
+全部位于其内）；但 GUI 的 app-data 始终由 Tauri 解析到系统位置、不会迁入该目录——GUI 只用它做沙箱
+写准入（#273 起仅校验游戏根）与放开批量命令，只有它与 app-data 是同一目录时批量命令才共用 GUI
+的数据库。错误映射：`SandboxBatchAutomationError` 的稳定 `code` 原样透传为
 `CommandErrorDto.code`，`message` 为按 code 映射的固定脱敏文案，禁止透传原始异常或路径。
 
 除 preview/seal 对应的直接 response 返回各自 opaque token 外，result、progress/event、其他 DTO、
@@ -551,6 +554,7 @@ CLI-4 只能映射相同 app use case；在 T13-00、CLI-2A/2B/2C、CORE-PREF-01
 
 - `unsupported_game`
 - `directory_not_absolute`
+- `directory_overlaps_mod_storage`（游戏目录与 Mod 存储根互相包含，#275）
 - `package_not_found`
 - `unsafe_archive_path`
 - `ambiguous_replacement_source`
@@ -1851,6 +1855,9 @@ get_log_storage_settings()
 set_log_storage_settings({ maxBytes })
 get_debug_log_settings()
 set_debug_log_settings({ enabled })
+get_mod_storage_settings()
+validate_mod_storage_dir({ directory })
+set_mod_storage_dir({ directory: string | null })
 ```
 
 边界：
@@ -1872,6 +1879,11 @@ set_debug_log_settings({ enabled })
 - `set_thumbnail_cache_settings({ thumbnailCacheMaxBytes, thumbnailCacheMaxAgeDays })` 写入受控后端设置并返回当前设置 DTO。`thumbnailCacheMaxBytes` 可为正整数或 `null`，`null` 表示回退默认空间上限；`0` 会返回稳定错误码 `thumbnail_cache_max_bytes_invalid`。`thumbnailCacheMaxAgeDays` 可为正整数天数或 `null`，`null` 表示不启用按时间保留延迟、沿用当前未引用缩略图维护语义；`0` 会返回稳定错误码 `thumbnail_cache_max_age_days_invalid`。该命令不接收或返回 settings 文件路径、缓存路径、sandbox 路径或任意文件系统路径。
 - `get_log_storage_settings()` 读取当前日志总空间预算并返回窄 `LogStorageSettingsDto { maxBytes }`。`maxBytes` 为正整数或 `null`；`null` 表示使用后端默认 128 MiB。该命令不接受参数、不写 settings、不执行预算维护，也不返回日志目录、文件名、清理候选或任意文件系统路径。
 - `set_log_storage_settings({ maxBytes })` 只更新日志总空间预算并返回当前 `LogStorageSettingsDto`。`maxBytes` 为不小于 1 MiB 的整数或 `null`；`null` 表示回退默认 128 MiB，小于 1 MiB 返回稳定错误码 `log_storage_max_bytes_invalid`，settings 读取或保存失败返回 `app_settings_unavailable`。该命令不会立即删除日志，不接受类别、文件名、路径或清理优先级参数；启动维护仍由共享 runtime 按后端固定策略执行。
+- **Mod 存储目录（#275 切片①）**。「存储根」= 承载 `sandboxes/<packageId>/`（解包后的导入包）的目录；默认是 app-data 下的 `mod-import`，用户可改为任意盘的目录。`results.json`、SQLite、`thumbnails/`、`install/*`、`external-import/*` 一律留在 app-data，只有包目录跟随存储根。存储根在 runtime 装配时按 `settings.json` 的 `modStorageDir` 解析一次，**改动重启后生效**；CLI 只读链读同一份设置，Sandbox 环境下解析出的 `sandboxes/` 必须仍在 `--data-dir` 内（否则 `sandbox_storage_path_rejected`），Production 与 GUI 一样信任配置值（#273 的 app-data 豁免延伸到存储根，见 SECURITY.md）。
+  - `get_mod_storage_settings()` 返回 `ModStorageSettingsDto { effectiveDir, defaultDir, configuredDir: string | null, source: "default" | "configured", degradedReason?, degradedDetail?, libraryEmpty, restartRequired }`。三个目录字段是用户自选目录 / 默认根，与 `get_game_setup_status` 回显 `rootDir` 同一类别，**不是**包沙箱、缓存或内部路径。`degradedReason` 仅在启动解析降级时出现：`settings_unreadable`（settings.json 读不到 → 使用默认根）、`configured_dir_invalid`（持久化值形状非法 → 使用默认根）、`configured_dir_unavailable`（目录形状合法但此刻不可用——不存在 / 非目录 / 链上有 link·reparse / marker 缺失或损坏——**仍以配置目录为根**，导入与包读取按既有「沙箱不可用」码失败，绝不静默回落默认根造成包散落两处）；`degradedDetail` 为对应的 `mod_storage_dir_*` 码。`restartRequired` = 持久化值 ≠ 本进程启动时解析到的值。
+  - `validate_mod_storage_dir({ directory })` 只读校验并返回 `ModStorageDirValidationDto { ok, code: string | null, exists, claimed }`，校验不通过**不抛错**、以 `code` 表达：`mod_storage_dir_not_absolute` / `mod_storage_dir_unsafe`（含 `.` `..`）/ `mod_storage_dir_filesystem_root` / `mod_storage_dir_parent_missing` / `mod_storage_dir_not_directory` / `mod_storage_dir_link_rejected`（目录本身或任一祖先是 symlink / junction / reparse point）/ `mod_storage_dir_marker_required`（非空目录且不含 HMM marker、也不只含 HMM 自己的 `sandboxes/` 布局）/ `mod_storage_dir_marker_invalid` / `mod_storage_dir_not_writable`（`create_new` + 删除的试写探针失败）/ `mod_storage_dir_overlaps_game_root`（与任一已配置游戏根双向包含）/ `mod_storage_dir_unavailable`。`claimed` 表示目录已带合法 marker。`directory` 只能来自系统目录选择器，命令自行再校验。
+  - `set_mod_storage_dir({ directory: string | null })` 持久化设置并返回 `ModStorageSettingsDto`（`restartRequired: true`）。**只在库为空时允许**——目录 catalog 无任何 revision 且当前存储根的 `sandboxes/` 无任何条目——否则返回 `mod_storage_migration_required`（迁移由后续切片提供）。通过校验后先在目标目录写入 marker `.hmm-mod-storage.json`（字节精确 `{"kind":"hmm.mod-storage","schemaVersion":1}` + 换行；空目录或仅含 `sandboxes/` 的目录才会被认领，其他非空目录拒绝），再保存设置；marker 写入失败则设置不变。`null` 表示回到默认根。其余稳定码：上述 `mod_storage_dir_*`、`app_settings_unavailable`、`mod_library_unavailable`、`game_config_unavailable`。与 `save_game_directory` 互为反向约束：游戏目录落在存储根内或包含存储根时返回 `directory_overlaps_mod_storage`。
+  - 启动时若解析降级，后端写安全 App Log 事件 `mod_storage_root_degraded`（`operation = resolve_mod_storage_root`，`error_code` = 上述降级原因，`phase` = `mod_storage_dir_*` 细分码；不含路径）。
 - 前端只能接收后端生成的 `previewImage` 结构。
 - 前端不能提交真实缓存路径、压缩包内部路径或本地图片路径让后端读取。
 - 预览图处理失败返回 `fallback` 状态，不应阻断 Mod 导入主流程。

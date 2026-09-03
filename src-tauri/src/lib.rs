@@ -24,6 +24,7 @@ mod mod_library_dto;
 #[cfg(test)]
 mod mod_library_read_model_benchmark_tests;
 mod mod_metadata_commands;
+mod mod_storage_commands;
 mod profile_commands;
 mod reinstall_commands;
 mod reinstall_dto;
@@ -80,6 +81,9 @@ use mod_import_commands::{
 };
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
+use mod_storage_commands::{
+    get_mod_storage_settings, set_mod_storage_dir, validate_mod_storage_dir,
+};
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
     open_profile_directory, set_active_profile, set_profile_save_settings, update_profile,
@@ -225,6 +229,9 @@ pub fn run() {
             set_log_storage_settings,
             get_debug_log_settings,
             set_debug_log_settings,
+            get_mod_storage_settings,
+            validate_mod_storage_dir,
+            set_mod_storage_dir,
             update_mod_metadata,
             delete_mod_metadata,
             create_category,
