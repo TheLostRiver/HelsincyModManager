@@ -30,6 +30,7 @@ import {
 } from "../../shared/i18n";
 import { BackgroundProtectionPanel } from "./BackgroundProtectionPanel";
 import { DebugLogSettingsPanel } from "./DebugLogSettingsPanel";
+import { ModImportSettingsPanel } from "./ModImportSettingsPanel";
 import { modStorageCopy } from "./modStorageCopy";
 import { ModStorageSettingsPanel } from "./ModStorageSettingsPanel";
 import { settingsPageCopy } from "./settingsPageCopy";
@@ -248,6 +249,7 @@ export function SettingsPage() {
           description={copy.modImport.description}
           icon={FileArchive}
         >
+          <ModImportSettingsPanel />
           <ToggleRow
             title={copy.modImport.previewAfterImport.title}
             description={copy.modImport.previewAfterImport.description}

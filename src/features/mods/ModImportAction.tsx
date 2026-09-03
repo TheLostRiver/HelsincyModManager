@@ -13,6 +13,7 @@ import {
 } from "./modImportTypes";
 import {
   consumeReconnectImportRequest,
+  getModImportArchiveKeptMessage,
   getModImportFailedMessage,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
@@ -135,6 +136,16 @@ export function ModImportAction({
     }
 
     completedTaskIdsRef.current.add(state.taskId);
+    // #275 ④: the import landed but the source archive stayed; say why, without changing the result.
+    if (state.archiveKept !== null) {
+      pushToast({
+        eventKey: `mod-import.archive-kept.${state.taskId}`,
+        taskId: state.taskId,
+        title: copy.toasts.archiveKeptTitle,
+        message: getModImportArchiveKeptMessage(state.archiveKept, copy),
+        tone: "warning",
+      });
+    }
     void Promise.resolve()
       .then(() => onImportedRef.current())
       .then(
