@@ -61,6 +61,13 @@ export type ReplacementCopy = {
     // 搜索命中了行里没渲染的名字（别名 / 其他语言展示名）时的行内提示（#274）。
     matchedNames: (names: string[]) => string;
     matchedNamesMore: (count: number) => string;
+    // 共用同一模型的其他名称（#274 PR 2）：行内计数药丸 + 选中目标的别名摘要。
+    aliasCount: (count: number) => string;
+    aliasCountTitle: string;
+    selectedAliasesTitle: string;
+    selectedAliasesCount: (count: number) => string;
+    selectedAliasesHint: string;
+    selectedAliasesAria: string;
     // 跨 Mod 同目标占用：仅用于 UI 提示（硬门禁在预览/任务/commit 三层）。
     targetOccupied: (name: string) => string;
     targetOccupiedTag: string;
@@ -314,6 +321,12 @@ export const replacementCopy = {
       noMatches: "没有匹配的替换目标。",
       matchedNames: (names: string[]) => `匹配：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 个`,
+      aliasCount: (count: number) => `+${count} 个名称`,
+      aliasCountTitle: "这些装备与该目标共用同一套模型文件；选中后可查看全部名称。",
+      selectedAliasesTitle: "共用此模型的其他名称",
+      selectedAliasesCount: (count: number) => `${count} 个名称`,
+      selectedAliasesHint: "这些装备与所选目标使用同一套模型文件，替换后外观一同改变。",
+      selectedAliasesAria: "共用此模型的其他名称",
       targetOccupied: (name: string) =>
         `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
       targetOccupiedTag: "已被占用",
@@ -565,6 +578,14 @@ export const replacementCopy = {
       noMatches: "No matching replacement targets.",
       matchedNames: (names: string[]) => `Matches: ${names.join(", ")}`,
       matchedNamesMore: (count: number) => `+${count} more`,
+      aliasCount: (count: number) => `+${count} name${count === 1 ? "" : "s"}`,
+      aliasCountTitle:
+        "These items share this target's model files; select the row to see every name.",
+      selectedAliasesTitle: "Other names sharing this model",
+      selectedAliasesCount: (count: number) => `${count} name${count === 1 ? "" : "s"}`,
+      selectedAliasesHint:
+        "They use the same model files as the selected target, so the replacement changes their appearance too.",
+      selectedAliasesAria: "Other names sharing this model",
       targetOccupied: (name: string) =>
         `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
       targetOccupiedTag: "Occupied",
@@ -817,6 +838,12 @@ export const replacementCopy = {
       noMatches: "一致する置換ターゲットがありません。",
       matchedNames: (names: string[]) => `一致：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 件`,
+      aliasCount: (count: number) => `+${count} 件の名称`,
+      aliasCountTitle: "これらの装備はこのターゲットとモデルファイルを共有しています。選択するとすべての名称を表示します。",
+      selectedAliasesTitle: "このモデルを共有する他の名称",
+      selectedAliasesCount: (count: number) => `${count} 件の名称`,
+      selectedAliasesHint: "これらの装備は選択したターゲットと同じモデルファイルを使用しているため、置換後は外観も一緒に変わります。",
+      selectedAliasesAria: "このモデルを共有する他の名称",
       targetOccupied: (name: string) =>
         `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
       targetOccupiedTag: "占有済み",

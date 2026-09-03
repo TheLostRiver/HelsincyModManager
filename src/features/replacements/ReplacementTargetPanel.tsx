@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Search,
   ShieldAlert,
+  Tags,
   Target,
   XCircle,
 } from "lucide-react";
@@ -19,7 +20,11 @@ import {
   matchedHiddenReplacementTargetNames,
   replacementTargetSearchHit,
 } from "./replacementTargetMatch";
-import { replacementTargetSearchValues, resolveReplacementTargetNames } from "./replacementTargetNames";
+import {
+  replacementTargetSearchValues,
+  resolveReplacementTargetAliases,
+  resolveReplacementTargetNames,
+} from "./replacementTargetNames";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
@@ -345,6 +350,11 @@ export function ReplacementTargetPanel({
     );
   }, [query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
+  // #274 PR 2: names sharing the selected target's model, in the UI language; empty for
+  // catalogs that do not carry aliases per locale (armor), so the summary simply stays hidden.
+  const selectedAliases = selectedTarget
+    ? resolveReplacementTargetAliases(selectedTarget.aliasesByLocale, locale)
+    : [];
   const occupancyByTarget = useMemo(
     () =>
       new Map(
@@ -662,6 +672,7 @@ export function ReplacementTargetPanel({
               // #274: the filter also matches aliases and other locales' display names,
               // none of which the row renders; say what was hit so the row does not look wrong.
               const matchHint = matchedHiddenReplacementTargetNames(target, names, query);
+              const aliasCount = resolveReplacementTargetAliases(target.aliasesByLocale, locale).length;
               return (
                 <label
                   className="replacement-panel__target-row"
@@ -710,6 +721,15 @@ export function ReplacementTargetPanel({
                         {rCopy.panel.targetOccupiedTag}
                       </span>
                     ) : null}
+                    {aliasCount > 0 ? (
+                      <span
+                        className="replacement-panel__target-status is-aliases"
+                        title={rCopy.panel.aliasCountTitle}
+                      >
+                        <Tags size={13} aria-hidden="true" />
+                        {rCopy.panel.aliasCount(aliasCount)}
+                      </span>
+                    ) : null}
                     <code>{target.internalId}</code>
                   </span>
                 </label>
@@ -720,6 +740,26 @@ export function ReplacementTargetPanel({
           <p className="replacement-panel__empty">{rCopy.panel.noMatches}</p>
         )}
       </section>
+
+      {selectedTarget && selectedAliases.length > 0 ? (
+        <section className="replacement-panel__aliases" aria-labelledby="replacement-aliases-title">
+          <div className="replacement-panel__section-heading">
+            <Tags size={17} aria-hidden="true" />
+            <h3 id="replacement-aliases-title">{rCopy.panel.selectedAliasesTitle}</h3>
+            <span>{rCopy.panel.selectedAliasesCount(selectedAliases.length)}</span>
+          </div>
+          <p className="replacement-panel__aliases-target">
+            <strong>{resolveReplacementTargetNames(selectedTarget.displayNames, locale).displayName}</strong>
+            <code>{selectedTarget.internalId}</code>
+          </p>
+          <ul className="replacement-panel__alias-list" aria-label={rCopy.panel.selectedAliasesAria}>
+            {selectedAliases.map((alias) => (
+              <li key={alias}>{alias}</li>
+            ))}
+          </ul>
+          <p className="replacement-panel__aliases-hint">{rCopy.panel.selectedAliasesHint}</p>
+        </section>
+      ) : null}
 
       {previewState.status !== "idle" ? (
         <section className="replacement-panel__preview" aria-live="polite">

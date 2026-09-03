@@ -142,6 +142,55 @@ test("搜索命中别名或其他语言展示名时，目标行给出「匹配�
   );
 });
 
+test("目标行显示本语言别名计数药丸，选中后在列表下方铺开共用同一模型的名字（#274 PR 2）", () => {
+  const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
+  const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
+  const types = readSource("src/features/replacements/replacementTypes.ts");
+
+  // DTO 的 aliasesByLocale 是可选键：缺席（铠甲）与空表对 UI 效果相同，类型上必须是可选。
+  assert.match(types, /aliasesByLocale\?: Record<string, string\[\]>;/);
+  assert.match(panel, /resolveReplacementTargetAliases,/);
+  // 行内：按界面语言取本语言别名数，只在 > 0 时渲染中性药丸，带说明性 title。
+  assert.match(
+    panel,
+    /const aliasCount = resolveReplacementTargetAliases\(target\.aliasesByLocale, locale\)\.length;/,
+  );
+  const pill = panel.match(
+    /\{aliasCount > 0 \? \(\s*<span\s+className="replacement-panel__target-status is-aliases"\s+title=\{rCopy\.panel\.aliasCountTitle\}\s*>([\s\S]*?)<\/span>\s*\) : null\}/,
+  );
+  assert.ok(pill, "别名计数药丸必须只在 aliasCount > 0 时渲染并带 title");
+  assert.match(pill[1], /rCopy\.panel\.aliasCount\(aliasCount\)/);
+  // 摘要条：只在选中且本语言有别名时渲染，列出全部别名与「共用模型」说明。
+  assert.match(
+    panel,
+    /const selectedAliases = selectedTarget\s*\?\s*resolveReplacementTargetAliases\(selectedTarget\.aliasesByLocale, locale\)\s*:\s*\[\];/,
+  );
+  const summary = panel.match(
+    /\{selectedTarget && selectedAliases\.length > 0 \? \(\s*<section className="replacement-panel__aliases"([\s\S]*?)<\/section>\s*\) : null\}/,
+  );
+  assert.ok(summary, "别名摘要条必须只在选中目标且有本语言别名时渲染");
+  assert.match(summary[1], /rCopy\.panel\.selectedAliasesTitle/);
+  assert.match(summary[1], /rCopy\.panel\.selectedAliasesCount\(selectedAliases\.length\)/);
+  assert.match(summary[1], /\{selectedAliases\.map\(\(alias\) => \(\s*<li key=\{alias\}>\{alias\}<\/li>/);
+  assert.match(summary[1], /rCopy\.panel\.selectedAliasesHint/);
+  assert.match(summary[1], /<code>\{selectedTarget\.internalId\}<\/code>/);
+  // 摘要条位置：在目标列表（catalog）之后、预览区之前。
+  const catalogIndex = panel.indexOf('className="replacement-panel__catalog"');
+  const summaryIndex = panel.indexOf('className="replacement-panel__aliases"');
+  const previewIndex = panel.indexOf('className="replacement-panel__preview"');
+  assert.ok(catalogIndex !== -1 && summaryIndex > catalogIndex && previewIndex > summaryIndex);
+  // CSS：药丸用中性色（不是成功绿 / 警示琥珀）；摘要条与其他分区同样的顶部分隔；chip 换行。
+  const pillRule = panelCss.match(/\.replacement-panel__target-status\.is-aliases\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(pillRule, /color:\s*var\(--color-neutral-text\)/);
+  assert.match(pillRule, /background:\s*var\(--color-neutral-bg\)/);
+  assert.match(
+    panelCss,
+    /\.replacement-panel__catalog,\s*\.replacement-panel__aliases,\s*\.replacement-panel__preview\s*\{[^}]*border-top/,
+  );
+  const listRule = panelCss.match(/\.replacement-panel__alias-list\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(listRule, /flex-wrap:\s*wrap/);
+});
+
 test("MOD file edit context action opens the existing detail panel on replacement tab", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const refresh = readSource("src/features/mods/modLibraryRefresh.ts");
