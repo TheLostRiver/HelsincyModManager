@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
@@ -98,6 +99,117 @@ pub trait ModStorageDirectoryInspector: Send + Sync {
     /// Whether one directory contains the other (or both are the same directory) after
     /// canonicalisation. Unresolvable paths are treated as overlapping.
     fn directories_overlap(&self, left: &Path, right: &Path) -> bool;
+}
+
+/// Stable failure codes of a storage-root migration (#275 slice 2). Every code is prefixed
+/// `mod_storage_migration_` so task events and command errors stay grep-able as one family.
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum ModStorageMigrationError {
+    #[error("source storage root is unavailable")]
+    SourceUnavailable,
+    #[error("target storage root is unavailable")]
+    TargetUnavailable,
+    #[error("a package below the storage root could not be read")]
+    PackageUnreadable,
+    #[error("copying a package failed")]
+    CopyFailed,
+    #[error("a copied package does not match its source")]
+    VerifyMismatch,
+    #[error("the migration journal could not be read or written")]
+    JournalUnavailable,
+    #[error("migration was cancelled")]
+    Cancelled,
+}
+
+impl ModStorageMigrationError {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::SourceUnavailable => "mod_storage_migration_source_unavailable",
+            Self::TargetUnavailable => "mod_storage_migration_target_unavailable",
+            Self::PackageUnreadable => "mod_storage_migration_package_unreadable",
+            Self::CopyFailed => "mod_storage_migration_copy_failed",
+            Self::VerifyMismatch => "mod_storage_migration_verify_mismatch",
+            Self::JournalUnavailable => "mod_storage_migration_journal_unavailable",
+            Self::Cancelled => "mod_storage_migration_cancelled",
+        }
+    }
+}
+
+/// Where a migration stands, persisted before each irreversible step so a crash can be
+/// finished or rolled back at the next start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModStorageMigrationState {
+    /// Packages are being copied into the target; the setting still names the source.
+    Copying,
+    /// Every package was copied and verified; the setting names the target; the source copies
+    /// are deleted at the next start, once the new root is in effect.
+    Switched,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModStorageMigrationJournal {
+    pub version: u32,
+    pub state: ModStorageMigrationState,
+    pub source_root: PathBuf,
+    pub target_root: PathBuf,
+    /// Package directory names (direct children of `<root>/sandboxes`) covered by this run.
+    pub packages: Vec<String>,
+    pub started_at_unix_millis: u128,
+}
+
+pub const MOD_STORAGE_MIGRATION_JOURNAL_VERSION: u32 = 1;
+
+pub trait ModStorageMigrationJournalRepository: Send + Sync {
+    fn load(&self) -> Result<Option<ModStorageMigrationJournal>, ModStorageMigrationError>;
+    fn save(&self, journal: &ModStorageMigrationJournal) -> Result<(), ModStorageMigrationError>;
+    fn clear(&self) -> Result<(), ModStorageMigrationError>;
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModStoragePackageCopyReport {
+    pub file_count: u64,
+    pub byte_count: u64,
+}
+
+/// File-system operations of a migration. Every operation works on `<root>/sandboxes/<pkg>`
+/// through no-follow handles; a link or reparse point anywhere inside a package fails closed.
+pub trait ModStorageMigrator: Send + Sync {
+    /// Direct children of `<storage_root>/sandboxes`, each of which must be a plain directory.
+    /// A missing `sandboxes/` directory is an empty library.
+    fn list_packages(&self, storage_root: &Path) -> Result<Vec<String>, ModStorageMigrationError>;
+
+    /// Copies one package into the target root, replacing any leftover with the same name, and
+    /// fsyncs every written file. Checks `cancellation` between files.
+    fn copy_package(
+        &self,
+        source_root: &Path,
+        target_root: &Path,
+        package_id: &str,
+        cancellation: &dyn crate::CancellationToken,
+    ) -> Result<ModStoragePackageCopyReport, ModStorageMigrationError>;
+
+    /// Re-reads both copies and requires identical file sets, sizes and SHA-256 digests.
+    fn verify_package(
+        &self,
+        source_root: &Path,
+        target_root: &Path,
+        package_id: &str,
+        cancellation: &dyn crate::CancellationToken,
+    ) -> Result<(), ModStorageMigrationError>;
+
+    /// Removes `<storage_root>/sandboxes/<package_id>`; a missing package is not an error.
+    fn remove_package(
+        &self,
+        storage_root: &Path,
+        package_id: &str,
+    ) -> Result<(), ModStorageMigrationError>;
+
+    fn package_exists(
+        &self,
+        storage_root: &Path,
+        package_id: &str,
+    ) -> Result<bool, ModStorageMigrationError>;
 }
 
 /// Pure shape rules shared by every layer; no file-system access.
