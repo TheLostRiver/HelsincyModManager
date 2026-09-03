@@ -15,7 +15,7 @@ import type { GameId } from "../game-setup/gameSetupTypes";
 import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
 import { externalImportCopy } from "./external-import/externalImportCopy";
 import type { ExternalModStateDto } from "./externalStateApi";
-import { ExternalStateSection } from "./ExternalStateSection";
+import { ExternalStateSection, type ExternalAdoptCompletedResult } from "./ExternalStateSection";
 import { modDetailDialogCopy } from "./modDetailDialogCopy";
 import { getModDetail } from "./modLibraryApi";
 import type { ModDetail, ModLibraryItem, ModOrigin } from "./modLibraryTypes";
@@ -123,7 +123,9 @@ export function ModDetailDialog({
   const [replacementCompletedLocally, setReplacementCompletedLocally] = useState(false);
   const [replacementInstallStatus, setReplacementInstallStatus] =
     useState<InstallManifestStatus | undefined>(installStatus);
-  const dialogBusy = saving || replacementBusy;
+  // #286 adopt 进行中：清单写入不可被关弹窗打断（终态事件要回到这里刷新安装状态）。
+  const [externalAdoptBusy, setExternalAdoptBusy] = useState(false);
+  const dialogBusy = saving || replacementBusy || externalAdoptBusy;
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
 
@@ -184,6 +186,20 @@ export function ModDetailDialog({
     setReplacementInstallStatus("installed");
     setReplacementCompletedLocally(false);
   }, [onSaved]);
+
+  /*
+   * #286 adopt 完成：与替换安装完成同一套路——先让页面重拉库列表（卡片变「已安装」），
+   * 再把本地安装状态置为 installed（installStatus prop 是打开时的冻结快照，不会自己变）。
+   * 区块随之卸载，成功说明留在弹窗的消息位上。
+   */
+  const handleExternalAdoptCompleted = useCallback(
+    async ({ notice }: ExternalAdoptCompletedResult) => {
+      setMessage(notice);
+      await onSaved();
+      setReplacementInstallStatus("installed");
+    },
+    [onSaved],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -488,8 +504,11 @@ export function ModDetailDialog({
                 gameId={gameId}
                 profileId={profileId}
                 modId={modId}
+                modName={displayModName}
                 active={activeTab === "details"}
                 onResult={onExternalStateResult}
+                onBusyChange={setExternalAdoptBusy}
+                onAdoptCompleted={handleExternalAdoptCompleted}
               />
             ) : null}
               </>

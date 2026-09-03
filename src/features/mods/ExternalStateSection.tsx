@@ -1,12 +1,19 @@
-// #286 detail-dialog section: on-demand external install state check.
+// #286 detail-dialog section: on-demand external install state check + adopt.
 //
 // Rendered only for mods HMM's manifest does NOT claim (gate lives in the
 // dialog): files put into the game directory by other tools never show up in
 // HMM's records, so the judgement here comes from the game directory itself.
 // The scan is read-only; results arrive via the store getter, never via
 // progress events (contract: no target paths in event payloads).
+//
+// Adopt is the one write: it records the scanned, matched, unclaimed files as
+// manifest entries and touches no game file. The button only lights up when
+// the backend's own pre-checks would pass (`projectExternalAdoptAvailability`),
+// and it always goes through an explicit confirmation.
 
 import { resolveCopy, useI18n } from "../../shared/i18n";
+import { ExternalAdoptConfirmDialog } from "./ExternalAdoptConfirmDialog";
+import { projectExternalAdoptAvailability } from "./externalAdoptView";
 import {
   externalStatusAriaLabel,
   fileClaimantDisplayName,
@@ -14,30 +21,90 @@ import {
   projectExternalStatusBadge,
 } from "./externalInstallStatusView";
 import type { ExternalModStateDto } from "./externalStateApi";
-import { externalStateCopy, externalStateErrorMessage } from "./externalStateCopy";
-import { useExternalModState } from "./useExternalModState";
+import {
+  externalAdoptErrorMessage,
+  externalStateCopy,
+  externalStateErrorMessage,
+} from "./externalStateCopy";
+import { useExternalModState, type ExternalModAdoptCompletion } from "./useExternalModState";
 import { FolderSearch } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+export type ExternalAdoptCompletedResult = {
+  /** Ready-to-show status line (section owns the copy; the dialog owns the slot). */
+  notice: string;
+};
 
 type ExternalStateSectionProps = {
   gameId: string;
   profileId: string | null;
   modId: string;
+  /** Shown as the confirmation's subtitle so the player sees what they adopt. */
+  modName: string;
   /** The details tab is visible; gates the initial cached-state query. */
   active: boolean;
   /** Mirrors every getter result to the page-level session store (#286 3b-2). */
   onResult?: (modId: string, state: ExternalModStateDto) => void;
+  /** An adopt is running: the dialog must not close or switch tabs meanwhile. */
+  onBusyChange?: (busy: boolean) => void;
+  /** The manifest now claims this mod; the dialog refreshes into the installed state. */
+  onAdoptCompleted?: (result: ExternalAdoptCompletedResult) => void | Promise<void>;
 };
 
 export function ExternalStateSection({
   gameId,
   profileId,
   modId,
+  modName,
   active,
   onResult,
+  onBusyChange,
+  onAdoptCompleted,
 }: ExternalStateSectionProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(externalStateCopy, locale);
-  const workflow = useExternalModState({ gameId, profileId, modId, active, onResult });
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Set the moment the adopt completes and kept until this section unmounts: the
+  // backend dropped the scan record, so the re-query comes back empty and the
+  // body would otherwise flash "never scanned" while the dialog is still refreshing.
+  const [completedNotice, setCompletedNotice] = useState<string | null>(null);
+  useEffect(() => {
+    setCompletedNotice(null);
+    setConfirmOpen(false);
+  }, [modId, profileId]);
+  // The completed event carries no counts (contract); the notice quotes the
+  // preview the player confirmed — which is exactly what the backend wrote,
+  // or it would have failed as stale.
+  const confirmedClaimableRef = useRef(0);
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
+  const onAdoptCompletedRef = useRef(onAdoptCompleted);
+  onAdoptCompletedRef.current = onAdoptCompleted;
+
+  const handleAdoptCompleted = useCallback((completion: ExternalModAdoptCompletion) => {
+    const adoptCopy = copyRef.current.adopt;
+    const notice = completion.auditDegraded
+      ? `${adoptCopy.completed(confirmedClaimableRef.current)} ${adoptCopy.completedAuditDegraded}`
+      : adoptCopy.completed(confirmedClaimableRef.current);
+    setCompletedNotice(notice);
+    return onAdoptCompletedRef.current?.({ notice });
+  }, []);
+
+  const workflow = useExternalModState({
+    gameId,
+    profileId,
+    modId,
+    active,
+    onResult,
+    onAdoptCompleted: handleAdoptCompleted,
+  });
+
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+  useEffect(() => {
+    onBusyChangeRef.current?.(workflow.adopting);
+  }, [workflow.adopting]);
+  useEffect(() => () => onBusyChangeRef.current?.(false), []);
 
   const summary = workflow.state?.summary ?? null;
   // The dialog is a wide surface: always project the full tier ("tech" view).
@@ -47,6 +114,33 @@ export function ExternalStateSection({
   const pillLabel = badge ? externalStatusAriaLabel(badge, copy.badge) : null;
   // A fresh attempt's failure wins; otherwise surface the stored last error.
   const errorCode = workflow.scanErrorCode ?? workflow.state?.lastError ?? null;
+  const busy = workflow.scanning || workflow.adopting;
+  const availability = projectExternalAdoptAvailability(workflow.state);
+  const adoptCounts = availability.status === "available" ? availability.counts : null;
+  // No hint before the first scan: `neverScanned` already tells the player what to do.
+  const adoptBlockedHint =
+    summary && availability.status === "blocked" && availability.reason !== "no_summary"
+      ? copy.adopt.blocked[availability.reason]
+      : null;
+  // The stale notice right above already says "check again"; do not say it twice.
+  const adoptBlockedHintLine =
+    availability.status === "blocked" && availability.reason === "stale" ? null : adoptBlockedHint;
+
+  const requestAdopt = () => {
+    if (adoptCounts === null || busy) {
+      return;
+    }
+    setConfirmOpen(true);
+  };
+  const confirmAdopt = () => {
+    if (adoptCounts === null) {
+      setConfirmOpen(false);
+      return;
+    }
+    confirmedClaimableRef.current = adoptCounts.claimable;
+    setConfirmOpen(false);
+    workflow.startAdopt();
+  };
 
   return (
     <section className="mod-detail-dialog__section">
@@ -57,6 +151,10 @@ export function ExternalStateSection({
       <p className="mod-detail-dialog__external-intro">{copy.intro}</p>
       {profileId === null ? (
         <p className="mod-detail-dialog__empty">{copy.profileRequired}</p>
+      ) : completedNotice !== null ? (
+        <p className="mod-detail-dialog__external-notice is-occupied" role="status">
+          {completedNotice}
+        </p>
       ) : (
         <>
           <div className="mod-detail-dialog__external-actions">
@@ -64,25 +162,47 @@ export function ExternalStateSection({
               type="button"
               className="mod-detail-dialog__button is-secondary"
               onClick={workflow.startScan}
-              disabled={workflow.scanning || !workflow.listenerReady}
+              disabled={busy || !workflow.listenerReady}
             >
               {summary ? copy.rescanAction : copy.checkAction}
+            </button>
+            <button
+              type="button"
+              className="mod-detail-dialog__button is-primary"
+              onClick={requestAdopt}
+              disabled={adoptCounts === null || busy || !workflow.listenerReady}
+              title={adoptBlockedHint ?? undefined}
+            >
+              {adoptCounts ? copy.adopt.action(adoptCounts.claimable) : copy.adopt.actionIdle}
             </button>
             {workflow.scanning ? (
               <span className="mod-detail-dialog__external-status" role="status">
                 {copy.scanning}
               </span>
             ) : null}
+            {workflow.adopting ? (
+              <span className="mod-detail-dialog__external-status" role="status">
+                {copy.adopt.adopting}
+              </span>
+            ) : null}
           </div>
-          {!workflow.scanning && errorCode ? (
+          {!busy && errorCode ? (
             <p className="mod-detail-dialog__external-notice is-error" role="alert">
               {externalStateErrorMessage(errorCode, copy)}
             </p>
           ) : null}
-          {!workflow.scanning && summary && workflow.state?.stale ? (
+          {!busy && workflow.adoptErrorCode ? (
+            <p className="mod-detail-dialog__external-notice is-error" role="alert">
+              {externalAdoptErrorMessage(workflow.adoptErrorCode, copy)}
+            </p>
+          ) : null}
+          {!busy && summary && workflow.state?.stale ? (
             <p className="mod-detail-dialog__external-notice is-stale">
               {copy.staleNotice}
             </p>
+          ) : null}
+          {!busy && adoptBlockedHintLine ? (
+            <p className="mod-detail-dialog__external-notice">{adoptBlockedHintLine}</p>
           ) : null}
           {summary && badge && pillLabel ? (
             <>
@@ -150,8 +270,18 @@ export function ExternalStateSection({
               ) : null}
             </>
           ) : null}
-          {workflow.loaded && !summary && !workflow.scanning && !errorCode ? (
+          {workflow.loaded && !summary && !busy && !errorCode ? (
             <p className="mod-detail-dialog__empty">{copy.neverScanned}</p>
+          ) : null}
+          {adoptCounts ? (
+            <ExternalAdoptConfirmDialog
+              open={confirmOpen}
+              modName={modName}
+              counts={adoptCounts}
+              copy={copy.adopt}
+              onCancel={() => setConfirmOpen(false)}
+              onConfirm={confirmAdopt}
+            />
           ) : null}
         </>
       )}
