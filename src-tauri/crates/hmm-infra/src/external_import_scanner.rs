@@ -443,11 +443,30 @@ struct ContentScan {
 
 #[derive(Clone)]
 pub(crate) struct ValidatedContentFile {
+    /// 来源目录里的原始路径段，保留原始大小写；内部包的条目名由它拼出
+    /// （见 [`Self::archive_entry_name`]）。
+    ///
+    /// 归一化（NFKC + 小写）后的路径键**不进**这个结构：它只服务于 walker 里的
+    /// 大小写不敏感碰撞检测与内容指纹。它曾经被带到这里并拿去当内部 ZIP 的条目名，
+    /// 于是沙箱内容根变成 `nativepc`，MHW 适配器大小写敏感的 `allowed_install_roots`
+    /// 再也匹配不上——每个狩技盒子导入的 MOD 既装不上也比不了（#309）。
     pub source_segments: Vec<OsString>,
-    /// A normalized, case-insensitive-safe archive entry path.
-    pub archive_path: String,
     pub size_bytes: u64,
     pub content_hash: [u8; 32],
+}
+
+impl ValidatedContentFile {
+    /// 内部 ZIP 的条目名：原始路径段以 `/` 拼接，**保留来源目录的大小写**。
+    ///
+    /// 每一段都已在 [`normalized_path_segment`] 里通过 UTF-8 与安全校验，所以这里的
+    /// `None` 只可能来自不变量被破坏，调用方应把它当作错误而不是静默跳过。
+    pub fn archive_entry_name(&self) -> Option<String> {
+        let mut segments = Vec::with_capacity(self.source_segments.len());
+        for segment in &self.source_segments {
+            segments.push(segment.to_str()?);
+        }
+        Some(segments.join("/"))
+    }
 }
 
 pub(crate) struct ValidatedContent {
@@ -704,12 +723,12 @@ impl<'a> ContentWalker<'a> {
             usage: self.usage,
             content_fingerprint: self.content_fingerprint(),
             source_directory,
+            // 归一化键到此为止：它已经完成碰撞检测与指纹的职责，不再跟着文件走。
             files: self
                 .files
-                .into_iter()
-                .map(|(archive_path, file)| ValidatedContentFile {
+                .into_values()
+                .map(|file| ValidatedContentFile {
                     source_segments: file.source_segments,
-                    archive_path,
                     size_bytes: file.size_bytes,
                     content_hash: file.content_hash,
                 })
@@ -1343,6 +1362,74 @@ mod tests {
             unicode_result.candidates[0].preview_status,
             ExternalImportCandidateStatus::StructureInvalid
         );
+    }
+
+    /// #309 控制组：条目名改用原始大小写后，归一化键仍然守着碰撞检测。
+    /// NTFS 上造不出 `A.bin` 与 `a.bin` 并存的夹具，用 NFKC 等价段（全角字母）构造——
+    /// `ｎativePC` 与 `nativePC` 归一化后同为 `nativepc`。
+    #[test]
+    fn scanner_rejects_segments_that_collide_after_normalization() {
+        let fixture = tempfile::tempdir().expect("fixture root");
+        write_candidate(
+            fixture.path(),
+            "324",
+            "<info><name>Collision</name></info>",
+            &[
+                ("nativePC/a.bin", b"first"),
+                ("\u{ff4e}ativePC/b.bin", b"second"),
+            ],
+        );
+
+        let result = scan_fixture(fixture.path(), ExternalImportResourceBudget::default());
+
+        assert_eq!(
+            result.candidates[0].preview_status,
+            ExternalImportCandidateStatus::StructureInvalid
+        );
+    }
+
+    /// #309：指纹继续基于归一化键——同一份内容只因目录名大小写不同不算两份内容。
+    /// 候选与物化之间靠 `content_fingerprint` 比对「来源没变」，这条性质一变，
+    /// 扫描过的候选就会在物化时被误判为 `SourceChanged`。
+    #[test]
+    fn scanner_content_fingerprint_ignores_path_case() {
+        let upper = tempfile::tempdir().expect("upper fixture root");
+        write_candidate(
+            upper.path(),
+            "325",
+            "<info><name>Case</name></info>",
+            &[("nativePC/Fixture.bin", b"same-bytes")],
+        );
+        let lower = tempfile::tempdir().expect("lower fixture root");
+        write_candidate(
+            lower.path(),
+            "325",
+            "<info><name>Case</name></info>",
+            &[("nativepc/fixture.bin", b"same-bytes")],
+        );
+        let other = tempfile::tempdir().expect("other fixture root");
+        write_candidate(
+            other.path(),
+            "325",
+            "<info><name>Case</name></info>",
+            &[("nativePC/Fixture.bin", b"other-bytes")],
+        );
+
+        let upper_fingerprint = scan_fixture(upper.path(), ExternalImportResourceBudget::default())
+            .candidates[0]
+            .content_fingerprint
+            .clone();
+        let lower_fingerprint = scan_fixture(lower.path(), ExternalImportResourceBudget::default())
+            .candidates[0]
+            .content_fingerprint
+            .clone();
+        let other_fingerprint = scan_fixture(other.path(), ExternalImportResourceBudget::default())
+            .candidates[0]
+            .content_fingerprint
+            .clone();
+
+        assert_eq!(upper_fingerprint, lower_fingerprint);
+        assert_ne!(upper_fingerprint, other_fingerprint);
     }
 
     #[test]
