@@ -62,6 +62,7 @@ fn entry(mod_id: &str, revision_id: Option<&str>, package_file_id: &str) -> Inst
         layer: FileLayer::new("default", 0),
         backup_ref: None,
         installed_file: None,
+        adopted: false,
     }
 }
 

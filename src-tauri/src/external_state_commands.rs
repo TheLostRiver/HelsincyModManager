@@ -76,7 +76,8 @@ pub fn get_external_mod_state(
     }))
 }
 
-fn parse_external_state_ids(
+/// 接管命令（#286 adopt，写清单）与扫描共用同一套 ID 校验——两者是同一族命令。
+pub(crate) fn parse_external_state_ids(
     game_id: String,
     profile_id: String,
     mod_id: String,
@@ -99,7 +100,7 @@ fn parse_external_state_ids(
     Ok((game_id, profile_id, mod_id))
 }
 
-fn parse_external_state_id(
+pub(crate) fn parse_external_state_id(
     value: String,
     code: &'static str,
     message: &'static str,

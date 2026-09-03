@@ -405,6 +405,7 @@ impl BenchmarkFixture {
                     layer: FileLayer::new("base", 0),
                     backup_ref: (index % 8 == 0).then(|| format!("backup-{index:05}")),
                     installed_file: None,
+                    adopted: false,
                 });
             }
         }

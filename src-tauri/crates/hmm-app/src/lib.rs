@@ -13,6 +13,8 @@ mod external_import_batch_tests;
 // 目前 command 尚未接线（下一片），因此这里先以公开 API 的形式落地，避免私有模块
 // 无人调用而被判为死代码。接线完成后 `pub` 仍然是合适的——它与其它 service 一致。
 pub mod external_state_scan;
+// #286 adopt：接管的认领集派生（纯逻辑），由 `hmm-runtime` 的接管服务在写锁内调用。
+pub mod external_adopt;
 mod game_launch;
 mod game_prerequisites;
 mod game_setup;

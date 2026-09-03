@@ -1450,6 +1450,7 @@ mod tests {
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(summary(package_file_id)),
+            adopted: false,
         }
     }
 

@@ -68,6 +68,7 @@ pub(super) fn reinstall_recovery_fixture() -> (
             layer: FileLayer::new("base", 0),
             backup_ref: None,
             installed_file: Some(installed_file_summary(b"installed-v1")),
+            adopted: false,
         }],
     );
     old_manifest.schema_version = hmm_core::INSTALL_MANIFEST_SCHEMA_VERSION_V2;
