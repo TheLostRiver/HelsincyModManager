@@ -1,5 +1,5 @@
 use super::part_rename::{rename_part_prefix, PartRename};
-use super::{WeaponBinaryError, WeaponFamily, WeaponMainId, WeaponPartRole, WeaponResourceRoot};
+use super::{WeaponBinaryError, WeaponFamily, WeaponMainId, WeaponResourceRoot};
 
 const MAX_GAME_RESOURCE_SEGMENTS: usize = 32;
 
@@ -159,23 +159,9 @@ fn part_mappings(
     source_root: &WeaponResourceRoot,
     target_main_id: &WeaponMainId,
 ) -> Result<Vec<(String, String)>, WeaponBinaryError> {
-    let mut roles = vec![WeaponPartRole::Main];
-    if let Some(secondary) = source_root.family().secondary_part() {
-        roles.push(secondary.role());
-    }
-    roles
-        .into_iter()
-        .map(|role| {
-            let source = source_root
-                .main_id()
-                .part_for_role(role)
-                .map_err(|_| WeaponBinaryError::OutputInvalid)?;
-            let target = target_main_id
-                .part_for_role(role)
-                .map_err(|_| WeaponBinaryError::CrossFamilyTarget)?;
-            Ok((source.as_str().to_owned(), target.as_str().to_owned()))
-        })
-        .collect()
+    // 与磁盘文件重定位共用同一张对照表（part_rename::part_mappings），保证两处改名一致。
+    super::part_rename::part_mappings(source_root.main_id(), target_main_id)
+        .map_err(|_| WeaponBinaryError::CrossFamilyTarget)
 }
 
 fn retarget_filename_segment(

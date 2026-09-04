@@ -1,8 +1,9 @@
 use super::{
     analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation, MhwWeaponCatalogSource,
-    WeaponAnalysisError, WeaponBinaryError, WeaponMainId, WeaponModelPair, WeaponSourceClosure,
-    WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
-    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
+    WeaponAnalysisError, WeaponBinaryError, WeaponCompanionPlacement, WeaponMainId,
+    WeaponModelPair, WeaponPathError, WeaponSourceClosure, WeaponTargetMetadata,
+    WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
+    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 use crate::armor_retarget::{
     resolve_target_allowing_legacy_ids, MhwArmorCatalog, MhwArmorReplacementAdapter,
@@ -47,7 +48,15 @@ const WEAPON_CATALOG_SHARDS: [&str; 14] = [
 const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v1";
 const WEAPON_ADAPTER_ID: &str = "mhw.weapon";
 const WEAPON_STRATEGY_ID: &str = "mrl3-texture-path";
-const WEAPON_STRATEGY_VERSION: u32 = 1;
+/// v2（#336 切片②）：随行文件进入重定向计划。
+///
+/// 同一个包在 v1 与 v2 下产出的 action 集合不同（v2 多出伴生文件），`file_count` 与
+/// 三个闭包哈希随之变化——bump 就是为了让这个差异在 facts 里可见。
+///
+/// bump 安全性已查证：facts 随 manifest 落盘且有 `Wire` 兼容类型，存量安装读回自己当时
+/// 的值；`plan_hash` 的两处比对（`install_recovery.rs`、`reinstall_commit.rs`）都在单次
+/// 操作生命周期内，不存在跨版本比较。
+const WEAPON_STRATEGY_VERSION: u32 = 2;
 
 /// WR-05 起 Production 与 Sandbox 共用同一份聚合 catalog。
 ///
@@ -333,7 +342,7 @@ fn build_weapon_actions(
     target_main: &WeaponMainId,
     loaded_pairs: &[LoadedPair<'_>],
 ) -> ReplacementAdapterResult<Vec<RetargetAction>> {
-    let mut actions = Vec::with_capacity(loaded_pairs.len() * 2);
+    let mut actions = Vec::with_capacity(loaded_pairs.len() * 2 + closure.companions().len());
     for loaded in loaded_pairs {
         let invocation = build_mhw_weapon_mrl3_transform_invocation(
             loaded.pair,
@@ -367,7 +376,64 @@ fn build_weapon_actions(
             });
         }
     }
+
+    /*
+     * 随行文件（#336 切片②）。
+     *
+     * 只有模型对需要二进制改写，随行文件一律 `content_transform: None`——它们是贴图、
+     * 特效、附件，字节与槽位无关，搬走即可。`RetargetAction` 因此无需改 schema。
+     *
+     * 分类已在 analysis 阶段完成，这里只把两档落位翻译成目标路径：
+     * - `Relocated`（源槽位目录内）→ `relocate_within`：换槽位段 + 按部件 ID 前缀改名，
+     *   与 MRL3 引用改写共用 `part_rename` 的同一张对照表，两处结果必然一致。
+     * - `Verbatim`（`nativePC/wp/` 下但与槽位无关）→ 目标路径 = 原路径。这是参照实现
+     *   在真机实验里的实测行为：作者自建贴图目录换任何目标槽位都仍被引用命中，搬了反而断链。
+     */
+    for companion in closure.companions() {
+        let target_relative_path = match companion.placement() {
+            WeaponCompanionPlacement::Relocated => closure
+                .root()
+                .relocate_within(companion.relative_path(), target_main)
+                .map_err(map_companion_relocation_error)?,
+            WeaponCompanionPlacement::Verbatim => companion.relative_path().clone(),
+        };
+        actions.push(
+            RetargetAction::new(
+                companion.package_file_id().clone(),
+                companion.relative_path().clone(),
+                target_relative_path,
+                closure.source_id().clone(),
+                closure.root().main_id().as_str(),
+                target_main.as_str(),
+                closure.root().path_family(),
+                target_main.family().path_family(),
+            )
+            .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?,
+        );
+    }
     Ok(actions)
+}
+
+/// 随行文件重定位失败的错误码映射。
+///
+/// `relocate_within` 用 `UnsupportedResource` 表示「文件名撞守卫②」——部件 ID 在文件名里
+/// 出现多次，无法判断作者意图。这里**不**沿用它的码：`weapon_unsupported_resource` 的前端
+/// 文案是「只支持 .mod3 与 .mrl3」，对改名失败是误导，正是 #336 抱怨的那种错误引导。
+///
+/// 改用 `weapon_binary_reference_ambiguous`：磁盘改名与 MRL3 引用改写共用 `part_rename` 的
+/// 同一张对照表和同两条守卫，同一个文件名在两处必然得到同一个结论，本就是同一个根因的两个
+/// 出口。复用既有码也让切片② 保持「不碰 public 错误码契约」。
+///
+/// 这里选择失败关闭而非降级（留源路径）：降级的完整语义要求引用侧同步不改写并计入告警，
+/// 而告警变体在切片⑤。只做磁盘侧降级会静默产出引用与文件位置不一致的安装——**静默产出
+/// 坏结果比失败关闭更糟**。
+fn map_companion_relocation_error(error: WeaponPathError) -> ReplacementAdapterError {
+    match error {
+        WeaponPathError::UnsupportedResource => {
+            map_binary_error(WeaponBinaryError::ReferenceAmbiguous)
+        }
+        other => ReplacementAdapterError::AnalysisRejected { code: other.code() },
+    }
 }
 
 fn source_closure_digest(closure: &WeaponSourceClosure, loaded_pairs: &[LoadedPair<'_>]) -> String {
