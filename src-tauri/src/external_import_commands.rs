@@ -608,6 +608,9 @@ fn external_import_batch_error(error: ExternalImportBatchError) -> CommandErrorD
             "external import history request is invalid"
         }
         ExternalImportBatchError::ClockUnavailable => "external import clock is unavailable",
+        ExternalImportBatchError::StorageWriteFrozen(_) => {
+            "mod storage writes are frozen by a storage directory change"
+        }
     };
     CommandErrorDto {
         code: error.error_code().to_owned(),

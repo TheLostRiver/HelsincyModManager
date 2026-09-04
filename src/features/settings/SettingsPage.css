@@ -382,6 +382,298 @@
   to { transform: rotate(360deg); }
 }
 
+/* ─── Mod Import: delete archive after import (#275 slice 4) ─── */
+
+.mod-import-settings-panel {
+  display: grid;
+  min-width: 0;
+}
+
+.mod-import-settings-panel[role="status"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.mod-import-settings-panel__toggle {
+  border-bottom: 0;
+}
+
+.mod-import-settings-panel__status {
+  margin: -2px 20px 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.mod-import-settings-panel__note,
+.mod-import-settings-panel__error {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.mod-import-settings-panel__error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mod-import-settings-panel__error button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mod-import-settings-panel__spinner {
+  color: var(--color-accent);
+  animation: debug-log-settings-spin 0.9s linear infinite;
+}
+
+/* ─── Mod Storage Directory (#275) ─── */
+
+.mod-storage-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 20px 16px;
+}
+
+.mod-storage-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.mod-storage-panel__spinner {
+  color: var(--color-accent);
+  animation: debug-log-settings-spin 0.9s linear infinite;
+}
+
+.mod-storage-panel__current {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mod-storage-panel__current-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mod-storage-panel__current-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mod-storage-panel__badge {
+  padding: 1px 8px;
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-bg);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.mod-storage-panel__badge.is-custom {
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+}
+
+.mod-storage-panel__path {
+  display: block;
+  min-width: 0;
+  padding: 8px 10px;
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.mod-storage-panel__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mod-storage-panel__callout {
+  margin: 0;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.mod-storage-panel__callout > span {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.mod-storage-panel__callout button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mod-storage-panel__callout button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mod-storage-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.mod-storage-panel__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 12px;
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    filter 0.2s ease;
+}
+
+.mod-storage-panel__button.is-primary {
+  color: var(--color-primary-action-text);
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-primary-action-border);
+}
+
+.mod-storage-panel__button.is-primary:not(:disabled):hover {
+  background: var(--color-primary-action-bg-hover);
+}
+
+.mod-storage-panel__button.is-danger {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+  border-color: transparent;
+}
+
+.mod-storage-panel__button:not(:disabled):hover {
+  filter: brightness(0.97);
+}
+
+.mod-storage-panel__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mod-storage-panel__button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.mod-storage-panel__migration {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+}
+
+.mod-storage-panel__migration-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.mod-storage-panel__migration-head span {
+  color: var(--color-text-muted);
+}
+
+.mod-storage-panel__progress {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  background: var(--color-border-muted);
+  border-radius: var(--radius-pill);
+}
+
+.mod-storage-panel__progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.mod-storage-panel__progress-fill[data-indeterminate="true"] {
+  width: 35%;
+  animation: mod-storage-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes mod-storage-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+.mod-storage-panel__steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-storage-panel__progress-fill[data-indeterminate="true"] {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
 /* ─── Background Protection ─── */
 
 .background-protection-panel {

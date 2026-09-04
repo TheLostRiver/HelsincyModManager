@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  archiveKeptCodeFrom,
   consumeReconnectImportRequest,
   getModImportTaskPhaseLabel,
   isModImportTaskPhase,
@@ -98,6 +99,7 @@ test("mod import terminal events map to stable safe states", () => {
       status: "completed",
       taskId: "task-a",
       phase: "mod_import.prepare.completed",
+      archiveKept: null,
     },
   );
 
@@ -142,4 +144,40 @@ test("mod import terminal states ignore late progress events", () => {
   for (const current of terminalStates) {
     assert.equal(nextModImportTaskStateFromProgress(current, progress()), current);
   }
+});
+
+test("a completed event carries the archive-kept degradation code only when it is a registered one", () => {
+  const current = {
+    status: "running",
+    taskId: "task-a",
+    phase: "mod_import.unpack.started",
+  };
+
+  const kept = nextModImportTaskStateFromProgress(
+    current,
+    progress({
+      status: "completed",
+      phase: "mod_import.prepare.completed",
+      error: "mod_import_archive_kept_protected_location",
+    }),
+  );
+  assert.deepEqual(kept, {
+    status: "completed",
+    taskId: "task-a",
+    phase: "mod_import.prepare.completed",
+    archiveKept: "mod_import_archive_kept_protected_location",
+  });
+
+  const leaked = nextModImportTaskStateFromProgress(
+    current,
+    progress({
+      status: "completed",
+      phase: "mod_import.prepare.completed",
+      error: "C:\\Users\\private\\mod.zip",
+    }),
+  );
+  assert.equal(leaked.status, "completed");
+  assert.equal(leaked.archiveKept, null, "unknown strings are never treated as codes");
+  assert.equal(archiveKeptCodeFrom("mod_import_archive_kept_changed"), "mod_import_archive_kept_changed");
+  assert.equal(archiveKeptCodeFrom(null), null);
 });

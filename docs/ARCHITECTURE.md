@@ -223,7 +223,13 @@ lifecycle composition 消费，不自动开放备份、诊断或 Production 写�
 与 CLI 只读链的 `ContainedReadOnlyModImportSandboxLocator` 都以它为锚点，`results.json`、SQLite、
 缩略图、`install/*`、`external-import/*` 仍在 app-data。目录规则（marker、link 链、与游戏根互不包含、
 试写探针）由 `hmm-ports::ModStorageDirectoryInspector` 表达、`hmm-infra::FileSystemModStorageDirectoryInspector`
-实现，`hmm-app::ModStorageSettingsService` 只组合判定；设置改动重启后生效。
+实现，`hmm-app::ModStorageSettingsService` 只组合判定；设置改动重启后生效。库非空时的换根由
+`hmm-app::ModStorageMigrationTaskService`（`TaskKind::ModStorageMigration`）编排：`hmm-ports::ModStorageMigrator`
+/ `ModStorageMigrationJournalRepository` 表达逐包复制 / 校验 / 删除与 journal 读写，`hmm-infra` 的
+`FileSystemModStorageMigrator` / `JsonModStorageMigrationJournalRepository` 实现；`hmm-app::ModStorageWriteGate`
+是导入 / 外部导入 / 删除三类沙箱写入者与迁移共用的门闩（任务登记与冻结判定在同一把锁内完成）。
+`from_builder` 在解析出存储根之后、任何沙箱读写者出现之前调用 `settle_pending_mod_storage_migration`
+收尾或回滚上次进程留下的 journal（切片②）。
 
 CLI lifecycle adapter 复用 `TaskManager` 处理 Ctrl+C。首个 signal 可以在 runtime/task 建立前锁存，
 task 出现后请求协作式取消；确认取消时 observer 只发一个 `install.cancelled` terminal。第二个 signal

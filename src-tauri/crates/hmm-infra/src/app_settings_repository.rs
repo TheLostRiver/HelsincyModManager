@@ -26,6 +26,8 @@ struct AppSettingsFile {
     debug_log_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mod_storage_dir: Option<PathBuf>,
+    #[serde(default)]
+    delete_archive_after_import: bool,
 }
 
 impl Default for AppSettingsFile {
@@ -37,6 +39,7 @@ impl Default for AppSettingsFile {
             log_storage_max_bytes: None,
             debug_log_enabled: false,
             mod_storage_dir: None,
+            delete_archive_after_import: false,
         }
     }
 }
@@ -162,6 +165,7 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             mod_storage_dir: config
                 .mod_storage_dir
                 .filter(|path| !path.as_os_str().is_empty()),
+            delete_archive_after_import: config.delete_archive_after_import,
         })
     }
 
@@ -176,6 +180,7 @@ impl AppSettingsRepository for JsonAppSettingsRepository {
             log_storage_max_bytes: settings.log_storage_max_bytes,
             debug_log_enabled: settings.debug_log_enabled,
             mod_storage_dir: settings.mod_storage_dir.clone(),
+            delete_archive_after_import: settings.delete_archive_after_import,
         })
     }
 }
@@ -241,6 +246,7 @@ mod tests {
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: true,
             mod_storage_dir: None,
+            delete_archive_after_import: false,
         })
         .expect("save settings");
         let settings = repo.load_settings().expect("load settings");
@@ -250,6 +256,33 @@ mod tests {
         assert_eq!(settings.log_storage_max_bytes, Some(64 * 1024 * 1024));
         assert!(settings.debug_log_enabled);
         assert_eq!(settings.mod_storage_dir, None);
+    }
+
+    #[test]
+    fn delete_archive_after_import_round_trips_and_defaults_to_off() {
+        let path = test_file("delete-archive-after-import");
+        let repo = JsonAppSettingsRepository::new(path.clone());
+
+        assert!(
+            !repo
+                .load_settings()
+                .expect("load default settings")
+                .delete_archive_after_import,
+            "the destructive option must be off until the user turns it on"
+        );
+        repo.save_settings(&AppSettings {
+            delete_archive_after_import: true,
+            ..AppSettings::default()
+        })
+        .expect("save settings");
+        assert!(
+            repo.load_settings()
+                .expect("load settings")
+                .delete_archive_after_import
+        );
+        assert!(fs::read_to_string(&path)
+            .expect("read settings file")
+            .contains("\"deleteArchiveAfterImport\": true"));
     }
 
     #[test]
@@ -264,6 +297,7 @@ mod tests {
 
         repo.save_settings(&AppSettings {
             mod_storage_dir: Some(storage_dir.clone()),
+            delete_archive_after_import: false,
             ..AppSettings::default()
         })
         .expect("save settings");

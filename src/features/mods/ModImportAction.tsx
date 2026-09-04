@@ -13,6 +13,7 @@ import {
 } from "./modImportTypes";
 import {
   consumeReconnectImportRequest,
+  getModImportArchiveKeptMessage,
   getModImportFailedMessage,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
@@ -38,6 +39,13 @@ function startErrorMessageKind(error: unknown): ModImportFailedMessageKind {
 
   if (code === "archive_path_empty" || code === "archive_path_not_absolute") {
     return "invalid-archive";
+  }
+  // #275 storage write gate: the code tells the user what to wait for.
+  if (code === "mod_storage_migration_in_progress") {
+    return "storage-frozen-migration";
+  }
+  if (code === "mod_storage_restart_required") {
+    return "storage-frozen-restart";
   }
   return "start-failed";
 }
@@ -128,6 +136,16 @@ export function ModImportAction({
     }
 
     completedTaskIdsRef.current.add(state.taskId);
+    // #275 ④: the import landed but the source archive stayed; say why, without changing the result.
+    if (state.archiveKept !== null) {
+      pushToast({
+        eventKey: `mod-import.archive-kept.${state.taskId}`,
+        taskId: state.taskId,
+        title: copy.toasts.archiveKeptTitle,
+        message: getModImportArchiveKeptMessage(state.archiveKept, copy),
+        tone: "warning",
+      });
+    }
     void Promise.resolve()
       .then(() => onImportedRef.current())
       .then(

@@ -20,6 +20,7 @@ mod log_retention;
 mod log_storage_budget;
 mod managed_log;
 mod mod_import;
+mod mod_import_archive_consumer;
 mod mod_import_install_files;
 #[cfg(test)]
 mod mod_library_projection_tests;
@@ -27,6 +28,7 @@ mod mod_revision_catalog;
 #[cfg(test)]
 mod mod_revision_catalog_tests;
 mod mod_storage_inspector;
+mod mod_storage_migrator;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod reinstall;
@@ -96,9 +98,13 @@ pub use mod_import::{
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };
+pub use mod_import_archive_consumer::FileSystemModImportArchiveConsumer;
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
 pub use mod_revision_catalog::JsonModImportResultRepository;
 pub use mod_storage_inspector::FileSystemModStorageDirectoryInspector;
+pub use mod_storage_migrator::{
+    FileSystemModStorageMigrator, JsonModStorageMigrationJournalRepository,
+};
 pub use prerequisite_rules_repository::{
     JsonGamePrerequisiteRuleRepository, ReadOnlyJsonGamePrerequisiteRuleRepository,
 };
