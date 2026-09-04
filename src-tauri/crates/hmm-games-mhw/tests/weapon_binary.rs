@@ -465,8 +465,29 @@ fn transformer_rejects_unsafe_ambiguous_oversized_and_cross_family_mappings() {
         );
     }
 
-    let ambiguous = artificial_mrl3(
+    /*
+     * `one001_variant` 曾被判 ambiguous。#336 改为前缀替换后它是**可安全改写**的——
+     * 真实 Mod 的贴图就叫这个形状（`two003_BML`、`bs_two012_XM`），旧规则把它判成歧义
+     * 才是缺陷。行为断言见 tests/weapon_reference_rewrite.rs。
+     */
+    let prefixed = artificial_mrl3(
         &[r"wp\one\one001\tex\one001_variant"],
+        &[ARTIFICIAL_MATERIAL_HASH],
+    );
+    let prefixed = transform_mhw_weapon_mrl3_texture_paths(&model_pair, &target, &mod3, &prefixed)
+        .expect("a part-id prefix is safely renameable");
+    assert_eq!(
+        mrl3_paths(prefixed.bytes(), 1),
+        vec![r"wp\one\one002\tex\one002_variant".to_owned()]
+    );
+
+    /*
+     * 部件 ID 在文件名里出现两次才是真歧义：无法判断作者意图，仍必须报错。
+     * 「改不动就降级保留」要等 #336 切片② —— 只有分类器能把源槽位贴图真的留在原路径，
+     * 降级结果才是正确的；在此之前降级会静默产出贴图缺失的重定向。
+     */
+    let ambiguous = artificial_mrl3(
+        &[r"wp\one\one001\tex\one001_one001_BM"],
         &[ARTIFICIAL_MATERIAL_HASH],
     );
     assert_stable_error(

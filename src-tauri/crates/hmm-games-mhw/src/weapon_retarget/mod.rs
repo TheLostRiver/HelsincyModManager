@@ -5,6 +5,7 @@ mod content_transform;
 mod family;
 mod mrl3_reference;
 mod mrl3_transform;
+mod part_rename;
 mod path;
 mod replacement;
 

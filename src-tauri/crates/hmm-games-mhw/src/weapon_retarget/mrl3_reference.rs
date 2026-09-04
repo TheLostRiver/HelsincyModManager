@@ -1,3 +1,4 @@
+use super::part_rename::{rename_part_prefix, PartRename};
 use super::{WeaponBinaryError, WeaponFamily, WeaponMainId, WeaponPartRole, WeaponResourceRoot};
 
 const MAX_GAME_RESOURCE_SEGMENTS: usize = 32;
@@ -17,6 +18,12 @@ struct WeaponReferenceRoot {
     main_segment_index: usize,
 }
 
+/// 解析一条 MRL3 贴图引用。
+///
+/// **畸形或可疑的引用仍然硬失败**（驱动器前缀、父目录穿越、首尾分隔符、混用分隔符、
+/// 控制字符、非 ASCII）——那是真实的损坏/可疑信号，且不是任何真实 Mod 的形态。
+///
+/// 变化的只是「**不是我们的引用**」这一类：见 [`WeaponReferenceRoot`] 的判定。
 pub(super) fn parse_game_resource_reference(
     bytes: &[u8],
 ) -> Result<GameResourceReference, WeaponBinaryError> {
@@ -73,31 +80,34 @@ pub(super) fn parse_game_resource_reference(
         0
     };
 
-    let weapon_root = if segments
+    /*
+     * 「是否武器根」是一次**定向前缀匹配**，不是语法校验。
+     *
+     * #336 的 L3：旧版一旦看到首段是 `wp`，就要求后面必须是 `<已知族>/<合法主 ID>`，
+     * 否则报 `ReferenceUnsafe` 让整个 MRL3 解析失败。可真实世界里想让 Mod 可重定向的
+     * 作者**本来就**把贴图放在与槽位无关的目录，这些引用全都长这样：
+     *
+     *   wp\swo\Tamonowo\Tamonowo_BML    （族级作者目录）
+     *   wp\two\DARKMOON\DARKMOON_BML    （同上）
+     *   wp\two\textures\opulent_BML     （同上）
+     *   wp\Sakurad\Sakurad_BML          （只 3 段，连族段都不是）
+     *
+     * 它们不是损坏，只是「不属于我们要改写的槽位」。记 `None` 后原样保留，一个字节都不写。
+     */
+    let weapon_root = segments
         .get(logical_start)
-        .is_some_and(|segment| segment == "wp")
-    {
-        if segments.len().saturating_sub(logical_start) < 4 {
-            return Err(WeaponBinaryError::ReferenceUnsafe);
-        }
-        let family = WeaponFamily::parse(&segments[logical_start + 1])
-            .map_err(|_| WeaponBinaryError::ReferenceUnsafe)?;
-        let main_id = WeaponMainId::parse_for_family(&segments[logical_start + 2], family)
-            .map_err(|_| WeaponBinaryError::ReferenceUnsafe)?;
-        Some(WeaponReferenceRoot {
-            family,
-            main_id,
-            main_segment_index: logical_start + 2,
-        })
-    } else {
-        if segments
-            .get(logical_start)
-            .is_some_and(|segment| segment.eq_ignore_ascii_case("wp"))
-        {
-            return Err(WeaponBinaryError::ReferenceUnsafe);
-        }
-        None
-    };
+        .filter(|segment| *segment == "wp")
+        .and_then(|_| {
+            let family = WeaponFamily::parse(segments.get(logical_start + 1)?).ok()?;
+            let main_id =
+                WeaponMainId::parse_for_family(segments.get(logical_start + 2)?, family).ok()?;
+            // 主 ID 之后至少还要有一段文件名，否则没有可改写的目标。
+            (segments.len() > logical_start + 3).then_some(WeaponReferenceRoot {
+                family,
+                main_id,
+                main_segment_index: logical_start + 2,
+            })
+        });
 
     Ok(GameResourceReference {
         original: value.to_owned(),
@@ -172,22 +182,20 @@ fn retarget_filename_segment(
     segment: &str,
     mappings: &[(String, String)],
 ) -> Result<String, WeaponBinaryError> {
-    for (source, target) in mappings {
-        if segment == source {
-            return Ok(target.clone());
-        }
-        if let Some((stem, extension)) = segment.rsplit_once('.') {
-            if stem == source && !extension.is_empty() {
-                return Ok(format!("{target}.{extension}"));
-            }
-        }
+    // 统一走前缀替换规则（见 part_rename）。旧版只认「整段相等」与「去扩展名后相等」，
+    // 真实贴图名 `two003_BML` 只「包含」部件 ID，会被判 ambiguous——#336 的 L5。
+    match rename_part_prefix(segment, mappings) {
+        PartRename::Renamed(renamed) => Ok(renamed),
+        PartRename::Unrelated => Ok(segment.to_owned()),
+        PartRename::Ambiguous => Err(WeaponBinaryError::ReferenceAmbiguous),
     }
-    if mappings.iter().any(|(source, _)| segment.contains(source)) {
-        return Err(WeaponBinaryError::ReferenceAmbiguous);
-    }
-    Ok(segment.to_owned())
 }
 
+/// 引用段允许的字节。
+///
+/// `[` `]` 是**原版**资源名就在用的字符（`Assets\default_tex\CM\country_road_hor[1]_CM-00`），
+/// 旧版不允许它们，导致带这类引用的 MRL3 整个解析失败——#336 的 L4。放行是安全的：
+/// 这类引用不匹配 `wp/<族>/<主 ID>/` 前缀，永远不会被改写，字节原样保留。
 fn is_safe_segment_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b'[' | b']')
 }
