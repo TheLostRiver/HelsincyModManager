@@ -1,4 +1,5 @@
 use super::family::{WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponPartId};
+use super::part_rename::{part_mappings, rename_part_prefix, PartRename};
 use hmm_core::{InstallTargetPath, InstallTargetPathError};
 use thiserror::Error;
 
@@ -87,6 +88,55 @@ impl WeaponResourceRoot {
     pub fn path_family(&self) -> &'static str {
         self.family.path_family()
     }
+
+    /// 该路径是否落在本槽位目录**之内**（`nativePC/wp/<family>/<main_id>/…`）。
+    ///
+    /// 用于把包内文件分成「随行·需重定位」（在内）与「随行·原样」（在外但仍在
+    /// `nativePC/wp/` 下，如作者自建贴图目录 `wp/swo/Tamonowo/`）。
+    pub fn contains(&self, path: &InstallTargetPath) -> bool {
+        let prefix = format!("{}/", self.normalized_path.as_str());
+        path.as_str().starts_with(&prefix)
+    }
+
+    /// 把本槽位目录内的任意伴生文件重定位到目标槽位。
+    ///
+    /// 与 MRL3 引用改写共用 [`part_rename`] 的同一套规则：替换主 ID 段，再按部件 ID 前缀
+    /// 改写文件名段。两处必须一致，否则改写后的引用会指向不存在的文件。
+    ///
+    /// `Ambiguous`（部件 ID 在文件名里出现多次）返回 `UnsupportedResource`——调用方应把
+    /// 这一项按「原样保留在源路径」处置并计入告警，不要猜。
+    pub fn relocate_within(
+        &self,
+        path: &InstallTargetPath,
+        target_main_id: &WeaponMainId,
+    ) -> Result<InstallTargetPath, WeaponPathError> {
+        if target_main_id.family() != self.family {
+            return Err(WeaponPathError::CrossFamilyTarget);
+        }
+        if !self.contains(path) {
+            return Err(WeaponPathError::NotWeaponPath);
+        }
+
+        let mut segments = path
+            .as_str()
+            .split('/')
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        // 槽位段固定在索引 3（nativePC / wp / <family> / <main_id>）。
+        segments[RESOURCE_ROOT_SEGMENT_COUNT - 1] = target_main_id.as_str().to_owned();
+
+        let mappings = part_mappings(&self.main_id, target_main_id)
+            .map_err(|_| WeaponPathError::CrossFamilyTarget)?;
+        let last = segments.len() - 1;
+        segments[last] = match rename_part_prefix(&segments[last], &mappings) {
+            PartRename::Renamed(renamed) => renamed,
+            PartRename::Unrelated => segments[last].clone(),
+            PartRename::Ambiguous => return Err(WeaponPathError::UnsupportedResource),
+        };
+
+        InstallTargetPath::parse(segments.join("/"), [NATIVE_PC_ROOT])
+            .map_err(|_| WeaponPathError::UnsafePath)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -134,15 +184,21 @@ impl WeaponModelAssetPath {
             .and_then(|segment| {
                 WeaponFamily::parse(segment).map_err(|_| WeaponPathError::UnknownFamily)
             })?;
+        /*
+         * 先判形状再解析主 ID（#336 的 L2）。反过来的话，`nativePC/wp/swo/epv/x.epv3`
+         * 这种压根不是模型资源的路径会先在主 ID 解析上失败，被报成
+         * 「该武器资源编号不符合游戏规范，请重新下载该 Mod」——把用户引导去重下一个
+         * 完好的 Mod。形状不对就该说「不是模型资源」，而不是「编号不合规」。
+         */
+        if parts.len() != MODEL_ASSET_SEGMENT_COUNT || parts[4] != "mod" {
+            return Err(WeaponPathError::UnsupportedResource);
+        }
         let main_id = parts
             .get(3)
             .ok_or(WeaponPathError::UnsupportedResource)
             .and_then(|segment| {
                 WeaponMainId::parse_for_family(segment, family).map_err(map_family_error)
             })?;
-        if parts.len() != MODEL_ASSET_SEGMENT_COUNT || parts[4] != "mod" {
-            return Err(WeaponPathError::UnsupportedResource);
-        }
 
         let (part_stem, extension) = parts[5]
             .rsplit_once('.')

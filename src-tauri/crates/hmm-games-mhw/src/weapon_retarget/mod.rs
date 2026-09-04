@@ -10,8 +10,8 @@ mod path;
 mod replacement;
 
 pub use analysis::{
-    analyze_mhw_weapon_assets, WeaponAnalysisError, WeaponAnalysisWarning, WeaponModelPair,
-    WeaponSourceAsset, WeaponSourceClosure,
+    analyze_mhw_weapon_assets, WeaponAnalysisError, WeaponAnalysisWarning, WeaponCompanionAsset,
+    WeaponCompanionPlacement, WeaponModelPair, WeaponSourceAsset, WeaponSourceClosure,
 };
 pub use binary::{
     preflight_mhw_weapon_mod3, preflight_mhw_weapon_model_pair, preflight_mhw_weapon_mrl3,

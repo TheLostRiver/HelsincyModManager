@@ -303,9 +303,15 @@ fn source_analysis_rejects_incomplete_unknown_and_unsupported_parts() {
         )]),
         Err(WeaponAnalysisError::UnknownPart)
     );
+    /*
+     * #336：只含一张贴图、没有任何模型的包，旧版报 `UnsupportedResource`
+     * （「包含当前版本不支持的资源类型，只支持 .mod3 与 .mrl3」）——那正是被抱怨的误导性
+     * 文案：贴图本身没问题，问题是**没有模型**。现在诚实地报 `SourceNotFound`。
+     * `.tex` 在有模型的包里会被归为随行文件（见 weapon_package_classifier.rs）。
+     */
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset("texture", "nativePC/wp/one/one001/mod/one001.tex",)]),
-        Err(WeaponAnalysisError::UnsupportedResource)
+        Err(WeaponAnalysisError::SourceNotFound)
     );
 }
 
