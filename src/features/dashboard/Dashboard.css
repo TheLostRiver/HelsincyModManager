@@ -586,6 +586,19 @@
   line-height: 1.45;
 }
 
+/*
+ * 已配置时手动保存目录失败的常驻提示（#333）。
+ * 与上方中性版的差别只在配色：它报告的是一次失败的操作，沿用 danger 系列
+ * token 与左侧色条，保持与 .badge.danger / .danger-dot 一致的语义。
+ * 字号与内距沿用中性版——它是补充说明，不该与状态标题抢层级。
+ */
+.current-state .state-detail.is-error {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+  box-shadow: inset 3px 0 0 var(--color-danger-dot);
+  font-weight: 750;
+}
+
 .soft-badge {
   width: fit-content;
   max-width: 100%;

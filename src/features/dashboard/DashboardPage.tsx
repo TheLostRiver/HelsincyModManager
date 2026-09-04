@@ -55,6 +55,7 @@ export function DashboardPage() {
 
       <SetupStatusPanel
         status={gameSetup.status}
+        lastSaveError={gameSetup.lastSaveError}
         actionMessage={gameSetup.actionMessage}
         startupNotice={gameSetup.startupNotice}
         recoveryHealth={recoveryHealth}
