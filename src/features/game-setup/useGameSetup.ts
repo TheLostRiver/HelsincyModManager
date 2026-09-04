@@ -12,6 +12,7 @@ import type {
   GameAutoDetectionDto,
   GameDirectoryCandidate,
   GameId,
+  GameSetupErrorCode,
   GameSetupStartupNotice,
   GameSetupStatus,
 } from "./gameSetupTypes";
@@ -24,6 +25,19 @@ import {
 
 type GameSetupState = {
   status: GameSetupStatus;
+  /**
+   * 上一次「手动保存游戏目录」的失败原因，与 status 正交。
+   *
+   * 曾经把它塞进 status（改成 invalid），后果是已配置时选错一次目录就把配置
+   * 显示成丢失，并连带禁掉一键启动、恢复中心与安装健康检测（#333）——因为
+   * status.kind 是这些能力的总闸门。可 status 描述的是「当前配置状态」，
+   * 「上次保存失败」是另一个维度：后端拒绝时磁盘上的配置原封不动，
+   * 前端没有任何理由假装它丢了。两者必须分开存。
+   *
+   * 只有手动保存会写它（自动检测的失败另有 startupNotice 承载），
+   * 成功保存与 refresh 成功都会清掉。
+   */
+  lastSaveError: GameSetupErrorCode | null;
   isBusy: boolean;
   actionMessage: string | null;
   candidates: GameDirectoryCandidate[];
@@ -50,6 +64,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
   copyRef.current = copy;
   const [state, setState] = useState<GameSetupState>({
     status: { kind: "not_configured", gameId },
+    lastSaveError: null,
     isBusy: false,
     actionMessage: null,
     candidates: [],
@@ -62,6 +77,8 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       setState((current) => ({
         ...current,
         status: mapStatusDto(dto),
+        /* 读到配置即证明上次保存的失败已经不再是现状，清掉残留提示。 */
+        lastSaveError: dto.kind === "configured" ? null : current.lastSaveError,
         actionMessage: null,
         startupNotice: dto.kind === "configured" ? null : current.startupNotice,
       }));
@@ -147,6 +164,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
         const dto = await saveGameDirectory(gameId, directory);
         setState({
           status: mapStatusDto(dto),
+          lastSaveError: null,
           isBusy: false,
           actionMessage: null,
           candidates: [],
@@ -161,16 +179,28 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
       } catch (error) {
         const mapped = mapCommandError(error);
         setState((current) => ({
-          status: {
-            kind: "invalid",
-            gameId,
-            errorCode: mapped.code,
-            backendMessage: mapped.backendMessage,
-          },
+          ...current,
+          /*
+           * 保存失败不改写 status：后端在写盘之前就拒绝了（game_setup.rs 的
+           * save_game_directory 所有校验都先于 repository.save_game_instance），
+           * 磁盘上的配置原封不动，UI 也就不能假装它丢了。已配置时把 status 拍成
+           * invalid 会连带禁掉一键启动、恢复中心与安装健康检测——它们都以
+           * status.kind === "configured" 为闸门（#333）。失败原因改由
+           * lastSaveError 承载，在配置面板常驻显示。
+           *
+           * 未配置时没有既有配置可保护，此时转 invalid 仍然是对的。
+           */
+          status:
+            current.status.kind === "configured"
+              ? current.status
+              : {
+                  kind: "invalid",
+                  gameId,
+                  errorCode: mapped.code,
+                  backendMessage: mapped.backendMessage,
+                },
+          lastSaveError: mapped.code,
           isBusy: false,
-          actionMessage: null,
-          candidates: current.candidates,
-          startupNotice: current.startupNotice,
         }));
         pushToast({
           eventKey: `game-setup.directory.save-failed.${gameId}.${mapped.code}`,
@@ -269,6 +299,7 @@ export function useGameSetupState(gameId: GameId = DEFAULT_GAME_ID) {
 
   return {
     status: state.status,
+    lastSaveError: state.lastSaveError,
     isBusy: state.isBusy,
     actionMessage: state.actionMessage,
     candidates: state.candidates,
