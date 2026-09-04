@@ -46,6 +46,8 @@ export const gameSetupCopy = {
       directory_not_found: "所选目录不存在。",
       directory_not_absolute: "请选择完整的游戏安装目录，不能使用相对路径。",
       missing_executable: "所选目录缺少 MonsterHunterWorld.exe。",
+      directory_overlaps_mod_storage:
+        "游戏目录不能位于 Mod 存储目录内，也不能包含它。请先在设置里调整 Mod 存储目录，或选择另一个游戏目录。",
       storage_failed: "配置保存失败，请检查应用数据目录权限。",
       storage_corrupted: "配置文件已损坏，请先处理应用数据目录中的 games.json。",
       scan_failed: "Steam 候选目录扫描失败，请先手动选择游戏目录。",
@@ -89,6 +91,8 @@ export const gameSetupCopy = {
       directory_not_found: "The selected directory does not exist.",
       directory_not_absolute: "Select the full game installation directory; relative paths are not allowed.",
       missing_executable: "The selected directory is missing MonsterHunterWorld.exe.",
+      directory_overlaps_mod_storage:
+        "The game directory cannot be inside the Mod storage directory or contain it. Change the Mod storage directory in Settings first, or pick another game directory.",
       storage_failed: "Saving the configuration failed. Check the app data directory permissions.",
       storage_corrupted: "The configuration file is corrupted. Handle games.json in the app data directory first.",
       scan_failed: "Scanning Steam candidate directories failed. Select the game directory manually first.",
@@ -132,6 +136,8 @@ export const gameSetupCopy = {
       directory_not_found: "選択したディレクトリは存在しません。",
       directory_not_absolute: "完全なゲームインストールディレクトリを選択してください。相対パスは使用できません。",
       missing_executable: "選択したディレクトリに MonsterHunterWorld.exe がありません。",
+      directory_overlaps_mod_storage:
+        "ゲームディレクトリは Mod 保存先ディレクトリの内側にも、それを含む場所にも設定できません。先に設定で Mod 保存先を変更するか、別のゲームディレクトリを選んでください。",
       storage_failed: "設定の保存に失敗しました。アプリデータディレクトリの権限を確認してください。",
       storage_corrupted: "設定ファイルが破損しています。先にアプリデータディレクトリの games.json を処理してください。",
       scan_failed: "Steam 候補ディレクトリのスキャンに失敗しました。先に手動でゲームディレクトリを選択してください。",

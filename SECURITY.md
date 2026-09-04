@@ -126,9 +126,21 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   完全匹配的 marker。
 - marker 不是授权秘密。只有字段/构造器私有且不可序列化的进程内 capability 才能签发
   `SandboxWriteAdmission`；Production 没有构造路径。
-- capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验 app-data、game、save、
-  backup 根。symlink、junction、reparse point、marker 篡改、祖先替换或 Sandbox 外根全部 fail
-  closed。该 capability 不替代 InstallPlan、backup、manifest、rollback/recovery、Audit Log 或写锁。
+- capability 保留 no-follow 根句柄、canonical root 与目录身份，并逐项重验本次操作提交的 game、
+  save、backup 根以及（批量 / CLI 沙箱链）app-data 根。symlink、junction、reparse point、marker 篡改、
+  祖先替换或 Sandbox 外根全部 fail closed。该 capability 不替代 InstallPlan、backup、manifest、
+  rollback/recovery、Audit Log 或写锁。
+- #273 起 GUI 组合只把游戏根放进准入集（`SandboxWriteRoots::game_root_only`）：GUI 的 app-data 由
+  Tauri 解析到系统位置、不会迁入沙箱根，要求它被包含会让 GUI 写入结构性不可通过；这是接受的削弱，
+  沙箱模式保护的对象是游戏根。批量 / CLI 沙箱链的数据根就是沙箱根本身，app-data containment 语义不变。
+- #275 起 Mod 存储根（`sandboxes/<packageId>/` 所在目录，默认 app-data 下的 `mod-import`）可由用户
+  配置到任意盘。它与 app-data 同类：GUI 不把它纳入沙箱 containment；CLI 沙箱链要求解析后的
+  `sandboxes/` 仍在 `--data-dir` 内。用户目录只在空目录或已带 HMM marker（`.hmm-mod-storage.json`，
+  字节精确）的目录上认领，非空外来目录一律拒绝；目录本身与全部祖先不得是 symlink / junction /
+  reparse point；与任一已配置游戏根双向互不包含；设置前做 `create_new` + 删除的试写探针。运行时对
+  存储根的所有读写仍经 no-follow 句柄链（`open_managed_sandbox_root` → `sandboxes` → `<packageId>`），
+  删除只删 `<存储根>/sandboxes/<packageId>`。配置目录启动时不可用（外接盘拔掉、marker 被删）时保持
+  指向该目录并降级报告，不回落默认根——否则新导入会散落到另一处。
 - lifecycle preview 只在 ready/available 时签发 5 分钟 opaque token；Sandbox 与 Production
   各自签发（CLI-3B），环境标签参与 digest，跨环境重放一律 `plan_token_invalid`。提交同时要求
   `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery

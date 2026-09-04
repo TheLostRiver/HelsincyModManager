@@ -448,8 +448,15 @@ CLI-2B Sandbox 写许可测试只使用测试进程创建的临时根，必须�
   fail closed；Production 没有 capability 构造路径。
 - capability 保留 no-follow 根目录句柄、canonical root 和稳定目录身份。Windows 必须阻止存活期间
   的祖先替换；允许 rename 的平台必须在重验时返回稳定 `sandbox_root_replaced`。
-- 本次操作使用的 app-data、game、save、backup 根逐项执行 lexical + canonical containment；
-  任一根在隔离范围外或经过 link/junction/reparse point 时整体拒绝。
+- 本次操作提交的 game、save、backup 根（批量 / CLI 沙箱链还包括 app-data 根）逐项执行 lexical +
+  canonical containment；任一根在隔离范围外或经过 link/junction/reparse point 时整体拒绝。#273 起
+  GUI 组合只提交游戏根（`game_root_only`），测试须分别覆盖「GUI 豁免 app-data」与「game 根在沙箱外
+  仍被拒」两条（`sandbox_write.rs` 的 `game_root_only_*` 用例）。
+- #275 Mod 存储根：`hmm-infra` 的 inspector 用例逐条覆盖每个 `mod_storage_dir_*` 码（junction 用
+  `mklink /J`，与 `install_automation.rs` 同款）、layout-only 重新认领、marker 字节精确；`hmm-runtime`
+  覆盖五种 settings 状态的解析、配置根下的导入 / 重启 / 删除端到端，以及沙箱 CLI 拒绝 `--data-dir`
+  外的存储根；`hmm-app` 用假 inspector 覆盖 set 的空库门禁、重叠拒绝、claim 失败不落设置。这些用例
+  只用 temp 目录，不读取真实 AppData 或游戏目录。
 - 正向、拒绝、marker 篡改、根替换和 link/junction fixture 都验证 Sandbox 外 sentinel bytes 不变。
 - 测试不得读取真实 Steam、AppData、游戏、存档、日志或 Scheduled Task；marker/capability 不得被
   表述为 Production admission，也不得自动解锁 backup create 或 diagnostics export。

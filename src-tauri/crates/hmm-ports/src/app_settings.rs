@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use thiserror::Error;
 
 pub const MIN_LOG_STORAGE_MAX_BYTES: u64 = 1024 * 1024;
@@ -8,6 +9,9 @@ pub struct AppSettings {
     pub thumbnail_cache_max_age_days: Option<u32>,
     pub log_storage_max_bytes: Option<u64>,
     pub debug_log_enabled: bool,
+    /// User-chosen Mod storage root (the directory that holds `sandboxes/`). `None` keeps the
+    /// default `<app-data>/mod-import`. Stored as given; validated on read by the runtime.
+    pub mod_storage_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

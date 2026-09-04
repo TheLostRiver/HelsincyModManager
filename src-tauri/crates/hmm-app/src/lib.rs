@@ -32,6 +32,7 @@ mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
 mod mod_metadata;
+mod mod_storage_settings;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -249,6 +250,10 @@ pub use mod_library_query::{
     MAX_MOD_LIBRARY_SEARCH_CHARS,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
+pub use mod_storage_settings::{
+    ModStorageDirectoryValidation, ModStorageSettingsError, ModStorageSettingsService,
+    ModStorageSettingsServiceDependencies, ModStorageSettingsSnapshot,
+};
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
     PreviewImageCandidateSelectionService, PreviewImageCandidateSummary, PreviewImageDetailService,

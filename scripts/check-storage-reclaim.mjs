@@ -120,6 +120,18 @@ function listDir(dir) {
   return existsSync(dir) ? readdirSync(dir) : null;
 }
 
+// #275: the package sandboxes follow the configured Mod storage root
+// (settings.json `modStorageDir`); the catalog, thumbnails and manifest stay
+// in app data. Mirrors the runtime rule: only an absolute value is honoured.
+export function resolveSandboxesDir(root, settings) {
+  const configured = settings?.modStorageDir;
+  const storageRoot =
+    typeof configured === "string" && configured.trim() !== "" && path.isAbsolute(configured)
+      ? configured
+      : path.join(root, "mod-import");
+  return path.join(storageRoot, "sandboxes");
+}
+
 function parseArgs(argv) {
   const flagIndex = argv.indexOf("--deleted");
   const value = flagIndex === -1 ? null : argv[flagIndex + 1];
@@ -153,10 +165,11 @@ function main() {
 
   const mods = results.mods ?? [];
   const revisions = results.revisions ?? [];
+  const sandboxesDir = resolveSandboxesDir(root, readJson(path.join(root, "config/settings.json")));
   const checks = evaluateStorageReclaim({
     mods,
     revisions,
-    sandboxes: listDir(path.join(root, "mod-import/sandboxes")) ?? [],
+    sandboxes: listDir(sandboxesDir) ?? [],
     thumbnails: listDir(path.join(root, "thumbnails")),
     manifestIds: collectManifestReferences(
       readJson(path.join(root, "install/manifests/default.json")),
@@ -166,6 +179,7 @@ function main() {
 
   console.log("=== storage reclaim check ===");
   console.log(`app data:  ${root}`);
+  console.log(`sandboxes: ${sandboxesDir}`);
   console.log(`mods:      ${mods.length}`);
   console.log(`revisions: ${revisions.length}`);
   console.log("");

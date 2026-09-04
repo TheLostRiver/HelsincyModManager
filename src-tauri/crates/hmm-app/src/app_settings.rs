@@ -2,6 +2,7 @@ use hmm_ports::{
     AppSettings, AppSettingsRepository, AppSettingsRepositoryError, DebugLogControl,
     NoopDebugLogControl, MIN_LOG_STORAGE_MAX_BYTES,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -89,6 +90,18 @@ impl AppSettingsService {
         })
     }
 
+    /// #275: the Mod storage settings service routes its write through here so every
+    /// `settings.json` read-modify-write shares one lock; two independent writers would let a
+    /// concurrent debug-log toggle silently drop the new storage directory (or vice versa).
+    pub fn update_mod_storage_dir(
+        &self,
+        directory: Option<PathBuf>,
+    ) -> Result<AppSettings, AppSettingsServiceError> {
+        self.update_settings(|settings| {
+            settings.mod_storage_dir = directory;
+        })
+    }
+
     pub fn update_debug_log_enabled(
         &self,
         enabled: bool,
@@ -156,8 +169,54 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })
         );
+    }
+
+    #[test]
+    fn updating_mod_storage_dir_preserves_every_other_setting() {
+        let repository = std::sync::Arc::new(FakeAppSettingsRepository {
+            saved_settings: Mutex::new(Some(AppSettings {
+                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(30),
+                log_storage_max_bytes: Some(32 * 1024 * 1024),
+                debug_log_enabled: true,
+                mod_storage_dir: None,
+            })),
+            save_count: Mutex::new(0),
+        });
+        let service = AppSettingsService::new(repository.clone());
+        let directory = PathBuf::from(if cfg!(windows) {
+            "E:\\HMMMods"
+        } else {
+            "/srv/hmm-mods"
+        });
+
+        let settings = service
+            .update_mod_storage_dir(Some(directory.clone()))
+            .expect("storage dir update succeeds");
+
+        assert_eq!(settings.mod_storage_dir, Some(directory.clone()));
+        assert_eq!(
+            repository
+                .saved_settings
+                .lock()
+                .expect("settings lock")
+                .as_ref(),
+            Some(&AppSettings {
+                thumbnail_cache_max_bytes: Some(96 * 1024 * 1024),
+                thumbnail_cache_max_age_days: Some(30),
+                log_storage_max_bytes: Some(32 * 1024 * 1024),
+                debug_log_enabled: true,
+                mod_storage_dir: Some(directory),
+            })
+        );
+        let cleared = service
+            .update_mod_storage_dir(None)
+            .expect("clearing the storage dir succeeds");
+        assert_eq!(cleared.mod_storage_dir, None);
+        assert!(cleared.debug_log_enabled);
     }
 
     #[test]
@@ -168,6 +227,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });
@@ -196,6 +256,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });
@@ -219,6 +280,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: Some(32 * 1024 * 1024),
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })
         );
     }
@@ -231,6 +293,7 @@ mod tests {
                 thumbnail_cache_max_age_days: Some(30),
                 log_storage_max_bytes: None,
                 debug_log_enabled: false,
+                mod_storage_dir: None,
             })),
             save_count: Mutex::new(0),
         });
