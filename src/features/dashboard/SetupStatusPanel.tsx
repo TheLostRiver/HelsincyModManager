@@ -1,7 +1,11 @@
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { gameSetupCopy, type GameSetupCopy } from "../game-setup/gameSetupCopy";
 import { messageForError } from "../game-setup/gameSetupViewModel";
-import type { GameSetupStartupNotice, GameSetupStatus } from "../game-setup/gameSetupTypes";
+import type {
+  GameSetupErrorCode,
+  GameSetupStartupNotice,
+  GameSetupStatus,
+} from "../game-setup/gameSetupTypes";
 import type { InstallRecoveryHealthLoadState } from "../install-recovery/useInstallRecoveryHealth";
 import { dashboardCopy, type DashboardCopy } from "./dashboardCopy";
 import { InstallRecoveryHealthPanel } from "./InstallRecoveryHealthPanel";
@@ -9,6 +13,12 @@ import { resolveSetupSteps, type SetupStepItem } from "./setupStatusSteps";
 
 type SetupStatusPanelProps = {
   status: GameSetupStatus;
+  /**
+   * 上一次手动保存目录的失败原因，与 status 正交：已配置时保存被拒不会
+   * 改写 status（#333），失败原因单独存在这里并常驻显示，避免只靠一闪
+   * 而过的 toast 传达。
+   */
+  lastSaveError: GameSetupErrorCode | null;
   actionMessage: string | null;
   /*
    * 启动检测的补充说明。它区分了两种处境完全不同的失败：
@@ -23,6 +33,7 @@ type SetupStatusPanelProps = {
 
 export function SetupStatusPanel({
   status,
+  lastSaveError,
   actionMessage,
   startupNotice,
   recoveryHealth,
@@ -33,6 +44,15 @@ export function SetupStatusPanel({
   const copy = statusPanelCopy(status, actionMessage, panelCopy, setupErrors.errors);
   const stepItems = resolveSetupSteps(status, panelCopy.steps);
   const startupDetail = deriveStartupDetail(startupNotice, setupErrors);
+  /*
+   * 已配置时保存失败不影响现状，但得让玩家看见「为什么我选了却没生效」。
+   * 它描述的是「上一次操作的结果」，与 startupNotice（启动自动检测的失败）
+   * 是两件事，因此各自独立渲染、不互相覆盖。
+   */
+  const saveErrorDetail =
+    status.kind === "configured" && lastSaveError
+      ? messageForError(lastSaveError, setupErrors.errors)
+      : null;
 
   return (
     <aside
@@ -53,6 +73,11 @@ export function SetupStatusPanel({
         </div>
         <p>{copy.description}</p>
         {startupDetail ? <p className="state-detail">{startupDetail}</p> : null}
+        {saveErrorDetail ? (
+          <p className="state-detail is-error" role="alert">
+            {saveErrorDetail}
+          </p>
+        ) : null}
         <span className="soft-badge">{copy.badge}</span>
       </section>
 
