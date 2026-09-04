@@ -2,7 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::{TaskKind, TaskManager, TaskManagerError, TaskStatus};
+use crate::{
+    ModStorageWriteGate, ModStorageWriteGateError, TaskKind, TaskManager, TaskManagerError,
+    TaskStatus,
+};
 use hmm_core::ModId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +42,10 @@ pub enum ModImportTaskError {
     TaskIdGenerationFailed(String),
     #[error("failed to register task: {0}")]
     TaskRegistrationFailed(String),
+    /// #275: the storage root is migrating or already switched; the sandbox this import would
+    /// write to is either being copied away or no longer the one read after restart.
+    #[error("{0}")]
+    StorageWriteFrozen(ModStorageWriteGateError),
 }
 
 impl ModImportTaskError {
@@ -51,17 +58,28 @@ impl ModImportTaskError {
             Self::ModIdEmpty => "mod_id_empty",
             Self::TaskIdGenerationFailed(_) => "task_id_generation_failed",
             Self::TaskRegistrationFailed(_) => "task_registration_failed",
+            Self::StorageWriteFrozen(error) => error.code(),
         }
     }
 }
 
 pub struct ModImportTaskService {
     task_manager: Arc<TaskManager>,
+    write_gate: Arc<ModStorageWriteGate>,
 }
 
 impl ModImportTaskService {
     pub fn new(task_manager: Arc<TaskManager>) -> Self {
-        Self { task_manager }
+        Self {
+            task_manager,
+            write_gate: Arc::new(ModStorageWriteGate::new()),
+        }
+    }
+
+    /// Shares the storage write gate with the migration task and the other sandbox writers.
+    pub fn with_write_gate(mut self, write_gate: Arc<ModStorageWriteGate>) -> Self {
+        self.write_gate = write_gate;
+        self
     }
 
     pub fn start_import_mod_task(
@@ -95,9 +113,11 @@ impl ModImportTaskService {
             return Err(ModImportTaskError::ArchivePathIsNotFile);
         }
 
+        // Registered under the gate so a migration admitted right afterwards sees this task.
         let task = self
-            .task_manager
-            .create_task(TaskKind::ModImport)
+            .write_gate
+            .admit(|| self.task_manager.create_task(TaskKind::ModImport))
+            .map_err(ModImportTaskError::StorageWriteFrozen)?
             .map_err(ModImportTaskError::from)?;
 
         Ok(TaskStarted {
@@ -171,6 +191,45 @@ mod tests {
             task_manager.task_status(&task.task_id),
             Some(TaskStatus::Queued)
         );
+
+        fs::remove_dir_all(root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn start_import_task_is_refused_while_storage_writes_are_frozen() {
+        let root = temp_root("mod-import-task-frozen");
+        fs::create_dir_all(&root).expect("create temp root");
+        let archive_path = root.join("sample.zip");
+        fs::write(&archive_path, b"not a real archive yet").expect("write sample file");
+        let task_manager = std::sync::Arc::new(crate::TaskManager::new());
+        let write_gate = std::sync::Arc::new(ModStorageWriteGate::new());
+        write_gate
+            .begin_migration(|| Ok::<(), ModStorageWriteGateError>(()))
+            .expect("migration admitted");
+        let service = ModImportTaskService::new(std::sync::Arc::clone(&task_manager))
+            .with_write_gate(std::sync::Arc::clone(&write_gate));
+
+        let error = service
+            .start_import_mod_task(StartImportModTaskRequest {
+                archive_path: archive_path.clone(),
+            })
+            .expect_err("frozen gate refuses the import");
+
+        assert_eq!(error.error_code(), "mod_storage_migration_in_progress");
+        assert_eq!(
+            task_manager.has_active_task_of_kind(TaskKind::ModImport),
+            Ok(false),
+            "a refused import must not leave a queued task behind"
+        );
+
+        write_gate.end_migration(true);
+        let error = service
+            .start_import_mod_revision_task(StartImportModRevisionTaskRequest {
+                archive_path,
+                mod_id: ModId::new("mod-a"),
+            })
+            .expect_err("switched root refuses until restart");
+        assert_eq!(error.error_code(), "mod_storage_restart_required");
 
         fs::remove_dir_all(root).expect("cleanup temp root");
     }

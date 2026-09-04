@@ -92,7 +92,7 @@ test("query refresh fails closed for stale page interactions and clears landed-p
   assert.match(page, /<ModPosterCard[\s\S]*?interactionDisabled=\{selectionInteractionLocked\}/);
   assert.match(
     panel,
-    /const revisionImportDisabledReason =\s*libraryQueryBusy\s*\? compact\.queryBusy/,
+    /const revisionImportDisabledReason =\s*storageWriteFreezeReason !== undefined\s*\?\s*storageWriteFreezeReason\s*:\s*libraryQueryBusy\s*\? compact\.queryBusy/,
   );
 });
 

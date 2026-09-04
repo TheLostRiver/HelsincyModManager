@@ -534,7 +534,7 @@ fn read_readme_display_name(path: &Path) -> Result<Option<String>> {
     Ok(None)
 }
 
-fn validate_task_id_segment(task_id: &str) -> Result<()> {
+pub(crate) fn validate_task_id_segment(task_id: &str) -> Result<()> {
     if task_id.is_empty()
         || !task_id
             .chars()

@@ -181,6 +181,8 @@ pub struct ModImportTaskRunner {
     app_settings_repository: Option<Arc<dyn AppSettingsRepository>>,
     /// 仅用于展示名去重时读取用户改名。缺省时按 catalog 名字去重。
     metadata_repository: Option<Arc<dyn ModMetadataRepository>>,
+    /// #275 ④：设置开启时，导入落库后删除用户的源压缩包。缺省 = 从不删除。
+    archive_consumption: Option<Arc<crate::ModImportArchiveConsumptionService>>,
 }
 
 enum ModImportCatalogTarget {
@@ -224,6 +226,7 @@ impl ModImportTaskRunner {
             thumbnail_cache_maintenance: None,
             app_settings_repository: None,
             metadata_repository: None,
+            archive_consumption: None,
         }
     }
 
@@ -248,6 +251,14 @@ impl ModImportTaskRunner {
         metadata_repository: Arc<dyn ModMetadataRepository>,
     ) -> Self {
         self.metadata_repository = Some(metadata_repository);
+        self
+    }
+
+    pub fn with_archive_consumption(
+        mut self,
+        archive_consumption: Arc<crate::ModImportArchiveConsumptionService>,
+    ) -> Self {
+        self.archive_consumption = Some(archive_consumption);
         self
     }
 
@@ -318,6 +329,21 @@ impl ModImportTaskRunner {
             }
             ModImportCatalogTarget::ExistingLogicalMod(_) => None,
         };
+        // "Move instead of copy": fingerprint the archive before anything reads it, so the file
+        // deleted afterwards is provably the one that was unpacked. A fingerprint failure only
+        // downgrades the cleanup — the import itself never depends on it.
+        let mut archive_kept: Option<&'static str> = None;
+        let archive_fingerprint = match self.archive_consumption_for_this_import() {
+            Some(consumption) => match consumption.fingerprint(&archive_path) {
+                Ok(fingerprint) => Some((consumption, fingerprint)),
+                Err(error) => {
+                    archive_kept = Some(error.code());
+                    None
+                }
+            },
+            None => None,
+        };
+        let consumed_archive_path = archive_path.clone();
         let request = ModImportPrepareRequest {
             task_id: task_id.to_owned(),
             archive_path,
@@ -405,6 +431,13 @@ impl ModImportTaskRunner {
                     });
                 }
 
+                // The catalog write is durable: only now may the source archive go.
+                if let Some((consumption, fingerprint)) = &archive_fingerprint {
+                    if let Err(error) = consumption.consume(&consumed_archive_path, fingerprint) {
+                        archive_kept = Some(error.code());
+                    }
+                }
+
                 self.maintain_thumbnail_cache();
 
                 result.events
@@ -428,12 +461,16 @@ impl ModImportTaskRunner {
 
         match self.task_manager.complete_task(task_id) {
             Ok(task) => {
-                events.push(crate::TaskProgressEvent::new(
+                let mut completed = crate::TaskProgressEvent::new(
                     task.task_id,
                     task.kind,
                     task.status,
                     MOD_IMPORT_PREPARE_COMPLETED_PHASE,
-                ));
+                );
+                // Same shape as the adopt audit degradation: the import is complete, the
+                // optional archive cleanup did not happen and the code says why.
+                completed.error = archive_kept.map(str::to_owned);
+                events.push(completed);
                 Ok(events)
             }
             Err(_) => {
@@ -452,6 +489,20 @@ impl ModImportTaskRunner {
 
     fn is_task_cancelled(&self, task_id: &str) -> bool {
         self.task_manager.task_status(task_id) == Some(crate::TaskStatus::Cancelled)
+    }
+
+    /// The consumption service, but only while the persisted setting asks for it. Unreadable
+    /// settings mean "off": a destructive option is never inferred.
+    fn archive_consumption_for_this_import(
+        &self,
+    ) -> Option<&Arc<crate::ModImportArchiveConsumptionService>> {
+        let consumption = self.archive_consumption.as_ref()?;
+        let enabled = self
+            .app_settings_repository
+            .as_ref()
+            .and_then(|repository| repository.load_settings().ok())
+            .is_some_and(|settings| settings.delete_archive_after_import);
+        enabled.then_some(consumption)
     }
 
     /// 让新建 Mod 的展示名在库内唯一，与既有 Mod 冲突时追加序号。

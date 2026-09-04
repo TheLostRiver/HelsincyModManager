@@ -36,8 +36,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ModImportPrepareService, TaskKind, TaskManager, TaskManagerError, TaskProgressEvent,
-    TaskStarted, TaskStatus,
+    ModImportPrepareService, ModStorageWriteGate, ModStorageWriteGateError, TaskKind, TaskManager,
+    TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 
 pub const DEFAULT_EXTERNAL_IMPORT_PREVIEW_LIMIT: usize = 50;
@@ -444,11 +444,16 @@ pub enum ExternalImportBatchError {
     HistoryPageInvalid,
     #[error("external import clock is unavailable")]
     ClockUnavailable,
+    /// #275: the storage root is migrating or already switched; materialised packages would be
+    /// written to a sandbox root that is being copied away or is stale after restart.
+    #[error("{0}")]
+    StorageWriteFrozen(ModStorageWriteGateError),
 }
 
 impl ExternalImportBatchError {
     pub fn error_code(self) -> &'static str {
         match self {
+            Self::StorageWriteFrozen(error) => error.code(),
             Self::SourceUnavailable => "external_import_source_unavailable",
             Self::TaskUnavailable => "external_import_task_unavailable",
             Self::BatchUnavailable => "external_import_batch_unavailable",
@@ -476,6 +481,7 @@ pub struct ExternalImportBatchService {
     prepare_service: Arc<ModImportPrepareService>,
     clock: Arc<dyn AppClock>,
     resource_budget: ExternalImportResourceBudget,
+    write_gate: Arc<ModStorageWriteGate>,
 }
 
 impl ExternalImportBatchService {
@@ -502,11 +508,18 @@ impl ExternalImportBatchService {
             prepare_service,
             clock,
             resource_budget: ExternalImportResourceBudget::default(),
+            write_gate: Arc::new(ModStorageWriteGate::new()),
         }
     }
 
     pub fn with_resource_budget(mut self, resource_budget: ExternalImportResourceBudget) -> Self {
         self.resource_budget = resource_budget;
+        self
+    }
+
+    /// Shares the storage write gate with the migration task and the other sandbox writers.
+    pub fn with_write_gate(mut self, write_gate: Arc<ModStorageWriteGate>) -> Self {
+        self.write_gate = write_gate;
         self
     }
 
@@ -606,10 +619,7 @@ impl ExternalImportBatchService {
         self.validate_selection_categories(&selection)?;
         let source_id = self.source_id_for_batch(&mut batch)?;
         let now_unix_millis = self.now_unix_millis()?;
-        let task = self
-            .task_manager
-            .create_task(TaskKind::ModImport)
-            .map_err(|_| ExternalImportBatchError::TaskUnavailable)?;
+        let task = self.register_import_task()?;
         let result = match self.batch_repository.seal_selection_and_start(
             ExternalImportSealAndStartRequest {
                 selection_id,
@@ -666,10 +676,7 @@ impl ExternalImportBatchService {
         }
         self.validate_selection_categories(&selection)?;
         let source_id = self.source_id_for_batch(&mut batch)?;
-        let task = self
-            .task_manager
-            .create_task(TaskKind::ModImport)
-            .map_err(|_| ExternalImportBatchError::TaskUnavailable)?;
+        let task = self.register_import_task()?;
         let restarted = match self.batch_repository.restart_batch(&batch.batch_id) {
             Ok(restarted) => restarted,
             Err(_) => {
@@ -691,6 +698,15 @@ impl ExternalImportBatchService {
             selection_id: selection.selection_id,
             source_id,
         })
+    }
+
+    /// Registers the batch task under the storage write gate, so a migration admitted right
+    /// afterwards sees it and refuses to start instead of racing the materialisation.
+    fn register_import_task(&self) -> Result<crate::TaskSnapshot, ExternalImportBatchError> {
+        self.write_gate
+            .admit(|| self.task_manager.create_task(TaskKind::ModImport))
+            .map_err(ExternalImportBatchError::StorageWriteFrozen)?
+            .map_err(|_| ExternalImportBatchError::TaskUnavailable)
     }
 
     pub fn abort_queued_import(

@@ -140,7 +140,21 @@ Helsincy Mod Manager 会处理第三方 Mod 压缩包、玩家本地游戏目录
   reparse point；与任一已配置游戏根双向互不包含；设置前做 `create_new` + 删除的试写探针。运行时对
   存储根的所有读写仍经 no-follow 句柄链（`open_managed_sandbox_root` → `sandboxes` → `<packageId>`），
   删除只删 `<存储根>/sandboxes/<packageId>`。配置目录启动时不可用（外接盘拔掉、marker 被删）时保持
-  指向该目录并降级报告，不回落默认根——否则新导入会散落到另一处。
+  指向该目录并降级报告，不回落默认根——否则新导入会散落到另一处。目标目录还不得与当前存储根
+  相同、互相包含或落在其 `sandboxes/` 之下（`mod_storage_dir_overlaps_current_root`）。
+- 库非空时换目录只能走迁移任务（#275 切片②）：逐包复制到新根并回读比对文件集合 / 大小 / SHA-256，
+  全部通过后才写 `settings.json`；复制、校验、删除全程走 no-follow 句柄，包内或 `sandboxes/` 下出现
+  symlink / junction / reparse point 即整体失败。任一步失败或取消都删掉目标里本次复制的包、设置不变；
+  旧根副本只在**下次启动**新根生效后、逐包确认新根副本存在后才删除，崩溃留下的 journal
+  （`<app-data>/mod-import/migration.json`）在下次启动收尾或回滚，源根不可用时保留不动。迁移登记到
+  重启之间，导入 / 外部导入 / 删除等沙箱写入一律拒绝（`mod_storage_migration_in_progress` /
+  `mod_storage_restart_required`），读路径不受影响；有导入任务在跑时拒绝启动迁移。任务事件与日志
+  只带包计数与稳定码，不带路径或包名。
+- 「移动导入」（#275 切片④，默认关）是 install executor 之外唯一会删除用户文件的路径，且只删用户自己在
+  系统文件选择器里选中的那个源压缩包：导入前取指纹（长度、修改时间、卷 + 文件索引），目录写入 durable
+  后 no-follow 重开、比对指纹一致才删；目录 / 链接 / reparse point、导入期间被替换、位于任一游戏根 /
+  当前存储根 / app-data 之内、游戏配置读不到，全部保留不删并以 `mod_import_archive_kept_*` 降级码上报。
+  外部导入（HuntingBox 目录）的压缩包永不删除。
 - lifecycle preview 只在 ready/available 时签发 5 分钟 opaque token；Sandbox 与 Production
   各自签发（CLI-3B），环境标签参与 digest，跨环境重放一律 `plan_token_invalid`。提交同时要求
   `--commit --yes`；token 绑定 command、环境、受控 ID 和计划/manifest/recovery

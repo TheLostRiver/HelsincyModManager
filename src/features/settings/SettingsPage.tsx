@@ -1,4 +1,15 @@
-import { Bell, Check, Database, FileArchive, MonitorCog, RotateCcw, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import {
+  Bell,
+  Check,
+  Database,
+  FileArchive,
+  HardDrive,
+  MonitorCog,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useId, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { ColorSchemePreference } from "../../app/appearance/colorSchemeTypes";
 import { useColorScheme } from "../../app/appearance/useColorScheme";
@@ -19,6 +30,9 @@ import {
 } from "../../shared/i18n";
 import { BackgroundProtectionPanel } from "./BackgroundProtectionPanel";
 import { DebugLogSettingsPanel } from "./DebugLogSettingsPanel";
+import { ModImportSettingsPanel } from "./ModImportSettingsPanel";
+import { modStorageCopy } from "./modStorageCopy";
+import { ModStorageSettingsPanel } from "./ModStorageSettingsPanel";
 import { settingsPageCopy } from "./settingsPageCopy";
 
 type ToggleSettingId =
@@ -61,6 +75,7 @@ export function SettingsPage() {
   } = useI18n();
   const { pushToast } = useFeedback();
   const copy = resolveCopy(settingsPageCopy, locale);
+  const storageCopy = resolveCopy(modStorageCopy, locale);
   const prerequisites = useGamePrerequisites("mhw");
   const [windowClosePreference, setWindowClosePreference] = useState<WindowClosePreference>(() =>
     typeof window === "undefined" ? "ask" : loadWindowClosePreference(),
@@ -234,6 +249,7 @@ export function SettingsPage() {
           description={copy.modImport.description}
           icon={FileArchive}
         >
+          <ModImportSettingsPanel />
           <ToggleRow
             title={copy.modImport.previewAfterImport.title}
             description={copy.modImport.previewAfterImport.description}
@@ -246,6 +262,15 @@ export function SettingsPage() {
             checked={settings.confirmBeforeConflict}
             onChange={() => updateToggle("confirmBeforeConflict")}
           />
+        </SettingsSection>
+
+        <SettingsSection
+          title={storageCopy.section.title}
+          description={storageCopy.section.description}
+          icon={HardDrive}
+          tourId="settings.mod-storage"
+        >
+          <ModStorageSettingsPanel />
         </SettingsSection>
 
         <SettingsSection

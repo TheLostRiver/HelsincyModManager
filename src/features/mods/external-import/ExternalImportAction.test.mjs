@@ -90,7 +90,10 @@ test("external import action composes selection, result, and retry without a fro
   assert.match(candidateSelection, /ignore_invalid_metadata|resolutionLabel/);
   assert.doesNotMatch(candidateSelection, /sourceModType/);
   assert.match(source, /isExternalImportSourceDto\(selectedSource\)/);
-  assert.match(panelSource, /<ExternalImportAction\s+onImported=\{onImportCompleted\}\s*\/>/);
+  assert.match(
+    panelSource,
+    /<ExternalImportAction onImported=\{onImportCompleted\} disabledReason=\{storageWriteFreezeReason\} \/>/,
+  );
   assert.doesNotMatch(source, /@tauri-apps\/plugin-dialog|open\(\{/);
   assert.match(selectionWorkflow, /useExternalImportResultWorkflow/);
   assert.match(selectionPanel, /ExternalImportResultPanel/);

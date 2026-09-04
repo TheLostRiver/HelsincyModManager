@@ -6,9 +6,36 @@ export type ModImportTaskState =
   | { status: "choosing" }
   | { status: "starting" }
   | { status: "running"; taskId: string; phase: string }
-  | { status: "completed"; taskId: string; phase: string }
+  | { status: "completed"; taskId: string; phase: string; archiveKept: ModImportArchiveKeptCode | null }
   | { status: "cancelled"; taskId: string; phase: string }
   | { status: "failed"; taskId: string | null; phase: string; messageKind: ModImportFailedMessageKind };
+
+/**
+ * #275 ④「移动导入」：导入已成功、只是源压缩包没删的降级码（契约「移动导入（#275 切片④）」）。
+ * 挂在 completed 事件的 error 上；不在此列表的字串一律忽略，不当码用。
+ */
+export type ModImportArchiveKeptCode =
+  | "mod_import_archive_kept_not_regular_file"
+  | "mod_import_archive_kept_protected_location"
+  | "mod_import_archive_kept_changed"
+  | "mod_import_archive_kept_unavailable"
+  | "mod_import_archive_kept_remove_failed";
+
+const archiveKeptCodes: ReadonlySet<string> = new Set<ModImportArchiveKeptCode>([
+  "mod_import_archive_kept_not_regular_file",
+  "mod_import_archive_kept_protected_location",
+  "mod_import_archive_kept_changed",
+  "mod_import_archive_kept_unavailable",
+  "mod_import_archive_kept_remove_failed",
+]);
+
+export function archiveKeptCodeFrom(error: string | null): ModImportArchiveKeptCode | null {
+  return error !== null && archiveKeptCodes.has(error) ? (error as ModImportArchiveKeptCode) : null;
+}
+
+export function getModImportArchiveKeptMessage(code: ModImportArchiveKeptCode, copy: ModImportCopy): string {
+  return copy.archiveKept[code];
+}
 
 // 失败原因只存语义，渲染时经 getModImportFailedMessage 按当前界面语言取词；
 // 绝不把后端事件内容拼进用户可见消息（脱敏语义与语言无关）。
@@ -18,7 +45,9 @@ export type ModImportFailedMessageKind =
   | "picker-failed"
   | "invalid-start-state"
   | "invalid-archive"
-  | "start-failed";
+  | "start-failed"
+  | "storage-frozen-migration"
+  | "storage-frozen-restart";
 
 const modImportPhaseCopyKeys: Readonly<Record<string, keyof ModImportCopy["phases"]>> = {
   "mod_import.queued": "queued",
@@ -59,6 +88,10 @@ export function getModImportFailedMessage(
       return copy.errors.invalidArchive;
     case "start-failed":
       return copy.errors.startFailed;
+    case "storage-frozen-migration":
+      return copy.errors.storageFrozenMigration;
+    case "storage-frozen-restart":
+      return copy.errors.storageFrozenRestart;
   }
 }
 
@@ -96,7 +129,12 @@ export function nextModImportTaskStateFromProgress(
   }
 
   if (event.status === "completed") {
-    return { status: "completed", taskId: event.taskId, phase: event.phase };
+    return {
+      status: "completed",
+      taskId: event.taskId,
+      phase: event.phase,
+      archiveKept: archiveKeptCodeFrom(event.error),
+    };
   }
   if (event.status === "cancelled") {
     return { status: "cancelled", taskId: event.taskId, phase: event.phase };

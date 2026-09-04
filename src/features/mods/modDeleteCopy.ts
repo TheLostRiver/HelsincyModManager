@@ -83,6 +83,14 @@ export const modDeleteCopy = {
           message: "删除所需的存储暂时不可用。",
           hint: "请稍后重试；若持续出现，请连同诊断信息反馈。",
         },
+        mod_storage_migration_in_progress: {
+          message: "存储目录正在迁移，暂时不能删除 Mod。",
+          hint: "等迁移完成并重启 HMM 后再试。",
+        },
+        mod_storage_restart_required: {
+          message: "存储目录已更改，重启前不能删除 Mod。",
+          hint: "请先重启 HMM。",
+        },
       },
     },
     toasts: {
@@ -132,6 +140,14 @@ export const modDeleteCopy = {
           message: "The storage required for deletion is temporarily unavailable.",
           hint: "Retry later; if it persists, report it with diagnostics.",
         },
+        mod_storage_migration_in_progress: {
+          message: "The storage directory is being migrated; mods cannot be deleted right now.",
+          hint: "Wait for the migration to finish and restart HMM.",
+        },
+        mod_storage_restart_required: {
+          message: "The storage directory changed; mods cannot be deleted until the restart.",
+          hint: "Restart HMM first.",
+        },
       },
     },
     toasts: {
@@ -180,6 +196,14 @@ export const modDeleteCopy = {
         mod_delete_store_unavailable: {
           message: "削除に必要なストレージが一時的に利用できません。",
           hint: "しばらくしてから再試行してください。継続する場合は診断情報と併せて報告してください。",
+        },
+        mod_storage_migration_in_progress: {
+          message: "保存フォルダーの移行中のため、現在 Mod を削除できません。",
+          hint: "移行の完了を待ち、HMM を再起動してから再試行してください。",
+        },
+        mod_storage_restart_required: {
+          message: "保存フォルダーが変更されたため、再起動まで Mod を削除できません。",
+          hint: "先に HMM を再起動してください。",
         },
       },
     },

@@ -27,6 +27,7 @@ mod app_settings_dto_tests {
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: false,
             mod_storage_dir: None,
+            delete_archive_after_import: false,
         }
         .into();
 
@@ -66,6 +67,7 @@ mod app_settings_dto_tests {
             log_storage_max_bytes: Some(64 * 1024 * 1024),
             debug_log_enabled: false,
             mod_storage_dir: None,
+            delete_archive_after_import: false,
         }
         .into();
 

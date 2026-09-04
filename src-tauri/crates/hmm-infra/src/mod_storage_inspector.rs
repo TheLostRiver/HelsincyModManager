@@ -46,6 +46,14 @@ impl ModStorageDirectoryInspector for FileSystemModStorageDirectoryInspector {
                 return Err(ModStorageDirectoryError::OverlapsGameRoot);
             }
         }
+        // A current root that is gone (unplugged drive) cannot contain anything; a candidate
+        // below it fails as `ParentMissing` on its own, so the overlap check only runs for a
+        // present directory — otherwise the fail-closed overlap verdict would reject every path.
+        if let Some(current_root) = request.current_root {
+            if current_root.is_dir() && self.directories_overlap(path, current_root) {
+                return Err(ModStorageDirectoryError::OverlapsCurrentRoot);
+            }
+        }
         let claimed = if exists {
             match classify_contents(path)? {
                 DirectoryContents::Claimed => true,
@@ -281,7 +289,62 @@ mod tests {
         inspector().inspect(ModStorageDirectoryInspectionRequest {
             path,
             exclusive_roots,
+            current_root: None,
         })
+    }
+
+    fn inspect_with_current_root(
+        path: &Path,
+        current_root: &Path,
+    ) -> Result<ModStorageDirectoryInspection, ModStorageDirectoryError> {
+        inspector().inspect(ModStorageDirectoryInspectionRequest {
+            path,
+            exclusive_roots: &[],
+            current_root: Some(current_root),
+        })
+    }
+
+    #[test]
+    fn candidates_overlapping_the_current_root_are_rejected_unless_that_root_is_gone() {
+        let temp = tempfile::tempdir().expect("temp");
+        let current = temp.path().join("current");
+        fs::create_dir_all(current.join(MOD_STORAGE_SANDBOX_DIRECTORY)).expect("layout");
+        let sibling = temp.path().join("sibling");
+
+        assert_eq!(
+            inspect_with_current_root(&current, &current),
+            Err(ModStorageDirectoryError::OverlapsCurrentRoot)
+        );
+        assert_eq!(
+            inspect_with_current_root(
+                &current.join(MOD_STORAGE_SANDBOX_DIRECTORY).join("nested"),
+                &current
+            ),
+            Err(ModStorageDirectoryError::OverlapsCurrentRoot),
+            "a root below the current sandboxes would show up as a package"
+        );
+        assert_eq!(
+            inspect_with_current_root(temp.path(), &current),
+            Err(ModStorageDirectoryError::OverlapsCurrentRoot),
+            "a root containing the current root is rejected before the marker rule"
+        );
+        assert_eq!(
+            inspect_with_current_root(&sibling, &current),
+            Ok(ModStorageDirectoryInspection {
+                exists: false,
+                claimed: false,
+            })
+        );
+
+        fs::remove_dir_all(&current).expect("remove current root");
+        assert_eq!(
+            inspect_with_current_root(&sibling, &current),
+            Ok(ModStorageDirectoryInspection {
+                exists: false,
+                claimed: false,
+            }),
+            "an absent current root must not block every candidate"
+        );
     }
 
     #[test]

@@ -26,13 +26,16 @@ mod log_diagnostics;
 mod mod_deletion;
 mod mod_dependency_graph;
 mod mod_import;
+mod mod_import_archive;
 mod mod_import_diagnostics;
 mod mod_import_task;
 mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
 mod mod_metadata;
+mod mod_storage_migration;
 mod mod_storage_settings;
+mod mod_storage_write_gate;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -227,6 +230,7 @@ pub use mod_import::{
     ModPackageMetadataSummary, ModRevisionList, ThumbnailCacheMaintenanceScheduler,
     DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
+pub use mod_import_archive::ModImportArchiveConsumptionService;
 pub use mod_import_diagnostics::{
     PreviewImageDiagnosticExportCategory, PreviewImageDiagnosticExportCategoryId,
     PreviewImageDiagnosticExportCategoryStatus, PreviewImageDiagnosticExportExclusionReason,
@@ -250,9 +254,22 @@ pub use mod_library_query::{
     MAX_MOD_LIBRARY_SEARCH_CHARS,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
+pub use mod_storage_migration::{
+    queued_mod_storage_migration_event, settle_pending_mod_storage_migration,
+    ModStorageMigrationFailure, ModStorageMigrationLaunch, ModStorageMigrationSettlement,
+    ModStorageMigrationTaskError, ModStorageMigrationTaskService,
+    ModStorageMigrationTaskServiceDependencies, MOD_STORAGE_MIGRATION_CANCELLED_PHASE,
+    MOD_STORAGE_MIGRATION_CANCELLING_PHASE, MOD_STORAGE_MIGRATION_COMPLETED_PHASE,
+    MOD_STORAGE_MIGRATION_COPYING_PHASE, MOD_STORAGE_MIGRATION_FAILED_PHASE,
+    MOD_STORAGE_MIGRATION_QUEUED_PHASE, MOD_STORAGE_MIGRATION_SWITCHING_PHASE,
+    MOD_STORAGE_MIGRATION_VERIFYING_PHASE,
+};
 pub use mod_storage_settings::{
     ModStorageDirectoryValidation, ModStorageSettingsError, ModStorageSettingsService,
     ModStorageSettingsServiceDependencies, ModStorageSettingsSnapshot,
+};
+pub use mod_storage_write_gate::{
+    ModStorageWriteFreeze, ModStorageWriteGate, ModStorageWriteGateError,
 };
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,

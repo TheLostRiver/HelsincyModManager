@@ -44,7 +44,10 @@ test("the existing add action owns import and refreshes the library on completio
   const pageSource = readSource("src/features/mods/ModLibraryPage.tsx");
   const dataSource = readSource("src/features/mods/modsLibraryData.ts");
 
-  assert.match(panelSource, /<ModImportAction\s+label=\{buttonText\.add\}\s+onImported=\{onImportCompleted\}/);
+  assert.match(
+    panelSource,
+    /<ModImportAction\s+label=\{buttonText\.add\}\s+disabledReason=\{storageWriteFreezeReason\}\s+onImported=\{onImportCompleted\}/,
+  );
   assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
   assert.match(dataSource, /id: "add", label: "导入 Mod"/);
 });
