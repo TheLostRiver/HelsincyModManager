@@ -49,11 +49,7 @@ pub(super) fn rename_part_prefix(segment: &str, mappings: &[(String, String)]) -
     let remainder = &segment[source.len()..];
 
     // 守卫①
-    if remainder
-        .as_bytes()
-        .first()
-        .is_some_and(u8::is_ascii_digit)
-    {
+    if remainder.as_bytes().first().is_some_and(u8::is_ascii_digit) {
         return PartRename::Unrelated;
     }
 
