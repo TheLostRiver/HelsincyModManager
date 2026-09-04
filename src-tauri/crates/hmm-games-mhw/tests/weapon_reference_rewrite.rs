@@ -248,7 +248,10 @@ fn slot_independent_author_directories_are_left_untouched() {
 
     assert_eq!(
         paths,
-        references.iter().map(|r| (*r).to_owned()).collect::<Vec<_>>(),
+        references
+            .iter()
+            .map(|r| (*r).to_owned())
+            .collect::<Vec<_>>(),
         "与槽位无关的引用必须逐字保留",
     );
     assert_eq!(report.rewritten_reference_count(), 0);
