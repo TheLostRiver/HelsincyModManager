@@ -8,6 +8,30 @@
 //! 规则由参照实现独立验证：第三方管理器把 `bs_two012_BML.dds` 改名为 `two020_BML.dds`，
 //! 即**整个部件 ID 前缀**被替换（注意源含 `bs_` 而目标不含）。
 
+use super::family::{WeaponFamilyError, WeaponMainId, WeaponPartRole};
+
+/// 源槽位到目标槽位的部件 ID 对照表（主件 + 该族已登记的副件）。
+///
+/// MRL3 引用改写与磁盘文件重定位共用同一张表——两处必须给出一致的改名结果，否则
+/// 引用会指向不存在的文件。
+pub(super) fn part_mappings(
+    source_main_id: &WeaponMainId,
+    target_main_id: &WeaponMainId,
+) -> Result<Vec<(String, String)>, WeaponFamilyError> {
+    let mut roles = vec![WeaponPartRole::Main];
+    if let Some(secondary) = source_main_id.family().secondary_part() {
+        roles.push(secondary.role());
+    }
+    roles
+        .into_iter()
+        .map(|role| {
+            let source = source_main_id.part_for_role(role)?;
+            let target = target_main_id.part_for_role(role)?;
+            Ok((source.as_str().to_owned(), target.as_str().to_owned()))
+        })
+        .collect()
+}
+
 /// 一次文件名改写的结论。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum PartRename {

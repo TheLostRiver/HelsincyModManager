@@ -41,6 +41,10 @@ pub enum WeaponAnalysisError {
     /// 错误码与前端文案保留，存量 manifest 与日志中的历史记录仍可解析。
     #[error("weapon package contains mixed install payload")]
     MixedInstallPayload,
+    /// 同样保留但不再产生（#336 两遍分类法）：`UnknownFamily` / `InvalidMainId` /
+    /// `UnsupportedResource` 描述的都是「`nativePC/wp/` 下有形态不符的文件」，
+    /// 而真实包里那正是伴生文件的常态，现在由分类器归档而非否决整包。
+    /// 错误码与前端文案保留，存量 manifest 与日志仍可解析。
     #[error("weapon package contains an unsupported resource")]
     UnsupportedResource,
     #[error("weapon source identity is invalid")]
@@ -127,11 +131,50 @@ impl WeaponModelPair {
     }
 }
 
+/// 随行文件的落位方式。
+///
+/// #336：真实 Mod 在 `nativePC/wp/` 下必然携带模型之外的伴生文件——贴图 `.tex/.dds`、
+/// 特效 `.efx/.epv3`、附件 `.evwp/.ctc`、作者自建目录。旧版把它们一律当作包结构错误
+/// 否决整包，导致库里 4/4 真实包不可重定向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeaponCompanionPlacement {
+    /// 在源槽位目录**之内**：按主 ID + 文件名前缀规则重定位到目标槽位。
+    /// 例：`wp/swo/swo035/epv/swo035.epv3`、`wp/two/two003/mod/two003_BML.tex`。
+    Relocated,
+    /// 在 `nativePC/wp/` 下但与槽位**无关**：原路径保留，换任何目标槽位都仍有效。
+    /// 例：`wp/swo/Tamonowo/*`、`wp/two/DARKMOON/*`、`wp/Sakurad/*`、`wp/swo/epv/*`。
+    /// 参照实现同样原样留在原地（真机实验实证）。
+    Verbatim,
+}
+
+/// 一个随行文件：不是可重定向模型，但必须跟着走，否则重定向出来的装备缺资源。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeaponCompanionAsset {
+    package_file_id: PackageFileId,
+    relative_path: InstallTargetPath,
+    placement: WeaponCompanionPlacement,
+}
+
+impl WeaponCompanionAsset {
+    pub fn package_file_id(&self) -> &PackageFileId {
+        &self.package_file_id
+    }
+
+    pub fn relative_path(&self) -> &InstallTargetPath {
+        &self.relative_path
+    }
+
+    pub fn placement(&self) -> WeaponCompanionPlacement {
+        self.placement
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeaponSourceClosure {
     source_id: ReplacementSourceId,
     root: WeaponResourceRoot,
     pairs: Vec<WeaponModelPair>,
+    companions: Vec<WeaponCompanionAsset>,
     asset_count: usize,
     warnings: Vec<WeaponAnalysisWarning>,
 }
@@ -151,6 +194,10 @@ impl WeaponSourceClosure {
 
     pub fn pairs(&self) -> &[WeaponModelPair] {
         &self.pairs
+    }
+
+    pub fn companions(&self) -> &[WeaponCompanionAsset] {
+        &self.companions
     }
 
     pub fn asset_count(&self) -> usize {
@@ -240,25 +287,44 @@ pub fn analyze_mhw_weapon_assets(
             })
     });
 
+    /*
+     * 第一遍：只用严格语法收集可重定向模型，据此定唯一源根。
+     *
+     * #336：旧版是一遍二分——解析成功就收下，解析失败（除 NotWeaponPath）就否决整包。
+     * 而 `NotWeaponPath` 只在路径不以 `nativePC/wp` 开头时返回，于是 `nativePC/wp/` 内
+     * 一切伴生文件都会否决整包。现在这一遍**只挑模型**，其余留给第二遍分类，不再是错误。
+     */
     let mut parsed_assets = Vec::new();
+    let mut unclassified = Vec::new();
     for asset in prepared {
-        // 剥离外层目录后仍不是武器资源（防具、NPC 之类的 nativePC 子树）
-        // 同样只忽略。真正需要硬失败的是 `UnsupportedResource`——那是
-        // `nativePC/wp/` 底下出现了形态不对的东西，属于明确的包结构错误信号。
         match WeaponModelAssetPath::parse(asset.relative_path.as_str()) {
             Ok(model_path) => parsed_assets.push(WeaponSourceAsset {
                 package_file_id: asset.package_file_id,
                 model_path,
             }),
-            Err(WeaponPathError::NotWeaponPath) => continue,
-            Err(error) => return Err(map_path_error(error)),
+            Err(error) => unclassified.push((asset, error)),
         }
     }
 
-    // 放宽 mixed payload 后的门禁下限：一件武器资源都没有就必须失败，
-    // 否则纯杂物包会被当成合法（空）武器包放过。
+    // 门禁下限：一件武器模型都没有就必须失败，否则纯杂物包会被当成合法（空）武器包放过。
     if parsed_assets.is_empty() {
-        return Err(WeaponAnalysisError::SourceNotFound);
+        /*
+         * 一个模型都没认出来时还没有源根可供分类，但诊断码要挑更可操作的那个：包里若有
+         * `mod3`/`mrl3` 只是部件名不认识，报 `UnknownPart` 比笼统的「未找到武器资源」有用。
+         */
+        let has_unknown_part_model = unclassified.iter().any(|(asset, error)| {
+            matches!(error, WeaponPathError::UnknownPart)
+                && asset
+                    .relative_path
+                    .as_str()
+                    .rsplit_once('.')
+                    .is_some_and(|(_, extension)| matches!(extension, "mod3" | "mrl3"))
+        });
+        return Err(if has_unknown_part_model {
+            WeaponAnalysisError::UnknownPart
+        } else {
+            WeaponAnalysisError::SourceNotFound
+        });
     }
 
     let families = parsed_assets
@@ -281,7 +347,58 @@ pub fn analyze_mhw_weapon_assets(
         .into_iter()
         .next()
         .expect("a parsed weapon asset always has a source root");
-    let asset_count = parsed_assets.len();
+
+    /*
+     * 第二遍：源根已定，把剩下的文件分档。
+     *
+     * - 不在 `nativePC/wp/` 下（防具、NPC、readme、预览图…）→ 忽略，与本武器无关
+     * - 在源槽位目录**之内** → 随行·需重定位（贴图、特效、`.evwp`、`.ctc`…）
+     * - 在 `nativePC/wp/` 下但与槽位无关 → 随行·原样（作者自建目录、族级 `epv/`、`sound/`）
+     *
+     * 这一遍**不产生任何错误**：真实包里这三类都是常态。危险类型（可执行等）的拒绝
+     * 属 hmm-install-safety 边界，见 #336 切片③。
+     */
+    let mut companions = Vec::with_capacity(unclassified.len());
+    for (asset, error) in unclassified {
+        let segments = asset.relative_path.as_str().split('/').collect::<Vec<_>>();
+        let under_weapon_tree =
+            segments.first() == Some(&"nativePC") && segments.get(1) == Some(&"wp");
+        if !under_weapon_tree {
+            continue;
+        }
+        let inside_root = root.contains(&asset.relative_path);
+
+        /*
+         * 唯一仍然硬失败的一档：源槽位目录内、扩展名是 mod3/mrl3、但部件名不在注册表里
+         * （如太刀的 `saya035ol`）。它是**模型**，不是伴生文件——若当伴生文件搬运，它的
+         * MRL3 里指向源槽位的贴图引用就不会被改写，重定向后断链。
+         *
+         * 正确做法是让未登记部件走正常的配对 + MRL3 改写管线（#336 正文洞见 2 的推论），
+         * 但那要改 `WeaponPartId` 模型，而部件注册表是 `WEAPON_RETARGET_DESIGN.md:167`
+         * 明文冻结的口径，需独立的设计变更。故本切片保持失败关闭、不猜。
+         */
+        if inside_root
+            && matches!(error, WeaponPathError::UnknownPart)
+            && segments
+                .last()
+                .and_then(|name| name.rsplit_once('.'))
+                .is_some_and(|(_, extension)| matches!(extension, "mod3" | "mrl3"))
+        {
+            return Err(WeaponAnalysisError::UnknownPart);
+        }
+
+        companions.push(WeaponCompanionAsset {
+            package_file_id: asset.package_file_id,
+            relative_path: asset.relative_path,
+            placement: if inside_root {
+                WeaponCompanionPlacement::Relocated
+            } else {
+                WeaponCompanionPlacement::Verbatim
+            },
+        });
+    }
+
+    let asset_count = parsed_assets.len() + companions.len();
     let mut pair_builders = BTreeMap::<String, (WeaponPartId, PairBuilder)>::new();
     for asset in parsed_assets {
         let part_id = asset.model_path.part_id().clone();
@@ -340,20 +457,8 @@ pub fn analyze_mhw_weapon_assets(
         source_id,
         root,
         pairs,
+        companions,
         asset_count,
         warnings,
     })
-}
-
-fn map_path_error(error: WeaponPathError) -> WeaponAnalysisError {
-    match error {
-        WeaponPathError::UnsafePath => WeaponAnalysisError::UnsafePath,
-        WeaponPathError::NotWeaponPath => WeaponAnalysisError::SourceNotFound,
-        WeaponPathError::UnknownFamily => WeaponAnalysisError::UnknownFamily,
-        WeaponPathError::InvalidMainId | WeaponPathError::CrossFamilyTarget => {
-            WeaponAnalysisError::InvalidMainId
-        }
-        WeaponPathError::UnknownPart => WeaponAnalysisError::UnknownPart,
-        WeaponPathError::UnsupportedResource => WeaponAnalysisError::UnsupportedResource,
-    }
 }
