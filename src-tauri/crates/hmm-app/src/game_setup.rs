@@ -5,7 +5,7 @@ use hmm_core::{
 use hmm_ports::{
     AppClock, GameAdapter, GameCandidate, GameConfigRepository, GameConfigRepositoryError,
     GameDirectoryProbeFactory, GameDiscoveryError, GameDiscoveryRequest, GameDiscoveryService,
-    GamePrerequisiteReport,
+    GamePrerequisiteReport, ModStorageDirectoryInspector,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,6 +27,8 @@ pub enum GameSetupServiceError {
     ScanNotImplemented,
     #[error("clock failed: {0}")]
     ClockFailed(String),
+    #[error("game directory overlaps the mod storage directory")]
+    OverlapsModStorage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +67,15 @@ pub struct GameSetupService {
     probe_factory: Arc<dyn GameDirectoryProbeFactory>,
     discovery: Arc<dyn GameDiscoveryService>,
     clock: Arc<dyn AppClock>,
+    mod_storage_guard: Option<ModStorageGuard>,
+}
+
+/// #275: the reverse of the storage-directory rule — a game directory may not sit inside the Mod
+/// storage root nor contain it. Only the GUI composition wires this; read-only CLI paths never
+/// save a game directory.
+struct ModStorageGuard {
+    inspector: Arc<dyn ModStorageDirectoryInspector>,
+    storage_root: PathBuf,
 }
 
 impl GameSetupService {
@@ -81,7 +92,20 @@ impl GameSetupService {
             probe_factory,
             discovery,
             clock,
+            mod_storage_guard: None,
         }
+    }
+
+    pub fn with_mod_storage_guard(
+        mut self,
+        inspector: Arc<dyn ModStorageDirectoryInspector>,
+        storage_root: PathBuf,
+    ) -> Self {
+        self.mod_storage_guard = Some(ModStorageGuard {
+            inspector,
+            storage_root,
+        });
+        self
     }
 
     pub fn get_status(&self, game_id: GameId) -> Result<GameSetupStatus, GameSetupServiceError> {
@@ -169,6 +193,14 @@ impl GameSetupService {
 
         if !validation.is_valid {
             return Err(GameSetupServiceError::ValidationFailed(validation));
+        }
+        if let Some(guard) = &self.mod_storage_guard {
+            if guard
+                .inspector
+                .directories_overlap(&directory, &guard.storage_root)
+            {
+                return Err(GameSetupServiceError::OverlapsModStorage);
+            }
         }
 
         let instance = GameInstance {
@@ -396,6 +428,7 @@ impl GameSetupServiceError {
             Self::ScanFailed(_) => GameSetupErrorCode::ScanFailed,
             Self::ScanNotImplemented => GameSetupErrorCode::ScanNotImplemented,
             Self::ClockFailed(_) => GameSetupErrorCode::Unknown,
+            Self::OverlapsModStorage => GameSetupErrorCode::DirectoryOverlapsModStorage,
         }
     }
 }
@@ -711,6 +744,72 @@ mod tests {
             .expect_err("invalid directory should fail");
 
         assert_eq!(error.error_code(), GameSetupErrorCode::MissingExecutable);
+    }
+
+    /// Overlap verdict is delegated to the inspector; the fake answers by exact pair so the test
+    /// pins the wiring, not path canonicalisation (covered in hmm-infra).
+    struct PairOverlapInspector {
+        overlapping: (PathBuf, PathBuf),
+    }
+
+    impl hmm_ports::ModStorageDirectoryInspector for PairOverlapInspector {
+        fn inspect(
+            &self,
+            _request: hmm_ports::ModStorageDirectoryInspectionRequest<'_>,
+        ) -> Result<hmm_ports::ModStorageDirectoryInspection, hmm_ports::ModStorageDirectoryError>
+        {
+            unreachable!("game setup never inspects storage candidates")
+        }
+
+        fn claim(&self, _path: &Path) -> Result<(), hmm_ports::ModStorageDirectoryError> {
+            unreachable!("game setup never claims storage directories")
+        }
+
+        fn verify_claimed(&self, _path: &Path) -> Result<(), hmm_ports::ModStorageDirectoryError> {
+            unreachable!("game setup never verifies storage directories")
+        }
+
+        fn sandbox_directory_has_entries(
+            &self,
+            _storage_root: &Path,
+        ) -> Result<bool, hmm_ports::ModStorageDirectoryError> {
+            unreachable!("game setup never lists sandboxes")
+        }
+
+        fn directories_overlap(&self, left: &Path, right: &Path) -> bool {
+            let (a, b) = &self.overlapping;
+            (a == left && b == right) || (a == right && b == left)
+        }
+    }
+
+    #[test]
+    fn save_directory_rejects_a_game_root_overlapping_the_mod_storage_root() {
+        let storage_root = PathBuf::from("D:/HMMMods");
+        let repository = Arc::new(FakeRepository::empty());
+        let service = service_with_repository(FakeAdapter::valid(), repository.clone())
+            .with_mod_storage_guard(
+                Arc::new(PairOverlapInspector {
+                    overlapping: (PathBuf::from("D:/HMMMods/game"), storage_root.clone()),
+                }),
+                storage_root,
+            );
+
+        let error = service
+            .save_game_directory(GameId::mhw(), PathBuf::from("D:/HMMMods/game"))
+            .expect_err("a game directory inside the storage root must be rejected");
+        assert_eq!(
+            error.error_code(),
+            GameSetupErrorCode::DirectoryOverlapsModStorage
+        );
+        assert!(
+            repository.stored.lock().expect("fake repo lock").is_none(),
+            "rejected directories must not be persisted"
+        );
+
+        let status = service
+            .save_game_directory(GameId::mhw(), PathBuf::from("C:/MHW"))
+            .expect("a disjoint directory still saves");
+        assert_eq!(status.status, GameDirectoryStatus::Configured);
     }
 
     #[test]

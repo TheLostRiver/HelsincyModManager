@@ -1,4 +1,5 @@
 use crate::game_automation::{is_canonically_within, is_safe_absolute_path};
+use crate::mod_storage::resolve_mod_storage_root;
 use crate::RuntimeEnvironment;
 use hmm_app::{
     is_identity_replacement_binding, BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest,
@@ -27,7 +28,8 @@ use hmm_core::{
 use hmm_games_mhw::{MhwReplacementAdapter, MhwReplacementCatalog, MonsterHunterWorldAdapter};
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
-    FileSystemInstallSourceFileReader, JsonGameConfigRepository, JsonInstallManifestRepository,
+    FileSystemInstallSourceFileReader, FileSystemModStorageDirectoryInspector,
+    JsonAppSettingsRepository, JsonGameConfigRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
     JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
     ReadOnlyJsonGamePrerequisiteRuleRepository, RealGameDirectoryProbeFactory,
@@ -35,11 +37,12 @@ use hmm_infra::{
     TaskScopedModImportSandboxLocator,
 };
 use hmm_ports::{
-    BatchPlanFactsProvider, GameAdapter, GameConfigRepository, GamePrerequisiteRuleRepository,
-    InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
-    ModImportResultRepository, ModImportSandboxLocator, ModPackageInstallFileReader,
-    ModPackageInstallFileScanner, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
-    ReplacementAdapter, ReplacementCatalogProvider, StoredModRevision,
+    AppSettingsRepository, BatchPlanFactsProvider, GameAdapter, GameConfigRepository,
+    GamePrerequisiteRuleRepository, InstallManifestRepository, InstallRecoveryRecordRepository,
+    InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
+    ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore, ReplacementAdapter,
+    ReplacementCatalogProvider, StoredModRevision,
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -325,20 +328,26 @@ struct LifecycleInstallState {
     reinstall_recovery: Option<ReinstallRecoveryTransaction>,
 }
 
+/// Read-only package locator for the CLI. #275: the sandbox root is `<storage root>/sandboxes`
+/// where the storage root comes from `settings.json` (default `<data root>/mod-import`).
+/// Sandbox environments additionally require the storage root to sit inside the sandbox data
+/// root, so a sandbox CLI never reads outside `--data-dir`; Production trusts the configured
+/// root exactly like the GUI does (the app-data exemption of #273 extended to storage).
 struct ContainedReadOnlyModImportSandboxLocator {
     delegate: TaskScopedModImportSandboxLocator,
-    app_data_root: PathBuf,
+    sandbox_containment_root: Option<PathBuf>,
     sandbox_root: PathBuf,
 }
 
 impl ContainedReadOnlyModImportSandboxLocator {
-    fn new(app_data_dir: &Path) -> Self {
+    fn new(storage_root: &Path, sandbox_containment_root: Option<&Path>) -> Self {
+        let delegate =
+            TaskScopedModImportSandboxLocator::new_in_storage_root(storage_root.to_path_buf());
+        let sandbox_root = delegate.sandbox_root().to_path_buf();
         Self {
-            delegate: TaskScopedModImportSandboxLocator::new_in_app_data(
-                app_data_dir.to_path_buf(),
-            ),
-            app_data_root: app_data_dir.to_path_buf(),
-            sandbox_root: app_data_dir.join("mod-import").join("sandboxes"),
+            delegate,
+            sandbox_containment_root: sandbox_containment_root.map(Path::to_path_buf),
+            sandbox_root,
         }
     }
 }
@@ -346,10 +355,12 @@ impl ContainedReadOnlyModImportSandboxLocator {
 impl ModImportSandboxLocator for ContainedReadOnlyModImportSandboxLocator {
     fn sandbox_root_for_package(&self, package_id: &str) -> anyhow::Result<PathBuf> {
         let package_root = self.delegate.sandbox_root_for_package(package_id)?;
-        anyhow::ensure!(
-            is_canonically_within(&self.sandbox_root, &self.app_data_root),
-            "imported mod sandbox root is outside app data"
-        );
+        if let Some(containment_root) = &self.sandbox_containment_root {
+            anyhow::ensure!(
+                is_canonically_within(&self.sandbox_root, containment_root),
+                "imported mod sandbox root is outside the sandbox data root"
+            );
+        }
         anyhow::ensure!(
             is_canonically_within(&package_root, &self.sandbox_root),
             "imported mod sandbox is outside its controlled root"
@@ -498,7 +509,6 @@ impl ReadOnlyInstallAutomation {
     ) -> Result<Self, ReadOnlyInstallAutomationError> {
         let (app_data_dir, sandbox_fixture_root) =
             if let Some(data_dir) = environment.sandbox_data_dir() {
-                validate_sandbox_storage_paths(data_dir)?;
                 (data_dir.to_path_buf(), Some(data_dir.join("fixtures")))
             } else {
                 (
@@ -508,6 +518,19 @@ impl ReadOnlyInstallAutomation {
                     None,
                 )
             };
+        // #275: same resolution as the GUI (settings.json → storage root), so both processes
+        // read packages from one place. Only loaded, never saved, on this read-only path.
+        let loaded_settings =
+            JsonAppSettingsRepository::new(app_data_dir.join("config").join("settings.json"))
+                .load_settings();
+        let mod_storage = resolve_mod_storage_root(
+            &app_data_dir,
+            loaded_settings.as_ref(),
+            &FileSystemModStorageDirectoryInspector,
+        );
+        if let Some(data_dir) = environment.sandbox_data_dir() {
+            validate_sandbox_storage_paths(data_dir, &mod_storage.sandbox_root())?;
+        }
 
         let game_config_repository: Arc<dyn GameConfigRepository> = Arc::new(
             JsonGameConfigRepository::new(app_data_dir.join("config").join("games.json")),
@@ -517,7 +540,10 @@ impl ReadOnlyInstallAutomation {
                 app_data_dir.join("mod-import").join("results.json"),
             ));
         let sandbox_locator: Arc<dyn ModImportSandboxLocator> =
-            Arc::new(ContainedReadOnlyModImportSandboxLocator::new(&app_data_dir));
+            Arc::new(ContainedReadOnlyModImportSandboxLocator::new(
+                &mod_storage.root,
+                environment.sandbox_data_dir(),
+            ));
         let file_scanner: Arc<dyn ModPackageInstallFileScanner> =
             Arc::new(SandboxModPackageInstallFileScanner);
         let file_reader: Arc<dyn ModPackageInstallFileReader> =
@@ -1387,7 +1413,12 @@ impl ReadOnlyInstallAutomation {
     }
 }
 
-fn validate_sandbox_storage_paths(data_dir: &Path) -> Result<(), ReadOnlyInstallAutomationError> {
+/// Sandbox CLI invariant: every managed path, including the resolved package sandbox root
+/// (#275: possibly user-configured), lies inside `--data-dir`.
+fn validate_sandbox_storage_paths(
+    data_dir: &Path,
+    mod_import_sandbox_root: &Path,
+) -> Result<(), ReadOnlyInstallAutomationError> {
     if !data_dir.is_dir() || !is_canonically_within(data_dir, data_dir) {
         return Err(ReadOnlyInstallAutomationError::SandboxStoragePathRejected);
     }
@@ -1399,7 +1430,7 @@ fn validate_sandbox_storage_paths(data_dir: &Path) -> Result<(), ReadOnlyInstall
             .join("prerequisite-rules")
             .join("mhw.json"),
         data_dir.join("mod-import").join("results.json"),
-        data_dir.join("mod-import").join("sandboxes"),
+        mod_import_sandbox_root.to_path_buf(),
         data_dir.join("install").join("manifests"),
         data_dir.join("install").join("recovery"),
         data_dir.join("install").join("reinstall-recovery"),
@@ -1606,6 +1637,7 @@ fn recovery_block_reason_code(reason: InstallRecoveryActionBlockReason) -> &'sta
 mod tests {
     use super::*;
     use hmm_core::{InstallManifest, InstallManifestEntry, PackageFileId};
+    use hmm_ports::ModStorageDirectoryInspector;
     use std::collections::BTreeMap;
     use std::fs;
 
@@ -1905,19 +1937,118 @@ mod tests {
 
     #[test]
     #[cfg(any(unix, windows))]
-    fn read_only_locator_rejects_sandbox_root_link_outside_app_data() {
+    fn read_only_locator_rejects_sandbox_root_link_outside_the_sandbox_data_root() {
         let temp = tempfile::tempdir().expect("temp");
-        let app_data_root = temp.path().join("app-data");
+        let data_root = temp.path().join("data-root");
         let outside = temp.path().join("outside");
-        fs::create_dir_all(app_data_root.join("mod-import")).expect("create app data");
+        let storage_root = data_root.join("mod-import");
+        fs::create_dir_all(&storage_root).expect("create storage root");
         fs::create_dir_all(outside.join("package-a")).expect("create outside package");
-        let sandbox_root = app_data_root.join("mod-import").join("sandboxes");
+        let sandbox_root = storage_root.join("sandboxes");
         create_directory_link(&outside, &sandbox_root);
-        let locator = ContainedReadOnlyModImportSandboxLocator::new(&app_data_root);
+        let locator =
+            ContainedReadOnlyModImportSandboxLocator::new(&storage_root, Some(&data_root));
 
         let result = locator.sandbox_root_for_package("package-a");
 
         remove_directory_link(&sandbox_root);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn sandbox_locator_rejects_a_configured_storage_root_outside_the_sandbox_data_root() {
+        let temp = tempfile::tempdir().expect("temp");
+        let data_root = temp.path().join("data-root");
+        let elsewhere = temp.path().join("elsewhere");
+        fs::create_dir_all(elsewhere.join("sandboxes").join("package-a"))
+            .expect("create outside storage");
+        fs::create_dir_all(&data_root).expect("create data root");
+
+        let sandbox_locator =
+            ContainedReadOnlyModImportSandboxLocator::new(&elsewhere, Some(&data_root));
+        let production_locator = ContainedReadOnlyModImportSandboxLocator::new(&elsewhere, None);
+
+        assert!(
+            sandbox_locator
+                .sandbox_root_for_package("package-a")
+                .is_err(),
+            "sandbox CLI must not read packages outside --data-dir"
+        );
+        assert_eq!(
+            production_locator
+                .sandbox_root_for_package("package-a")
+                .expect("production honours the configured storage root"),
+            elsewhere.join("sandboxes").join("package-a")
+        );
+    }
+
+    #[test]
+    fn sandbox_environment_rejects_settings_that_move_storage_outside_the_data_root() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let elsewhere = tempfile::tempdir().expect("elsewhere");
+        let game_root = create_game_fixture(sandbox.path());
+        write_game_config(sandbox.path(), &game_root);
+        write_v1_mod_catalog_and_sandbox(sandbox.path());
+        fs::create_dir_all(sandbox.path().join("config")).expect("config dir");
+        fs::write(
+            sandbox.path().join("config").join("settings.json"),
+            serde_json::json!({
+                "version": 1,
+                "modStorageDir": elsewhere.path().join("HMMMods"),
+            })
+            .to_string(),
+        )
+        .expect("write settings");
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+
+        let error = ReadOnlyInstallAutomation::from_environment(&environment)
+            .err()
+            .expect("storage root outside the sandbox must be rejected");
+
+        assert_eq!(
+            error,
+            ReadOnlyInstallAutomationError::SandboxStoragePathRejected
+        );
+    }
+
+    #[test]
+    fn sandbox_environment_reads_packages_from_a_configured_storage_root_inside_the_data_root() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let game_root = create_game_fixture(sandbox.path());
+        write_game_config(sandbox.path(), &game_root);
+        write_v1_mod_catalog_and_sandbox(sandbox.path());
+        let storage_root = sandbox.path().join("library");
+        FileSystemModStorageDirectoryInspector
+            .claim(&storage_root)
+            .expect("claim storage root");
+        fs::rename(
+            sandbox.path().join("mod-import").join("sandboxes"),
+            storage_root.join("sandboxes"),
+        )
+        .expect("move packages into the configured storage root");
+        fs::create_dir_all(sandbox.path().join("config")).expect("config dir");
+        fs::write(
+            sandbox.path().join("config").join("settings.json"),
+            serde_json::json!({
+                "version": 1,
+                "modStorageDir": storage_root,
+            })
+            .to_string(),
+        )
+        .expect("write settings");
+        let environment =
+            RuntimeEnvironment::sandbox(sandbox.path().to_path_buf()).expect("environment");
+
+        let automation =
+            ReadOnlyInstallAutomation::from_environment(&environment).expect("automation");
+        let plan = automation
+            .plan("mhw", "mod-a")
+            .expect("plan from configured storage root");
+
+        assert!(
+            plan.action_count > 0,
+            "the package must be read from the configured storage root"
+        );
     }
 }

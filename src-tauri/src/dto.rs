@@ -1654,6 +1654,7 @@ fn error_code_to_string(error: GameSetupErrorCode) -> String {
         GameSetupErrorCode::DirectoryNotFound => "directory_not_found",
         GameSetupErrorCode::DirectoryNotAbsolute => "directory_not_absolute",
         GameSetupErrorCode::MissingExecutable => "missing_executable",
+        GameSetupErrorCode::DirectoryOverlapsModStorage => "directory_overlaps_mod_storage",
         GameSetupErrorCode::StorageFailed => "storage_failed",
         GameSetupErrorCode::StorageCorrupted => "storage_corrupted",
         GameSetupErrorCode::ScanFailed => "scan_failed",

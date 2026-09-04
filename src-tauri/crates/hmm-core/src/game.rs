@@ -99,6 +99,8 @@ pub enum GameSetupErrorCode {
     DirectoryNotFound,
     DirectoryNotAbsolute,
     MissingExecutable,
+    /// #275: the game directory and the Mod storage root must not contain one another.
+    DirectoryOverlapsModStorage,
     StorageFailed,
     StorageCorrupted,
     ScanFailed,
