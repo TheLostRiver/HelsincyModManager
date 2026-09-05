@@ -113,11 +113,19 @@ pub enum ModPackageInstallFileScanError {
     UnsupportedEntry,
     /// 目录层级超过扫描深度上限。
     DepthLimitExceeded,
-    /// 包内有多个 `nativePC`（合集包）。
+    /// 包内有多个 `nativePC`（合集包）**且玩家还没做出选择**。
     ///
     /// 这不是「坏包」，而是**需要玩家自己做决定**——静默挑一个会写入他没预期的
     /// 文件。调用方应当把它呈现成可操作的提示，而不是当成错误。
+    ///
+    /// `#354` 切片 D2 起，玩家选定之后（[`ModPackageContentRootRepository`]）这一档就不再
+    /// 产生：选择被记录下来，扫描按选定的根算目标路径。
     AmbiguousContentRoot,
+    /// 记录在案的内容根**已经不是这个包的合法候选**。
+    ///
+    /// 失败关闭而不是退回自动解析：退回等于「玩家选了 A，我们装到 B」，而这类错误装完不报错、
+    /// 只是文件落在别处，属于最难发现的一类。调用方应当提示玩家重新选择。
+    StaleContentRootChoice,
 }
 
 impl std::fmt::Display for ModPackageInstallFileScanError {
@@ -130,6 +138,9 @@ impl std::fmt::Display for ModPackageInstallFileScanError {
             }
             Self::AmbiguousContentRoot => {
                 "imported mod package contains more than one nativePC directory"
+            }
+            Self::StaleContentRootChoice => {
+                "the recorded content root is no longer a candidate of this package"
             }
         })
     }
@@ -145,7 +156,39 @@ impl ModPackageInstallFileScanError {
             Self::UnsupportedEntry => "imported_mod_file_scan_unsupported_entry",
             Self::DepthLimitExceeded => "imported_mod_file_scan_depth_limit_exceeded",
             Self::AmbiguousContentRoot => "imported_mod_file_scan_ambiguous_content_root",
+            Self::StaleContentRootChoice => "imported_mod_file_scan_stale_content_root_choice",
         }
+    }
+}
+
+/// 玩家为某个**包**选定的内容根（`#354` 切片 D2）。
+///
+/// 按 `package_id` 而不是 `mod_id` / `profile_id` 键：内容根是这个解压包的**物理属性**
+/// ——同一份沙箱内容只有一种布局，与哪个 profile 要装它无关。
+///
+/// 值是**沙箱根相对**的正斜杠路径，空串表示沙箱根本身；与
+/// [`ModPackageContentRoot`] 的表示一致。
+pub trait ModPackageContentRootRepository: Send + Sync {
+    fn load_content_root(&self, package_id: &str) -> Result<Option<String>>;
+    fn save_content_root(&self, package_id: &str, content_root: &str) -> Result<()>;
+    fn clear_content_root(&self, package_id: &str) -> Result<()>;
+}
+
+/// 没有任何记录的仓储。给不需要这项能力的装配点用（例如只读的外部扫描工具链），
+/// 行为与 D2 之前完全一致。
+pub struct NoStoredContentRoot;
+
+impl ModPackageContentRootRepository for NoStoredContentRoot {
+    fn load_content_root(&self, _package_id: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn save_content_root(&self, _package_id: &str, _content_root: &str) -> Result<()> {
+        anyhow::bail!("content root selection is not supported by this repository")
+    }
+
+    fn clear_content_root(&self, _package_id: &str) -> Result<()> {
+        anyhow::bail!("content root selection is not supported by this repository")
     }
 }
 
@@ -191,7 +234,14 @@ pub enum ModPackageContentRoot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModPackageContents {
     pub entries: Vec<ModPackageContentEntry>,
+    /// 本次扫描**实际生效**的内容根。
     pub content_root: ModPackageContentRoot,
+    /// 这个包**允许**被选作内容根的全部目录，与当前选了哪个无关。
+    ///
+    /// 与 [`Self::content_root`] 分开的理由：玩家选定之后 `content_root` 会收敛成
+    /// `Single(选中的那个)`，若候选也跟着消失，他就**改不了主意**了。这份清单同时是
+    /// 设置选择时的白名单——界面能选的与扫描认的出自同一处，不会分叉。
+    pub candidates: Vec<String>,
 }
 
 pub struct ModPackageContentScanRequest<'a> {
