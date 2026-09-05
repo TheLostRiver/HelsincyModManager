@@ -199,44 +199,184 @@ fn artificial_pair_preflight_reports_only_bounded_aggregate_facts() {
     assert!(!debug.contains("ArtificialWeaponMaterial"));
 }
 
+/// MOD3 预检**必须**继续关闭的那些门：身份（magic / version）、计数上限、区间落在
+/// 文件内、区间不重叠、offset 单调，以及界定「进材质哈希的字节」的那组字符串约束。
+///
+/// `#346` 按类删掉的是对**不参与写入、不参与哈希**的字段的语义猜测（见 `binary.rs`
+/// 里那段说明）。这里逐条列出的都不属于那一类：MOD3 虽然逐字节复制，但这些边界保证
+/// 的是**解析本身**不越界、以及材质哈希取自确定的字节。
+///
+/// 逐个具名而不是塞进一个匿名数组：原先写成 `for candidate in candidates` 的循环，
+/// 任何一条转红都只报「invalid MOD3」，看不出是哪一条——反向验证时那等于没有信号。
 #[test]
-fn mod3_preflight_rejects_header_table_and_buffer_mutations() {
+fn mod3_preflight_still_rejects_real_boundary_violations() {
     let valid = artificial_mod3(&["ArtificialWeaponMaterial"]);
-    let mut candidates = Vec::new();
+    let material_offset = MOD3_HEADER_SIZE;
+    let mesh_offset = material_offset + MOD3_MATERIAL_ENTRY_SIZE;
 
-    candidates.push(valid[..MOD3_HEADER_SIZE - 1].to_vec());
+    let mut cases: Vec<(&str, Vec<u8>)> = Vec::new();
+
+    // 文件信封：头部都装不下。
+    cases.push(("头部被截断", valid[..MOD3_HEADER_SIZE - 1].to_vec()));
+
+    // 身份确认。
     let mut wrong_magic = valid.clone();
     wrong_magic[0] ^= 0xff;
-    candidates.push(wrong_magic);
+    cases.push(("magic 不符", wrong_magic));
     let mut wrong_version = valid.clone();
     write_u16(&mut wrong_version, 4, 236);
-    candidates.push(wrong_version);
+    cases.push(("version 不符（非 Iceborne）", wrong_version));
+
+    // 计数上限。
     let mut excessive_meshes = valid.clone();
     write_u16(&mut excessive_meshes, 8, 8193);
-    candidates.push(excessive_meshes);
+    cases.push(("网格数超上限", excessive_meshes));
+    let mut zero_materials = valid.clone();
+    write_u16(&mut zero_materials, 10, 0);
+    cases.push(("材质数为 0（取不到材质哈希）", zero_materials));
+
+    // 区间必须落在文件内。
     let mut bad_material_offset = valid.clone();
     write_u64(&mut bad_material_offset, 64, u64::MAX);
-    candidates.push(bad_material_offset);
-    let mut unterminated_material = valid.clone();
-    unterminated_material[MOD3_HEADER_SIZE..MOD3_HEADER_SIZE + 128].fill(b'A');
-    candidates.push(unterminated_material);
-    let mut bad_material_id = valid.clone();
-    let mesh_offset = MOD3_HEADER_SIZE + MOD3_MATERIAL_ENTRY_SIZE;
-    write_u16(&mut bad_material_id, mesh_offset + 6, 1);
-    candidates.push(bad_material_id);
-    let mut bad_vertex_range = valid.clone();
-    write_u64(&mut bad_vertex_range, 24, 35);
-    candidates.push(bad_vertex_range);
-    let mut bad_face_range = valid.clone();
-    write_u32(&mut bad_face_range, mesh_offset + 32, 6);
-    candidates.push(bad_face_range);
+    cases.push(("材质表 offset 越界", bad_material_offset));
+    let mut mesh_table_past_end = valid.clone();
+    write_u16(&mut mesh_table_past_end, 8, 64);
+    cases.push(("网格表长度超出文件尾", mesh_table_past_end));
+    let mut vertex_buffer_past_end = valid.clone();
+    write_u64(&mut vertex_buffer_past_end, 24, u64::MAX);
+    cases.push(("顶点缓冲区长度越界", vertex_buffer_past_end));
 
-    for candidate in candidates {
-        assert_stable_error(
-            preflight_mhw_weapon_mod3(&candidate).expect_err("invalid MOD3"),
-            "weapon_binary_format_invalid",
-        );
+    // 区间不得重叠：把网格表挪到材质表头上。
+    let mut overlapping_tables = valid.clone();
+    write_u64(&mut overlapping_tables, 72, material_offset as u64);
+    cases.push(("网格表与材质表重叠", overlapping_tables));
+
+    // offset 必须单调递增。
+    let mut non_monotonic = valid.clone();
+    write_u64(&mut non_monotonic, 72, (mesh_offset - 8) as u64);
+    write_u64(&mut non_monotonic, 64, mesh_offset as u64);
+    cases.push(("offset 不再单调", non_monotonic));
+
+    // 材质名的字节约束：它们界定了进 `material_set_sha256` 的字节，是承重的。
+    let mut unterminated_material = valid.clone();
+    unterminated_material[material_offset..material_offset + MOD3_MATERIAL_ENTRY_SIZE].fill(b'A');
+    cases.push(("材质名没有 NUL 终止", unterminated_material));
+    let mut empty_material_name = valid.clone();
+    empty_material_name[material_offset..material_offset + MOD3_MATERIAL_ENTRY_SIZE].fill(0);
+    cases.push(("材质名为空", empty_material_name));
+    let mut control_character_material = valid.clone();
+    control_character_material[material_offset + 1] = 0x07;
+    cases.push(("材质名含控制字符", control_character_material));
+    let mut trailing_space_material = valid.clone();
+    trailing_space_material[material_offset] = b' ';
+    cases.push(("材质名以空格开头", trailing_space_material));
+
+    for (label, candidate) in cases {
+        let error = preflight_mhw_weapon_mod3(&candidate)
+            .map(|report| format!("{report:?}"))
+            .expect_err(&format!("「{label}」必须被拒"));
+        assert_stable_error(error, "weapon_binary_format_invalid");
     }
+}
+
+// `#346`：真实 Iceborne 文件里存在的形态**必须**通过预检。下面四条此前都会被判
+// 「格式无法识别，可能不是 Iceborne 版本或文件已损坏」——而包本身完好，文案还引导
+// 玩家去重新下载。它们都是对不参与写入、不参与哈希的字段做的语义猜测。
+//
+// 分成四个独立用例而不是一个函数里跑四遍：反向验证要能指出**恰好**是哪一条依赖
+// 哪一条被删的检查，塞在一起的话第一条转红就把后面全挡住了。
+
+const MOD3_MESH_TABLE_OFFSET: usize = MOD3_HEADER_SIZE + MOD3_MATERIAL_ENTRY_SIZE;
+
+/// 两个网格共用同一材质：`bow017.mod3` 的 9 条材质里 `Ch_Wp_Mt__1` 出现两次，去重后
+/// 8 条，与配对的 `bow017.mrl3` 的 8 条恰好对上——去重才是对的口径。
+#[test]
+fn mod3_preflight_accepts_a_duplicated_material_name() {
+    let duplicated = artificial_mod3(&["ArtificialWeaponMaterial", "ArtificialWeaponMaterial"]);
+    let duplicated_report =
+        preflight_mhw_weapon_mod3(&duplicated).expect("材质重名不是损坏信号，必须通过");
+    let single_report = preflight_mhw_weapon_mod3(&artificial_mod3(&["ArtificialWeaponMaterial"]))
+        .expect("单份材质必须通过");
+
+    assert_eq!(
+        duplicated_report.material_set_sha256(),
+        single_report.material_set_sha256(),
+        "去重后的材质集合相同，摘要必须相同——否则 facts 会随重名条数漂移"
+    );
+    assert_eq!(
+        duplicated_report.material_count(),
+        2,
+        "报告里的 material_count 是 header 声明值，不是去重后的条数"
+    );
+}
+
+/// offset 60 保留原始模型的绝对索引：`ya017.mod3` 是 1203 + 196 > 196（`vertexCount`）。
+/// 这个字段的语义未经证实，不参与判定。
+#[test]
+fn mod3_preflight_accepts_an_absolute_vertex_index_at_offset_sixty() {
+    let mut candidate = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    write_u32(&mut candidate, MOD3_MESH_TABLE_OFFSET + 60, 1203);
+
+    preflight_mhw_weapon_mod3(&candidate).expect("offset 60 的绝对索引不是损坏信号，必须通过");
+}
+
+/// 网格引用的 `materialId` 超出 `materialCount`：我们从不按网格索引材质。
+#[test]
+fn mod3_preflight_accepts_an_out_of_range_mesh_material_id() {
+    let mut candidate = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    write_u16(&mut candidate, MOD3_MESH_TABLE_OFFSET + 6, 9);
+
+    preflight_mhw_weapon_mod3(&candidate).expect("materialId 不参与判定");
+}
+
+/// 网格的面数不是 3 的倍数、顶点数/块大小为零：同样是对不参与写入的字段的猜测。
+#[test]
+fn mod3_preflight_accepts_unguessable_mesh_counts() {
+    let mut odd_face_count = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    write_u32(&mut odd_face_count, MOD3_MESH_TABLE_OFFSET + 32, 7);
+    preflight_mhw_weapon_mod3(&odd_face_count).expect("meshFaceCount 不参与判定");
+
+    let mut zero_valued = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    write_u16(&mut zero_valued, MOD3_MESH_TABLE_OFFSET + 2, 0);
+    write_u32(&mut zero_valued, MOD3_MESH_TABLE_OFFSET + 32, 0);
+    zero_valued[MOD3_MESH_TABLE_OFFSET + 14] = 0;
+    preflight_mhw_weapon_mod3(&zero_valued).expect("网格零值不参与判定");
+}
+
+/// 由网格字段**推算**出的顶点缓冲区末尾越过 `vertexBufferSize`：这条上限是用同一族
+/// 未证实的字段语义（`+16` / `+36` / `+14`）算出来的，真实数据里还没撞上反例——但
+/// 语义既然没被证实，留着就是定时炸弹。这里把它明确钉成「不参与判定」。
+///
+/// 只动 `+36`（那组算术里的 vertexBase），不碰面数相关字段，因此这条用例**只**依赖
+/// 推算式上限这一条被删的检查；反向验证时它与网格计数那条互不干扰。
+#[test]
+fn mod3_preflight_accepts_a_derived_vertex_end_past_the_buffer() {
+    let mut candidate = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    write_u32(&mut candidate, MOD3_MESH_TABLE_OFFSET + 36, 4096);
+
+    preflight_mhw_weapon_mod3(&candidate).expect("推算出的 vertexEnd 不参与判定");
+}
+
+/// 材质重名的 MOD3 仍要能与 MRL3 配对——`#346` 的实际卡点在这里：只放宽 MOD3 预检
+/// 而配对比对对不上，弓包依旧不能重定向，只是错误码从 `format_invalid` 换成
+/// `pair_incompatible`。
+#[test]
+fn a_mod3_with_a_duplicated_material_name_still_pairs_with_its_mrl3() {
+    let model_pair = pair("one001", "one001");
+    let mod3 = artificial_mod3(&["ArtificialWeaponMaterial", "ArtificialWeaponMaterial"]);
+    let mrl3 = artificial_mrl3(
+        &[r"wp\one\one001\tex\weapon_BM"],
+        &[ARTIFICIAL_MATERIAL_HASH],
+    );
+
+    let report = preflight_mhw_weapon_model_pair(&model_pair, &mod3, &mrl3)
+        .expect("MOD3 去重后的材质集合必须与 MRL3 的一条材质对上");
+
+    assert_eq!(
+        report.material_count(),
+        1,
+        "配对报告的材质数取自 MRL3——它才是被改写的那一侧"
+    );
 }
 
 #[test]
@@ -286,24 +426,71 @@ fn mrl3_preflight_rejects_header_table_resource_and_path_mutations() {
     }
 }
 
+/// `#346`：配对由**结构**建立（同族根、同部件 ID、一个 MOD3 配一个 MRL3），两侧的
+/// 材质集合**不必**逐条对上。
+///
+/// 原先这里断言「材质哈希不完全相等即 `pair_incompatible`」。那是同一病根的第六处：
+/// 它用 MOD3 的材质集合去关联 MRL3，而改写链路根本不读这个关联——`mrl3_transform`
+/// 两次调用 `parse_model_pair` 都把 `ParsedMod3` 丢掉，只比对 **MRL3 自己**的材质哈希
+/// 前后一致。
+///
+/// 真实数据也证伪了它：弓包的 `ya017.mod3` 有一条名为 `Shadow_invalid_Mt__1` 的失效
+/// 材质槽，与配对的 `ya017.mrl3` 在那一位存的哈希不同，而文件本身可用（安装正常、
+/// 游戏内正常）。对照组 `bow017` / `swo035` / `saya035ol` 三对是完全相等的——相等是
+/// 常态，但不是格式约束。
 #[test]
-fn pair_preflight_requires_exact_jamcrc_material_set_compatibility() {
+fn pair_preflight_accepts_a_divergent_material_set() {
     let model_pair = pair("one001", "one001");
     let mod3 = artificial_mod3(&["ArtificialWeaponMaterial", "SecondArtificialMaterial"]);
+
+    // 常态：两侧完全相等。
     let matching = artificial_mrl3(
         &[r"wp\one\one001\tex\weapon_BM"],
         &[ARTIFICIAL_MATERIAL_HASH, SECOND_ARTIFICIAL_MATERIAL_HASH],
     );
-    assert!(preflight_mhw_weapon_model_pair(&model_pair, &mod3, &matching).is_ok());
+    preflight_mhw_weapon_model_pair(&model_pair, &mod3, &matching).expect("两侧相等必须通过");
 
-    let mismatched = artificial_mrl3(
+    // `ya017` 的形态：一条对得上、一条对不上。
+    let partially_divergent = artificial_mrl3(
         &[r"wp\one\one001\tex\weapon_BM"],
         &[ARTIFICIAL_MATERIAL_HASH, 0x1234_5678],
     );
+    let report = preflight_mhw_weapon_model_pair(&model_pair, &mod3, &partially_divergent)
+        .expect("材质集合部分不一致不是损坏信号");
+    assert_eq!(
+        report.material_count(),
+        2,
+        "配对报告的材质数取自 MRL3——它才是被改写的那一侧"
+    );
+
+    // 完全不相交也不否决：MOD3 的材质集合根本不参与改写，不该由它否决整对。
+    let fully_divergent = artificial_mrl3(
+        &[r"wp\one\one001\tex\weapon_BM"],
+        &[0x1234_5678, 0x9abc_def0],
+    );
+    preflight_mhw_weapon_model_pair(&model_pair, &mod3, &fully_divergent)
+        .expect("MOD3 的材质集合不参与改写");
+}
+
+/// 但**结构**不配对仍然否决——那才是 `pair_incompatible` 承重的地方。
+///
+/// 这段判定断言的是 `WeaponModelPair` 的内部不变量（`analyze_mhw_weapon_assets` 只产出
+/// 结构正确的对），所以从公开 API 造不出反例。这里用 MRL3 侧的改写链路间接确认它仍在
+/// 位：跨族目标必须被 `weapon_cross_family_target` 挡下，而不是悄悄改写成别的族。
+#[test]
+fn pair_transform_still_refuses_a_cross_family_target() {
+    let model_pair = pair("one001", "one001");
+    let mod3 = artificial_mod3(&["ArtificialWeaponMaterial"]);
+    let mrl3 = artificial_mrl3(
+        &[r"wp\one\one001\tex\weapon_BM"],
+        &[ARTIFICIAL_MATERIAL_HASH],
+    );
+    let cross_family = WeaponMainId::parse("two002").expect("cross-family target");
+
     assert_stable_error(
-        preflight_mhw_weapon_model_pair(&model_pair, &mod3, &mismatched)
-            .expect_err("mismatched material hash"),
-        "weapon_binary_pair_incompatible",
+        transform_mhw_weapon_mrl3_texture_paths(&model_pair, &cross_family, &mod3, &mrl3)
+            .expect_err("跨族目标必须被拒"),
+        "weapon_cross_family_target",
     );
 }
 

@@ -1,6 +1,6 @@
 use super::family::{WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponPartId};
 use super::part_rename::{rename_weapon_stem, PartRename};
-use hmm_core::{InstallTargetPath, InstallTargetPathError};
+use hmm_core::InstallTargetPath;
 use thiserror::Error;
 
 const NATIVE_PC_ROOT: &str = "nativePC";
@@ -271,26 +271,8 @@ impl WeaponModelAssetPath {
 }
 
 pub(crate) fn parse_safe_relative_path(value: &str) -> Result<InstallTargetPath, WeaponPathError> {
-    if value.trim() != value {
-        return Err(WeaponPathError::UnsafePath);
-    }
-
-    // The dynamic root only invokes generic relative-path validation. Public parsers still
-    // enforce the exact nativePC/wp weapon grammar after this step.
-    let root = value
-        .replace('\\', "/")
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .to_owned();
-    InstallTargetPath::parse(value, [root]).map_err(|error| match error {
-        InstallTargetPathError::TargetRootNotAllowed { .. }
-        | InstallTargetPathError::Empty
-        | InstallTargetPathError::Absolute
-        | InstallTargetPathError::ParentTraversal
-        | InstallTargetPathError::WindowsDrivePrefix
-        | InstallTargetPathError::InvalidSegment => WeaponPathError::UnsafePath,
-    })
+    // 通用安全校验在 `package_path`，两侧适配器共用；武器语法在本模块的各 parser 里。
+    crate::package_path::parse_safe_package_path(value).map_err(|()| WeaponPathError::UnsafePath)
 }
 
 fn map_family_error(error: WeaponFamilyError) -> WeaponPathError {

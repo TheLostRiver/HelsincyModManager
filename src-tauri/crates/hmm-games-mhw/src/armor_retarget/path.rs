@@ -1,8 +1,8 @@
-use hmm_core::{InstallTargetPath, InstallTargetPathError};
+use hmm_core::InstallTargetPath;
 use thiserror::Error;
 
 use super::slot_rename::{retarget_within_slot, slot_token};
-use crate::package_path::NATIVE_PC_ROOT;
+use crate::package_path::{parse_safe_package_path, strip_leading_package_dirs, NATIVE_PC_ROOT};
 
 /// `nativePC/pl/<equip>/<slot>` —— 槽位目录本身的段数。
 const ARMOR_SLOT_ROOT_SEGMENT_COUNT: usize = 4;
@@ -114,7 +114,13 @@ pub(super) enum ArmorAsset {
     /// 在 `nativePC/pl/<equip>/` 下但不属于任何槽位目录（作者自建目录，
     /// 如 `mod_pl_rosedress/`）。真机实验 A 观测到它们**原样留在原地**——
     /// 它们被 MRL3 按原路径引用，搬走反而断链。
-    SlotIndependent { family: ArmorEquipFamily },
+    ///
+    /// 带上归一化后的路径：调用方不能再拿原始字符串重新解析，否则小写根与外层目录
+    /// 会在第二次解析时又被打回原形（#345）。
+    SlotIndependent {
+        family: ArmorEquipFamily,
+        normalized_path: InstallTargetPath,
+    },
     /// 与防具重定向无关（readme、预览图、武器资源、音效……）。忽略。
     Unrelated,
 }
@@ -122,12 +128,17 @@ pub(super) enum ArmorAsset {
 /// 唯一的失败是 `UnsafePath`：路径穿越、绝对路径这类真实安全信号。
 /// 其余一切都归档，不再有「形态不对所以整包拒绝」。
 pub(super) fn classify_armor_asset(value: &str) -> Result<ArmorAsset, ArmorPathError> {
-    let normalized_path = match InstallTargetPath::parse(value, [NATIVE_PC_ROOT]) {
-        Ok(path) => path,
-        Err(InstallTargetPathError::TargetRootNotAllowed { .. }) => {
-            return Ok(ArmorAsset::Unrelated)
-        }
-        Err(_) => return Err(ArmorPathError::UnsafePath),
+    /*
+     * 先做通用安全校验，再定位游戏根（#345）。两步都改自「直接要求首段等于 `nativePC`」：
+     *
+     * - 游戏根按**大小写不敏感**定位并归一化。真实包里 `nativepc` / `NativePC` 很常见，
+     *   而它们在 Windows 上与 `nativePC` 是同一个目录；旧写法让这类包整包不可重定向。
+     * - 顺带支持作者在 `nativePC` 外再包一层目录（`MyArmorMod/nativePC/pl/...`）。武器侧
+     *   一直支持，防具侧此前会把这类包整包忽略——同一个入口两种行为没有道理。
+     */
+    let safe_path = parse_safe_package_path(value).map_err(|()| ArmorPathError::UnsafePath)?;
+    let Some(normalized_path) = strip_leading_package_dirs(&safe_path) else {
+        return Ok(ArmorAsset::Unrelated);
     };
 
     let parts = normalized_path.as_str().split('/').collect::<Vec<_>>();
@@ -144,7 +155,10 @@ pub(super) fn classify_armor_asset(value: &str) -> Result<ArmorAsset, ArmorPathE
             .get(ARMOR_SLOT_ROOT_SEGMENT_COUNT - 1)
             .is_some_and(|slot| is_valid_armor_slot(slot));
     if !in_slot {
-        return Ok(ArmorAsset::SlotIndependent { family });
+        return Ok(ArmorAsset::SlotIndependent {
+            family,
+            normalized_path,
+        });
     }
 
     let slot = parts[ARMOR_SLOT_ROOT_SEGMENT_COUNT - 1].to_owned();
