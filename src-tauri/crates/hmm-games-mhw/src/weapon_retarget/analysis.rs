@@ -201,8 +201,91 @@ pub struct WeaponSourceClosure {
     pairs: Vec<WeaponModelPair>,
     companions: Vec<WeaponCompanionAsset>,
     excluded: Vec<WeaponExcludedAsset>,
+    unresolved_models: Vec<WeaponUnresolvedModel>,
     asset_count: usize,
     warnings: Vec<WeaponAnalysisWarning>,
+}
+
+/// 属于某个槽位、但**无法判断如何改写**的模型文件。
+///
+/// `#349`：此前这一档会否决整包（`weapon_unknown_part`）。可是同一个包里名字认不出的
+/// `.dds` 走随行档、`.mod3` 就拖累整包——同一个「认不出」两种待遇，纯粹是内部不一致。
+/// 现在它留在所属单元里，重定向时**原样保留在源路径**，单元本身照常可重定向。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeaponUnresolvedModel {
+    package_file_id: PackageFileId,
+    relative_path: InstallTargetPath,
+    reason: WeaponUnresolvedModelReason,
+}
+
+impl WeaponUnresolvedModel {
+    pub fn package_file_id(&self) -> &PackageFileId {
+        &self.package_file_id
+    }
+
+    pub fn relative_path(&self) -> &InstallTargetPath {
+        &self.relative_path
+    }
+
+    pub fn reason(&self) -> WeaponUnresolvedModelReason {
+        self.reason
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WeaponUnresolvedModelReason {
+    /// 文件名里认不出「部件前缀 + 槽位编号」的结构，判断不出它对应哪个部件。
+    UnrecognizedPartName,
+    /// 认出了部件，但配套的另一半（`.mod3` 或 `.mrl3`）不在包里，无法安全改写引用。
+    IncompleteModelPair,
+}
+
+impl WeaponUnresolvedModelReason {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::UnrecognizedPartName => "weapon_unknown_part",
+            Self::IncompleteModelPair => "weapon_incomplete_binary_pair",
+        }
+    }
+}
+
+/// 一个包的武器侧分析结果：**N 个各自独立的可重定向单元**。
+///
+/// `#349`：此前这里是「一个包 → 一个源槽位 → 接受或否决」，于是包里有两把武器
+/// （`MultipleSourceRoots`）、跨族（`MixedFamily`）、模型不成对
+/// （`IncompleteBinaryPair`）、部件名认不出（`UnknownPart`）四种形态都会**拒整包**——
+/// 哪怕其中一把武器完全正常。判定粒度错了：分档做在文件级，否决做在包级。
+///
+/// 现在每个槽位是一个独立单元，逐个判定；包级只剩一条下限
+/// （`SourceNotFound`：一个可重定向单元都没有）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeaponPackageAnalysis {
+    units: Vec<WeaponSourceClosure>,
+}
+
+impl WeaponPackageAnalysis {
+    pub fn units(&self) -> &[WeaponSourceClosure] {
+        &self.units
+    }
+
+    /// 全部单元加起来会被计划处理的资源数。
+    pub fn asset_count(&self) -> usize {
+        self.units
+            .iter()
+            .map(WeaponSourceClosure::asset_count)
+            .sum()
+    }
+
+    /// 恰好一个可重定向单元时返回它，否则 `None`。
+    ///
+    /// 给「只支持单槽位」的调用方用（例如内容变换器：它的输入本来就是一对 MOD3/MRL3）。
+    /// 需要按 binding 挑单元的调用方应当直接遍历 [`Self::units`]，不要用这个。
+    pub fn sole_unit(&self) -> Option<&WeaponSourceClosure> {
+        match self.units.as_slice() {
+            [unit] => Some(unit),
+            _ => None,
+        }
+    }
 }
 
 impl WeaponSourceClosure {
@@ -230,6 +313,11 @@ impl WeaponSourceClosure {
         &self.excluded
     }
 
+    /// 属于本槽位但无法判断如何改写的模型文件。重定向时原样保留在源路径。
+    pub fn unresolved_models(&self) -> &[WeaponUnresolvedModel] {
+        &self.unresolved_models
+    }
+
     /// 会被计划处理的资源数。**不含**被拒绝的文件——它们不会落盘，算进「已匹配」
     /// 会让前端的「本次影响 N 个文件」比实际多。
     pub fn asset_count(&self) -> usize {
@@ -255,7 +343,7 @@ struct PairBuilder {
 
 pub fn analyze_mhw_weapon_assets(
     assets: &[ReplacementAsset],
-) -> Result<WeaponSourceClosure, WeaponAnalysisError> {
+) -> Result<WeaponPackageAnalysis, WeaponAnalysisError> {
     if assets.is_empty() {
         return Err(WeaponAnalysisError::SourceNotFound);
     }
@@ -338,60 +426,53 @@ pub fn analyze_mhw_weapon_assets(
         }
     }
 
-    // 门禁下限：一件武器模型都没有就必须失败，否则纯杂物包会被当成合法（空）武器包放过。
+    /*
+     * 门禁下限：一件武器模型都没有就必须失败，否则纯杂物包会被当成合法（空）武器包放过。
+     *
+     * `#349`：这是包级**唯一**保留的否决。原先这里还会在「有 mod3/mrl3 但部件名认不出」
+     * 时报 `UnknownPart`，那个分支已经没用了——只要能定位到槽位根，它就会成为该单元的
+     * `unresolved_models`；定位不到根的（族名不认识、层级不对）本来就不属于任何槽位。
+     */
     if parsed_assets.is_empty() {
-        /*
-         * 一个模型都没认出来时还没有源根可供分类，但诊断码要挑更可操作的那个：包里若有
-         * `mod3`/`mrl3` 只是部件名不认识，报 `UnknownPart` 比笼统的「未找到武器资源」有用。
-         */
-        let has_unknown_part_model = unclassified.iter().any(|(asset, error)| {
-            matches!(error, WeaponPathError::UnknownPart)
-                && asset
-                    .relative_path
-                    .as_str()
-                    .rsplit_once('.')
-                    .is_some_and(|(_, extension)| matches!(extension, "mod3" | "mrl3"))
-        });
-        return Err(if has_unknown_part_model {
-            WeaponAnalysisError::UnknownPart
-        } else {
-            WeaponAnalysisError::SourceNotFound
-        });
+        return Err(WeaponAnalysisError::SourceNotFound);
     }
-
-    let families = parsed_assets
-        .iter()
-        .map(|asset| asset.model_path.root().family())
-        .collect::<BTreeSet<_>>();
-    if families.len() > 1 {
-        return Err(WeaponAnalysisError::MixedFamily);
-    }
-
-    let roots = parsed_assets
-        .iter()
-        .map(|asset| asset.model_path.root().clone())
-        .collect::<BTreeSet<_>>();
-    if roots.len() > 1 {
-        return Err(WeaponAnalysisError::MultipleSourceRoots);
-    }
-
-    let root = roots
-        .into_iter()
-        .next()
-        .expect("a parsed weapon asset always has a source root");
 
     /*
-     * 第二遍：源根已定，把剩下的文件分档。
+     * `#349`：按槽位根**分组**，而不是要求全包恰好一个。
      *
-     * - 不在 `nativePC/wp/` 下（防具、NPC、readme、预览图…）→ 忽略，与本武器无关
-     * - 命中可执行 / 脚本拒绝清单 → 拒绝（切片③），不产出动作、计数
-     * - 在源槽位目录**之内** → 随行·需重定位（贴图、特效、`.evwp`、`.ctc`…）
-     * - 在 `nativePC/wp/` 下但与槽位无关 → 随行·原样（作者自建目录、族级 `epv/`、`sound/`）
+     * 删掉的两条包级否决：
+     * - `MixedFamily`（包里既有大剑又有太刀）
+     * - `MultipleSourceRoots`（包里两把同族武器）
      *
-     * 除 ②b 的未登记部件外这一遍**不产生错误**：真实包里这几类都是常态。
+     * 两者描述的都是「作者一次发布多件装备」，那是正常的发布习惯，不是坏包。每个槽位
+     * 各自成为一个独立单元、各自选目标；错误码按 `#342` / `#343` 的先例保留枚举与前端
+     * 文案、不再产生，存量 manifest 与日志仍可解析。
      */
-    let mut companions = Vec::with_capacity(unclassified.len());
+    let mut grouped = BTreeMap::<WeaponResourceRoot, Vec<WeaponSourceAsset>>::new();
+    for asset in parsed_assets {
+        grouped
+            .entry(asset.model_path.root().clone())
+            .or_default()
+            .push(asset);
+    }
+
+    /*
+     * 第二遍：槽位已分组，把剩下的文件分档。
+     *
+     * - 不在 `nativePC/wp/` 下（防具、NPC、readme、预览图…）→ 忽略，与武器无关
+     * - 命中可执行 / 脚本拒绝清单 → 拒绝（`#336` 切片③），不产出动作、计数
+     * - 落在**某个**槽位目录之内 → 那个单元的随行·需重定位（贴图、特效、`.evwp`、`.ctc`…）
+     *   - 其中扩展名是 `mod3`/`mrl3` 但部件名认不出的 → 那个单元的 `unresolved_models`
+     * - 在 `nativePC/wp/` 下但不属于任何槽位 → 随行·原样（作者自建目录、族级 `epv/`、`sound/`）
+     *
+     * 这一遍**不产生任何错误**：真实包里这几类全是常态。`#349` 之前还有一条
+     * 「槽位内的 mod3/mrl3 部件名认不出就否决整包」，已降级为单元内的 `unresolved_models`。
+     */
     let mut excluded = Vec::new();
+    let mut per_root_companions = BTreeMap::<WeaponResourceRoot, Vec<WeaponCompanionAsset>>::new();
+    let mut per_root_unresolved = BTreeMap::<WeaponResourceRoot, Vec<WeaponUnresolvedModel>>::new();
+    let mut verbatim_companions = Vec::new();
+
     for (asset, error) in unclassified {
         let segments = asset.relative_path.as_str().split('/').collect::<Vec<_>>();
         let under_weapon_tree =
@@ -419,100 +500,187 @@ pub fn analyze_mhw_weapon_assets(
             continue;
         }
 
-        let inside_root = root.contains(&asset.relative_path);
+        let owning_root = grouped
+            .keys()
+            .find(|root| root.contains(&asset.relative_path))
+            .cloned();
+
+        let Some(owning_root) = owning_root else {
+            verbatim_companions.push(WeaponCompanionAsset {
+                package_file_id: asset.package_file_id,
+                relative_path: asset.relative_path,
+                placement: WeaponCompanionPlacement::Verbatim,
+            });
+            continue;
+        };
+
+        let is_model_extension = segments
+            .last()
+            .and_then(|name| name.rsplit_once('.'))
+            .is_some_and(|(_, extension)| matches!(extension, "mod3" | "mrl3"));
+
+        if is_model_extension && matches!(error, WeaponPathError::UnknownPart) {
+            /*
+             * `#349`：它是**模型**，当伴生文件搬运会让 MRL3 里指向源槽位的贴图引用断链，
+             * 所以不能混进随行档；但它也不该拖累整包——单独记下来，重定向时原样留在源路径，
+             * 由调用方按「这个文件无法判断如何改写」呈现。
+             */
+            per_root_unresolved
+                .entry(owning_root)
+                .or_default()
+                .push(WeaponUnresolvedModel {
+                    package_file_id: asset.package_file_id,
+                    relative_path: asset.relative_path,
+                    reason: WeaponUnresolvedModelReason::UnrecognizedPartName,
+                });
+            continue;
+        }
+
+        per_root_companions
+            .entry(owning_root)
+            .or_default()
+            .push(WeaponCompanionAsset {
+                package_file_id: asset.package_file_id,
+                relative_path: asset.relative_path,
+                placement: WeaponCompanionPlacement::Relocated,
+            });
+    }
+
+    /*
+     * 族级随行·原样文件（`wp/<族>/<作者目录>/`、族级 `epv/` `sound/`）属于**包**，
+     * 不属于任何槽位——它们的处置是「原路径保留」，装到哪个单元都是同一个结果。
+     *
+     * 单槽位包（真实语料库里 11 个外观包全是）：归入那个唯一的单元，行为与 `#349` 之前
+     * **逐字相同**。多槽位包：暂归第一个单元（按槽位根排序，确定），避免同一路径被多个
+     * 单元重复产出而在 `InstallPlan` 里撞成冲突。把它提到包级是切片③（绑定模型）的事。
+     */
+    let first_root = grouped
+        .keys()
+        .next()
+        .expect("parsed assets are non-empty, so at least one root exists")
+        .clone();
+    per_root_companions
+        .entry(first_root)
+        .or_default()
+        .extend(verbatim_companions);
+
+    let mut units = Vec::with_capacity(grouped.len());
+    for (root, assets) in grouped {
+        let mut companions = per_root_companions.remove(&root).unwrap_or_default();
+        let mut unresolved_models = per_root_unresolved.remove(&root).unwrap_or_default();
+        companions.sort_by(|left, right| {
+            left.relative_path
+                .as_str()
+                .cmp(right.relative_path.as_str())
+        });
+        unresolved_models.sort_by(|left, right| {
+            left.relative_path
+                .as_str()
+                .cmp(right.relative_path.as_str())
+        });
+
+        let mut pair_builders = BTreeMap::<String, (WeaponPartId, PairBuilder)>::new();
+        let model_count = assets.len();
+        for asset in assets {
+            let part_id = asset.model_path.part_id().clone();
+            let builder = &mut pair_builders
+                .entry(part_id.as_str().to_owned())
+                .or_insert_with(|| (part_id, PairBuilder::default()))
+                .1;
+            let destination = match asset.kind() {
+                WeaponModelAssetKind::Mod3 => &mut builder.mod3,
+                WeaponModelAssetKind::Mrl3 => &mut builder.mrl3,
+            };
+            if destination.replace(asset).is_some() {
+                return Err(WeaponAnalysisError::DuplicateAssetPath);
+            }
+        }
 
         /*
-         * 唯一仍然硬失败的一档：源槽位目录内、扩展名是 mod3/mrl3、但部件名不在注册表里
-         * （如太刀的 `saya035ol`）。它是**模型**，不是伴生文件——若当伴生文件搬运，它的
-         * MRL3 里指向源槽位的贴图引用就不会被改写，重定向后断链。
+         * `#349`：模型对不完整**不再否决整包**。
          *
-         * 正确做法是让未登记部件走正常的配对 + MRL3 改写管线（#336 正文洞见 2 的推论），
-         * 但那要改 `WeaponPartId` 模型，而部件注册表是 `WEAPON_RETARGET_DESIGN.md:167`
-         * 明文冻结的口径，需独立的设计变更。故本切片保持失败关闭、不猜。
+         * 此前「主件成对 + 副件只有 `.mod3`」会拒整包——主件完全正常、完全可重定向，
+         * 只因为副件缺了配套的 `.mrl3`。现在缺一半的那个部件进 `unresolved_models`
+         * （原样留在源路径），其余成对的部件照常重定向。
+         *
+         * 一个槽位里**没有任何**完整对时，`pairs` 为空，该单元不进 `units`——包级下限
+         * `SourceNotFound` 会在全部单元都为空时兜住。
          */
-        if inside_root
-            && matches!(error, WeaponPathError::UnknownPart)
-            && segments
-                .last()
-                .and_then(|name| name.rsplit_once('.'))
-                .is_some_and(|(_, extension)| matches!(extension, "mod3" | "mrl3"))
-        {
-            return Err(WeaponAnalysisError::UnknownPart);
+        let mut pairs = Vec::with_capacity(pair_builders.len());
+        for (_, (part_id, builder)) in pair_builders {
+            match (builder.mod3, builder.mrl3) {
+                (Some(mod3), Some(mrl3)) => pairs.push(WeaponModelPair {
+                    part_id,
+                    mod3,
+                    mrl3,
+                }),
+                (Some(only), None) | (None, Some(only)) => {
+                    unresolved_models.push(WeaponUnresolvedModel {
+                        package_file_id: only.package_file_id,
+                        relative_path: only.model_path.normalized_path().clone(),
+                        reason: WeaponUnresolvedModelReason::IncompleteModelPair,
+                    });
+                }
+                (None, None) => unreachable!("a pair builder is only created from an asset"),
+            }
+        }
+        if pairs.is_empty() {
+            continue;
+        }
+        pairs.sort_by(|left, right| {
+            left.part_id
+                .role()
+                .cmp(&right.part_id.role())
+                .then_with(|| left.part_id.as_str().cmp(right.part_id.as_str()))
+        });
+        unresolved_models.sort_by(|left, right| {
+            left.relative_path
+                .as_str()
+                .cmp(right.relative_path.as_str())
+        });
+
+        let mut warnings = Vec::new();
+        if let Some(secondary) = root.family().secondary_part() {
+            let roles = pairs
+                .iter()
+                .map(|pair| pair.part_id.role())
+                .collect::<BTreeSet<_>>();
+            if !roles.contains(&WeaponPartRole::Main) || !roles.contains(&secondary.role()) {
+                warnings.push(WeaponAnalysisWarning::PartialPartSet);
+            }
         }
 
-        companions.push(WeaponCompanionAsset {
-            package_file_id: asset.package_file_id,
-            relative_path: asset.relative_path,
-            placement: if inside_root {
-                WeaponCompanionPlacement::Relocated
-            } else {
-                WeaponCompanionPlacement::Verbatim
-            },
+        let stable_id = generate_mhw_equipment_stable_id(
+            EquipmentCandidateTargetKind::Weapon,
+            root.path_family(),
+            root.normalized_path().as_str(),
+        )
+        .map_err(|_| WeaponAnalysisError::IdentityInvalid)?;
+        let source_id = ReplacementSourceId::parse(stable_id)
+            .map_err(|_| WeaponAnalysisError::IdentityInvalid)?;
+
+        // 与 `#349` 之前同口径：**不含**被拒绝的文件——它们不落盘，算进「已匹配」会让
+        // 前端的「本次影响 N 个文件」比实际多。无法改写的模型同样不计入。
+        let asset_count = model_count + companions.len();
+
+        units.push(WeaponSourceClosure {
+            source_id,
+            root,
+            pairs,
+            companions,
+            excluded: Vec::new(),
+            unresolved_models,
+            asset_count,
+            warnings,
         });
     }
 
-    let asset_count = parsed_assets.len() + companions.len();
-    let mut pair_builders = BTreeMap::<String, (WeaponPartId, PairBuilder)>::new();
-    for asset in parsed_assets {
-        let part_id = asset.model_path.part_id().clone();
-        let builder = &mut pair_builders
-            .entry(part_id.as_str().to_owned())
-            .or_insert_with(|| (part_id, PairBuilder::default()))
-            .1;
-        let destination = match asset.kind() {
-            WeaponModelAssetKind::Mod3 => &mut builder.mod3,
-            WeaponModelAssetKind::Mrl3 => &mut builder.mrl3,
-        };
-        if destination.replace(asset).is_some() {
-            return Err(WeaponAnalysisError::DuplicateAssetPath);
-        }
-    }
+    // 一个槽位都没有完整模型对：包级下限。
+    let Some(first) = units.first_mut() else {
+        return Err(WeaponAnalysisError::SourceNotFound);
+    };
+    // 被拒绝的文件是包级事实（拒绝清单不按槽位分），挂在第一个单元上保持与旧行为一致。
+    first.excluded = excluded;
 
-    let mut pairs = Vec::with_capacity(pair_builders.len());
-    for (_, (part_id, builder)) in pair_builders {
-        let (Some(mod3), Some(mrl3)) = (builder.mod3, builder.mrl3) else {
-            return Err(WeaponAnalysisError::IncompleteBinaryPair);
-        };
-        pairs.push(WeaponModelPair {
-            part_id,
-            mod3,
-            mrl3,
-        });
-    }
-    pairs.sort_by(|left, right| {
-        left.part_id
-            .role()
-            .cmp(&right.part_id.role())
-            .then_with(|| left.part_id.as_str().cmp(right.part_id.as_str()))
-    });
-
-    let mut warnings = Vec::new();
-    if let Some(secondary) = root.family().secondary_part() {
-        let roles = pairs
-            .iter()
-            .map(|pair| pair.part_id.role())
-            .collect::<BTreeSet<_>>();
-        if !roles.contains(&WeaponPartRole::Main) || !roles.contains(&secondary.role()) {
-            warnings.push(WeaponAnalysisWarning::PartialPartSet);
-        }
-    }
-
-    let stable_id = generate_mhw_equipment_stable_id(
-        EquipmentCandidateTargetKind::Weapon,
-        root.path_family(),
-        root.normalized_path().as_str(),
-    )
-    .map_err(|_| WeaponAnalysisError::IdentityInvalid)?;
-    let source_id =
-        ReplacementSourceId::parse(stable_id).map_err(|_| WeaponAnalysisError::IdentityInvalid)?;
-
-    Ok(WeaponSourceClosure {
-        source_id,
-        root,
-        pairs,
-        companions,
-        excluded,
-        asset_count,
-        warnings,
-    })
+    Ok(WeaponPackageAnalysis { units })
 }

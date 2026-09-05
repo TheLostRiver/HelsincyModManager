@@ -1,4 +1,4 @@
-use crate::{ReplacementBindingId, ReplacementBindingSnapshot};
+use crate::{ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceId};
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -139,8 +139,12 @@ pub struct InstallPlan {
 pub enum InstallPlanValidationError {
     #[error("install plan contains a duplicate replacement binding id")]
     DuplicateReplacementBindingId,
+    /// 保留但**不再产生**（`#349`）：一个包里的多件装备各自绑定是正常形态，唯一性键已
+    /// 换成 `(mod_id, source_id)`。存量日志里的这一档仍可解析。
     #[error("install plan contains multiple replacement bindings for one Mod")]
     DuplicateReplacementBindingMod,
+    #[error("install plan binds the same replacement source twice for one Mod")]
+    DuplicateReplacementBindingSource,
     #[error("install plan replacement binding has no provider for its Mod")]
     ReplacementBindingOwnerMissing,
     #[error("install plan replacement binding profile does not match commit profile")]
@@ -214,13 +218,26 @@ impl InstallPlan {
             .map(|action| action.provider.mod_id.clone())
             .collect::<BTreeSet<_>>();
         let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
-        let mut binding_mods = BTreeSet::<ModId>::new();
+        /*
+         * `#349`：唯一性键是 **(mod_id, source_id)**，不是 `mod_id`。
+         *
+         * 一个包里可以有多件装备（作者一次发布两把武器、或一套防具带多个槽位），那时
+         * 「这个 Mod 重定向到哪」本身就不是单值——按 `mod_id` 去重的前提不成立，于是
+         * 分类器只能在多槽位时否决整包。
+         *
+         * 换成复合键**保留了原本的保护**：同一件装备（同一个源槽位）仍然不能有两个互相
+         * 矛盾的重定向；只是不再禁止「同一个包里的不同装备各自绑定」。
+         */
+        let mut binding_sources = BTreeSet::<(ModId, ReplacementSourceId)>::new();
         for snapshot in &self.replacement_bindings {
             if !binding_ids.insert(snapshot.binding_id().clone()) {
                 return Err(InstallPlanValidationError::DuplicateReplacementBindingId);
             }
-            if !binding_mods.insert(snapshot.mod_id().clone()) {
-                return Err(InstallPlanValidationError::DuplicateReplacementBindingMod);
+            if !binding_sources.insert((
+                snapshot.mod_id().clone(),
+                snapshot.binding().source_id().clone(),
+            )) {
+                return Err(InstallPlanValidationError::DuplicateReplacementBindingSource);
             }
             if !provider_mods.contains(snapshot.mod_id()) {
                 return Err(InstallPlanValidationError::ReplacementBindingOwnerMissing);
@@ -423,8 +440,11 @@ pub enum InstallManifestValidationError {
     MultipleRevisionSet { mod_id: String },
     #[error("install manifest contains a duplicate replacement binding id")]
     DuplicateReplacementBindingId,
+    /// 保留但**不再产生**（`#349`）：见 `InstallPlanValidationError` 的同名档位。
     #[error("install manifest contains multiple replacement bindings for one Mod")]
     DuplicateReplacementBindingMod,
+    #[error("install manifest binds the same replacement source twice for one Mod")]
+    DuplicateReplacementBindingSource,
     #[error("install manifest replacement binding profile does not match the manifest profile")]
     ReplacementBindingProfileMismatch,
     #[error("install manifest replacement binding has no entry set for its Mod")]
@@ -548,13 +568,18 @@ impl InstallManifest {
         }
 
         let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
-        let mut binding_mods = BTreeSet::<ModId>::new();
+        // `#349`：与计划侧同口径，唯一性键是 (mod_id, source_id)。见
+        // `InstallPlan::validate_replacement_bindings` 的说明。
+        let mut binding_sources = BTreeSet::<(ModId, ReplacementSourceId)>::new();
         for snapshot in &self.replacement_bindings {
             if !binding_ids.insert(snapshot.binding_id().clone()) {
                 return Err(InstallManifestValidationError::DuplicateReplacementBindingId);
             }
-            if !binding_mods.insert(snapshot.mod_id().clone()) {
-                return Err(InstallManifestValidationError::DuplicateReplacementBindingMod);
+            if !binding_sources.insert((
+                snapshot.mod_id().clone(),
+                snapshot.binding().source_id().clone(),
+            )) {
+                return Err(InstallManifestValidationError::DuplicateReplacementBindingSource);
             }
             if snapshot.profile_id() != &self.profile_id {
                 return Err(InstallManifestValidationError::ReplacementBindingProfileMismatch);
@@ -1057,6 +1082,167 @@ mod tests {
         assert!(serialized.contains("\"manifest_id\":\"profile:default\""));
         assert!(serialized.contains("\"schema_version\":1"));
         assert!(!serialized.contains("schema_migration"));
+    }
+
+    // `#349`：一个包里的多件装备各自绑定。唯一性键从 `mod_id` 换成 `(mod_id, source_id)`
+    // ——此前同一个 Mod 的第二个绑定会被判 `DuplicateReplacementBindingMod`，于是分类器
+    // 只能在多槽位时否决整包。
+
+    fn binding_snapshot_for(
+        binding_id: &str,
+        mod_id: &str,
+        source_id: &str,
+    ) -> ReplacementBindingSnapshot {
+        ReplacementBindingSnapshot::new(
+            crate::ReplacementBinding::new(
+                ReplacementBindingId::parse(binding_id).expect("binding id"),
+                ModId::new(mod_id),
+                ProfileId::new("default"),
+                ReplacementSourceId::parse(source_id).expect("source id"),
+                crate::ReplacementTargetId::parse("mhw:weapon:target-a").expect("target id"),
+                42,
+            )
+            .expect("binding"),
+            None,
+            "two003",
+            "two019",
+            "wp/two",
+            "wp/two",
+            crate::ReplacementTargetKind::parse("weapon").expect("replacement kind"),
+        )
+        .expect("replacement snapshot")
+    }
+
+    fn plan_with_bindings(
+        mod_ids: &[&str],
+        bindings: Vec<ReplacementBindingSnapshot>,
+    ) -> Result<InstallPlan, InstallPlanValidationError> {
+        let providers = mod_ids
+            .iter()
+            .enumerate()
+            .map(|(index, mod_id)| {
+                InstallFileProvider::new(
+                    ModId::new(*mod_id),
+                    PackageFileId::new(format!("file-{index}")),
+                    InstallTargetPath::parse(
+                        format!("nativePC/wp/two/two00{index}/mod/two00{index}.mod3"),
+                        ["nativePC"],
+                    )
+                    .expect("target path"),
+                    FileLayer::new("base", index as i32),
+                )
+            })
+            .collect::<Vec<_>>();
+        InstallPlan::from_providers(providers).with_replacement_bindings(bindings)
+    }
+
+    fn manifest_with_bindings(bindings: Vec<ReplacementBindingSnapshot>) -> InstallManifest {
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![InstallManifestEntry {
+                mod_id: ModId::new("mod-a"),
+                revision_id: None,
+                package_file_id: PackageFileId::new("file-0"),
+                target_path: InstallTargetPath::parse(
+                    "nativePC/wp/two/two000/mod/two000.mod3",
+                    ["nativePC"],
+                )
+                .expect("target path"),
+                layer: FileLayer::new("base", 0),
+                backup_ref: None,
+                installed_file: None,
+                adopted: false,
+            }],
+        );
+        manifest.replacement_bindings = bindings;
+        manifest
+    }
+
+    #[test]
+    fn plan_allows_one_mod_to_bind_several_distinct_sources() {
+        let plan = plan_with_bindings(
+            &["mod-a"],
+            vec![
+                binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-one"),
+                binding_snapshot_for("binding-b", "mod-a", "mhw:weapon:slot-two"),
+            ],
+        )
+        .expect("同一个包里的两个源槽位各自绑定必须合法");
+
+        assert_eq!(plan.replacement_bindings.len(), 2);
+    }
+
+    #[test]
+    fn plan_still_rejects_binding_the_same_source_twice() {
+        // 保护意图不变：同一件装备不能有两个互相矛盾的重定向。
+        let result = plan_with_bindings(
+            &["mod-a"],
+            vec![
+                binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-one"),
+                binding_snapshot_for("binding-b", "mod-a", "mhw:weapon:slot-one"),
+            ],
+        );
+
+        assert_eq!(
+            result,
+            Err(InstallPlanValidationError::DuplicateReplacementBindingSource)
+        );
+    }
+
+    #[test]
+    fn plan_still_rejects_a_duplicate_binding_id() {
+        let result = plan_with_bindings(
+            &["mod-a"],
+            vec![
+                binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-one"),
+                binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-two"),
+            ],
+        );
+
+        assert_eq!(
+            result,
+            Err(InstallPlanValidationError::DuplicateReplacementBindingId)
+        );
+    }
+
+    #[test]
+    fn plan_still_requires_a_provider_for_every_binding_owner() {
+        let result = plan_with_bindings(
+            &["mod-a"],
+            vec![binding_snapshot_for(
+                "binding-a",
+                "mod-without-files",
+                "mhw:weapon:slot-one",
+            )],
+        );
+
+        assert_eq!(
+            result,
+            Err(InstallPlanValidationError::ReplacementBindingOwnerMissing)
+        );
+    }
+
+    #[test]
+    fn manifest_allows_one_mod_to_bind_several_distinct_sources() {
+        let manifest = manifest_with_bindings(vec![
+            binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-one"),
+            binding_snapshot_for("binding-b", "mod-a", "mhw:weapon:slot-two"),
+        ]);
+
+        manifest.validate().expect("清单侧与计划侧必须同口径");
+    }
+
+    #[test]
+    fn manifest_still_rejects_binding_the_same_source_twice() {
+        let manifest = manifest_with_bindings(vec![
+            binding_snapshot_for("binding-a", "mod-a", "mhw:weapon:slot-one"),
+            binding_snapshot_for("binding-b", "mod-a", "mhw:weapon:slot-one"),
+        ]);
+
+        assert_eq!(
+            manifest.validate(),
+            Err(InstallManifestValidationError::DuplicateReplacementBindingSource)
+        );
     }
 
     #[test]

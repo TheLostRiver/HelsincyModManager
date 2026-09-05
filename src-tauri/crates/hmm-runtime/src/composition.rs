@@ -2201,14 +2201,16 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
     }
 
     fn discard_initial_retarget_install(&self, plan: &hmm_core::InstallPlan) {
-        let [snapshot] = plan.replacement_bindings.as_slice() else {
-            return;
-        };
-        let Some(staging_root) = retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
-        else {
-            return;
-        };
-        discard_retarget_staging(&staging_root);
+        // `#349`：一个计划可以携带多个绑定（一个包里的多件装备各自绑定），每个绑定有自己的
+        // staging 目录。逐个丢弃——漏掉任何一个都会在磁盘上留下孤儿暂存目录。
+        for snapshot in &plan.replacement_bindings {
+            let Some(staging_root) =
+                retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
+            else {
+                continue;
+            };
+            discard_retarget_staging(&staging_root);
+        }
     }
 }
 
@@ -2319,6 +2321,20 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
                     .map_err(|_| source_error())?;
                     (Arc::new(reader), Some(staging_root))
                 }
+                /*
+                 * `#349` 切片③b 的边界：多个绑定意味着多个 staging 目录，而
+                 * `RetargetStagingInstallSourceFileReader` 只认一个根——它按 `target_path`
+                 * 在那个根下取文件，无从知道某个 `package_file_id` 属于哪个绑定。
+                 *
+                 * 归属信息**不在** `InstallPlan` 里（`InstallAction` 没有绑定字段，加字段会
+                 * 动 `hmm-install-plan-v1` 段的逐条哈希），它只在组装计划的那一刻可知。
+                 * 所以多绑定的提交要等切片③b 把「一次提交 N 个绑定」的工作流做出来，届时
+                 * 由组装方给出 `package_file_id -> staging_root` 的路由。
+                 *
+                 * 在那之前失败关闭：`#349` 切片①/③a 让多槽位包能被**分析**出来、模型层面
+                 * 允许多绑定，但运行时一次仍只提交一个绑定。宁可在这里明确拒绝，也不要
+                 * 拿错的 staging 根去读文件——那会静默装错内容。
+                 */
                 _ => return Err(source_error()),
             };
         let service = InstallCommitService::new_with_recovery_records(
