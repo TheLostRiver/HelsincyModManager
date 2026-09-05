@@ -2356,29 +2356,37 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
          * 不在 `InstallPlan` 里——`InstallAction` 没有绑定字段，而 `hmm-install-plan-v1`
          * 段对 action 逐条哈希，加字段会静默改掉所有既有 `plan_hash`（`#286` 踩过）。
          *
-         * 空路由 = 没有任何文件来自 staging：未重定向的标准安装，以及「保持原位」
-         * （identity 绑定）都走这一档，直接读沙箱原包。
+         * 空路由 = 整个计划都读沙箱原包：未重定向的标准安装（含它携带的 identity 绑定）。
          *
-         * 非空路由下，只有路由里点名的文件读 staging；其余文件（「保持原位」的槽位、
-         * 族级随行文件）读沙箱。沙箱读取器**按需**构造：整个计划都来自 staging 时不去
-         * 碰沙箱，与切片③b 之前的行为一致。
+         * 非空路由是**全映射**：每个动作的来源都被显式记录，`Staged` 读对应绑定的
+         * staging 根、`ImportedPackage` 读沙箱原包。沙箱读取器按路由**按需**构造，
+         * 整个计划都来自 staging 时不去碰沙箱。
          */
         /*
          * 切片③b 之前，「有非 identity 绑定 ⇒ 必读 staging」是被这里的 match 强制的
-         * （`[snapshot]` 非 identity 唯一的出路就是 staging reader）。路由把这个判断
-         * 移到了组装侧，所以不变量必须在这里显式钉住：**重定向绑定的产出只在 staging 里，
-         * 路由缺了它就会去读沙箱原包的字节、装进重定向后的目标路径——静默装错内容。**
-         * 宁可拒绝提交。
+         * （`[snapshot]` 非 identity 唯一的出路就是 staging reader）。路由把这个判断移到了
+         * 组装侧，所以不变量必须在这里显式钉住，而且要**逐动作**钉。
+         *
+         * 按绑定检查（「这个绑定至少有一个文件被路由覆盖」）挡不住「十个动作只记了一个」：
+         * 漏记的动作会在提交进行到一半时才失败，那时前面的文件已经写进游戏目录了。判据
+         * 因此是覆盖面而不是存在性，位置在**构造读取器之前**——一个文件都还没读的时候。
+         *
+         * 空路由那一档也必须围住：「有重定向绑定但路由是空的」同样是漏记。所以只要计划带了
+         * 重定向绑定、**或者**路由非空，就要求全覆盖；只有「没有重定向绑定 + 空路由」
+         * （未重定向的标准安装）才走沙箱直读。
          */
-        for snapshot in &request.plan.replacement_bindings {
-            if is_identity_replacement_binding(snapshot) {
-                continue;
-            }
-            let staged_by_this_binding = request
-                .source_routing
-                .entries()
-                .any(|(_, binding_id)| binding_id == snapshot.binding_id());
-            if !staged_by_this_binding {
+        let carries_retarget_binding = request
+            .plan
+            .replacement_bindings
+            .iter()
+            .any(|snapshot| !is_identity_replacement_binding(snapshot));
+        if carries_retarget_binding || !request.source_routing.is_empty() {
+            let fully_routed = request.plan.actions.iter().all(|action| {
+                request
+                    .source_routing
+                    .covers(&action.provider.package_file_id)
+            });
+            if !fully_routed {
                 return Err(source_error());
             }
         }
@@ -2388,19 +2396,13 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             } else {
                 let mut roots_by_package_file = BTreeMap::new();
                 let mut staging_roots = BTreeSet::new();
-                for (package_file_id, binding_id) in request.source_routing.entries() {
+                for (package_file_id, binding_id) in request.source_routing.staged_entries() {
                     let staging_root = retarget_staging_root(&self.app_data_dir, binding_id)
                         .ok_or_else(source_error)?;
                     staging_roots.insert(staging_root.clone());
                     roots_by_package_file.insert(package_file_id.clone(), staging_root);
                 }
-                let needs_passthrough = request.plan.actions.iter().any(|action| {
-                    request
-                        .source_routing
-                        .binding_for(&action.provider.package_file_id)
-                        .is_none()
-                });
-                let passthrough = match needs_passthrough {
+                let passthrough = match request.source_routing.reads_imported_package() {
                     true => Some(imported_source_files()?),
                     false => None,
                 };
@@ -3365,6 +3367,7 @@ mod tests {
         source_routing: RetargetSourceRouting,
         created_at_unix_millis: u128,
         target_main: &str,
+        package_file_ids: &[&str],
     ) -> ImportedModInstallCommitRequest {
         let mod_id = ModId::new("mod-weapon");
         let profile_id = ProfileId::new("default");
@@ -3391,16 +3394,19 @@ mod tests {
             hmm_core::ReplacementTargetKind::parse("weapon").expect("kind"),
         )
         .expect("snapshot");
-        let plan = hmm_core::InstallPlan::from_providers([hmm_core::InstallFileProvider::new(
-            mod_id.clone(),
-            hmm_core::PackageFileId::new("pair.mod3"),
-            hmm_core::InstallTargetPath::parse(
-                format!("nativePC/wp/one/{target_main}/mod/{target_main}.mod3"),
-                ["nativePC"],
+        let plan = hmm_core::InstallPlan::from_providers(package_file_ids.iter().map(|id| {
+            let stem = id.trim_end_matches(".mod3");
+            hmm_core::InstallFileProvider::new(
+                mod_id.clone(),
+                hmm_core::PackageFileId::new(*id),
+                hmm_core::InstallTargetPath::parse(
+                    format!("nativePC/wp/one/{target_main}/mod/{stem}.mod3"),
+                    ["nativePC"],
+                )
+                .expect("target path"),
+                hmm_core::FileLayer::new("base", 0),
             )
-            .expect("target path"),
-            hmm_core::FileLayer::new("base", 0),
-        )])
+        }))
         .with_replacement_bindings(vec![snapshot])
         .expect("plan with binding");
         ImportedModInstallCommitRequest {
@@ -3454,6 +3460,7 @@ mod tests {
             RetargetSourceRouting::empty(),
             42,
             "one002",
+            &["pair.mod3"],
         ));
 
         assert!(matches!(
@@ -3465,6 +3472,128 @@ mod tests {
         assert!(
             !looked_up.load(Ordering::SeqCst),
             "未被路由覆盖的重定向绑定必须在读取任何源文件之前就被拒绝"
+        );
+    }
+
+    /// 建一个真实的 staging 根，让「没有闸门时会发生什么」变得可观测。
+    fn materialize_staging_root(app_data_dir: &Path, target_main: &str, stem: &str) -> PathBuf {
+        let staging_root = app_data_dir
+            .join("install")
+            .join("retarget-staging")
+            .join("11111111-1111-4111-8111-111111111111");
+        let staged = staging_root
+            .join("nativePC")
+            .join("wp")
+            .join("one")
+            .join(target_main)
+            .join("mod");
+        fs::create_dir_all(&staged).expect("staging tree");
+        fs::write(staged.join(format!("{stem}.mod3")), b"staged-bytes").expect("staged bytes");
+        staging_root
+    }
+
+    fn game_tree_is_empty(game_root: &Path) -> bool {
+        fn visit(dir: &Path) -> bool {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return true;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if !visit(&path) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+        visit(game_root)
+    }
+
+    /// **半覆盖**的路由必须在读写任何文件之前被拒绝。
+    ///
+    /// 判据不是「最终失败了」——半覆盖不管有没有闸门都会失败（漏记的文件既没有 staging 根
+    /// 也没有 passthrough）。区别在**什么时候**失败：没有闸门时，前面那个被正确路由的文件
+    /// 已经从 staging 读出来、写进游戏目录了，失败发生在提交进行到一半。所以这里让 staging
+    /// 根**真实存在**（否则读取器构造就失败，掩盖掉闸门），然后断言游戏目录一个文件都没有。
+    #[test]
+    fn commit_refuses_a_partially_routed_plan_before_touching_the_game_directory() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root.clone(), Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                    .expect("binding id"),
+            )
+            .expect("route the first action only");
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3", "second.mod3"],
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(
+            game_tree_is_empty(&game_root),
+            "半覆盖的路由必须在写入游戏目录之前就被拒绝，不能装一半"
+        );
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "拒绝要发生在构造任何读取器之前"
+        );
+    }
+
+    /// 对照组：同样的计划、同样的 staging 根，路由**全覆盖**时闸门放行。
+    ///
+    /// 与上一条唯一的差别是第二个动作有没有被记进路由。没有这条对照，上一条无法区分
+    /// 「闸门拦住了」与「这个计划本来就装不上」。
+    #[test]
+    fn commit_accepts_a_fully_routed_plan_and_reads_the_imported_package() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root, Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                    .expect("binding id"),
+            )
+            .expect("stage the retargeted action");
+        routing
+            .read_from_package(hmm_core::PackageFileId::new("second.mod3"))
+            .expect("read the other action from the package");
+
+        let _ = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3", "second.mod3"],
+        ));
+
+        assert!(
+            looked_up.load(Ordering::SeqCst),
+            "全覆盖的路由该放行，`ImportedPackage` 那一档要去找原包"
         );
     }
 
@@ -3487,6 +3616,7 @@ mod tests {
             RetargetSourceRouting::empty(),
             0,
             "one001",
+            &["pair.mod3"],
         ));
 
         assert!(

@@ -397,7 +397,7 @@ fn two_slots_retarget_to_two_targets_in_one_submission() {
     for plan in planned.retarget_plans() {
         let package_file_id = plan.actions()[0].package_file_id();
         assert_eq!(
-            routing.binding_for(package_file_id),
+            routing.staged_binding_for(package_file_id),
             Some(plan.binding().id()),
             "每个文件必须归属自己的绑定"
         );
@@ -462,15 +462,27 @@ fn a_kept_in_place_slot_installs_at_its_original_path_without_staging() {
         "保持原位的槽位留在原路径，重定向的槽位换到目标"
     );
 
-    // identity 绑定仍然进计划（它记录了「这个槽位装在自己身上」），但不进源路由、
-    // 不建 staging——提交时直接读沙箱原包。
+    // identity 绑定仍然进计划（它记录了「这个槽位装在自己身上」），但它的文件读原包、
+    // 不建 staging。
     assert_eq!(planned.install_plan().replacement_bindings.len(), 2);
     let routing = planned.source_routing().expect("source routing");
-    assert_eq!(routing.len(), 1, "只有重定向的那个槽位走 staging");
+
+    // 路由是**全映射**：两个动作都有显式来源。少了「保持原位」那一条，提交侧就无法区分
+    // 「这个文件本来就该读原包」与「组装方漏记了一个文件」——后者会拿未重定向的原包字节
+    // 写进重定向后的目标路径。
+    assert_eq!(routing.len(), 2, "每个动作都必须有显式来源");
+    for action in &planned.install_plan().actions {
+        assert!(routing.covers(&action.provider.package_file_id));
+    }
     assert_eq!(
-        routing.binding_for(&hmm_core::PackageFileId::new(source_path(SLOT_ONE))),
-        None,
-        "保持原位的文件不该出现在源路由里"
+        routing.origin_for(&hmm_core::PackageFileId::new(source_path(SLOT_ONE))),
+        Some(&hmm_core::RetargetSourceOrigin::ImportedPackage),
+        "保持原位的文件读沙箱原包"
+    );
+    assert_eq!(
+        routing.staged_entries().count(),
+        1,
+        "只有重定向的那个槽位走 staging"
     );
     assert_eq!(planned.staged_binding_ids().len(), 1);
 
