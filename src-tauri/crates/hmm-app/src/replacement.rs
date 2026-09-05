@@ -2,7 +2,7 @@ use hmm_core::{
     FileLayer, GameId, InstallFileProvider, InstallManifestStatusConsumption, InstallPlan,
     InstallPlanValidationError, ModId, ModRevisionId, PackageFileId, ProfileId,
     ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan,
+    ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan, RetargetSourceRouting,
 };
 use hmm_ports::{
     AppClock, InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
@@ -243,6 +243,12 @@ impl MaterializedRetarget {
 
     pub fn install_plan(&self) -> &InstallPlan {
         &self.install_plan
+    }
+
+    /// 提交这个计划时「哪些文件该从 staging 读」。提交方拿它路由源文件读取，
+    /// 而不是从 `InstallPlan` 反推——见 `RetargetSourceRouting`。
+    pub fn source_routing(&self) -> RetargetSourceRouting {
+        self.retarget_plan.source_routing()
     }
 
     pub fn into_parts(self) -> (RetargetPlan, InstallPlan) {
@@ -588,13 +594,14 @@ impl ReplacementWorkflowService {
         Ok(install_plan)
     }
 
+    /// 返回 `MaterializedRetarget` 而不是裸的 `InstallPlan`：提交方还需要
+    /// `source_routing()`——「哪些 `package_file_id` 该从 staging 读」只在这里可知。
     pub fn materialize_initial_install(
         &self,
         staging: &dyn RetargetStagingMaterializer,
         planned: PlannedInitialRetargetInstall,
-    ) -> Result<InstallPlan, ReplacementWorkflowError> {
-        let materialized = self
-            .replacement
+    ) -> Result<MaterializedRetarget, ReplacementWorkflowError> {
+        self.replacement
             .materialize_retarget(
                 staging,
                 MaterializeRetargetRequest {
@@ -603,8 +610,7 @@ impl ReplacementWorkflowService {
                     revision_id: Some(planned.revision_id),
                 },
             )
-            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(materialized.into_parts().1)
+            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)
     }
 
     pub fn preview_reinstall_target(
