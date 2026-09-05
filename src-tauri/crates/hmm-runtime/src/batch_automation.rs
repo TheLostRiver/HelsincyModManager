@@ -176,8 +176,18 @@ fn facts_for_install_batch(
                 &input.layer,
             )
             .map_err(|error| anyhow::anyhow!(error.code()))?;
-        // `#349` 切片③b 的边界：`input.replacement_binding_snapshot` 是单值，批量项一次
-        // 只能携带一个绑定。多绑定的批量提交等切片③b 把工作流做出来，在那之前失败关闭。
+        /*
+         * `_` 分支目前**不可达**，留作防御：`build_install_plan_for_revision` 产出的绑定
+         * 数上界就是 1——普通安装计划本身无绑定，它只会从
+         * `preview_canonical_source_install_plan` 附加**一个** canonical source binding
+         * （那条路径仍走 `single_source()`，多槽位包在那里返回 `None`）。
+         *
+         * 也就是说批量安装看到的多槽位包是「无绑定的普通安装」，全部文件按原路径装——
+         * 等价于 D2 三态的「全部保持原位」，行为正确，只是没有逐槽位的 canonical 记录。
+         * 要让它带上记录，得先把 `preview_canonical_source_install_plan` 多槽位化
+         * （复用 `#349` 切片③b-3 的 `KeepInPlace` 那套自身目标解析），那是独立的一步，
+         * 不阻塞「多槽位包能装」。
+         */
         let current_binding = match plan.replacement_bindings.as_slice() {
             [] => None,
             [binding] => Some(binding),
@@ -878,7 +888,7 @@ fn resolve_batch_plan_request(
                         &input.layer,
                     )
                     .map_err(|_| BatchAutomationError::new(unavailable_code))?;
-                // 同上：`#349` 切片③b 的边界，单值字段一次只承载一个绑定。
+                // 同上：`_` 分支不可达，绑定数上界由 `build_install_plan_for_revision` 决定。
                 input.replacement_binding_snapshot =
                     match install_plan.replacement_bindings.as_slice() {
                         [] => None,
