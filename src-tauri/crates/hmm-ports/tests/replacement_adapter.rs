@@ -88,6 +88,7 @@ fn retarget_plan_request_owns_only_domain_values_and_relative_assets() {
         game_id: GameId::mhw(),
         binding,
         assets: Vec::new(),
+        carries_package_companions: true,
     };
 
     let error = FakeReplacementAdapter

@@ -160,20 +160,37 @@ fn the_bow_package_is_accepted_with_every_file_accounted_for() {
 
     // 伴生文件的**落位**是承重的：`Relocated` 会被搬到目标槽位并改名，`Verbatim` 留原路径。
     // 判错方向会让族级贴图被搬走（游戏找不到）或槽位内文件留在原地（重定向后缺件）。
+    //
+    // `#349` 切片③b：`Verbatim` 那一档挂在**包级**（`package_companions`），不再挂在某个
+    // 单元上——它们属于包、不属于任何槽位。单元里只剩本槽位的 `Relocated`。
     let mut relocated = unit
         .companions()
         .iter()
-        .filter(|companion| companion.placement() == WeaponCompanionPlacement::Relocated)
         .map(|companion| companion.relative_path().as_str())
         .collect::<Vec<_>>();
-    let mut verbatim = unit
-        .companions()
+    let mut verbatim = analysis
+        .package_companions()
         .iter()
-        .filter(|companion| companion.placement() == WeaponCompanionPlacement::Verbatim)
         .map(|companion| companion.relative_path().as_str())
         .collect::<Vec<_>>();
     relocated.sort_unstable();
     verbatim.sort_unstable();
+
+    // 单元里不该再残留 `Verbatim`，包级里不该混进 `Relocated`——分档漂了就会把族级贴图
+    // 搬到目标槽位（游戏按原路径找不到它）。
+    assert!(
+        unit.companions()
+            .iter()
+            .all(|companion| companion.placement() == WeaponCompanionPlacement::Relocated),
+        "单元里只该有随槽位搬走的伴生文件"
+    );
+    assert!(
+        analysis
+            .package_companions()
+            .iter()
+            .all(|companion| companion.placement() == WeaponCompanionPlacement::Verbatim),
+        "包级伴生文件一律原路径保留"
+    );
 
     assert_eq!(
         relocated,
@@ -211,12 +228,14 @@ fn the_bow_package_is_accepted_with_every_file_accounted_for() {
     );
     assert!(unit.excluded().is_empty(), "包里没有危险类型");
 
-    // 全部 20 个文件都有归属：2 对模型（4 个文件）+ 16 个伴生。
+    // 全部 20 个文件都有归属：2 对模型（4 个文件）+ 6 个槽位内伴生 + 10 个包级伴生。
     assert_eq!(
-        unit.pairs().len() * 2 + unit.companions().len(),
+        unit.pairs().len() * 2 + unit.companions().len() + analysis.package_companions().len(),
         BIANCA_BOW_TYPE1.len(),
         "不能有文件在分档中丢失"
     );
+    // `asset_count` 是前端「本次影响 N 个文件」的来源，包级那一档必须算进去。
+    assert_eq!(analysis.asset_count(), BIANCA_BOW_TYPE1.len());
 }
 
 /// `#292` / `#345` 的等价性在真实包上再钉一次：根段大小写不影响任何产出。
@@ -247,19 +266,24 @@ fn the_bow_package_analysis_is_identical_across_root_casings() {
             .map(|unit| unit.root().normalized_path().as_str())
             .collect::<Vec<_>>()
     );
+    // 槽位内与包级两档都要比——只比其中一档会让另一档的漂移悄悄溜过去。
+    let companion_placements = |analysis: &hmm_games_mhw::WeaponPackageAnalysis| {
+        analysis
+            .units()
+            .iter()
+            .flat_map(|unit| unit.companions())
+            .chain(analysis.package_companions())
+            .map(|companion| {
+                (
+                    companion.relative_path().as_str().to_owned(),
+                    companion.placement(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
-        lowercase
-            .units()
-            .iter()
-            .flat_map(|unit| unit.companions())
-            .map(|companion| (companion.relative_path().as_str(), companion.placement()))
-            .collect::<Vec<_>>(),
-        canonical
-            .units()
-            .iter()
-            .flat_map(|unit| unit.companions())
-            .map(|companion| (companion.relative_path().as_str(), companion.placement()))
-            .collect::<Vec<_>>(),
+        companion_placements(&lowercase),
+        companion_placements(&canonical),
         "两种根段写法必须产出逐字相同的伴生落位"
     );
     assert_eq!(

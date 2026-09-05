@@ -1,7 +1,7 @@
 use super::{
     analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation, MhwWeaponCatalogSource,
-    WeaponAnalysisError, WeaponBinaryError, WeaponCompanionPlacement, WeaponMainId,
-    WeaponModelPair, WeaponPackageAnalysis, WeaponPathError, WeaponSourceClosure,
+    WeaponAnalysisError, WeaponBinaryError, WeaponCompanionAsset, WeaponCompanionPlacement,
+    WeaponMainId, WeaponModelPair, WeaponPackageAnalysis, WeaponPathError, WeaponSourceClosure,
     WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
     MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
@@ -222,7 +222,14 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
 
         let loaded_pairs = load_pair_contents(closure, content_reader)?;
         let source = source_from_closure(closure)?;
-        let actions = build_weapon_actions(closure, &target_main, &loaded_pairs)?;
+        // 包级随行文件只有被指定为承载者时才进这个计划——它们属于包、不属于任何槽位，
+        // 一个包只装一次（`#349` 切片③b）。
+        let package_companions = match request.carries_package_companions {
+            true => analysis.package_companions(),
+            false => &[],
+        };
+        let actions =
+            build_weapon_actions(closure, &target_main, &loaded_pairs, package_companions)?;
         let warnings = (source.internal_id() == target_main.as_str())
             .then_some(ReplacementWarning::SourceMatchesTarget)
             .into_iter()
@@ -366,8 +373,11 @@ fn build_weapon_actions(
     closure: &WeaponSourceClosure,
     target_main: &WeaponMainId,
     loaded_pairs: &[LoadedPair<'_>],
+    package_companions: &[WeaponCompanionAsset],
 ) -> ReplacementAdapterResult<Vec<RetargetAction>> {
-    let mut actions = Vec::with_capacity(loaded_pairs.len() * 2 + closure.companions().len());
+    let mut actions = Vec::with_capacity(
+        loaded_pairs.len() * 2 + closure.companions().len() + package_companions.len(),
+    );
     for loaded in loaded_pairs {
         let invocation = build_mhw_weapon_mrl3_transform_invocation(
             loaded.pair,
@@ -411,10 +421,15 @@ fn build_weapon_actions(
      * 分类已在 analysis 阶段完成，这里只把两档落位翻译成目标路径：
      * - `Relocated`（源槽位目录内）→ `relocate_within`：换槽位段 + 按部件 ID 前缀改名，
      *   与 MRL3 引用改写共用 `part_rename` 的同一张对照表，两处结果必然一致。
-     * - `Verbatim`（`nativePC/wp/` 下但与槽位无关）→ 目标路径 = 原路径。这是参照实现
-     *   在真机实验里的实测行为：作者自建贴图目录换任何目标槽位都仍被引用命中，搬了反而断链。
+     * - `Verbatim`（`nativePC/wp/` 下但与槽位无关）→ 目标路径 = 原路径。真机实验 A/B
+     *   （重定向前后对游戏目录做全量快照，逐文件比对 path + size + SHA-256）观测到：
+     *   作者自建贴图目录换任何目标槽位都仍被引用命中，搬了反而断链。
+     *
+     * `#349` 切片③b：`package_companions` 是**包级**的那一档（族级作者目录、族级
+     * `epv/` `sound/`），只有承载者绑定会拿到非空切片。它们与本槽位无关，所以一律
+     * `Verbatim`——目标路径就是原路径。
      */
-    for companion in closure.companions() {
+    for companion in closure.companions().iter().chain(package_companions) {
         let target_relative_path = match companion.placement() {
             WeaponCompanionPlacement::Relocated => closure
                 .root()
@@ -836,6 +851,7 @@ mod tests {
                     game_id: GameId::mhw(),
                     binding,
                     assets,
+                    carries_package_companions: true,
                 },
                 &ArtificialContentReader {
                     mod3: artificial_mod3(),

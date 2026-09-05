@@ -1,6 +1,6 @@
 use hmm_app::{
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    MaterializeRetargetRequest, PreviewInitialRetargetInstallRequest,
+    InitialRetargetSelection, MaterializeRetargetRequest, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
     ReplacementWorkflowError, ReplacementWorkflowService,
 };
@@ -418,7 +418,10 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
             game_id: GameId::mhw(),
             profile_id: ProfileId::new("profile-a"),
             mod_id: ModId::new("mod-a"),
-            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+            selection: InitialRetargetSelection::SoleSource {
+                target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+                    .expect("target id"),
+            },
             layer: FileLayer::new("base", 0),
         })
         .expect("preview initial retarget install");
@@ -426,7 +429,7 @@ fn workflow_resolves_display_revision_and_previews_revision_owned_retarget_plan(
     assert_eq!(preview.package_id(), "revision-v1");
     assert_eq!(preview.revision_id().as_str(), "revision-v1");
     assert!(preview.analysis().is_retargetable());
-    assert_eq!(preview.target().internal_id(), "pl129_0000");
+    assert_eq!(preview.targets()[0].internal_id(), "pl129_0000");
     assert_eq!(
         preview.install_plan().actions[0]
             .provider
@@ -487,7 +490,9 @@ fn preview_initial_install_blocks_when_another_mod_manages_the_target() {
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("profile-a"),
         mod_id: ModId::new("mod-a"),
-        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        selection: InitialRetargetSelection::SoleSource {
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        },
         layer: FileLayer::new("base", 0),
     })
     .expect("preview still succeeds with conflict facts attached");
@@ -515,7 +520,9 @@ fn preview_initial_install_ignores_manifest_entries_from_the_same_mod() {
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("profile-a"),
         mod_id: ModId::new("mod-a"),
-        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        selection: InitialRetargetSelection::SoleSource {
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        },
         layer: FileLayer::new("base", 0),
     })
     .expect("preview succeeds");
@@ -536,7 +543,9 @@ fn preview_initial_install_fails_closed_when_manifest_status_is_not_trustworthy(
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("profile-a"),
         mod_id: ModId::new("mod-a"),
-        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        selection: InitialRetargetSelection::SoleSource {
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        },
         layer: FileLayer::new("base", 0),
     })
     .expect_err("in-flight manifest must fail closed");
@@ -639,8 +648,10 @@ fn workflow_fails_closed_for_every_non_not_installed_status() {
                 game_id: GameId::mhw(),
                 profile_id: ProfileId::new("profile-a"),
                 mod_id: ModId::new("mod-a"),
-                target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
-                    .expect("target id"),
+                selection: InitialRetargetSelection::SoleSource {
+                    target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha")
+                        .expect("target id"),
+                },
                 layer: FileLayer::new("base", 0),
             })
             .expect_err("unsafe state must block initial install");

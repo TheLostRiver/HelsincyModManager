@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hmm_app::{
-    AnalyzeImportedReplacementRequest, InitialRetargetInstallPreflight,
+    AnalyzeImportedReplacementRequest, InitialRetargetInstallPreflight, InitialRetargetSelection,
     PreviewInitialRetargetInstallRequest, ReinstallTaskService, ReplacementServiceError,
     ReplacementWorkflowError, RetargetInstallTaskService, RetargetReinstallRequest,
     StartRetargetInstallTaskRequest, StartRetargetReinstallTaskRequest, TaskProgressEvent,
@@ -295,7 +295,9 @@ fn preview_request_from_dto(
             "replacement_mod_id_invalid",
             "Mod id is required",
         )?),
-        target_id: parse_target_id(request.target_id)?,
+        selection: InitialRetargetSelection::SoleSource {
+            target_id: parse_target_id(request.target_id)?,
+        },
         layer: FileLayer::new(
             required_id(
                 request.layer_name,
@@ -322,7 +324,16 @@ fn start_request_from_dto(
         game_id: preview.game_id,
         profile_id: preview.profile_id,
         mod_id: preview.mod_id,
-        target_id: preview.target_id,
+        // `preview_request_from_dto` 只会构造 `SoleSource`——前端目前发的就是单目标。
+        // 逐槽位意图（D2 三态）的 DTO 是 `#349` 切片④ 的事。
+        target_id: preview
+            .selection
+            .sole_target_id()
+            .cloned()
+            .ok_or_else(|| CommandErrorDto {
+                code: "replacement_target_id_invalid".to_owned(),
+                message: "a retarget install task needs exactly one target".to_owned(),
+            })?,
         layer: preview.layer,
     })
 }
@@ -434,6 +445,20 @@ fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) 
         | ReplacementWorkflowError::RevisionNotFound => (
             "replacement_package_unavailable",
             "imported Mod package is unavailable",
+        ),
+        // `#349` 切片③b：逐槽位意图的两档错误。前端目前只发单目标，构造不出它们，
+        // 但错误码要先有——切片④ 的 UI 会直接用上。
+        ReplacementWorkflowError::DuplicateSlotIntent => (
+            "replacement_duplicate_slot_intent",
+            "one replacement source was given two slot intents",
+        ),
+        ReplacementWorkflowError::DuplicateSlotTarget => (
+            "replacement_duplicate_slot_target",
+            "two replacement sources aim at one target",
+        ),
+        ReplacementWorkflowError::KeepInPlaceUnavailable => (
+            "replacement_keep_in_place_unavailable",
+            "this replacement source cannot be kept in place",
         ),
         ReplacementWorkflowError::ModNotFound => {
             ("replacement_mod_not_found", "imported Mod was not found")
@@ -579,20 +604,27 @@ impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto 
         let planned = preflight.planned;
         Self {
             analysis: planned.analysis().clone().into(),
-            target: planned.target().clone().into(),
+            // 单目标预览：前端契约仍是单个 target/actions/warnings。多槽位预览的 DTO
+            // 是 `#349` 切片④ 的事，这里取第一个（`SoleSource` 下恰好只有一个）。
+            target: planned
+                .targets()
+                .first()
+                .cloned()
+                .expect("a planned retarget install always carries at least one target")
+                .into(),
             actions: planned
-                .retarget_plan()
-                .actions()
+                .retarget_plans()
                 .iter()
+                .flat_map(|plan| plan.actions())
                 .map(|action| RetargetActionPreviewDto {
                     source_internal_id: action.source_internal_id().to_owned(),
                     target_internal_id: action.target_internal_id().to_owned(),
                 })
                 .collect(),
             warnings: planned
-                .retarget_plan()
-                .warnings()
+                .retarget_plans()
                 .iter()
+                .flat_map(|plan| plan.warnings())
                 .copied()
                 .map(Into::into)
                 .collect(),
@@ -689,7 +721,14 @@ mod tests {
         .expect("deserialize stable ids");
         let mapped = preview_request_from_dto(request).expect("map stable ids");
         assert_eq!(mapped.mod_id.as_str(), "mod-a");
-        assert_eq!(mapped.target_id.as_str(), "mhw:armor:fatalis-alpha");
+        assert_eq!(
+            mapped
+                .selection
+                .sole_target_id()
+                .expect("single-target selection")
+                .as_str(),
+            "mhw:armor:fatalis-alpha"
+        );
 
         let forbidden = serde_json::from_value::<PreviewInitialRetargetInstallRequestDto>(json!({
             "gameId": "mhw",

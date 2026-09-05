@@ -75,6 +75,17 @@ pub struct RetargetPlanRequest {
     pub game_id: GameId,
     pub binding: ReplacementBinding,
     pub assets: Vec<ReplacementAsset>,
+    /// 这次计划是否承载**包级**随行资源（族级作者目录、族级 `epv/` `sound/`）。
+    ///
+    /// `#349` 切片③b：那些文件属于包、不属于任何槽位，一个包只该装一次。多槽位包一次
+    /// 提交 N 个绑定时，组装方在其中**恰好一个**上置 `true`；单槽位包恒为 `true`。
+    ///
+    /// 之所以是组装方的决定而不是适配器的：只有组装方知道用户对每个槽位的意图
+    /// （换到 X / 保持原位 / 不装），而承载者必须是一个**真的要装**的绑定。
+    ///
+    /// 置错的后果是可发现的：多个绑定都承载会让同一个 `target_path` 出现多个 provider、
+    /// 在 `InstallPlan` 里撞成阻断冲突；一个都不承载则这些文件不进计划。
+    pub carries_package_companions: bool,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]

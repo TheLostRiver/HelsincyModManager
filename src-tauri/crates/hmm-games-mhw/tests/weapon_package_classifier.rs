@@ -308,6 +308,53 @@ fn plan_for(
             game_id: GameId::mhw(),
             binding,
             assets,
+            carries_package_companions: true,
+        },
+        &SyntheticContentReader {
+            mod3: artificial_mod3(&[ARTIFICIAL_MATERIAL]),
+            mrl3: artificial_mrl3(mrl3_references, &[ARTIFICIAL_MATERIAL_HASH]),
+        },
+    )
+}
+
+/// 多槽位包用：按源槽位编号挑单元，并显式指定这次是否承载包级随行资源。
+///
+/// `plan_for` 走 `single_source()`，多槽位包在那里拿不到源——那正是 `#349` 之前
+/// 「两把武器就拒整包」的形状。
+fn plan_for_source(
+    paths: &[&str],
+    source_main_id: &str,
+    target_internal_id: &str,
+    mrl3_references: &[&str],
+    carries_package_companions: bool,
+) -> Result<RetargetPlan, ReplacementAdapterError> {
+    let adapter = MhwReplacementAdapter;
+    let assets = assets(paths);
+    let analysis = adapter.analyze_replacement_assets(ReplacementAnalysisRequest {
+        game_id: GameId::mhw(),
+        assets: assets.clone(),
+    })?;
+    let source = analysis
+        .sources()
+        .iter()
+        .find(|source| source.internal_id() == source_main_id)
+        .unwrap_or_else(|| panic!("分析必须报出源槽位 {source_main_id}"));
+    let binding = ReplacementBinding::new(
+        ReplacementBindingId::parse(format!("binding-{source_main_id}")).expect("binding id"),
+        ModId::new("classifier-mod"),
+        ProfileId::new("default"),
+        source.id().clone(),
+        target_id(target_internal_id),
+        1,
+    )
+    .expect("binding");
+
+    adapter.build_retarget_plan_with_content(
+        RetargetPlanRequest {
+            game_id: GameId::mhw(),
+            binding,
+            assets,
+            carries_package_companions,
         },
         &SyntheticContentReader {
             mod3: artificial_mod3(&[ARTIFICIAL_MATERIAL]),
@@ -1105,6 +1152,141 @@ fn real_game_asset_extensions_are_never_caught_by_the_reject_list() {
         assert!(
             !is_rejected_executable_file_name(name),
             "{name} 是正常的游戏资源，不得被拒绝清单挡下"
+        );
+    }
+}
+
+/// 泡狐太刀包的族级随行文件：作者自建目录 `Tamonowo/` + 族级 `epv/` `sound/`。
+///
+/// 它们在 `nativePC/wp/swo/` 下、但不在任何槽位目录内，所以属于**包**。
+const FOX_LONGSWORD_PACKAGE_COMPANIONS: &[&str] = &[
+    "nativePC/wp/swo/Tamonowo/PetalTama_BML.tex",
+    "nativePC/wp/swo/Tamonowo/TamoRing_NM.tex",
+    "nativePC/wp/swo/Tamonowo/Tamonowo_BML.tex",
+    "nativePC/wp/swo/Tamonowo/helmsplitter.efx",
+    "nativePC/wp/swo/Tamonowo/petals.efx",
+    "nativePC/wp/swo/epv/hm_wp03_82.epv3",
+    "nativePC/wp/swo/sound/hm_wp03_82.epvsp",
+];
+
+/// 泡狐包再加一把同族太刀，构造真实形态的多槽位包：两个槽位共享族级随行文件。
+fn fox_longsword_with_second_slot() -> Vec<&'static str> {
+    let mut paths = FOX_LONGSWORD_SWO035.to_vec();
+    paths.extend([
+        "nativePC/wp/swo/swo040/mod/swo040.mod3",
+        "nativePC/wp/swo/swo040/mod/swo040.mrl3",
+    ]);
+    paths
+}
+
+/// `#349` 切片③b：族级随行文件属于**包**，分析层不再把它们挂到某个槽位上。
+#[test]
+fn family_scoped_companions_belong_to_the_package_not_to_any_slot() {
+    let analysis =
+        analyze_mhw_weapon_assets(&assets(&fox_longsword_with_second_slot())).expect("多槽位分析");
+
+    assert_eq!(analysis.units().len(), 2, "两把太刀 = 两个单元");
+    assert_eq!(
+        analysis
+            .package_companions()
+            .iter()
+            .map(|companion| companion.relative_path().as_str())
+            .collect::<Vec<_>>(),
+        FOX_LONGSWORD_PACKAGE_COMPANIONS,
+        "族级作者目录与族级 epv/ sound/ 必须报在包级"
+    );
+    for unit in analysis.units() {
+        for companion in unit.companions() {
+            assert!(
+                companion
+                    .relative_path()
+                    .as_str()
+                    .contains(unit.root().main_id().as_str()),
+                "单元 {} 里只该有本槽位目录内的伴生文件，实际有 {}",
+                unit.root().main_id().as_str(),
+                companion.relative_path().as_str()
+            );
+        }
+    }
+}
+
+/// 一个包只装一次：承载者带上包级随行文件，非承载者一个都不带。
+///
+/// 少了这道区分，多槽位包会让同一个族级贴图被两个绑定各产出一次，在 `InstallPlan` 里
+/// 撞成阻断冲突——两把武器一起装直接装不上。
+#[test]
+fn only_the_designated_carrier_puts_package_companions_into_its_plan() {
+    let paths = fox_longsword_with_second_slot();
+    let references = [r"wp\swo\Tamonowo\Tamonowo_BML"];
+
+    let carrier = plan_for_source(&paths, "swo035", "swo019", &references, true)
+        .expect("承载者必须能产出计划");
+    let passenger = plan_for_source(&paths, "swo040", "swo029", &references, false)
+        .expect("非承载者必须能产出计划");
+
+    let carried = |plan: &RetargetPlan| {
+        FOX_LONGSWORD_PACKAGE_COMPANIONS
+            .iter()
+            .filter(|path| {
+                plan.actions()
+                    .iter()
+                    .any(|action| action.source_relative_path().as_str() == **path)
+            })
+            .copied()
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        carried(&carrier),
+        FOX_LONGSWORD_PACKAGE_COMPANIONS,
+        "承载者必须带上全部包级随行文件"
+    );
+    assert_eq!(
+        carried(&passenger),
+        Vec::<&str>::new(),
+        "非承载者一个包级随行文件都不该带"
+    );
+
+    // 包级文件的处置是「原路径保留」：承载者也不得改写它们的路径。
+    for path in FOX_LONGSWORD_PACKAGE_COMPANIONS {
+        assert_eq!(target_of(&carrier, path), *path);
+    }
+
+    // 两个计划的目标路径无交集——这是「两把武器能一起装」的静态前提。
+    let carrier_targets = carrier
+        .actions()
+        .iter()
+        .map(|action| action.target_relative_path().as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let passenger_targets = passenger
+        .actions()
+        .iter()
+        .map(|action| action.target_relative_path().as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(
+        carrier_targets.is_disjoint(&passenger_targets),
+        "两个绑定的产出不得撞车"
+    );
+}
+
+/// 修掉的 bug：切片① 把族级随行文件挂在「排序第一」的单元上，于是玩家只装排序靠后的
+/// 那把武器时，族级贴图与特效**整批丢失**——计划仍然显示成功，游戏里缺件。
+///
+/// 现在承载者由组装方指定，装哪个槽位都带得上。
+#[test]
+fn package_companions_travel_with_whichever_slot_the_player_installs() {
+    let paths = fox_longsword_with_second_slot();
+    let references = [r"wp\swo\Tamonowo\Tamonowo_BML"];
+
+    // `swo040` 在按槽位根排序里排在 `swo035` 之后，正是旧口径下会丢文件的那一侧。
+    let later_slot = plan_for_source(&paths, "swo040", "swo029", &references, true)
+        .expect("装排序靠后的槽位也必须能产出计划");
+
+    for path in FOX_LONGSWORD_PACKAGE_COMPANIONS {
+        assert_eq!(
+            target_of(&later_slot, path),
+            *path,
+            "只装 swo040 时族级文件也必须进计划、且留原路径"
         );
     }
 }
