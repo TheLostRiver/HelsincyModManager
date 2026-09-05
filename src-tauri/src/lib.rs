@@ -26,6 +26,7 @@ mod mod_library_dto;
 mod mod_library_read_model_benchmark_tests;
 mod mod_metadata_commands;
 mod mod_storage_commands;
+mod package_contents_commands;
 mod profile_commands;
 mod reinstall_commands;
 mod reinstall_dto;
@@ -87,6 +88,7 @@ use mod_storage_commands::{
     get_mod_storage_settings, set_mod_storage_dir, start_mod_storage_migration_task,
     validate_mod_storage_dir,
 };
+use package_contents_commands::get_mod_package_contents;
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
     open_profile_directory, set_active_profile, set_profile_save_settings, update_profile,
@@ -193,6 +195,7 @@ pub fn run() {
             list_external_import_batches,
             preview_install_plan,
             preview_imported_mod_install_plan,
+            get_mod_package_contents,
             start_install_task,
             start_uninstall_task,
             get_install_manifest_status,

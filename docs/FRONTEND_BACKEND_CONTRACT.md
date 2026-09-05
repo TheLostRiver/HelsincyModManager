@@ -1502,6 +1502,7 @@ launch_failed
 ```text
 preview_install_plan(input)
 preview_imported_mod_install_plan(input)
+get_mod_package_contents(input)
 start_install_task(input)
 start_uninstall_task(input)
 get_install_manifest_status(input)
@@ -1532,6 +1533,11 @@ cancel_task(taskId)
   `prerequisiteDecision`。required missing、规则不可用/损坏、目录/存储不可用或 decision 无法证明时
   为 `blocked`；`signature_unverified` 为 `warning`。通用 `preview_install_plan` 没有游戏上下文，
   保持只返回纯计划，不伪造 prerequisite decision。
+- `get_mod_package_contents` 是**只读**的包内容查询（`#354` 切片 D1）：不写盘、不建计划、不改任何既有行为。前端只提交 `gameId` 和 `modId`；后端定位受控 sandbox，返回包内文件的**扁平**清单加内容根解析结果。它存在的意义是让界面先看得见整包——玩家要挑内容根、挑装哪些文件，前提是知道包里有什么。
+- `get_mod_package_contents` 与 `preview_imported_mod_install_plan` 的关键差别是**覆盖面**：后者只列内容根之下的文件，且包内有多个 `nativePC` 时直接返回 `ambiguous_content_root` 而一个文件都不给。多个 `nativePC` 是**需要玩家决定**的状态而不是失败，所以本 command 照常列出整包，并把候选放进 `contentRoot.candidates`。
+- `get_mod_package_contents` 每条 entry 携带**三条互相独立的事实**：`targetPath`（相对内容根的安装路径，不在内容根之下或内容根未定时为 `null`）、`installable`（能否落进该 game adapter 声明的允许安装根）、`rejectedByGame`（命中该游戏的「绝不安装」清单）。**前端不得把它们合并成单一的「会不会装」**：拒绝清单当前只在重定向链路上强制执行，普通安装链路尚未套用，合并必然在其中一条链路上给出与实际相反的答案。
+- `get_mod_package_contents` 的 `contentRoot.kind` 三档必须分开呈现：`single`/`fallback` 的 `path` 是 sandbox 相对路径（`fallback` 为空串，表示内容根就是 sandbox 根本身），`ambiguous` 的 `path` 为 `null` 且候选在 `candidates` 里。`fallback` 与 `ambiguous` 不可混同——前者是「根已确定」，后者是「等玩家挑」。
+- `get_mod_package_contents` 返回的路径是 sandbox 相对路径与内容根相对路径，不含完整本地路径；错误 message 同样不得包含宿主绝对路径。
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 在锁外构建 plan 和 prerequisite decision，并在获取写锁前立即重读同一个
   provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前

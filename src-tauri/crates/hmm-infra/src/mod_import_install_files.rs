@@ -1,12 +1,14 @@
-use crate::content_root::resolve_content_root;
+use crate::content_root::{resolve_content_root, ContentRootResolution};
 use crate::controlled_fs::{
     ensure_regular_file_metadata, open_existing_directory_chain, open_existing_directory_nofollow,
     open_regular_file_nofollow,
 };
 use anyhow::{Context, Result};
 use hmm_ports::{
-    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageContentEntry, ModPackageContentRoot, ModPackageContentScanRequest,
+    ModPackageContentScanner, ModPackageContents, ModPackageInstallFile,
+    ModPackageInstallFileReadRequest, ModPackageInstallFileReader, ModPackageInstallFileScanError,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
 };
 use std::fs;
 use std::io::Read;
@@ -47,6 +49,114 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
     }
+}
+
+impl ModPackageContentScanner for SandboxModPackageInstallFileScanner {
+    fn scan_package_contents(
+        &self,
+        request: ModPackageContentScanRequest<'_>,
+    ) -> Result<ModPackageContents, ModPackageInstallFileScanError> {
+        // 与 `scan_install_files` 共用同一份内容根解析——两处对「内容根在哪」必须同结论，
+        // 否则会重演 #284 的「图能显示、却装不上」。差别只在**处置**：那边遇到多个
+        // nativePC 直接失败，这里如实报告候选，因为玩家要挑就得先看得见。
+        let resolution = resolve_content_root(request.sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let content_root = content_root_from_resolution(request.sandbox_root, &resolution)?;
+
+        // 从**沙箱根**而不是内容根开始遍历：包装目录之外的 readme、预览图同样属于包内容，
+        // 玩家要能看见它们才谈得上「知道这个包里有什么」。是否可安装由上层按内容根分档。
+        let mut entries = Vec::new();
+        collect_sandbox_content_entries(
+            request.sandbox_root,
+            request.sandbox_root,
+            0,
+            &mut entries,
+        )?;
+        entries.sort_by(|left, right| left.package_file_id.cmp(&right.package_file_id));
+        Ok(ModPackageContents {
+            entries,
+            content_root,
+        })
+    }
+}
+
+fn content_root_from_resolution(
+    sandbox_root: &Path,
+    resolution: &ContentRootResolution,
+) -> Result<ModPackageContentRoot, ModPackageInstallFileScanError> {
+    let relative = |directory: &Path| -> Result<String, ModPackageInstallFileScanError> {
+        let stripped = directory
+            .strip_prefix(sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        sandbox_relative_directory_path(stripped)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)
+    };
+
+    Ok(match resolution {
+        // `Fallback` 的根恒等于沙箱根，没有第二种取值，因此不带载荷。
+        ContentRootResolution::Fallback(_) => ModPackageContentRoot::Fallback,
+        ContentRootResolution::Single(directory) => {
+            ModPackageContentRoot::Single(relative(directory)?)
+        }
+        ContentRootResolution::Ambiguous(directories) => ModPackageContentRoot::Ambiguous(
+            directories
+                .iter()
+                .map(|directory| relative(directory))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+    })
+}
+
+/// 遍历沙箱内全部文件。
+///
+/// 防御与 [`collect_sandbox_install_files`] **逐条相同**（符号链接拒绝、深度上限、只收
+/// 常规文件），因为它们面对的是同一个不可信沙箱。这里唯一放宽的是**起点**：从沙箱根而不是
+/// 内容根开始。放宽起点不放宽校验——路径仍然逐段过 `sandbox_relative_segments`。
+fn collect_sandbox_content_entries(
+    sandbox_root: &Path,
+    directory: &Path,
+    depth: usize,
+    entries: &mut Vec<ModPackageContentEntry>,
+) -> Result<(), ModPackageInstallFileScanError> {
+    if depth > MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH {
+        return Err(ModPackageInstallFileScanError::DepthLimitExceeded);
+    }
+
+    let read_dir =
+        fs::read_dir(directory).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let path = entry.path();
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
+        if metadata.file_type().is_symlink() {
+            return Err(ModPackageInstallFileScanError::UnsupportedEntry);
+        }
+
+        if metadata.is_dir() {
+            collect_sandbox_content_entries(sandbox_root, &path, depth + 1, entries)?;
+            continue;
+        }
+
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let package_relative = path
+            .strip_prefix(sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let package_file_id = sandbox_install_relative_path(package_relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
+        entries.push(ModPackageContentEntry {
+            package_file_id,
+            size_bytes: metadata.len(),
+        });
+    }
+
+    Ok(())
 }
 
 impl ModPackageInstallFileReader for SandboxModPackageInstallFileScanner {
@@ -179,7 +289,7 @@ fn collect_sandbox_install_files(
     Ok(())
 }
 
-fn sandbox_install_relative_path(path: &Path) -> Result<String> {
+fn sandbox_relative_segments(path: &Path) -> Result<Vec<String>> {
     let mut segments = Vec::new();
 
     for component in path.components() {
@@ -200,11 +310,23 @@ fn sandbox_install_relative_path(path: &Path) -> Result<String> {
         }
     }
 
+    Ok(segments)
+}
+
+fn sandbox_install_relative_path(path: &Path) -> Result<String> {
+    let segments = sandbox_relative_segments(path)?;
+
     if segments.is_empty() {
         anyhow::bail!("imported mod sandbox path is empty");
     }
 
     Ok(segments.join("/"))
+}
+
+/// 目录版：与 [`sandbox_install_relative_path`] 共用同一套逐段校验，唯一的差别是**允许空串**
+/// ——内容根可以就是沙箱根本身，那时它的相对路径正是空。文件路径为空则始终是错误。
+fn sandbox_relative_directory_path(path: &Path) -> Result<String> {
+    Ok(sandbox_relative_segments(path)?.join("/"))
 }
 
 #[cfg(test)]
@@ -213,6 +335,183 @@ mod tests {
     use hmm_core::PackageFileId;
     use hmm_ports::{ModPackageInstallFileReadRequest, ModPackageInstallFileScanRequest};
     use std::fs;
+
+    fn scan_contents(sandbox_root: &Path) -> ModPackageContents {
+        SandboxModPackageInstallFileScanner
+            .scan_package_contents(ModPackageContentScanRequest {
+                package_id: "package-a",
+                sandbox_root,
+            })
+            .expect("scan package contents")
+    }
+
+    fn content_paths(contents: &ModPackageContents) -> Vec<&str> {
+        contents
+            .entries
+            .iter()
+            .map(|entry| entry.package_file_id.as_str())
+            .collect()
+    }
+
+    /*
+     * #354 D1 的核心用例，也是 D2（手动指定内容根）能不能做的前提。
+     *
+     * `scan_install_files` 在多个 nativePC 时返回 `AmbiguousContentRoot`，一个文件都拿不到，
+     * 于是玩家看到的只有「请拆分后分别导入」。内容根有歧义是**要玩家决定的状态**，不是失败
+     * ——而玩家能决定的前提是先看得见整包。断言到具体清单而不是「没报错」：只断言 `is_ok()`
+     * 会漏掉「返回了但只列了其中一个 nativePC 之下的文件」这类更隐蔽的错误。
+     */
+    #[test]
+    fn package_contents_are_listed_even_when_the_content_root_is_ambiguous() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("大剑/nativePC/wp")).expect("create fixture");
+        fs::create_dir_all(sandbox_root.join("太刀/nativePC/wp")).expect("create fixture");
+        fs::write(sandbox_root.join("大剑/nativePC/wp/two003.mod3"), b"a").expect("write fixture");
+        fs::write(sandbox_root.join("太刀/nativePC/wp/swo035.mod3"), b"bb").expect("write fixture");
+        fs::write(sandbox_root.join("readme.txt"), b"ccc").expect("write fixture");
+
+        let contents = scan_contents(&sandbox_root);
+
+        assert_eq!(
+            contents.content_root,
+            ModPackageContentRoot::Ambiguous(vec!["大剑".to_owned(), "太刀".to_owned()]),
+            "两个 nativePC 的父目录都要如实列成候选，不能替玩家挑一个"
+        );
+        assert_eq!(
+            content_paths(&contents),
+            vec![
+                "readme.txt",
+                "大剑/nativePC/wp/two003.mod3",
+                "太刀/nativePC/wp/swo035.mod3",
+            ],
+            "歧义状态下必须列出整包，包括两个候选各自之下的文件"
+        );
+    }
+
+    /*
+     * 起点从沙箱根而不是内容根开始，是本方法与 `scan_install_files` 的**唯一**差别。
+     * 钉住它：包装目录之外的 readme 属于包内容，玩家要能看见；它可不可安装是上层的分档，
+     * 不是扫描侧提前替玩家删掉的理由。
+     */
+    #[test]
+    fn package_contents_include_files_outside_the_content_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("黑骑士大剑/nativePC/wp")).expect("create fixture");
+        fs::write(
+            sandbox_root.join("黑骑士大剑/nativePC/wp/two003.mod3"),
+            b"a",
+        )
+        .expect("write fixture");
+        fs::write(sandbox_root.join("黑骑士大剑/预览.png"), b"bb").expect("write fixture");
+        fs::write(sandbox_root.join("readme.txt"), b"ccc").expect("write fixture");
+
+        let contents = scan_contents(&sandbox_root);
+
+        assert_eq!(
+            contents.content_root,
+            ModPackageContentRoot::Single("黑骑士大剑".to_owned())
+        );
+        assert_eq!(
+            content_paths(&contents),
+            vec![
+                "readme.txt",
+                "黑骑士大剑/nativePC/wp/two003.mod3",
+                "黑骑士大剑/预览.png",
+            ]
+        );
+        assert_eq!(
+            contents
+                .entries
+                .iter()
+                .map(|entry| entry.size_bytes)
+                .collect::<Vec<_>>(),
+            vec![3, 1, 2]
+        );
+    }
+
+    /// 沙箱根直接就是内容根时，相对路径是空串——这是 `sandbox_relative_directory_path`
+    /// 与文件版唯一的行为差异，单独钉住。
+    #[test]
+    fn a_content_root_at_the_sandbox_root_is_reported_as_an_empty_relative_path() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(sandbox_root.join("nativePC/wp")).expect("create fixture");
+        fs::write(sandbox_root.join("nativePC/wp/two003.mod3"), b"a").expect("write fixture");
+
+        assert_eq!(
+            scan_contents(&sandbox_root).content_root,
+            ModPackageContentRoot::Single(String::new())
+        );
+    }
+
+    /// 包里没有 `nativePC`：回退为沙箱根，而不是失败。有没有可安装的东西由上层判定
+    /// （与 `resolve_content_root` 的 `Fallback` 语义一致，这里不抢先下结论）。
+    #[test]
+    fn a_package_without_any_native_pc_falls_back_instead_of_failing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        fs::create_dir_all(&sandbox_root).expect("create fixture");
+        fs::write(sandbox_root.join("readme.txt"), b"a").expect("write fixture");
+
+        let contents = scan_contents(&sandbox_root);
+
+        assert_eq!(contents.content_root, ModPackageContentRoot::Fallback);
+        assert_eq!(content_paths(&contents), vec!["readme.txt"]);
+    }
+
+    /*
+     * 放宽起点**不放宽校验**。重解析点在 `scan_install_files` 上是失败关闭的，从沙箱根起步
+     * 同样必须失败关闭——沙箱不可信这一点与遍历起点无关。这里 junction 指向沙箱之外，
+     * 不拦就等于把沙箱外的文件列进包内容。
+     *
+     * 用 `mklink /J`（目录 junction）而不是符号链接：符号链接在未开启开发者模式的
+     * Windows 上创建会失败，写成「创建失败就 return」的测试会**恒绿且不承重**——本条最初
+     * 就是那么写的，反向验证（把闸门改成 `if false`）照样通过，属于假绿。junction 不需要
+     * 特权，且这里**断言**创建成功，造不出来就转红而不是跳过。
+     */
+    #[cfg(windows)]
+    #[test]
+    fn package_content_scanning_rejects_reparse_points_like_the_install_file_scan_does() {
+        use std::process::Command;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        let outside_root = temp.path().join("outside");
+        let junction_path = sandbox_root.join("nativePC").join("junction");
+
+        fs::create_dir_all(junction_path.parent().expect("junction parent"))
+            .expect("create sandbox dirs");
+        fs::create_dir_all(&outside_root).expect("create outside dir");
+        fs::write(outside_root.join("escape.mod3"), b"outside").expect("write outside file");
+
+        let output = Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                junction_path.to_str().expect("junction path"),
+                outside_root.to_str().expect("outside path"),
+            ])
+            .output()
+            .expect("create junction");
+        assert!(
+            output.status.success(),
+            "mklink failed: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let error = SandboxModPackageInstallFileScanner
+            .scan_package_contents(ModPackageContentScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("指向沙箱外的重解析点必须失败关闭");
+
+        assert_eq!(error, ModPackageInstallFileScanError::UnsupportedEntry);
+    }
 
     #[test]
     fn sandbox_install_file_scanner_lists_regular_files_as_relative_targets() {

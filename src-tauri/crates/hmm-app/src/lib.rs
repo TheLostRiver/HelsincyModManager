@@ -36,6 +36,7 @@ mod mod_metadata;
 mod mod_storage_migration;
 mod mod_storage_settings;
 mod mod_storage_write_gate;
+mod package_contents_query;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -270,6 +271,10 @@ pub use mod_storage_settings::{
 };
 pub use mod_storage_write_gate::{
     ModStorageWriteFreeze, ModStorageWriteGate, ModStorageWriteGateError,
+};
+pub use package_contents_query::{
+    PackageContentEntry, PackageContentRoot, PackageContents, PackageContentsQueryError,
+    PackageContentsQueryRequest, PackageContentsQueryService,
 };
 pub use preview_image::{
     LimitedPreviewImageProcessor, PreviewImageCandidateList, PreviewImageCandidateListService,
