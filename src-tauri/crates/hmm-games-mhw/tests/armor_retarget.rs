@@ -82,6 +82,7 @@ fn plan_for(paths: &[&str]) -> Result<RetargetPlan, ReplacementAdapterError> {
         game_id: GameId::mhw(),
         binding: binding(ROSE_DRESS_SOURCE_ID, "mhw:armor:fatalis-alpha"),
         assets: assets(paths),
+        carries_package_companions: true,
     })
 }
 
@@ -457,6 +458,7 @@ fn armor_retarget_plan_rejects_ambiguous_source_unknown_target_and_binding_misma
                 "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3",
                 "nativePC/pl/m_equip/pl078_0000/body/mod/m_body078_0000.mod3",
             ]),
+            carries_package_companions: true,
         })
         .expect_err("ambiguous source");
     assert_eq!(ambiguous, ReplacementAdapterError::AmbiguousSourceSlot);
@@ -467,6 +469,7 @@ fn armor_retarget_plan_rejects_ambiguous_source_unknown_target_and_binding_misma
             game_id: GameId::mhw(),
             binding: binding(ROSE_DRESS_SOURCE_ID, missing_id.as_str()),
             assets: assets(ROSE_DRESS),
+            carries_package_companions: true,
         })
         .expect_err("unknown target");
     assert_eq!(
@@ -481,6 +484,7 @@ fn armor_retarget_plan_rejects_ambiguous_source_unknown_target_and_binding_misma
             game_id: GameId::mhw(),
             binding: binding("mhw:armor:f_equip:pl999_0000", "mhw:armor:fatalis-alpha"),
             assets: assets(ROSE_DRESS),
+            carries_package_companions: true,
         })
         .expect_err("binding mismatch");
     assert_eq!(mismatch, ReplacementAdapterError::SourceBindingMismatch);
@@ -493,6 +497,7 @@ fn armor_retarget_plan_warns_when_source_already_matches_target() {
             game_id: GameId::mhw(),
             binding: binding("mhw:armor:f_equip:pl129_0000", "mhw:armor:fatalis-alpha"),
             assets: assets(&["nativePC/pl/f_equip/pl129_0000/body/mod/f_body129_0000.mod3"]),
+            carries_package_companions: true,
         })
         .expect("same-target plan");
 
@@ -515,6 +520,7 @@ fn armor_retarget_plan_rejects_duplicate_normalized_target_paths() {
                     r"nativePC\pl\f_equip\pl078_0000\body\mod\f_body078_0000.mod3",
                 ),
             ],
+            carries_package_companions: true,
         })
         .expect_err("duplicate final target");
 

@@ -330,6 +330,7 @@ fn weapon_retarget_fixture_survives_analysis_and_plan() {
                 game_id: GameId::mhw(),
                 binding,
                 assets,
+                carries_package_companions: true,
             },
             &FixtureContentReader {
                 root: package.clone(),

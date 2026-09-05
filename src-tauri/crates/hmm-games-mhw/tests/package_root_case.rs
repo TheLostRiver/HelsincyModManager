@@ -211,6 +211,7 @@ fn plan_for(paths: &[String], target_internal_id: &str) -> RetargetPlan {
                 game_id: GameId::mhw(),
                 binding,
                 assets: package,
+                carries_package_companions: true,
             },
             &SyntheticContentReader {
                 mod3: artificial_mod3(),
@@ -274,6 +275,7 @@ fn an_armor_package_plans_identically_under_every_root_spelling() {
                 game_id: GameId::mhw(),
                 binding,
                 assets: package,
+                carries_package_companions: true,
             })
             .unwrap_or_else(|error| panic!("{root} 的计划必须成功，实际 {error:?}"));
         let shape = plan_shape(&plan);

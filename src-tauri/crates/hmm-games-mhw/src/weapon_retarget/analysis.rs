@@ -261,6 +261,7 @@ impl WeaponUnresolvedModelReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeaponPackageAnalysis {
     units: Vec<WeaponSourceClosure>,
+    package_companions: Vec<WeaponCompanionAsset>,
 }
 
 impl WeaponPackageAnalysis {
@@ -268,12 +269,24 @@ impl WeaponPackageAnalysis {
         &self.units
     }
 
-    /// 全部单元加起来会被计划处理的资源数。
+    /// 族级随行·原样文件：`wp/<族>/<作者目录>/`、族级 `epv/` `sound/`。
+    ///
+    /// `#349` 切片③b：它们属于**包**，不属于任何槽位——处置是「原路径保留」，
+    /// 与哪个槽位装到哪都无关。切片① 里暂归「排序第一」的单元，那个口径在
+    /// 多槽位包上是错的：用户只装第二个槽位时，第一个单元不建计划，这些文件
+    /// 就跟着一起丢了。现在归属如实报在包级，**由哪个绑定承载**是组装方的决定
+    /// （`RetargetPlanRequest::carries_package_companions`）。
+    pub fn package_companions(&self) -> &[WeaponCompanionAsset] {
+        &self.package_companions
+    }
+
+    /// 全部单元加起来会被计划处理的资源数，含包级随行文件（它们一个包只装一次）。
     pub fn asset_count(&self) -> usize {
         self.units
             .iter()
             .map(WeaponSourceClosure::asset_count)
-            .sum()
+            .sum::<usize>()
+            + self.package_companions.len()
     }
 
     /// 恰好一个可重定向单元时返回它，否则 `None`。
@@ -548,21 +561,18 @@ pub fn analyze_mhw_weapon_assets(
 
     /*
      * 族级随行·原样文件（`wp/<族>/<作者目录>/`、族级 `epv/` `sound/`）属于**包**，
-     * 不属于任何槽位——它们的处置是「原路径保留」，装到哪个单元都是同一个结果。
+     * 不属于任何槽位——处置是「原路径保留」，与哪个槽位装到哪都无关。
      *
-     * 单槽位包（真实语料库里 11 个外观包全是）：归入那个唯一的单元，行为与 `#349` 之前
-     * **逐字相同**。多槽位包：暂归第一个单元（按槽位根排序，确定），避免同一路径被多个
-     * 单元重复产出而在 `InstallPlan` 里撞成冲突。把它提到包级是切片③（绑定模型）的事。
+     * `#349` 切片③b：如实报在包级，不再挂到「排序第一」的单元上。那个暂行口径在多槽位
+     * 包上是错的——用户只装第二个槽位时，第一个单元不建计划，这些文件就跟着一起丢了。
+     * 「由哪个绑定承载」是组装方的决定（`RetargetPlanRequest::carries_package_companions`）：
+     * 一个包只装一次，所以多个绑定里恰好一个承载。
      */
-    let first_root = grouped
-        .keys()
-        .next()
-        .expect("parsed assets are non-empty, so at least one root exists")
-        .clone();
-    per_root_companions
-        .entry(first_root)
-        .or_default()
-        .extend(verbatim_companions);
+    verbatim_companions.sort_by(|left, right| {
+        left.relative_path
+            .as_str()
+            .cmp(right.relative_path.as_str())
+    });
 
     let mut units = Vec::with_capacity(grouped.len());
     for (root, assets) in grouped {
@@ -680,7 +690,14 @@ pub fn analyze_mhw_weapon_assets(
         return Err(WeaponAnalysisError::SourceNotFound);
     };
     // 被拒绝的文件是包级事实（拒绝清单不按槽位分），挂在第一个单元上保持与旧行为一致。
+    //
+    // 与族级随行文件不同，这一档**不**提到包级：它只进 facts 的一个计数
+    // （`with_excluded_file_count`），不进计划、不落盘为文件，挂哪个单元都不改变任何
+    // 文件的去向。提到包级只会改动一个已定版摘要的字段口径，收益为零。
     first.excluded = excluded;
 
-    Ok(WeaponPackageAnalysis { units })
+    Ok(WeaponPackageAnalysis {
+        units,
+        package_companions: verbatim_companions,
+    })
 }
