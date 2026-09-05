@@ -222,10 +222,33 @@ fn path_parser_rejects_unsafe_unknown_and_unsupported_resources() {
         WeaponResourceRoot::parse("nativePC/wp/one/two001"),
         Err(WeaponPathError::InvalidMainId)
     );
+    /*
+     * #343：未登记前缀**不再**是拒绝理由。`other001` 带着本槽位的数字 `001`，改名规则
+     * 完全知道该怎么做（`other001` → `other002`），前缀叫什么无关紧要。
+     */
+    let auxiliary = WeaponModelAssetPath::parse("nativePC/wp/one/one001/mod/other001.mod3")
+        .expect("未登记前缀的模型不得被拒绝");
+    assert_eq!(auxiliary.part_id().role(), WeaponPartRole::Auxiliary);
     assert_eq!(
-        WeaponModelAssetPath::parse("nativePC/wp/one/one001/mod/other001.mod3"),
-        Err(WeaponPathError::UnknownPart)
+        auxiliary
+            .retarget(&WeaponMainId::parse("one002").expect("target"))
+            .expect("retarget")
+            .as_str(),
+        "nativePC/wp/one/one002/mod/other002.mod3",
+        "前缀逐字保留，只换槽位数字"
     );
+
+    // 仍然失败关闭的：模型不带本槽位的数字，改名无从下手。
+    for unknown in [
+        "nativePC/wp/one/one001/mod/other999.mod3",
+        "nativePC/wp/one/one001/mod/nodigits.mod3",
+    ] {
+        assert_eq!(
+            WeaponModelAssetPath::parse(unknown),
+            Err(WeaponPathError::UnknownPart),
+            "{unknown}"
+        );
+    }
     for unsupported in [
         "nativePC/wp/one/one001/mod/one001.tex",
         "nativePC/wp/one/one001/mod/one001.MOD3",
@@ -296,10 +319,22 @@ fn source_analysis_rejects_incomplete_unknown_and_unsupported_parts() {
         analyze_mhw_weapon_assets(&[asset("main-mod3", "nativePC/wp/one/one001/mod/one001.mod3",)]),
         Err(WeaponAnalysisError::IncompleteBinaryPair)
     );
+    /*
+     * #343：未登记前缀的模型现在正常成对。单独出现 `.mod3` 报的是「半个二进制对」，
+     * 与主件缺 `.mrl3` 时同一个码——它已经被当成一个正常部件在处理了。
+     */
+    assert_eq!(
+        analyze_mhw_weapon_assets(&[asset(
+            "auxiliary-mod3",
+            "nativePC/wp/one/one001/mod/other001.mod3",
+        )]),
+        Err(WeaponAnalysisError::IncompleteBinaryPair)
+    );
+    // 不带本槽位数字的模型仍然是 `UnknownPart`。
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset(
             "unknown-mod3",
-            "nativePC/wp/one/one001/mod/other001.mod3",
+            "nativePC/wp/one/one001/mod/other999.mod3",
         )]),
         Err(WeaponAnalysisError::UnknownPart)
     );

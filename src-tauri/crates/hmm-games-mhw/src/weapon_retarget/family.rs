@@ -1,3 +1,4 @@
+use super::part_rename::split_weapon_stem;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +101,23 @@ impl WeaponFamily {
         }
     }
 
+    /// 部件前缀对应的 role。
+    ///
+    /// #343 起 role **不再参与改名**——改名只看槽位数字，见 [`super::part_rename`]。role
+    /// 只剩两个用途：`PartialPartSet` 告警（主件或本族默认副件缺失）与计划里的稳定排序。
+    /// 因此没登记过的前缀归入 `Auxiliary` 即可，不需要为它扩表，也不再是失败理由。
+    fn role_for_prefix(self, prefix: &str) -> WeaponPartRole {
+        if prefix.eq_ignore_ascii_case(self.as_str()) {
+            return WeaponPartRole::Main;
+        }
+        match self.secondary_part() {
+            Some(secondary) if prefix.eq_ignore_ascii_case(secondary.prefix()) => secondary.role(),
+            _ => WeaponPartRole::Auxiliary,
+        }
+    }
+
+    /// 本族的**默认**副件。仅用于 `PartialPartSet` 告警；不是可接受部件的完整清单，
+    /// 返回 `None` 只表示「本族没有默认副件」，不表示「本族不能有副件」。
     pub fn secondary_part(self) -> Option<WeaponSecondaryPart> {
         match self {
             Self::SwordAndShield | Self::Lance | Self::Gunlance | Self::ChargeBlade => {
@@ -145,6 +163,9 @@ pub enum WeaponPartRole {
     Shield,
     Right,
     Sheath,
+    /// 前缀不是主件、也不是本族默认副件的模型（#343）。**不是错误**——真实包里这类模型
+    /// 很常见，改名规则不需要认识它。
+    Auxiliary,
 }
 
 impl WeaponPartRole {
@@ -154,6 +175,7 @@ impl WeaponPartRole {
             Self::Shield => "shield",
             Self::Right => "right",
             Self::Sheath => "sheath",
+            Self::Auxiliary => "auxiliary",
         }
     }
 }
@@ -259,7 +281,6 @@ impl WeaponMainId {
             role,
             number: self.number,
             has_bs_prefix: self.has_bs_prefix,
-            variant_suffix: String::new(),
         })
     }
 }
@@ -271,71 +292,30 @@ pub struct WeaponPartId {
     role: WeaponPartRole,
     number: u16,
     has_bs_prefix: bool,
-    /// 已登记部件 ID 之后作者自加的变体后缀，如 `saya035ol` 的 `ol`（#336 ②b）。
-    ///
-    /// 它标识**另一个模型**，不是同一个部件的别名：`saya035` 与 `saya035ol` 各自成对、
-    /// 各自改名。后缀必须逐字带到目标部件上，否则两者会双双改成 `saya019` 而互相覆盖。
-    variant_suffix: String,
 }
 
 impl WeaponPartId {
+    /// 结构化识别一个部件 ID（#343）。
+    ///
+    /// 判据只有「主干形如 `<bs_?><前缀><本槽位 3 位数字><余部>`」，**不查任何部件前缀
+    /// 注册表**。上一版要求前缀必须登记在 `WeaponFamily::secondary_part()` 里，而那张表
+    /// 只有三项、14 个族里 10 个为空，于是这些族的包只要带副件模型就否决整包。
+    ///
+    /// 拆解与两条守卫由 [`split_weapon_stem`] 提供，与磁盘改名、MRL3 引用改写**共用同一份
+    /// 实现**——识别与改名必须对同一个名字得出同一个结论，否则会分叉。
     pub fn parse_for_main(value: &str, main_id: &WeaponMainId) -> Result<Self, WeaponFamilyError> {
-        let mut candidates = vec![main_id.part_for_role(WeaponPartRole::Main)?];
-        if let Some(secondary) = main_id.family().secondary_part() {
-            candidates.push(main_id.part_for_role(secondary.role())?);
-        }
-
-        if let Some(exact) = candidates.iter().find(|part| value == part.as_str()) {
-            return Ok(exact.clone());
-        }
-
-        /*
-         * 变体后缀（#336 ②b）。泡狐太刀的 `saya035ol` 过去在这里判 `UnknownPart`，
-         * 而 `analysis.rs` 把它升级成否决整包——库里唯一一把太刀 Mod 因此不可重定向。
-         *
-         * 它本质上不是「没见过的部件」：前缀就是本族已登记的鞘 `saya035`，作者只是加了
-         * 个变体标记。`part_rename::rename_part_prefix` **本来就能算对** `saya035ol` →
-         * `saya019ol`，挡住它的只有这里的全等比较。所以放宽的是识别，不是改名规则。
-         *
-         * 两条守卫与 `rename_part_prefix` 逐字相同，理由也相同——两处必须对同一个文件名
-         * 得出同一个结论，否则磁盘改名与 MRL3 引用改写会分叉：
-         *
-         * 守卫① 后缀不能以数字开头。部件 ID 是 `<prefix><3 位数字>`，否则 `saya0351`
-         *       会被读成 `saya035` + 变体 `1`。
-         * 守卫② 后缀里不能再出现任何部件 ID。`swo035saya035` 无法判断作者意图，
-         *       且改名后内层的 `saya035` 不会被改写，会产生断链。
-         */
-        let matched = candidates
-            .iter()
-            .filter(|part| value.starts_with(part.as_str()))
-            // 同族部件 ID 可能互为前缀，取最长命中。
-            .max_by_key(|part| part.as_str().len());
-        let Some(part) = matched else {
+        let Some(parsed) = split_weapon_stem(value, main_id) else {
             return Err(WeaponFamilyError::UnknownPart);
         };
-        let suffix = &value[part.as_str().len()..];
+        let parsed = parsed.map_err(|()| WeaponFamilyError::UnknownPart)?;
 
-        if suffix.is_empty()
-            || suffix.as_bytes()[0].is_ascii_digit()
-            || candidates
-                .iter()
-                .any(|candidate| suffix.contains(candidate.as_str()))
-        {
-            return Err(WeaponFamilyError::UnknownPart);
-        }
-        Ok(part.clone().with_variant_suffix(suffix))
-    }
-
-    /// 把变体后缀接到部件 ID 上。目标部件由 `part_for_role` 产出（不带后缀），
-    /// 重定向时用本方法把源部件的后缀原样接过去。
-    pub(super) fn with_variant_suffix(mut self, suffix: &str) -> Self {
-        self.canonical.push_str(suffix);
-        self.variant_suffix = suffix.to_owned();
-        self
-    }
-
-    pub fn variant_suffix(&self) -> &str {
-        &self.variant_suffix
+        Ok(Self {
+            canonical: value.to_owned(),
+            family: main_id.family(),
+            role: main_id.family().role_for_prefix(parsed.prefix),
+            number: main_id.number(),
+            has_bs_prefix: main_id.has_bs_prefix(),
+        })
     }
 
     pub fn as_str(&self) -> &str {

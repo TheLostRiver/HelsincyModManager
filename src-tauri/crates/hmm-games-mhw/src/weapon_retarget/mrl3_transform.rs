@@ -1,5 +1,5 @@
 use super::binary::{parse_model_pair, sha256_hex, ParsedTextureReference};
-use super::{WeaponBinaryError, WeaponMainId, WeaponModelPair, WeaponPartRole, WeaponResourceRoot};
+use super::{WeaponBinaryError, WeaponMainId, WeaponModelPair, WeaponResourceRoot};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::ops::Range;
@@ -214,17 +214,20 @@ fn mapping_sha256(
     source_root: &WeaponResourceRoot,
     target_main_id: &WeaponMainId,
 ) -> Result<String, WeaponBinaryError> {
-    let mut roles = vec![WeaponPartRole::Main];
-    if let Some(secondary) = source_root.family().secondary_part() {
-        roles.push(secondary.role());
-    }
-
+    /*
+     * #343 起改名不再由「role → 部件 ID」对照表定义，所以这里没有表可枚举了。
+     *
+     * 规则现在是纯结构的：把主干里的源槽位数字换成目标槽位数字，并按目标槽位归一化
+     * `bs_` 前缀。它的**完整定义输入**就是下面这几项——同样的输入必然给出同样的改名
+     * 结果，因此摘要仍然唯一标定「本次用的是哪条映射」。
+     */
     let mut hasher = Sha256::new();
     for value in [
         MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
         source_root.family().as_str(),
         source_root.main_id().as_str(),
         target_main_id.as_str(),
+        pair.part_id().as_str(),
         pair.part_id().role().as_str(),
     ] {
         hasher.update(value.as_bytes());
@@ -232,18 +235,11 @@ fn mapping_sha256(
     }
     hasher.update(MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION.to_le_bytes());
     hasher.update([0]);
-    for role in roles {
-        let source = source_root
-            .main_id()
-            .part_for_role(role)
-            .map_err(|_| WeaponBinaryError::OutputInvalid)?;
-        let target = target_main_id
-            .part_for_role(role)
-            .map_err(|_| WeaponBinaryError::CrossFamilyTarget)?;
-        for value in [role.as_str(), source.as_str(), target.as_str()] {
-            hasher.update(value.as_bytes());
-            hasher.update([0]);
-        }
-    }
+    hasher.update(source_root.main_id().number().to_le_bytes());
+    hasher.update(target_main_id.number().to_le_bytes());
+    hasher.update([
+        u8::from(source_root.main_id().has_bs_prefix()),
+        u8::from(target_main_id.has_bs_prefix()),
+    ]);
     Ok(format!("{:x}", hasher.finalize()))
 }

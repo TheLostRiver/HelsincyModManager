@@ -1,5 +1,5 @@
 use super::family::{WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponPartId};
-use super::part_rename::{part_mappings, rename_part_prefix, PartRename};
+use super::part_rename::{rename_weapon_stem, PartRename};
 use hmm_core::{InstallTargetPath, InstallTargetPathError};
 use thiserror::Error;
 
@@ -125,10 +125,8 @@ impl WeaponResourceRoot {
         // 槽位段固定在索引 3（nativePC / wp / <family> / <main_id>）。
         segments[RESOURCE_ROOT_SEGMENT_COUNT - 1] = target_main_id.as_str().to_owned();
 
-        let mappings = part_mappings(&self.main_id, target_main_id)
-            .map_err(|_| WeaponPathError::CrossFamilyTarget)?;
         let last = segments.len() - 1;
-        segments[last] = match rename_part_prefix(&segments[last], &mappings) {
+        segments[last] = match rename_weapon_stem(&segments[last], &self.main_id, target_main_id) {
             PartRename::Renamed(renamed) => renamed,
             PartRename::Unrelated => segments[last].clone(),
             PartRename::Ambiguous => return Err(WeaponPathError::UnsupportedResource),
@@ -248,17 +246,25 @@ impl WeaponModelAssetPath {
         }
 
         /*
-         * 变体后缀必须跟着走（#336 ②b）：`saya035ol` 的目标是 `saya019ol`，不是 `saya019`。
-         * 丢掉后缀会让它与同族的 `saya035` 双双落到 `saya019`，两个不同模型互相覆盖，
-         * 而且是**静默**覆盖——计划看起来完全成功。
+         * 模型文件名走与伴生文件**完全相同**的改写函数（#343）。
+         *
+         * 上一版从 role 推导目标部件名，因此丢得掉信息：`saya035ol` 会落成 `saya019`
+         * 而与同族的 `saya035` 互相覆盖；`ya013` 这类未登记前缀更是在识别阶段就被否决。
+         * 现在只替换槽位数字，前缀与余部逐字保留，两个问题一起消失。
          */
-        let target_part = target_main_id
-            .part_for_role(self.part_id.role())
-            .map_err(|_| WeaponPathError::UnknownPart)?
-            .with_variant_suffix(self.part_id.variant_suffix());
+        let renamed =
+            match rename_weapon_stem(self.part_id.as_str(), self.root.main_id(), target_main_id) {
+                PartRename::Renamed(renamed) => renamed,
+                // 部件 ID 是由同一个 `split_weapon_stem` 从本路径解析出来的，因此这两档
+                // 结构上不可达；保留分支是为了让「识别与改名共用一份实现」这条不变量
+                // 一旦被破坏就立刻失败关闭，而不是产出一个错名字。
+                PartRename::Unrelated | PartRename::Ambiguous => {
+                    return Err(WeaponPathError::UnknownPart)
+                }
+            };
         let mut target_segments = self.segments.clone();
         target_segments[3] = target_main_id.as_str().to_owned();
-        target_segments[5] = format!("{}.{}", target_part.as_str(), self.kind.extension());
+        target_segments[5] = format!("{renamed}.{}", self.kind.extension());
         InstallTargetPath::parse(target_segments.join("/"), [NATIVE_PC_ROOT])
             .map_err(|_| WeaponPathError::UnsafePath)
     }

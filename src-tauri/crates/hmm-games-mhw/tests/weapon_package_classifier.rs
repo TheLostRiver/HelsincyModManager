@@ -398,8 +398,8 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
     let facts = plan.adapter_facts().expect("sealed adapter facts");
     assert_eq!(
         facts.strategy_version(),
-        3,
-        "action 集合两次变化（② 加随行文件、③ 去掉被拒绝的文件）都必须由 strategy_version 标记"
+        4,
+        "action 集合每次变化（② 加随行文件、③ 去掉被拒绝的文件、#343 改名规则）都必须由 strategy_version 标记"
     );
     assert_eq!(facts.part_count(), 1);
     assert_eq!(
@@ -680,28 +680,79 @@ fn a_variant_parts_rewritten_references_land_on_files_the_plan_actually_produces
 }
 
 #[test]
-fn a_genuinely_unknown_part_inside_the_source_slot_still_fails_closed() {
+fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package() {
     /*
-     * 放宽的是「已登记部件 + 变体后缀」，不是「什么都收」。前缀完全对不上本族任何部件的
-     * 模型仍然失败关闭——把它当伴生文件搬运，它 MRL3 里指向源槽位的引用不会被改写，
-     * 重定向后断链，而且是静默断链。
+     * #343 的核心回归。改名只需要知道「源槽位数字 → 目标槽位数字」，**不需要事先登记
+     * 部件前缀**。上一版从 role 推导目标部件名，因此前缀必须登记在
+     * `WeaponFamily::secondary_part()` 里——而那张表只有三项，14 个族里 10 个为空，
+     * 这些族的包只要带一个副件模型就判 `weapon_unknown_part` 并否决整包。
+     *
+     * 弓类就是其中之一：下面这个包在上一版是打不开的。
      */
-    let mut paths = fox_longsword_registered();
-    paths.push("nativePC/wp/swo/swo035/mod/zzz035.mod3");
+    let paths = [
+        "nativePC/wp/bow/bow013/mod/bow013.mod3",
+        "nativePC/wp/bow/bow013/mod/bow013.mrl3",
+        "nativePC/wp/bow/bow013/mod/bow013_BML.tex",
+        // 前缀不在任何注册表里的副件模型
+        "nativePC/wp/bow/bow013/mod/ya013.mod3",
+        "nativePC/wp/bow/bow013/mod/ya013.mrl3",
+        "nativePC/wp/bow/bow013/mod/ya013_BML.tex",
+    ];
+    let plan = plan_for(&paths, "bow019", &[r"wp\bow\bow013\mod\ya013_BML"])
+        .expect("未登记前缀的副件不得否决整包");
 
-    let error = MhwReplacementAdapter
-        .analyze_replacement_assets(ReplacementAnalysisRequest {
-            game_id: GameId::mhw(),
-            assets: assets(&paths),
-        })
-        .expect_err("前缀对不上任何已登记部件的模型不得被猜");
+    assert_eq!(plan.actions().len(), paths.len());
+    for (source, target) in [
+        ("bow013.mod3", "bow019.mod3"),
+        ("ya013.mod3", "ya019.mod3"),
+        ("ya013.mrl3", "ya019.mrl3"),
+        ("ya013_BML.tex", "ya019_BML.tex"),
+    ] {
+        assert_eq!(
+            target_of(&plan, &format!("nativePC/wp/bow/bow013/mod/{source}")),
+            format!("nativePC/wp/bow/bow019/mod/{target}"),
+            "{source} 的前缀必须逐字保留，只换槽位数字"
+        );
+    }
+    // 两个模型对都要带上 MRL3 改写。
+    assert_eq!(
+        plan.actions()
+            .iter()
+            .filter(|action| action.content_transform().is_some())
+            .count(),
+        2
+    );
+}
 
-    assert!(matches!(
-        error,
-        ReplacementAdapterError::AnalysisRejected {
-            code: "weapon_unknown_part"
-        }
-    ));
+#[test]
+fn a_model_that_does_not_carry_the_source_slot_number_still_fails_closed() {
+    /*
+     * 放宽的是「前缀不必登记」，不是「什么都收」。源槽位目录内的模型若**不带本槽位的
+     * 数字**，改名规则无从下手——把它当伴生文件搬运，它 MRL3 里指向源槽位的引用不会被
+     * 改写，重定向后断链，而且是静默断链。
+     */
+    for unknown in ["zzz999", "nodigits"] {
+        let mut paths = fox_longsword_registered();
+        let injected = format!("nativePC/wp/swo/swo035/mod/{unknown}.mod3");
+        paths.push(&injected);
+
+        let error = MhwReplacementAdapter
+            .analyze_replacement_assets(ReplacementAnalysisRequest {
+                game_id: GameId::mhw(),
+                assets: assets(&paths),
+            })
+            .expect_err("不带本槽位数字的模型不得被猜");
+
+        assert!(
+            matches!(
+                error,
+                ReplacementAdapterError::AnalysisRejected {
+                    code: "weapon_unknown_part"
+                }
+            ),
+            "{unknown} 实际是 {error:?}"
+        );
+    }
 }
 
 #[test]
