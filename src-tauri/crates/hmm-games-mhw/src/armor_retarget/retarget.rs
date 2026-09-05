@@ -1,7 +1,6 @@
 use super::path::{classify_armor_asset, is_valid_armor_slot, ArmorAsset};
 use super::{ArmorPathError, ArmorResourcePath, MhwArmorCatalog};
 use crate::is_rejected_executable_file_name;
-use crate::package_path::NATIVE_PC_ROOT;
 use hmm_core::{
     GameId, InstallTargetPath, PackageFileId, ReplacementAdapterFacts, ReplacementAnalysis,
     ReplacementSource, ReplacementSourceId, ReplacementTarget, ReplacementTargetKind,
@@ -253,9 +252,16 @@ fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<Clas
             continue;
         }
 
-        let keep_in_place = match kind {
-            ArmorAsset::SlotIndependent { .. } => true,
-            ArmorAsset::InSlot(_) => is_path_referenced_texture(&file_name),
+        // 一律用分类器归一化后的路径，不要拿原始字符串重新解析——小写根与外层目录
+        // 会在第二次解析时被打回原形（#345）。
+        let (keep_in_place, normalized_path) = match &kind {
+            ArmorAsset::SlotIndependent {
+                normalized_path, ..
+            } => (true, normalized_path.clone()),
+            ArmorAsset::InSlot(path) => (
+                is_path_referenced_texture(&file_name),
+                path.normalized_path().clone(),
+            ),
             ArmorAsset::Unrelated => unreachable!("filtered above"),
         };
         if !keep_in_place {
@@ -270,8 +276,7 @@ fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<Clas
         }
         classified.kept_in_place.push(KeptInPlaceAsset {
             package_file_id: asset.package_file_id().clone(),
-            relative_path: InstallTargetPath::parse(asset.relative_path(), [NATIVE_PC_ROOT])
-                .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)?,
+            relative_path: normalized_path,
         });
     }
     Ok(classified)
