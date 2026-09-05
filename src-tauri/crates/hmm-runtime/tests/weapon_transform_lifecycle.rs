@@ -164,6 +164,8 @@ fn source_pair() -> WeaponModelPair {
         ReplacementAsset::new(PackageFileId::new(SOURCE_MRL3_ID), SOURCE_MRL3_PATH),
     ])
     .expect("artificial source closure")
+    .sole_unit()
+    .expect("恰好一个可重定向单元")
     .pairs()[0]
         .clone()
 }
@@ -184,6 +186,8 @@ fn weapon_plan(
         ReplacementAsset::new(PackageFileId::new(SOURCE_MRL3_ID), SOURCE_MRL3_PATH),
     ])
     .expect("source closure")
+    .sole_unit()
+    .expect("恰好一个可重定向单元")
     .source_id()
     .clone();
     let invocation = build_mhw_weapon_mrl3_transform_invocation(&pair, &target_main_id, mod3, mrl3)

@@ -4,10 +4,11 @@ use hmm_games_mhw::{
     MhwReplacementCatalog, MhwWeaponCatalogSource, WeaponAnalysisError, WeaponAnalysisWarning,
     WeaponCatalogSourceError, WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponModelAssetKind,
     WeaponModelAssetPath, WeaponPartRole, WeaponPathError, WeaponResourceRoot, WeaponTargetStatus,
-    MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION,
+    WeaponUnresolvedModelReason, MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION,
 };
 use hmm_ports::{ReplacementAsset, ReplacementCatalogProvider};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 
 fn asset(id: &str, relative_path: &str) -> ReplacementAsset {
     ReplacementAsset::new(PackageFileId::new(id), relative_path)
@@ -268,7 +269,11 @@ fn source_analysis_builds_a_deterministic_full_pair_closure() {
     assets.extend(pair_assets("one", "one001", "one001", "main"));
     assets.reverse();
 
-    let closure = analyze_mhw_weapon_assets(&assets).expect("valid source closure");
+    let closure = analyze_mhw_weapon_assets(&assets)
+        .expect("valid source closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     assert_eq!(closure.family(), WeaponFamily::SwordAndShield);
     assert_eq!(closure.root().main_id().as_str(), "one001");
     assert_eq!(closure.asset_count(), 4);
@@ -293,7 +298,10 @@ fn source_analysis_builds_a_deterministic_full_pair_closure() {
 #[test]
 fn source_analysis_accepts_main_only_and_secondary_only_complete_pairs_with_warning() {
     let main_only = analyze_mhw_weapon_assets(&pair_assets("one", "one001", "one001", "main"))
-        .expect("main-only closure");
+        .expect("main-only closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     assert_eq!(
         main_only.warnings(),
         &[WeaponAnalysisWarning::PartialPartSet]
@@ -301,7 +309,10 @@ fn source_analysis_accepts_main_only_and_secondary_only_complete_pairs_with_warn
 
     let secondary_only =
         analyze_mhw_weapon_assets(&pair_assets("one", "one001", "sld001", "shield"))
-            .expect("secondary-only closure");
+            .expect("secondary-only closure")
+            .sole_unit()
+            .expect("恰好一个可重定向单元")
+            .clone();
     assert_eq!(secondary_only.pairs().len(), 1);
     assert_eq!(
         secondary_only.warnings(),
@@ -309,34 +320,40 @@ fn source_analysis_accepts_main_only_and_secondary_only_complete_pairs_with_warn
     );
 
     let great_sword = analyze_mhw_weapon_assets(&pair_assets("two", "two001", "two001", "main"))
-        .expect("family without a known secondary part");
+        .expect("family without a known secondary part")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     assert!(great_sword.warnings().is_empty());
 }
 
+/// `#349`：一个槽位里**没有任何**完整模型对时，那个单元不成立；整个包里一个单元都没有
+/// 才落到包级下限 `SourceNotFound`。
+///
+/// 原先这几种形态各报一个专门的错误码并否决整包（`IncompleteBinaryPair` / `UnknownPart`）。
+/// 现在包级只剩一条下限——「没有可重定向的东西」是事实陈述，不是对包的判决。
 #[test]
-fn source_analysis_rejects_incomplete_unknown_and_unsupported_parts() {
+fn a_slot_without_any_complete_pair_yields_no_unit() {
+    // 只有 `.mod3`、缺配套 `.mrl3`。
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset("main-mod3", "nativePC/wp/one/one001/mod/one001.mod3",)]),
-        Err(WeaponAnalysisError::IncompleteBinaryPair)
+        Err(WeaponAnalysisError::SourceNotFound)
     );
-    /*
-     * #343：未登记前缀的模型现在正常成对。单独出现 `.mod3` 报的是「半个二进制对」，
-     * 与主件缺 `.mrl3` 时同一个码——它已经被当成一个正常部件在处理了。
-     */
+    // 未登记前缀的副件同理——`#343` 之后它已被当成正常部件，缺一半就是缺一半。
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset(
             "auxiliary-mod3",
             "nativePC/wp/one/one001/mod/other001.mod3",
         )]),
-        Err(WeaponAnalysisError::IncompleteBinaryPair)
+        Err(WeaponAnalysisError::SourceNotFound)
     );
-    // 不带本槽位数字的模型仍然是 `UnknownPart`。
+    // 不带本槽位数字的模型：认不出对应哪个部件，同样不构成单元。
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset(
             "unknown-mod3",
             "nativePC/wp/one/one001/mod/other999.mod3",
         )]),
-        Err(WeaponAnalysisError::UnknownPart)
+        Err(WeaponAnalysisError::SourceNotFound)
     );
     /*
      * #336：只含一张贴图、没有任何模型的包，旧版报 `UnsupportedResource`
@@ -347,6 +364,84 @@ fn source_analysis_rejects_incomplete_unknown_and_unsupported_parts() {
     assert_eq!(
         analyze_mhw_weapon_assets(&[asset("texture", "nativePC/wp/one/one001/mod/one001.tex",)]),
         Err(WeaponAnalysisError::SourceNotFound)
+    );
+}
+
+/// `#349` 的核心收益：**主件正常就该能重定向，不该被副件拖累。**
+///
+/// 此前「主件成对 + 副件只有 `.mod3`」会拒整包——主件完全正常、完全可重定向，只因为
+/// 副件缺了配套的 `.mrl3`。
+#[test]
+fn a_complete_main_part_survives_an_incomplete_auxiliary_part() {
+    let mut assets = pair_assets("bow", "bow017", "bow017", "main");
+    assets.push(asset(
+        "aux-mod3-only",
+        "nativePC/wp/bow/bow017/mod/ya017.mod3",
+    ));
+
+    let unit = analyze_mhw_weapon_assets(&assets)
+        .expect("主件成对就该成立一个单元")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
+
+    assert_eq!(unit.pairs().len(), 1, "只有主件成对");
+    assert_eq!(
+        unit.pairs()[0].part_id().as_str(),
+        "bow017",
+        "成对的那个是主件"
+    );
+    assert_eq!(
+        unit.unresolved_models().len(),
+        1,
+        "缺一半的副件被单独记下，而不是拖累整包"
+    );
+    assert_eq!(
+        unit.unresolved_models()[0].relative_path().as_str(),
+        "nativePC/wp/bow/bow017/mod/ya017.mod3"
+    );
+    assert_eq!(
+        unit.unresolved_models()[0].reason(),
+        WeaponUnresolvedModelReason::IncompleteModelPair
+    );
+}
+
+/// 部件名认不出的模型也留在单元里，而不是否决整包。
+///
+/// 这条对着 `#349` 正文第一节那个内部不一致：同一个包，多余文件是 `.dds` 就归档放行、
+/// 是 `.mod3` 就拒整包。现在两者都归档，只是归到不同的档。
+#[test]
+fn a_model_with_an_unrecognized_part_name_stays_inside_its_unit() {
+    let mut assets = pair_assets("bow", "bow017", "bow017", "main");
+    assets.push(asset("arrow-mod3", "nativePC/wp/bow/bow017/mod/arrow.mod3"));
+    assets.push(asset("arrow-mrl3", "nativePC/wp/bow/bow017/mod/arrow.mrl3"));
+
+    let unit = analyze_mhw_weapon_assets(&assets)
+        .expect("认不出的模型不该拒整包")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
+
+    assert_eq!(unit.pairs().len(), 1);
+    assert_eq!(
+        unit.unresolved_models()
+            .iter()
+            .map(|model| model.relative_path().as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "nativePC/wp/bow/bow017/mod/arrow.mod3",
+            "nativePC/wp/bow/bow017/mod/arrow.mrl3",
+        ]
+    );
+    for model in unit.unresolved_models() {
+        assert_eq!(
+            model.reason(),
+            WeaponUnresolvedModelReason::UnrecognizedPartName
+        );
+    }
+    assert!(
+        unit.companions().is_empty(),
+        "认不出的模型不能混进随行档——那会让它的 MRL3 引用在重定向后断链"
     );
 }
 
@@ -390,20 +485,51 @@ fn source_analysis_rejects_package_identity_and_path_collisions() {
     );
 }
 
+/// `#349`：一个包里多把武器**不再拒整包**，每把各自成为一个独立单元。
+///
+/// 「作者一次发布多件装备」是正常的发布习惯，不是坏包。`MultipleSourceRoots` 与
+/// `MixedFamily` 两个错误码按 `#342` / `#343` 的先例保留、不再产生。
 #[test]
-fn source_analysis_rejects_multiple_source_roots_and_mixed_families() {
+fn source_analysis_splits_multiple_source_roots_into_independent_units() {
     let mut multiple = pair_assets("one", "one001", "one001", "first");
     multiple.extend(pair_assets("one", "one002", "one002", "second"));
+    let analysis = analyze_mhw_weapon_assets(&multiple).expect("两把同族武器不该拒整包");
+
+    assert_eq!(analysis.units().len(), 2, "两把武器 = 两个单元");
     assert_eq!(
-        analyze_mhw_weapon_assets(&multiple),
-        Err(WeaponAnalysisError::MultipleSourceRoots)
+        analysis
+            .units()
+            .iter()
+            .map(|unit| unit.root().main_id().as_str())
+            .collect::<Vec<_>>(),
+        vec!["one001", "one002"],
+        "单元按槽位根排序，顺序确定"
+    );
+    // 每个单元各带自己的模型对与身份，互不干扰。
+    for unit in analysis.units() {
+        assert_eq!(unit.pairs().len(), 1);
+        assert!(unit.unresolved_models().is_empty());
+    }
+    assert_ne!(
+        analysis.units()[0].source_id(),
+        analysis.units()[1].source_id(),
+        "两个单元必须是两个可分别绑定的源"
     );
 
     let mut mixed_family = pair_assets("one", "one001", "one001", "one");
     mixed_family.extend(pair_assets("two", "two001", "two001", "two"));
+    let analysis = analyze_mhw_weapon_assets(&mixed_family).expect("跨族也不该拒整包");
+
+    assert_eq!(analysis.units().len(), 2);
     assert_eq!(
-        analyze_mhw_weapon_assets(&mixed_family),
-        Err(WeaponAnalysisError::MixedFamily)
+        analysis
+            .units()
+            .iter()
+            .map(|unit| unit.family())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        2,
+        "两个单元分属不同武器族"
     );
 }
 
@@ -419,7 +545,11 @@ fn source_analysis_ignores_non_weapon_payloads_but_requires_a_weapon_source() {
         "nativePC/pl/f_equip/pl900_0000/arm/mod/body.mod3",
     ));
 
-    let closure = analyze_mhw_weapon_assets(&with_extras).expect("weapon closure alongside extras");
+    let closure = analyze_mhw_weapon_assets(&with_extras)
+        .expect("weapon closure alongside extras")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     assert_eq!(closure.pairs().len(), 1);
     assert_eq!(closure.asset_count(), 2);
     assert_eq!(
@@ -450,7 +580,11 @@ fn source_analysis_strips_author_package_root_directory() {
         ),
         asset("readme", "MyWeaponMod v1.2/readme.txt"),
     ];
-    let closure = analyze_mhw_weapon_assets(&wrapped).expect("wrapped weapon closure");
+    let closure = analyze_mhw_weapon_assets(&wrapped)
+        .expect("wrapped weapon closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     assert_eq!(
         closure.root().normalized_path().as_str(),
         "nativePC/wp/one/one001"
