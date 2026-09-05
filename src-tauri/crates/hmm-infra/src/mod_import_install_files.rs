@@ -7,10 +7,11 @@ use anyhow::{Context, Result};
 use hmm_ports::{
     ModPackageContentEntry, ModPackageContentRoot, ModPackageContentRootRepository,
     ModPackageContentScanRequest, ModPackageContentScanner, ModPackageContents,
-    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    NoStoredContentRoot,
+    ModPackageFileSelectionRepository, ModPackageInstallFile, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanError, ModPackageInstallFileScanRequest,
+    ModPackageInstallFileScanner, NoStoredContentRoot, NoStoredFileSelection,
 };
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -27,18 +28,28 @@ pub struct SandboxModPackageInstallFileScanner {
      * 外部状态扫描），任一处漏传就会重演 #284 的「图能显示、却装不上」。
      */
     content_root_choices: Arc<dyn ModPackageContentRootRepository>,
+    /// `#354` 切片 D3：玩家勾掉的文件。与内容根同处同理——四条链路共用一个扫描器实例，
+    /// 「勾掉的文件到底装不装」不会因为调用方不同而分叉。
+    file_selection: Arc<dyn ModPackageFileSelectionRepository>,
 }
 
 impl SandboxModPackageInstallFileScanner {
-    pub fn new(content_root_choices: Arc<dyn ModPackageContentRootRepository>) -> Self {
+    pub fn new(
+        content_root_choices: Arc<dyn ModPackageContentRootRepository>,
+        file_selection: Arc<dyn ModPackageFileSelectionRepository>,
+    ) -> Self {
         Self {
             content_root_choices,
+            file_selection,
         }
     }
 
-    /// 不读取任何玩家选择的扫描器：行为与 D2 之前完全一致。
+    /// 不读取任何玩家选择的扫描器：行为与 D2/D3 之前完全一致。
     pub fn without_content_root_choices() -> Self {
-        Self::new(Arc::new(NoStoredContentRoot))
+        Self::new(
+            Arc::new(NoStoredContentRoot),
+            Arc::new(NoStoredFileSelection),
+        )
     }
 
     /// 本次扫描该用哪个内容根。
@@ -99,6 +110,25 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
             0,
             &mut files,
         )?;
+
+        /*
+         * `#354` 切片 D3：勾掉的文件不进计划。
+         *
+         * 排除集合为空（没有记录）时这一步是**恒等变换**，计划因此逐字不变——`plan_hash` 与
+         * facts 一个字节不动。这正是选「排除集合」而不是「包含集合」的原因之一。
+         *
+         * 集合里有而包里没有的条目无害：它只是不命中任何文件。与内容根不同，陈旧的排除项
+         * 不会让路径从错误的根起算，所以这里不需要失败关闭。
+         */
+        let excluded = self
+            .file_selection
+            .load_excluded_files(request.package_id)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        if !excluded.is_empty() {
+            let excluded: BTreeSet<&str> = excluded.iter().map(String::as_str).collect();
+            files.retain(|file| !excluded.contains(file.package_file_id.as_str()));
+        }
+
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
     }
@@ -181,6 +211,11 @@ impl ModPackageContentScanner for SandboxModPackageInstallFileScanner {
                 .into_iter()
                 .map(|(relative, _)| relative)
                 .collect(),
+            // 勾掉的文件仍然逐条列在 `entries` 里——勾掉不等于看不见，否则玩家勾不回来。
+            excluded_files: self
+                .file_selection
+                .load_excluded_files(request.package_id)
+                .map_err(|_| ModPackageInstallFileScanError::Unavailable)?,
         })
     }
 }
@@ -503,12 +538,15 @@ mod tests {
         let sandbox_root = temp.path().join("package-a");
         collection_package(&sandbox_root);
 
-        let files = SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose("大剑"))
-            .scan_install_files(ModPackageInstallFileScanRequest {
-                package_id: "package-a",
-                sandbox_root: &sandbox_root,
-            })
-            .expect("选定内容根之后合集包必须能装");
+        let files = SandboxModPackageInstallFileScanner::new(
+            StubContentRootChoices::chose("大剑"),
+            Arc::new(NoStoredFileSelection),
+        )
+        .scan_install_files(ModPackageInstallFileScanRequest {
+            package_id: "package-a",
+            sandbox_root: &sandbox_root,
+        })
+        .expect("选定内容根之后合集包必须能装");
 
         assert_eq!(
             files,
@@ -552,13 +590,15 @@ mod tests {
         collection_package(&sandbox_root);
 
         for stale in ["锤", "大剑/nativePC", "..", "大剑/nativePC/wp"] {
-            let error =
-                SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose(stale))
-                    .scan_install_files(ModPackageInstallFileScanRequest {
-                        package_id: "package-a",
-                        sandbox_root: &sandbox_root,
-                    })
-                    .expect_err("非候选的内容根必须失败关闭");
+            let error = SandboxModPackageInstallFileScanner::new(
+                StubContentRootChoices::chose(stale),
+                Arc::new(NoStoredFileSelection),
+            )
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("非候选的内容根必须失败关闭");
 
             assert_eq!(
                 error,
@@ -576,13 +616,15 @@ mod tests {
         let sandbox_root = temp.path().join("package-a");
         collection_package(&sandbox_root);
 
-        let contents =
-            SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose("太刀"))
-                .scan_package_contents(ModPackageContentScanRequest {
-                    package_id: "package-a",
-                    sandbox_root: &sandbox_root,
-                })
-                .expect("scan package contents");
+        let contents = SandboxModPackageInstallFileScanner::new(
+            StubContentRootChoices::chose("太刀"),
+            Arc::new(NoStoredFileSelection),
+        )
+        .scan_package_contents(ModPackageContentScanRequest {
+            package_id: "package-a",
+            sandbox_root: &sandbox_root,
+        })
+        .expect("scan package contents");
 
         assert_eq!(
             contents.content_root,
@@ -590,6 +632,171 @@ mod tests {
         );
         // 整包仍然逐条列出——选了根不等于别的文件就看不见了。
         assert_eq!(content_paths(&contents).len(), 2);
+    }
+
+    /// 测试用的排除集合仓储。
+    struct StubFileSelection {
+        excluded: Vec<String>,
+    }
+
+    impl StubFileSelection {
+        fn excluding(paths: &[&str]) -> Arc<Self> {
+            Arc::new(Self {
+                excluded: paths.iter().map(|path| (*path).to_owned()).collect(),
+            })
+        }
+    }
+
+    impl ModPackageFileSelectionRepository for StubFileSelection {
+        fn load_excluded_files(&self, _package_id: &str) -> anyhow::Result<Vec<String>> {
+            Ok(self.excluded.clone())
+        }
+
+        fn save_excluded_files(
+            &self,
+            _package_id: &str,
+            _excluded: &[String],
+        ) -> anyhow::Result<()> {
+            unreachable!("scanner never writes")
+        }
+
+        fn clear_excluded_files(&self, _package_id: &str) -> anyhow::Result<()> {
+            unreachable!("scanner never writes")
+        }
+    }
+
+    fn wrapped_package(sandbox_root: &Path) {
+        fs::create_dir_all(sandbox_root.join("nativePC/wp/two/bs_two012/mod"))
+            .expect("create fixture");
+        for name in [
+            "bs_two012.mod3",
+            "bs_two012.mrl3",
+            "MHWTexConverter_by_Jodo.exe",
+        ] {
+            fs::write(
+                sandbox_root
+                    .join("nativePC/wp/two/bs_two012/mod")
+                    .join(name),
+                b"x",
+            )
+            .expect("write fixture");
+        }
+    }
+
+    fn install_paths(sandbox_root: &Path, selection: Arc<StubFileSelection>) -> Vec<String> {
+        SandboxModPackageInstallFileScanner::new(Arc::new(NoStoredContentRoot), selection)
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root,
+            })
+            .expect("scan install files")
+            .into_iter()
+            .map(|file| file.package_file_id)
+            .collect()
+    }
+
+    /*
+     * `#354` 切片 D3：勾掉的文件不进计划。
+     *
+     * 断言逐字的清单而不是「少了一条」：只数数量会漏掉「排掉的不是那一个」。
+     */
+    #[test]
+    fn files_the_player_unchecked_do_not_enter_the_install_plan() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        wrapped_package(&sandbox_root);
+
+        assert_eq!(
+            install_paths(
+                &sandbox_root,
+                StubFileSelection::excluding(&[
+                    "nativePC/wp/two/bs_two012/mod/MHWTexConverter_by_Jodo.exe"
+                ])
+            ),
+            vec![
+                "nativePC/wp/two/bs_two012/mod/bs_two012.mod3".to_owned(),
+                "nativePC/wp/two/bs_two012/mod/bs_two012.mrl3".to_owned(),
+            ]
+        );
+    }
+
+    /*
+     * **本片最重要的兼容判据**：没有记录时计划逐字不变。
+     *
+     * 空排除集合让过滤成为恒等变换，`plan_hash` 与 facts 因此一个字节不动。这正是选
+     * 「排除集合」而不是「包含集合」的原因之一——后者里「没有记录」与「一个都不装」在表示上
+     * 撞车，得再造哨兵值来区分。
+     */
+    #[test]
+    fn an_empty_exclusion_set_leaves_the_plan_byte_for_byte_unchanged() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        wrapped_package(&sandbox_root);
+
+        let baseline = SandboxModPackageInstallFileScanner::without_content_root_choices()
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("baseline");
+
+        let with_empty_selection = SandboxModPackageInstallFileScanner::new(
+            Arc::new(NoStoredContentRoot),
+            StubFileSelection::excluding(&[]),
+        )
+        .scan_install_files(ModPackageInstallFileScanRequest {
+            package_id: "package-a",
+            sandbox_root: &sandbox_root,
+        })
+        .expect("empty selection");
+
+        assert_eq!(baseline, with_empty_selection);
+        assert_eq!(baseline.len(), 3, "夹具的三个文件都该在基线里");
+    }
+
+    /*
+     * 排除集合里有而包里没有的条目是**无害的**：只是不命中任何文件。
+     *
+     * 与内容根刻意不同——那边的陈旧值会让路径从错误的根起算，所以必须失败关闭；这边的陈旧
+     * 排除项最坏只是「少排了一个已经不存在的文件」，失败关闭反而会把一个能装的包挡住。
+     */
+    #[test]
+    fn a_stale_exclusion_entry_is_harmless_rather_than_fail_closed() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        wrapped_package(&sandbox_root);
+
+        assert_eq!(
+            install_paths(
+                &sandbox_root,
+                StubFileSelection::excluding(&["nativePC/wp/two/gone/removed.tex"])
+            )
+            .len(),
+            3,
+            "指向已不存在文件的排除项不该影响任何东西"
+        );
+    }
+
+    /// 勾掉的文件仍然逐条列在包内容里——勾掉不等于看不见，否则玩家勾不回来。
+    #[test]
+    fn unchecked_files_remain_visible_in_the_package_contents() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        wrapped_package(&sandbox_root);
+        let excluded = "nativePC/wp/two/bs_two012/mod/MHWTexConverter_by_Jodo.exe";
+
+        let contents = SandboxModPackageInstallFileScanner::new(
+            Arc::new(NoStoredContentRoot),
+            StubFileSelection::excluding(&[excluded]),
+        )
+        .scan_package_contents(ModPackageContentScanRequest {
+            package_id: "package-a",
+            sandbox_root: &sandbox_root,
+        })
+        .expect("scan package contents");
+
+        assert_eq!(contents.entries.len(), 3, "整包仍然逐条列出");
+        assert_eq!(contents.excluded_files, vec![excluded.to_owned()]);
     }
 
     fn content_paths(contents: &ModPackageContents) -> Vec<&str> {

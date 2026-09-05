@@ -18,7 +18,7 @@ use hmm_core::{GameId, InstallTargetPath, ModId};
 use hmm_ports::{
     GameAdapter, ModImportResultRepository, ModImportSandboxLocator, ModPackageContentRoot,
     ModPackageContentRootRepository, ModPackageContentScanRequest, ModPackageContentScanner,
-    ModPackageInstallFileScanError,
+    ModPackageFileSelectionRepository, ModPackageInstallFileScanError,
 };
 use std::sync::Arc;
 use thiserror::Error;
@@ -41,6 +41,12 @@ pub struct PackageContentEntry {
     ///
     /// 这是**事实**不是结论：见模块头，它当前只在重定向链路上被强制执行。
     pub rejected_by_game: bool,
+    /// 玩家把这个文件勾掉了（`#354` 切片 D3）。
+    ///
+    /// 与 [`Self::installable`] / [`Self::rejected_by_game`] 分开：那两条是「本游戏允许不
+    /// 允许」，这一条是「玩家要不要」。合并就说不清「它为什么不装」，而那正是 UI 要如实
+    /// 呈现的。
+    pub excluded_by_player: bool,
 }
 
 /// 内容根解析结果。路径是沙箱根相对的正斜杠字符串，空串表示沙箱根本身。
@@ -59,6 +65,8 @@ pub struct PackageContents {
     pub content_root: PackageContentRoot,
     /// 允许被选作内容根的全部目录，与当前选了哪个无关——玩家要能改主意（`#354` D2）。
     pub candidates: Vec<String>,
+    /// 玩家勾掉的 `package_file_id`（`#354` D3）。整包仍逐条列在 `entries` 里。
+    pub excluded_files: Vec<String>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -83,6 +91,8 @@ pub enum PackageContentsQueryError {
     ContentRootNotACandidate,
     #[error("the content root choice could not be persisted")]
     ContentRootChoiceUnavailable,
+    #[error("the file selection could not be persisted")]
+    FileSelectionUnavailable,
 }
 
 impl PackageContentsQueryError {
@@ -99,6 +109,7 @@ impl PackageContentsQueryError {
             Self::ContentRootChoiceUnavailable => {
                 "package_contents_content_root_choice_unavailable"
             }
+            Self::FileSelectionUnavailable => "package_contents_file_selection_unavailable",
         }
     }
 }
@@ -119,6 +130,7 @@ struct PackageContentsSources {
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     content_scanner: Arc<dyn ModPackageContentScanner>,
     content_root_choices: Arc<dyn ModPackageContentRootRepository>,
+    file_selection: Arc<dyn ModPackageFileSelectionRepository>,
     game_adapters: Vec<Arc<dyn GameAdapter>>,
 }
 
@@ -138,6 +150,7 @@ impl PackageContentsQueryService {
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         content_scanner: Arc<dyn ModPackageContentScanner>,
         content_root_choices: Arc<dyn ModPackageContentRootRepository>,
+        file_selection: Arc<dyn ModPackageFileSelectionRepository>,
         game_adapters: Vec<Arc<dyn GameAdapter>>,
     ) -> Self {
         Self {
@@ -146,6 +159,7 @@ impl PackageContentsQueryService {
                 sandbox_locator,
                 content_scanner,
                 content_root_choices,
+                file_selection,
                 game_adapters,
             })),
         }
@@ -197,9 +211,11 @@ impl PackageContentsQueryService {
             ModPackageContentRoot::Ambiguous(_) => None,
         };
 
+        let excluded: std::collections::BTreeSet<&str> =
+            contents.excluded_files.iter().map(String::as_str).collect();
         let entries = contents
             .entries
-            .into_iter()
+            .iter()
             .map(|entry| {
                 let target_path = content_root_prefix
                     .as_deref()
@@ -213,12 +229,15 @@ impl PackageContentsQueryService {
                     .next()
                     .is_some_and(|file_name| adapter.is_rejected_install_file_name(file_name));
 
+                let excluded_by_player = excluded.contains(entry.package_file_id.as_str());
+
                 PackageContentEntry {
-                    package_file_id: entry.package_file_id,
+                    package_file_id: entry.package_file_id.clone(),
                     size_bytes: entry.size_bytes,
                     target_path,
                     installable,
                     rejected_by_game,
+                    excluded_by_player,
                 }
             })
             .collect();
@@ -231,6 +250,7 @@ impl PackageContentsQueryService {
                 ModPackageContentRoot::Ambiguous(roots) => PackageContentRoot::Ambiguous(roots),
             },
             candidates: contents.candidates,
+            excluded_files: contents.excluded_files,
         })
     }
 
@@ -279,6 +299,45 @@ impl PackageContentsQueryService {
             .content_root_choices
             .clear_content_root(&package_id)
             .map_err(|_| PackageContentsQueryError::ContentRootChoiceUnavailable)
+    }
+
+    /// 记下玩家在这个包里勾掉的文件（`#354` 切片 D3）。
+    ///
+    /// 存的是**排除集合**：默认全选 = 空集合 = 计划逐字不变；包重新解压出新文件时也会照常
+    /// 安装，而不是静默漏装。理由见端口 `ModPackageFileSelectionRepository` 的文档。
+    ///
+    /// **不校验条目是否存在**：与内容根刻意不同。陈旧的排除项最坏只是不命中任何文件，
+    /// 而陈旧的内容根会让路径从错误的根起算——后者必须失败关闭，前者不该。
+    pub fn exclude_files(
+        &self,
+        request: PackageContentsQueryRequest,
+        excluded: &[String],
+    ) -> Result<(), PackageContentsQueryError> {
+        let sources = self
+            .sources
+            .as_ref()
+            .ok_or(PackageContentsQueryError::SourcesUnavailable)?;
+        let package_id = self.package_id_for(sources, &request.mod_id)?;
+        sources
+            .file_selection
+            .save_excluded_files(&package_id, excluded)
+            .map_err(|_| PackageContentsQueryError::FileSelectionUnavailable)
+    }
+
+    /// 撤销全部勾选，回到「整包都装」。
+    pub fn clear_excluded_files(
+        &self,
+        request: PackageContentsQueryRequest,
+    ) -> Result<(), PackageContentsQueryError> {
+        let sources = self
+            .sources
+            .as_ref()
+            .ok_or(PackageContentsQueryError::SourcesUnavailable)?;
+        let package_id = self.package_id_for(sources, &request.mod_id)?;
+        sources
+            .file_selection
+            .clear_excluded_files(&package_id)
+            .map_err(|_| PackageContentsQueryError::FileSelectionUnavailable)
     }
 
     fn package_id_for(
