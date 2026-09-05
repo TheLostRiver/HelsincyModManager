@@ -2394,6 +2394,30 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
                 return Err(source_error());
             }
         }
+        /*
+         * 路由点名的绑定必须都是**这个计划里**的绑定。
+         *
+         * 指向计划外的绑定不会静默装错（那个 staging 根下没有这个动作的 `target_path`，
+         * 读取会失败），但失败点在读文件的时候、错误码是通用的 `SourceRead`。这里提前拒绝，
+         * 把「组装方给出的路由与计划不同步」这类错误挡在读写之前。
+         *
+         * 做不到的是「逐动作比对它**应该**属于哪个绑定」：归属的唯一来源就是路由本身，
+         * 提交侧没有独立的第二份可比——要有，就得把归属存进计划（撞 `hmm-install-plan-v1`
+         * 的逐条哈希，`#286` 踩过）或者提交时重跑一次分析。所以这里能钉的是内部一致性。
+         */
+        let plan_binding_ids = request
+            .plan
+            .replacement_bindings
+            .iter()
+            .map(|snapshot| snapshot.binding_id().clone())
+            .collect::<BTreeSet<_>>();
+        if request
+            .source_routing
+            .staged_entries()
+            .any(|(_, binding_id)| !plan_binding_ids.contains(binding_id))
+        {
+            return Err(source_error());
+        }
         let (source_files, staging_roots): (Arc<dyn InstallSourceFileReader>, Vec<PathBuf>) =
             if request.source_routing.is_empty() {
                 (imported_source_files()?, Vec::new())
@@ -3603,6 +3627,49 @@ mod tests {
         assert!(
             looked_up.load(Ordering::SeqCst),
             "全覆盖的路由该放行，`ImportedPackage` 那一档要去找原包"
+        );
+    }
+
+    /// 路由点名了**计划里没有的**绑定：组装方与计划不同步，在读写之前拒绝。
+    ///
+    /// 不拦也不会静默装错——那个 staging 根下没有这个动作的 `target_path`，读取会失败。
+    /// 但失败点在读文件的时候，错误码是通用的 `SourceRead`。这里把它挡在前面。
+    #[test]
+    fn commit_refuses_a_routing_that_names_a_binding_outside_the_plan() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root.clone(), Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        // 计划里的绑定是 `binding-1111...`，这里点名一个不在计划里的。
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-22222222-2222-4222-8222-222222222222")
+                    .expect("binding id"),
+            )
+            .expect("route to a stranger binding");
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3"],
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(game_tree_is_empty(&game_root));
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "拒绝要发生在构造任何读取器之前"
         );
     }
 
