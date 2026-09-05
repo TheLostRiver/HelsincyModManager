@@ -31,9 +31,10 @@ use hmm_app::{
     ModImportTaskRunner, ModImportTaskService, ModLibraryQueryService, ModLibraryService,
     ModMetadataService, ModStorageMigrationSettlement, ModStorageMigrationTaskService,
     ModStorageMigrationTaskServiceDependencies, ModStorageSettingsService,
-    ModStorageSettingsServiceDependencies, ModStorageWriteGate, PlannedInitialRetargetInstall,
-    PreparedReinstall, PreviewImageCandidateListService, PreviewImageCandidateSelectionService,
-    PreviewImageDetailService, PreviewImageDiagnosticsExportService, PreviewImageService,
+    ModStorageSettingsServiceDependencies, ModStorageWriteGate, PackageContentsQueryService,
+    PlannedInitialRetargetInstall, PreparedReinstall, PreviewImageCandidateListService,
+    PreviewImageCandidateSelectionService, PreviewImageDetailService,
+    PreviewImageDiagnosticsExportService, PreviewImageService,
     PreviewInitialRetargetInstallRequest, PreviewRetargetReinstallRequest,
     ProfileSaveDirectoryDiscoveryService, ProfileService, RecoveryActionTaskRunner,
     RecoveryActionTaskService, ReinstallCandidateSourceReader, ReinstallCommitError,
@@ -99,9 +100,10 @@ use hmm_ports::{
     DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
     GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
-    ModImportSandboxLocator, ModPackageInstallFileReader, ModPackageInstallFileScanner,
-    ModStorageDirectoryInspector, ModStorageMigrationJournalRepository, ModStorageMigrator,
-    ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    ModImportSandboxLocator, ModPackageContentScanner, ModPackageInstallFileReader,
+    ModPackageInstallFileScanner, ModStorageDirectoryInspector,
+    ModStorageMigrationJournalRepository, ModStorageMigrator, ProfileRepository,
+    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     ReplacementSelectionRepository, RetargetStagingMaterializer, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
@@ -183,6 +185,7 @@ pub struct HmmRuntime {
     pub(crate) audit_log_writer: Arc<dyn AuditLogWriter>,
     pub install_planning: Arc<InstallPlanningService>,
     pub install_preflight: Arc<ImportedModInstallPreflightService>,
+    pub package_contents_query: Arc<PackageContentsQueryService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
     pub replacement_occupancy: Arc<ReplacementOccupancyService>,
     pub mod_deletion: Arc<ModDeletionService>,
@@ -790,6 +793,17 @@ impl HmmRuntime {
             Arc::clone(&install_file_scanner),
             clone_game_adapters(&game_adapters),
         ));
+        // 与安装计划**共用**同一个扫描器实现：两处对「内容根在哪」必须同结论，否则界面上
+        // 看到的分档与实际装出来的东西会分叉（#284 那类「图能显示、却装不上」的翻版）。
+        let package_content_scanner: Arc<dyn ModPackageContentScanner> =
+            Arc::new(SandboxModPackageInstallFileScanner);
+        let package_contents_query =
+            Arc::new(PackageContentsQueryService::with_imported_mod_sources(
+                Arc::clone(&mod_import_result_repository),
+                Arc::clone(&mod_import_sandbox_locator),
+                Arc::clone(&package_content_scanner),
+                clone_game_adapters(&game_adapters),
+            ));
         let prerequisites: Arc<dyn GamePrerequisiteDecisionProvider> = game_setup.clone();
         let install_preflight = Arc::new(ImportedModInstallPreflightService::new(
             Arc::clone(&install_planning),
@@ -1030,6 +1044,7 @@ impl HmmRuntime {
             audit_log_writer: Arc::clone(&audit_log_writer),
             install_planning,
             install_preflight,
+            package_contents_query,
             install_manifest_query,
             replacement_occupancy,
             mod_deletion: Arc::new(
