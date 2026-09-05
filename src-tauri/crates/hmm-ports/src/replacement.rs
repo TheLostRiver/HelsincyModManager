@@ -94,8 +94,21 @@ pub enum ReplacementAdapterError {
     UnsupportedGame,
     #[error("replacement source slot was not recognized")]
     UnrecognizedSourceSlot,
+    /// 保留但**不再由防具侧产生**（`#349` 切片②）：它原先同时承担两件事——「包里有多个源
+    /// 槽位」与「唯一的那个槽位不受支持」。前者不是错误（多槽位包现在逐槽位绑定），后者
+    /// 由 [`Self::SourceHasNoAvailableTargets`] 具名。存量 manifest 与日志仍可解析。
     #[error("replacement source is ambiguous or unsupported")]
     AmbiguousSourceSlot,
+    /// 源槽位**识别得出，但本游戏当前没有可选的替换目标**。
+    ///
+    /// `#356`：MHW 的防具 catalog 只覆盖女性装备（实测 269 条目标全是 `pl/f_equip`），
+    /// 男装包因此一件都换不了。此前它掉进 `AmbiguousSourceSlot`，玩家看到「源槽位有歧义」
+    /// ——而包里明明只有一个槽位，诊断与事实相反。
+    ///
+    /// 与 [`Self::UnrecognizedSourceSlot`] 的区别是**认不认得**：那条是「这不像个源槽位」，
+    /// 这条是「认得，但没地方可换」。前者要玩家换个包，后者是本工具的覆盖面限制。
+    #[error("replacement source has no available targets")]
+    SourceHasNoAvailableTargets,
     #[error("retarget path is unsafe")]
     UnsafeRetargetPath,
     #[error("replacement binding does not reference the analyzed source")]

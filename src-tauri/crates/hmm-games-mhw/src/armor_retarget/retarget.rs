@@ -51,14 +51,30 @@ impl ReplacementAdapter for MhwArmorReplacementAdapter {
     ) -> ReplacementAdapterResult<RetargetPlan> {
         self.ensure_game(&request.game_id)?;
         let (analysis, classified) = analyze_assets(&request.assets)?;
-        let source = match analysis.sources() {
-            [] => return Err(ReplacementAdapterError::UnrecognizedSourceSlot),
-            [source] if source.is_supported() => source.clone(),
-            _ => return Err(ReplacementAdapterError::AmbiguousSourceSlot),
-        };
-
-        if request.binding.source_id() != source.id() {
-            return Err(ReplacementAdapterError::SourceBindingMismatch);
+        /*
+         * `#349` 切片②：按**绑定点名的槽位**找单元，而不是要求包里恰好一个。
+         *
+         * 旧写法是 `[source] if source.is_supported() => …, _ => AmbiguousSourceSlot`，
+         * 于是「作者一次发布两套防具」被整包拒绝——那是正常的发布习惯，不是坏包。而
+         * `analyze_assets` 早就按 `(path_family, slot)` 分组产出 N 个 source：分析侧一直是
+         * 逐槽位的，只有这里要求唯一。武器侧的同构实现见
+         * `weapon_retarget/replacement.rs` 的按 `binding.source_id()` 查找。
+         *
+         * 那个 `_` 分支还顺带吞掉了第二种情形：**单槽位但不受支持**（男装，catalog 只覆盖
+         * 女装）。它会报「源槽位有歧义」，而包里明明只有一个槽位。现在两者分开：找不到是
+         * `SourceBindingMismatch`，找到但没有可选目标是 `SourceHasNoAvailableTargets`（#356）。
+         */
+        if analysis.sources().is_empty() {
+            return Err(ReplacementAdapterError::UnrecognizedSourceSlot);
+        }
+        let source = analysis
+            .sources()
+            .iter()
+            .find(|source| source.id() == request.binding.source_id())
+            .cloned()
+            .ok_or(ReplacementAdapterError::SourceBindingMismatch)?;
+        if !source.is_supported() {
+            return Err(ReplacementAdapterError::SourceHasNoAvailableTargets);
         }
 
         let target = find_target(request.binding.target_id())?;
@@ -89,17 +105,41 @@ impl ReplacementAdapter for MhwArmorReplacementAdapter {
             .map_err(map_path_error)?;
 
         /*
-         * 原路径保留（#342）。两类：作者自建目录（`mod_pl_rosedress/`）和槽位内的 `.tex`。
-         * 共同理由是它们被 MRL3 按**路径**引用，而防具侧零二进制改写——搬走就是静默断链。
-         * 目标路径 = 原路径，`content_transform` 同样是 `None`。
+         * 原路径保留（#342）。两类的**理由相同**——被 MRL3 按路径引用，而防具侧零二进制
+         * 改写，搬走就是静默断链——但**归属不同**，`#349` 切片② 起必须分开处置：
+         *
+         * - 槽位内的 `.tex` 属于**那个槽位**：只有装该槽位的绑定才带它。旧写法不按槽位过滤，
+         *   多槽位包里槽位 A 的计划会把槽位 B 的贴图一起装进去。
+         * - 作者自建目录（`mod_pl_rosedress/`）属于**包**：一个包只装一次，由组装方指定
+         *   承载者（`carries_package_companions`）。旧写法无条件进每个计划，多绑定时会让
+         *   同一个 `target_path` 出现多个 provider，撞成阻断冲突。
+         *
+         * 两条今天都看不见，因为多槽位包在上面那个 match 就被拒了——闸门一开就会发作。
          */
-        actions.extend(classified.kept_in_place.into_iter().map(|asset| {
-            (
-                asset.package_file_id,
-                asset.relative_path.clone(),
-                asset.relative_path,
-            )
-        }));
+        actions.extend(
+            classified
+                .slot_kept_in_place
+                .into_iter()
+                .filter(|asset| {
+                    asset.path_family == source.path_family() && asset.slot == source.internal_id()
+                })
+                .map(|asset| {
+                    (
+                        asset.package_file_id,
+                        asset.relative_path.clone(),
+                        asset.relative_path,
+                    )
+                }),
+        );
+        if request.carries_package_companions {
+            actions.extend(classified.package_kept_in_place.into_iter().map(|asset| {
+                (
+                    asset.package_file_id,
+                    asset.relative_path.clone(),
+                    asset.relative_path,
+                )
+            }));
+        }
 
         let actions = actions
             .into_iter()
@@ -207,7 +247,11 @@ fn analyze_assets(
     }
 
     // 随行·原样的文件同样会被安装，计入「本次影响的文件数」；被拒绝的不计——它们不落盘。
-    let matched = classified.in_slot.len() + classified.kept_in_place.len();
+    // 这是**包级**分析，两档随行都要计入：`#349` 切片② 把它们拆成槽位级/包级只影响
+    // 单个计划带哪些文件，不改变「这个包一共会影响多少文件」。
+    let matched = classified.in_slot.len()
+        + classified.slot_kept_in_place.len()
+        + classified.package_kept_in_place.len();
     let analysis = ReplacementAnalysis::new(GameId::mhw(), sources, matched, warnings)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
     Ok((analysis, classified))
@@ -254,30 +298,27 @@ fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<Clas
 
         // 一律用分类器归一化后的路径，不要拿原始字符串重新解析——小写根与外层目录
         // 会在第二次解析时被打回原形（#345）。
-        let (keep_in_place, normalized_path) = match &kind {
+        match kind {
+            ArmorAsset::Unrelated => unreachable!("filtered above"),
             ArmorAsset::SlotIndependent {
                 normalized_path, ..
-            } => (true, normalized_path.clone()),
-            ArmorAsset::InSlot(path) => (
-                is_path_referenced_texture(&file_name),
-                path.normalized_path().clone(),
-            ),
-            ArmorAsset::Unrelated => unreachable!("filtered above"),
-        };
-        if !keep_in_place {
-            let ArmorAsset::InSlot(path) = kind else {
-                unreachable!("only in-slot assets relocate");
-            };
-            classified.in_slot.push(ParsedReplacementAsset {
+            } => classified.package_kept_in_place.push(KeptInPlaceAsset {
+                package_file_id: asset.package_file_id().clone(),
+                relative_path: normalized_path,
+            }),
+            ArmorAsset::InSlot(path) if is_path_referenced_texture(&file_name) => {
+                classified.slot_kept_in_place.push(SlotKeptInPlaceAsset {
+                    package_file_id: asset.package_file_id().clone(),
+                    relative_path: path.normalized_path().clone(),
+                    path_family: path.path_family(),
+                    slot: path.slot().to_owned(),
+                })
+            }
+            ArmorAsset::InSlot(path) => classified.in_slot.push(ParsedReplacementAsset {
                 package_file_id: asset.package_file_id().clone(),
                 path,
-            });
-            continue;
+            }),
         }
-        classified.kept_in_place.push(KeptInPlaceAsset {
-            package_file_id: asset.package_file_id().clone(),
-            relative_path: normalized_path,
-        });
     }
     Ok(classified)
 }
@@ -303,17 +344,28 @@ fn is_path_referenced_texture(file_name: &str) -> bool {
         .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("tex"))
 }
 
-/// 原路径安装的随行文件：换任何目标槽位都仍被引用命中，搬走反而断链。
+/// 原路径安装的**包级**随行文件：`pl/<equip>/` 下与任何槽位无关（作者自建目录）。
+/// 一个包只装一次，由组装方指定承载者。
 #[derive(Debug, Clone)]
 struct KeptInPlaceAsset {
     package_file_id: PackageFileId,
     relative_path: InstallTargetPath,
 }
 
+/// 原路径安装的**槽位级**随行文件：槽位目录内的 `.tex`。只有装该槽位的绑定才带它。
+#[derive(Debug, Clone)]
+struct SlotKeptInPlaceAsset {
+    package_file_id: PackageFileId,
+    relative_path: InstallTargetPath,
+    path_family: &'static str,
+    slot: String,
+}
+
 #[derive(Debug, Default)]
 struct ClassifiedAssets {
     in_slot: Vec<ParsedReplacementAsset>,
-    kept_in_place: Vec<KeptInPlaceAsset>,
+    slot_kept_in_place: Vec<SlotKeptInPlaceAsset>,
+    package_kept_in_place: Vec<KeptInPlaceAsset>,
     excluded_count: u32,
 }
 
