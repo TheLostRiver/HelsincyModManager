@@ -137,6 +137,56 @@ fn transformed_plan_requires_matching_adapter_transform_set_digest() {
 }
 
 #[test]
+fn excluded_file_count_round_trips_and_defaults_to_zero_on_legacy_manifests() {
+    /*
+     * #336 切片③ 给 facts 加了 `excluded_file_count`。加字段的唯一硬性约束是
+     * **旧 manifest 必须仍能反序列化**——玩家机器上已有的安装是切片③ 之前写的，
+     * JSON 里根本没有这个键。
+     *
+     * 这里不用 `to_string` 再 `from_str` 自证：那样写只能证明新版本能读自己写的东西，
+     * 而真正会炸的是「新代码读旧 JSON」。所以直接用字面量拼一份**不含该键**的旧 facts。
+     */
+    let legacy = format!(
+        r#"{{"schema_version":1,"adapter_id":"mhw.weapon","strategy_id":"mrl3-texture-path",
+            "strategy_version":2,"source_closure_sha256":"{closure}","part_set_sha256":"{part}",
+            "transform_set_sha256":"{transform}",
+            "transformer_identities":[{{"transformer_id":"mhw.weapon.mrl3-texture-path.v1",
+            "transformer_version":1}}],"part_count":1,"file_count":16}}"#,
+        closure = digest('e'),
+        part = digest('f'),
+        transform = digest('a'),
+    );
+    let restored: ReplacementAdapterFacts =
+        serde_json::from_str(&legacy).expect("旧 manifest 的 facts 必须仍能读回");
+    assert_eq!(restored.file_count(), 16);
+    assert_eq!(
+        restored.excluded_file_count(),
+        0,
+        "缺字段回落到 0：切片③ 之前没有拒绝清单，确实一个文件都没排除过"
+    );
+
+    // 零值不写进 JSON（与 part_count / file_count 同一约定），非零值必须写出来。
+    let zero = ReplacementAdapterFacts::new(
+        1,
+        "mhw.weapon",
+        "mrl3-texture-path",
+        3,
+        digest('e'),
+        digest('f'),
+        digest('a'),
+    )
+    .expect("adapter facts");
+    let json = serde_json::to_string(&zero).expect("serialize");
+    assert!(!json.contains("excluded_file_count"));
+
+    let with_exclusions = zero.with_excluded_file_count(2);
+    let json = serde_json::to_string(&with_exclusions).expect("serialize");
+    assert!(json.contains("\"excluded_file_count\":2"));
+    let round_tripped: ReplacementAdapterFacts = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(round_tripped, with_exclusions);
+}
+
+#[test]
 fn transformed_plan_rejects_identity_or_count_drift() {
     let plan = transformed_plan();
     let transform_set_sha256 = plan.content_transform_set_sha256();

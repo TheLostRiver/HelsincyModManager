@@ -1,3 +1,4 @@
+use super::part_rename::split_weapon_stem;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +101,23 @@ impl WeaponFamily {
         }
     }
 
+    /// 部件前缀对应的 role。
+    ///
+    /// #343 起 role **不再参与改名**——改名只看槽位数字，见 [`super::part_rename`]。role
+    /// 只剩两个用途：`PartialPartSet` 告警（主件或本族默认副件缺失）与计划里的稳定排序。
+    /// 因此没登记过的前缀归入 `Auxiliary` 即可，不需要为它扩表，也不再是失败理由。
+    fn role_for_prefix(self, prefix: &str) -> WeaponPartRole {
+        if prefix.eq_ignore_ascii_case(self.as_str()) {
+            return WeaponPartRole::Main;
+        }
+        match self.secondary_part() {
+            Some(secondary) if prefix.eq_ignore_ascii_case(secondary.prefix()) => secondary.role(),
+            _ => WeaponPartRole::Auxiliary,
+        }
+    }
+
+    /// 本族的**默认**副件。仅用于 `PartialPartSet` 告警；不是可接受部件的完整清单，
+    /// 返回 `None` 只表示「本族没有默认副件」，不表示「本族不能有副件」。
     pub fn secondary_part(self) -> Option<WeaponSecondaryPart> {
         match self {
             Self::SwordAndShield | Self::Lance | Self::Gunlance | Self::ChargeBlade => {
@@ -145,6 +163,9 @@ pub enum WeaponPartRole {
     Shield,
     Right,
     Sheath,
+    /// 前缀不是主件、也不是本族默认副件的模型（#343）。**不是错误**——真实包里这类模型
+    /// 很常见，改名规则不需要认识它。
+    Auxiliary,
 }
 
 impl WeaponPartRole {
@@ -154,6 +175,7 @@ impl WeaponPartRole {
             Self::Shield => "shield",
             Self::Right => "right",
             Self::Sheath => "sheath",
+            Self::Auxiliary => "auxiliary",
         }
     }
 }
@@ -273,20 +295,27 @@ pub struct WeaponPartId {
 }
 
 impl WeaponPartId {
+    /// 结构化识别一个部件 ID（#343）。
+    ///
+    /// 判据只有「主干形如 `<bs_?><前缀><本槽位 3 位数字><余部>`」，**不查任何部件前缀
+    /// 注册表**。上一版要求前缀必须登记在 `WeaponFamily::secondary_part()` 里，而那张表
+    /// 只有三项、14 个族里 10 个为空，于是这些族的包只要带副件模型就否决整包。
+    ///
+    /// 拆解与两条守卫由 [`split_weapon_stem`] 提供，与磁盘改名、MRL3 引用改写**共用同一份
+    /// 实现**——识别与改名必须对同一个名字得出同一个结论，否则会分叉。
     pub fn parse_for_main(value: &str, main_id: &WeaponMainId) -> Result<Self, WeaponFamilyError> {
-        let main_part = main_id.part_for_role(WeaponPartRole::Main)?;
-        if value == main_part.as_str() {
-            return Ok(main_part);
-        }
+        let Some(parsed) = split_weapon_stem(value, main_id) else {
+            return Err(WeaponFamilyError::UnknownPart);
+        };
+        let parsed = parsed.map_err(|()| WeaponFamilyError::UnknownPart)?;
 
-        if let Some(secondary) = main_id.family().secondary_part() {
-            let secondary_part = main_id.part_for_role(secondary.role())?;
-            if value == secondary_part.as_str() {
-                return Ok(secondary_part);
-            }
-        }
-
-        Err(WeaponFamilyError::UnknownPart)
+        Ok(Self {
+            canonical: value.to_owned(),
+            family: main_id.family(),
+            role: main_id.family().role_for_prefix(parsed.prefix),
+            number: main_id.number(),
+            has_bs_prefix: main_id.has_bs_prefix(),
+        })
     }
 
     pub fn as_str(&self) -> &str {

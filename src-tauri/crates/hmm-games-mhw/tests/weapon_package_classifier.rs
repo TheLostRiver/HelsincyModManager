@@ -1,4 +1,5 @@
 //! #336 切片②：武器包两遍分类器 + 随行文件进入重定向计划。
+//! #336 切片③：可执行 / 脚本拒绝清单——命中的文件不产出动作、计入 facts。
 //!
 //! 夹具是三个真实第三方包的**完整路径清单**（纯字符串，逐条来自沙箱实测），二进制字节
 //! 合成。真实包本身不入库（`自动测试不得使用第三方 Mod 包`），但路径清单必须原样保留——
@@ -17,8 +18,9 @@ use hmm_core::{
     GameId, ModId, PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId, RetargetPlan,
 };
 use hmm_games_mhw::{
-    analyze_mhw_weapon_assets, transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter,
-    MhwReplacementCatalog, WeaponMainId,
+    analyze_mhw_weapon_assets, is_rejected_executable_file_name,
+    transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter, MhwReplacementCatalog,
+    WeaponMainId, MHW_EXECUTABLE_REJECT_EXTENSIONS,
 };
 use hmm_ports::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
@@ -338,9 +340,12 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
     )
     .expect("真实黑骑士包必须能产出计划");
 
-    // 一个包内文件都不能丢：16 个文件 = 16 条动作。
-    assert_eq!(plan.actions().len(), BLACK_KNIGHT_TWO003.len());
+    // 除拒绝清单命中的一个 `.exe` 外，一个包内文件都不能丢：16 个文件 = 15 条动作。
+    assert_eq!(plan.actions().len(), BLACK_KNIGHT_TWO003.len() - 1);
     for path in BLACK_KNIGHT_TWO003 {
+        if path.ends_with(".exe") {
+            continue;
+        }
         target_of(&plan, path);
     }
 
@@ -393,14 +398,19 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
     let facts = plan.adapter_facts().expect("sealed adapter facts");
     assert_eq!(
         facts.strategy_version(),
-        2,
-        "随行文件进入计划改变了 action 集合，必须由 strategy_version 标记"
+        4,
+        "action 集合每次变化（② 加随行文件、③ 去掉被拒绝的文件、#343 改名规则）都必须由 strategy_version 标记"
     );
     assert_eq!(facts.part_count(), 1);
     assert_eq!(
         facts.file_count(),
-        BLACK_KNIGHT_TWO003.len() as u32,
-        "file_count 现在含随行文件"
+        (BLACK_KNIGHT_TWO003.len() - 1) as u32,
+        "file_count 含随行文件，但不含被拒绝的文件"
+    );
+    assert_eq!(
+        facts.excluded_file_count(),
+        1,
+        "被丢弃的 .exe 必须在 facts 里留痕，否则拒绝就是一次无痕的静默丢弃"
     );
     plan.validate_transform_facts()
         .expect("transform facts remain internally consistent");
@@ -419,7 +429,7 @@ fn companion_filenames_drop_the_bs_prefix_when_the_target_slot_has_none() {
     )
     .expect("bs_ 前缀的真实包必须能产出计划");
 
-    assert_eq!(plan.actions().len(), BLACK_KNIGHT_BS_TWO012.len());
+    assert_eq!(plan.actions().len(), BLACK_KNIGHT_BS_TWO012.len() - 1);
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/bs_two012_XM.tex"),
         "nativePC/wp/two/two020/mod/two020_XM.tex"
@@ -553,28 +563,229 @@ fn rewritten_references_land_on_files_the_plan_actually_produces() {
 }
 
 #[test]
-fn an_unregistered_part_inside_the_source_slot_still_fails_closed() {
+fn a_part_variant_suffix_travels_with_the_model_instead_of_failing_the_package() {
     /*
-     * ②b：`saya035ol` 是**模型**（`.mod3`/`.mrl3`），不是伴生文件。若当伴生文件搬运，
-     * 它 MRL3 里指向源槽位的贴图引用不会被改写，重定向后断链。正确做法是让未登记部件
-     * 走正常的配对 + 改写管线，但那要改 `WeaponPartId` 模型，而部件注册表是
-     * `WEAPON_RETARGET_DESIGN.md:167` 明文冻结的口径，需独立设计变更。
+     * ②b。`saya035ol` 过去判 `weapon_unknown_part` 并否决整包——库里唯一一把太刀 Mod
+     * （泡狐太刀）因此完全不可重定向。
      *
-     * 因此泡狐太刀在本切片后仍不可重定向——**这是刻意的失败关闭，不是遗漏**。
+     * 它本质上不是「没见过的部件」：前缀就是本族已登记的鞘 `saya035`，作者只是加了个
+     * 变体标记 `ol`。改名规则本来就能算对，挡住它的只有 `parse_for_main` 的全等比较。
+     *
+     * 关键在于后缀必须**跟着走**：`saya035ol` → `saya019ol`。若丢掉后缀，它会和同族的
+     * `saya035` 双双落到 `saya019`，两个不同模型互相覆盖，而且计划看起来完全成功。
      */
-    let error = MhwReplacementAdapter
-        .analyze_replacement_assets(ReplacementAnalysisRequest {
-            game_id: GameId::mhw(),
-            assets: assets(FOX_LONGSWORD_SWO035),
-        })
-        .expect_err("未登记部件不得被当成伴生文件搬运");
+    let plan = plan_for(
+        FOX_LONGSWORD_SWO035,
+        "swo019",
+        &[r"wp\swo\Tamonowo\Tamonowo_BML"],
+    )
+    .expect("带变体后缀的完整泡狐包必须能产出计划");
 
-    assert!(matches!(
-        error,
-        ReplacementAdapterError::AnalysisRejected {
-            code: "weapon_unknown_part"
+    assert_eq!(plan.actions().len(), FOX_LONGSWORD_SWO035.len());
+    assert_eq!(
+        target_of(&plan, "nativePC/wp/swo/swo035/mod/saya035ol.mod3"),
+        "nativePC/wp/swo/swo019/mod/saya019ol.mod3"
+    );
+    assert_eq!(
+        target_of(&plan, "nativePC/wp/swo/swo035/mod/saya035ol.mrl3"),
+        "nativePC/wp/swo/swo019/mod/saya019ol.mrl3"
+    );
+    // 变体与本体是两个独立模型对，各自落位、互不覆盖。
+    assert_eq!(
+        target_of(&plan, "nativePC/wp/swo/swo035/mod/saya035.mod3"),
+        "nativePC/wp/swo/swo019/mod/saya019.mod3"
+    );
+    let targets = plan
+        .actions()
+        .iter()
+        .map(|action| action.target_relative_path().as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        targets.len(),
+        plan.actions().len(),
+        "目标路径必须两两不同，后缀丢失会在这里撞车"
+    );
+    // 三个模型对（swo035 主件、saya035 鞘、saya035ol 变体）都要带上 MRL3 改写。
+    assert_eq!(
+        plan.actions()
+            .iter()
+            .filter(|action| action.content_transform().is_some())
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn a_variant_parts_rewritten_references_land_on_files_the_plan_actually_produces() {
+    /*
+     * ②b 的闭环校验，也是真机验收「贴图正常」的静态对应物。断言「计划里有 3 个 transform」
+     * 只证明改写发生过，不证明改写**对**。这里要求：`saya035ol.mrl3` 改写后指向目标槽位的
+     * 每一条引用，都能在计划的目标路径里找到对应文件，且不残留指向源槽位的引用。
+     *
+     * 这条最容易挂的地方正是变体后缀：引用侧走 `rename_part_prefix`、磁盘侧走
+     * `part_for_role` + `with_variant_suffix`，两条不同的代码路径必须给出同一个名字。
+     */
+    let references = [
+        r"wp\swo\swo035\mod\saya035ol_BML",
+        r"wp\swo\swo035\mod\saya035ol_NM",
+        // 与槽位无关的引用：一个字节都不该被改。
+        r"wp\swo\Tamonowo\Tamonowo_BML",
+    ];
+    let mut paths = FOX_LONGSWORD_SWO035.to_vec();
+    paths.extend([
+        "nativePC/wp/swo/swo035/mod/saya035ol_BML.tex",
+        "nativePC/wp/swo/swo035/mod/saya035ol_NM.tex",
+    ]);
+    let plan = plan_for(&paths, "swo019", &references).expect("计划");
+
+    let closure = analyze_mhw_weapon_assets(&assets(&paths)).expect("closure");
+    let variant = closure
+        .pairs()
+        .iter()
+        .find(|pair| pair.part_id().as_str() == "saya035ol")
+        .expect("变体部件必须成对进入闭包");
+    let output = transform_mhw_weapon_mrl3_texture_paths(
+        variant,
+        &WeaponMainId::parse("swo019").expect("target main id"),
+        &artificial_mod3(&[ARTIFICIAL_MATERIAL]),
+        &artificial_mrl3(&references, &[ARTIFICIAL_MATERIAL_HASH]),
+    )
+    .expect("transform");
+
+    let rewritten = mrl3_paths(output.bytes(), references.len());
+    assert_eq!(output.report().rewritten_reference_count(), 2);
+
+    let target_paths = plan
+        .actions()
+        .iter()
+        .map(|action| action.target_relative_path().as_str().replace('/', "\\"))
+        .collect::<Vec<_>>();
+    for reference in &rewritten {
+        assert!(
+            !reference.starts_with(r"wp\swo\swo035\"),
+            "改写后不得残留指向源槽位的引用：{reference}"
+        );
+        if !reference.starts_with(r"wp\swo\swo019\") {
+            continue;
         }
-    ));
+        assert!(
+            target_paths
+                .iter()
+                .any(|path| path == &format!(r"nativePC\{reference}.tex")),
+            "引用 {reference} 在计划里没有对应文件——重定向后会断链"
+        );
+    }
+    assert_eq!(rewritten[0], r"wp\swo\swo019\mod\saya019ol_BML");
+    assert_eq!(rewritten[2], r"wp\swo\Tamonowo\Tamonowo_BML");
+}
+
+#[test]
+fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package() {
+    /*
+     * #343 的核心回归。改名只需要知道「源槽位数字 → 目标槽位数字」，**不需要事先登记
+     * 部件前缀**。上一版从 role 推导目标部件名，因此前缀必须登记在
+     * `WeaponFamily::secondary_part()` 里——而那张表只有三项，14 个族里 10 个为空，
+     * 这些族的包只要带一个副件模型就判 `weapon_unknown_part` 并否决整包。
+     *
+     * 弓类就是其中之一：下面这个包在上一版是打不开的。
+     */
+    let paths = [
+        "nativePC/wp/bow/bow013/mod/bow013.mod3",
+        "nativePC/wp/bow/bow013/mod/bow013.mrl3",
+        "nativePC/wp/bow/bow013/mod/bow013_BML.tex",
+        // 前缀不在任何注册表里的副件模型
+        "nativePC/wp/bow/bow013/mod/ya013.mod3",
+        "nativePC/wp/bow/bow013/mod/ya013.mrl3",
+        "nativePC/wp/bow/bow013/mod/ya013_BML.tex",
+    ];
+    let plan = plan_for(&paths, "bow019", &[r"wp\bow\bow013\mod\ya013_BML"])
+        .expect("未登记前缀的副件不得否决整包");
+
+    assert_eq!(plan.actions().len(), paths.len());
+    for (source, target) in [
+        ("bow013.mod3", "bow019.mod3"),
+        ("ya013.mod3", "ya019.mod3"),
+        ("ya013.mrl3", "ya019.mrl3"),
+        ("ya013_BML.tex", "ya019_BML.tex"),
+    ] {
+        assert_eq!(
+            target_of(&plan, &format!("nativePC/wp/bow/bow013/mod/{source}")),
+            format!("nativePC/wp/bow/bow019/mod/{target}"),
+            "{source} 的前缀必须逐字保留，只换槽位数字"
+        );
+    }
+    // 两个模型对都要带上 MRL3 改写。
+    assert_eq!(
+        plan.actions()
+            .iter()
+            .filter(|action| action.content_transform().is_some())
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn a_model_that_does_not_carry_the_source_slot_number_still_fails_closed() {
+    /*
+     * 放宽的是「前缀不必登记」，不是「什么都收」。源槽位目录内的模型若**不带本槽位的
+     * 数字**，改名规则无从下手——把它当伴生文件搬运，它 MRL3 里指向源槽位的引用不会被
+     * 改写，重定向后断链，而且是静默断链。
+     */
+    for unknown in ["zzz999", "nodigits"] {
+        let mut paths = fox_longsword_registered();
+        let injected = format!("nativePC/wp/swo/swo035/mod/{unknown}.mod3");
+        paths.push(&injected);
+
+        let error = MhwReplacementAdapter
+            .analyze_replacement_assets(ReplacementAnalysisRequest {
+                game_id: GameId::mhw(),
+                assets: assets(&paths),
+            })
+            .expect_err("不带本槽位数字的模型不得被猜");
+
+        assert!(
+            matches!(
+                error,
+                ReplacementAdapterError::AnalysisRejected {
+                    code: "weapon_unknown_part"
+                }
+            ),
+            "{unknown} 实际是 {error:?}"
+        );
+    }
+}
+
+#[test]
+fn a_digit_or_nested_part_id_after_the_part_prefix_is_not_treated_as_a_variant() {
+    /*
+     * 变体后缀的两条守卫，与 `rename_part_prefix` 逐字相同——两处必须对同一个文件名得出
+     * 同一个结论，否则磁盘改名与 MRL3 引用改写会分叉。
+     *
+     * 守卫①：`saya0351` 是更长的数字串，不是 `saya035` + 变体 `1`。
+     * 守卫②：`saya035saya035` 无法判断作者意图，且内层不会被改写。
+     */
+    for unknown in ["saya0351", "saya035saya035"] {
+        let mut paths = fox_longsword_registered();
+        let injected = format!("nativePC/wp/swo/swo035/mod/{unknown}.mod3");
+        paths.push(&injected);
+
+        let error = MhwReplacementAdapter
+            .analyze_replacement_assets(ReplacementAnalysisRequest {
+                game_id: GameId::mhw(),
+                assets: assets(&paths),
+            })
+            .expect_err("{unknown} 不得被当成变体后缀");
+
+        assert!(
+            matches!(
+                error,
+                ReplacementAdapterError::AnalysisRejected {
+                    code: "weapon_unknown_part"
+                }
+            ),
+            "{unknown} 实际是 {error:?}"
+        );
+    }
 }
 
 #[test]
@@ -595,8 +806,8 @@ fn files_outside_the_weapon_tree_never_enter_the_plan() {
 
     assert_eq!(
         plan.actions().len(),
-        BLACK_KNIGHT_TWO003.len(),
-        "武器树之外的文件不产出动作"
+        BLACK_KNIGHT_TWO003.len() - 1,
+        "武器树之外的文件不产出动作（减掉的 1 是拒绝清单命中的 .exe）"
     );
     for ignored in ["readme.txt", "预览图.png"] {
         assert!(
@@ -656,29 +867,194 @@ fn a_longer_digit_run_in_a_companion_filename_is_not_mistaken_for_the_part_id() 
     );
 }
 
-#[test]
-fn executables_still_travel_with_the_package_until_the_reject_list_lands() {
-    /*
-     * **已知缺口，刻意钉住。** 真实包里的 `MHWTexConverter_by_Jodo.exe` 是作者的贴图
-     * 转换工具，参照实现真的把它写进了游戏目录（实测 30208 B）。#336 洞见 5 的拒绝清单
-     * 是切片③，落地后这条测试会转红——那时应改成断言 `.exe` 不产出动作。
-     *
-     * 本切片不抢先做：普通安装链路目前同样没有可执行文件拒绝清单，重定向路径不引入新的
-     * 暴露面类别；而拒绝清单要连审计留痕、UI 提示与 `SECURITY.md` 一起做才完整。
-     */
-    let plan = plan_for(
-        BLACK_KNIGHT_TWO003,
-        "two019",
-        &[r"wp\two\two003\mod\two003_BML"],
-    )
-    .expect("计划");
+/// 计划里有没有为某个包内文件产出动作。
+fn has_action_for(plan: &RetargetPlan, source_path: &str) -> bool {
+    plan.actions()
+        .iter()
+        .any(|action| action.source_relative_path().as_str() == source_path)
+}
 
+/// 计划的所有目标路径末段。断言「不会写出什么」时看目标而不是来源——真正决定
+/// 落盘文件名的是目标路径。
+fn target_file_names(plan: &RetargetPlan) -> Vec<&str> {
+    plan.actions()
+        .iter()
+        .map(|action| {
+            action
+                .target_relative_path()
+                .as_str()
+                .rsplit_once('/')
+                .map(|(_, name)| name)
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[test]
+fn the_authors_texture_converter_executable_never_enters_the_plan() {
+    /*
+     * #336 切片③ 的核心负测。真机实验 B 的快照比对显示
+     * `MHWTexConverter_by_Jodo.exe`（30208 B）落进了游戏目录；两个真实黑骑士包都带着它。
+     *
+     * 「不产出动作」就是「不落盘」：`RetargetPlan.actions` 是重定向安装唯一的写入来源，
+     * staging 与 commit 都只遍历它。
+     */
+    for (paths, target, source_slot) in [
+        (BLACK_KNIGHT_TWO003, "two019", "two003"),
+        (BLACK_KNIGHT_BS_TWO012, "two020", "bs_two012"),
+    ] {
+        let reference = format!(r"wp\two\{source_slot}\mod\{source_slot}_BML");
+        let plan = plan_for(paths, target, &[reference.as_str()]).expect("计划");
+        let executable = format!("nativePC/wp/two/{source_slot}/mod/MHWTexConverter_by_Jodo.exe");
+
+        assert!(
+            !has_action_for(&plan, &executable),
+            "{executable} 不得产出动作"
+        );
+        assert_eq!(plan.actions().len(), paths.len() - 1);
+        assert_eq!(
+            plan.adapter_facts()
+                .expect("sealed adapter facts")
+                .excluded_file_count(),
+            1
+        );
+        // 更强的不变量：不看来源，直接确认计划**写不出**任何可执行文件。
+        assert!(
+            !target_file_names(&plan)
+                .iter()
+                .any(|name| is_rejected_executable_file_name(name)),
+            "计划的目标路径里不得出现可执行文件"
+        );
+    }
+}
+
+#[test]
+fn every_extension_on_the_reject_list_is_dropped_from_the_plan() {
+    /*
+     * 逐条验证清单本身，而不是只验 `.exe`：往源槽位塞进清单里的每一个扩展名，
+     * 断言无一产出动作、模型对不受影响、计数与清单长度一致。
+     *
+     * 遍历导出的常量而不是在测试里另抄一份——两份清单会漂移，而漂移的方向必然是
+     * 「代码里少了一项而测试仍然全绿」。
+     */
+    let mut paths = BLACK_KNIGHT_TWO003
+        .iter()
+        .filter(|path| !path.ends_with(".exe"))
+        .copied()
+        .collect::<Vec<_>>();
+    let injected = MHW_EXECUTABLE_REJECT_EXTENSIONS
+        .iter()
+        .map(|extension| format!("nativePC/wp/two/two003/mod/two003_tool.{extension}"))
+        .collect::<Vec<_>>();
+    paths.extend(injected.iter().map(String::as_str));
+
+    let plan = plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"]).expect("计划");
+
+    for path in &injected {
+        assert!(!has_action_for(&plan, path), "{path} 不得产出动作");
+    }
     assert_eq!(
-        target_of(
-            &plan,
-            "nativePC/wp/two/two003/mod/MHWTexConverter_by_Jodo.exe"
-        ),
-        "nativePC/wp/two/two019/mod/MHWTexConverter_by_Jodo.exe",
-        "切片③ 落地后这里应改为断言不产出动作"
+        plan.actions().len(),
+        BLACK_KNIGHT_TWO003.len() - 1,
+        "注入的可执行文件一个都不该进计划"
     );
+    assert_eq!(
+        plan.adapter_facts()
+            .expect("sealed adapter facts")
+            .excluded_file_count(),
+        MHW_EXECUTABLE_REJECT_EXTENSIONS.len() as u32
+    );
+}
+
+#[test]
+fn the_reject_list_survives_case_and_windows_trailing_dot_spellings() {
+    /*
+     * 只做 `ends_with(".exe")` 的检查有两个现实中可用的绕法：
+     *
+     * - `X.EXE`——NTFS 大小写不敏感，落到磁盘上就是同一个文件；
+     * - `x.exe.`——Win32 创建文件时剥掉最后一段的尾随点，磁盘上同样是 `x.exe`。
+     *
+     * 两种写法都必须被拒绝清单挡下。尾随**空格**（`x.exe `）走不到这里：整条路径的
+     * 首尾空白在 `parse_safe_relative_path` 就 fail closed，见下一条测试。
+     */
+    let mut paths = BLACK_KNIGHT_TWO003
+        .iter()
+        .filter(|path| !path.ends_with(".exe"))
+        .copied()
+        .collect::<Vec<_>>();
+    let evasions = [
+        "nativePC/wp/two/two003/mod/UPPER.EXE",
+        "nativePC/wp/two/two003/mod/Mixed.Dll",
+        "nativePC/wp/two/two003/mod/trailing_dot.exe.",
+        "nativePC/wp/two/two003/mod/trailing_dots.bat...",
+    ];
+    paths.extend(evasions);
+
+    let plan = plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"]).expect("计划");
+
+    for path in evasions {
+        assert!(!has_action_for(&plan, path), "{path} 不得产出动作");
+    }
+    assert_eq!(plan.actions().len(), BLACK_KNIGHT_TWO003.len() - 1);
+    assert_eq!(
+        plan.adapter_facts()
+            .expect("sealed adapter facts")
+            .excluded_file_count(),
+        evasions.len() as u32
+    );
+}
+
+#[test]
+fn a_trailing_space_filename_fails_closed_before_classification() {
+    /*
+     * `x.exe ` 在 Windows 上落盘同样是 `x.exe`，但它压根到不了拒绝清单：整条相对路径
+     * 的首尾空白在 `parse_safe_relative_path` 就被判 `weapon_unsafe_path`。
+     *
+     * 钉住这条是因为**拒绝清单依赖它**：清单只剥尾随点与空格来还原 Win32 语义，
+     * 若哪天有人放宽了路径校验的空白规则，这里会转红，提醒同步加固清单侧。
+     */
+    let mut paths = BLACK_KNIGHT_TWO003.to_vec();
+    paths.push("nativePC/wp/two/two003/mod/trailing_space.exe ");
+
+    let error = plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"])
+        .expect_err("尾随空格的路径必须失败关闭");
+
+    assert!(
+        matches!(
+            error,
+            ReplacementAdapterError::AnalysisRejected {
+                code: "weapon_unsafe_path"
+            }
+        ),
+        "实际是 {error:?}"
+    );
+}
+
+#[test]
+fn real_game_asset_extensions_are_never_caught_by_the_reject_list() {
+    /*
+     * 反向的一半：拒绝清单不得误伤任何正常的 Mod 资源。这里逐条走三个真实包里
+     * 实际出现过的扩展名——它们全部来自沙箱实测的路径清单，不是我编的。
+     *
+     * 误伤的后果比漏放更直接：重定向后游戏里贴图或特效缺失，而计划仍显示成功。
+     */
+    for name in [
+        "two003.mod3",
+        "two003.mrl3",
+        "two003.evwp",
+        "two003_BML.tex",
+        "two003_BML.dds",
+        "two003_BML.PNG",
+        "swo035_off_deco.ctc",
+        "swo035.epv3",
+        "hm_wp03_82.epvsp",
+        "petals.efx",
+        "1 RMT.dds",
+        "131072_2599467785140006031 BML.dds",
+    ] {
+        assert!(
+            !is_rejected_executable_file_name(name),
+            "{name} 是正常的游戏资源，不得被拒绝清单挡下"
+        );
+    }
 }
