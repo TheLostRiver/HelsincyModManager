@@ -3504,11 +3504,17 @@ mod tests {
     }
 
     /// 建一个真实的 staging 根，让「没有闸门时会发生什么」变得可观测。
-    fn materialize_staging_root(app_data_dir: &Path, target_main: &str, stem: &str) -> PathBuf {
+    fn materialize_staging_root_for(
+        app_data_dir: &Path,
+        binding_uuid: &str,
+        target_main: &str,
+        stem: &str,
+        bytes: &[u8],
+    ) -> PathBuf {
         let staging_root = app_data_dir
             .join("install")
             .join("retarget-staging")
-            .join("11111111-1111-4111-8111-111111111111");
+            .join(binding_uuid);
         let staged = staging_root
             .join("nativePC")
             .join("wp")
@@ -3516,8 +3522,18 @@ mod tests {
             .join(target_main)
             .join("mod");
         fs::create_dir_all(&staged).expect("staging tree");
-        fs::write(staged.join(format!("{stem}.mod3")), b"staged-bytes").expect("staged bytes");
+        fs::write(staged.join(format!("{stem}.mod3")), bytes).expect("staged bytes");
         staging_root
+    }
+
+    fn materialize_staging_root(app_data_dir: &Path, target_main: &str, stem: &str) -> PathBuf {
+        materialize_staging_root_for(
+            app_data_dir,
+            "11111111-1111-4111-8111-111111111111",
+            target_main,
+            stem,
+            b"staged-bytes",
+        )
     }
 
     fn game_tree_is_empty(game_root: &Path) -> bool {
@@ -3632,8 +3648,10 @@ mod tests {
 
     /// 路由点名了**计划里没有的**绑定：组装方与计划不同步，在读写之前拒绝。
     ///
-    /// 不拦也不会静默装错——那个 staging 根下没有这个动作的 `target_path`，读取会失败。
-    /// 但失败点在读文件的时候，错误码是通用的 `SourceRead`。这里把它挡在前面。
+    /// 这条钉的是**残留 staging 目录**这个真实场景：陌生绑定的根如果恰好存在、里面又恰好
+    /// 有这个动作的 `target_path`（提交失败留下的孤儿目录就是这个形状），没有这道检查时
+    /// 读取会**成功**，把那份陌生字节写进游戏目录。所以这里把陌生根造出来并放上可辨认的
+    /// 字节，断言游戏目录里一个文件都没有——而不是依赖「陌生根恰好不存在」这个偶然。
     #[test]
     fn commit_refuses_a_routing_that_names_a_binding_outside_the_plan() {
         let temp = tempfile::tempdir().expect("temp root");
@@ -3641,10 +3659,18 @@ mod tests {
         let game_root = temp.path().join("game");
         fs::create_dir_all(&game_root).expect("game root");
         materialize_staging_root(&app_data_dir, "one002", "first");
+        // 上一次提交失败留下的孤儿 staging 目录，内容与本计划无关。
+        materialize_staging_root_for(
+            &app_data_dir,
+            "22222222-2222-4222-8222-222222222222",
+            "one002",
+            "first",
+            b"WRONG-stranger-bytes",
+        );
         let looked_up = Arc::new(AtomicBool::new(false));
         let committer = committer_for(app_data_dir, game_root.clone(), Arc::clone(&looked_up));
         let mut routing = RetargetSourceRouting::empty();
-        // 计划里的绑定是 `binding-1111...`，这里点名一个不在计划里的。
+        // 计划里的绑定是 `binding-1111...`，这里点名那个孤儿目录的绑定。
         routing
             .stage(
                 hmm_core::PackageFileId::new("first.mod3"),
@@ -3666,7 +3692,10 @@ mod tests {
                 phase: InstallCommitPhase::SourceRead
             })
         ));
-        assert!(game_tree_is_empty(&game_root));
+        assert!(
+            game_tree_is_empty(&game_root),
+            "陌生绑定的字节一个都不该落进游戏目录"
+        );
         assert!(
             !looked_up.load(Ordering::SeqCst),
             "拒绝要发生在构造任何读取器之前"
