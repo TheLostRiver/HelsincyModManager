@@ -17,10 +17,10 @@ use hmm_app::{
     GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
-    InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
-    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
-    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
-    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InitialRetargetInstallStatusReader, InitialRetargetSelection, InstallCommitError,
+    InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
+    InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
+    InstallRecoveryActionExecutor, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
@@ -44,15 +44,15 @@ use hmm_app::{
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementOccupancyService,
     ReplacementWorkflowError, ReplacementWorkflowService, RetargetInstallTaskRunner,
     RetargetInstallTaskService, RetargetReinstallRequest, RetargetReinstallTaskExecutor,
-    SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
-    SaveBackupCenterService, SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService,
-    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
-    SaveProfileMaintenanceScopeRegistry, SaveRestoreService, SaveRestoreTaskRunner,
-    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, Sha256SaveRestoreTokenCodec,
-    StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    RetargetStagingMaterializerFactory, SaveBackupAutoSchedulerService,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
+    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
+    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
+    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -103,7 +103,7 @@ use hmm_ports::{
     ModStorageDirectoryInspector, ModStorageMigrationJournalRepository, ModStorageMigrator,
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
-    ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
+    ReplacementSelectionRepository, RetargetStagingMaterializer, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
     SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
@@ -2134,20 +2134,44 @@ impl ConfiguredInitialRetargetInstallPlanner {
         }
     }
 
-    fn materializer_for(
+    /// 按绑定发 materializer——每个重定向绑定有自己的 staging 根（`#349` 切片③b）。
+    fn staging_factory_for(
         &self,
         planned: &PlannedInitialRetargetInstall,
-    ) -> Result<FileSystemRetargetStagingMaterializer, ReplacementWorkflowError> {
+    ) -> Result<ConfiguredRetargetStagingMaterializerFactory, ReplacementWorkflowError> {
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
             .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
-        let staging_root = retarget_staging_root(&self.app_data_dir, planned.binding_id())
+        Ok(ConfiguredRetargetStagingMaterializerFactory {
+            source_root,
+            app_data_dir: self.app_data_dir.clone(),
+            content_transformers: Arc::clone(&self.content_transformers),
+        })
+    }
+}
+
+struct ConfiguredRetargetStagingMaterializerFactory {
+    source_root: PathBuf,
+    app_data_dir: PathBuf,
+    content_transformers: Arc<ContentTransformerRegistry>,
+}
+
+impl RetargetStagingMaterializerFactory for ConfiguredRetargetStagingMaterializerFactory {
+    fn materializer_for(
+        &self,
+        binding_id: &ReplacementBindingId,
+    ) -> Result<Box<dyn RetargetStagingMaterializer>, ReplacementWorkflowError> {
+        let staging_root = retarget_staging_root(&self.app_data_dir, binding_id)
             .ok_or(ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(FileSystemRetargetStagingMaterializer::new_with_registry(
-            staging_root,
-            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
-            Arc::clone(&self.content_transformers),
+        Ok(Box::new(
+            FileSystemRetargetStagingMaterializer::new_with_registry(
+                staging_root,
+                Arc::new(FileSystemInstallSourceFileReader::new(
+                    self.source_root.clone(),
+                )),
+                Arc::clone(&self.content_transformers),
+            ),
         ))
     }
 }
@@ -2163,17 +2187,34 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
                     game_id: request.game_id,
                     profile_id: request.profile_id,
                     mod_id: request.mod_id,
-                    target_id: request.target_id,
+                    // 任务请求目前只携带一个目标，源由分析推断——与切片③b 之前逐字相同。
+                    // 逐槽位意图（D2 三态）要等前端能发出来（`#349` 切片④）。
+                    selection: InitialRetargetSelection::SoleSource {
+                        target_id: request.target_id,
+                    },
                     layer: request.layer,
                 })?;
-        let materializer = self.materializer_for(&planned)?;
+        let factory = self.staging_factory_for(&planned)?;
         let revision_id = planned.revision_id().clone();
-        let materialized = self
-            .workflow
-            .materialize_initial_install(&materializer, planned)?;
-        let source_routing = materialized.source_routing();
+        // 中途失败时已建好的 staging 目录要清掉。这份清单在 materialize 之前取，
+        // 因为 `planned` 会被 move 进去——漏掉任何一个都会留下孤儿暂存目录。
+        let staged_binding_ids = planned.staged_binding_ids();
+        let materialized = match self.workflow.materialize_initial_install(&factory, planned) {
+            Ok(materialized) => materialized,
+            Err(error) => {
+                for binding_id in &staged_binding_ids {
+                    if let Some(staging_root) =
+                        retarget_staging_root(&self.app_data_dir, binding_id)
+                    {
+                        discard_retarget_staging(&staging_root);
+                    }
+                }
+                return Err(error);
+            }
+        };
+        let (plan, source_routing) = materialized.into_parts();
         Ok(InitialRetargetInstallPlan {
-            plan: materialized.into_parts().1,
+            plan,
             revision_id,
             source_routing,
         })

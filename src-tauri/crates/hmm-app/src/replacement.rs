@@ -2,7 +2,8 @@ use hmm_core::{
     FileLayer, GameId, InstallFileProvider, InstallManifestStatusConsumption, InstallPlan,
     InstallPlanValidationError, ModId, ModRevisionId, PackageFileId, ProfileId,
     ReplacementAnalysis, ReplacementBinding, ReplacementBindingId, ReplacementBindingSnapshot,
-    ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan, RetargetSourceRouting,
+    ReplacementSourceId, ReplacementTarget, ReplacementTargetId, RetargetError, RetargetPlan,
+    RetargetSourceRouting,
 };
 use hmm_ports::{
     AppClock, InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
@@ -13,6 +14,7 @@ use hmm_ports::{
     RetargetPlanRequest, RetargetStagingError, RetargetStagingFile, RetargetStagingMaterializer,
 };
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -90,6 +92,21 @@ pub enum ReplacementWorkflowError {
     PlanUnavailable,
     #[error("install manifest is unavailable")]
     InstallManifestUnavailable,
+    /// 同一个源槽位在一次提交里被给了两条意图。谁生效都可能是错的，所以拒绝。
+    #[error("one replacement source carries two slot intents")]
+    DuplicateSlotIntent,
+    /// 一次提交里两个源槽位指向了同一个目标。
+    ///
+    /// 不拦的话它照样装不上（两个 provider 撞同一个 `target_path`，动作全进 `conflicts`、
+    /// `actions` 为空，绑定校验随后报 `ReplacementBindingOwnerMissing`），但报出来的是
+    /// 「计划不可用」——玩家看不出是自己把两件装备指到了一处。这里提前具名拒绝，
+    /// 让 `#349` 切片④ 的文案有准确的根因可讲。
+    #[error("two replacement sources aim at one target")]
+    DuplicateSlotTarget,
+    /// 「保持原位」要求源槽位本身在 catalog 里能唯一解析成一个目标（`#349` D2）。
+    /// 解析不出时那个槽位只能选「换到 X」或「不装」——猜会把文件装到别的装备上。
+    #[error("keeping this replacement source in place is unavailable")]
+    KeepInPlaceUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,12 +115,68 @@ pub struct AnalyzeImportedReplacementRequest {
     pub mod_id: ModId,
 }
 
+/// 玩家对**一个源槽位**的意图（`#349` D2 三态）。
+///
+/// 「不装」不在这里出现——它就是**不把这个槽位放进 `slots`**，于是它的文件不进计划。
+/// 三态因此只需要两个变体加上「缺席」。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitialRetargetSlotIntent {
+    /// 换到某个目标槽位：创建重定向绑定，产出走 staging。
+    Retarget {
+        source_id: ReplacementSourceId,
+        target_id: ReplacementTargetId,
+    },
+    /// 保持原位：文件按**原路径**照常安装。
+    ///
+    /// 内部解析成一个指向源槽位自己的 identity 绑定（`created_at == 0` 且源目标同一，
+    /// 与 canonical source install 用的是同一套机制）。它不进源路由，所以提交时直接读
+    /// 沙箱原包——「不重定向」在字节层面就是「不经 staging」。
+    ///
+    /// 源槽位本身必须在 catalog 里能唯一解析成一个目标；解析不出时返回
+    /// `KeepInPlaceUnavailable`，那个槽位只能选「换到 X」或「不装」。
+    KeepInPlace { source_id: ReplacementSourceId },
+}
+
+impl InitialRetargetSlotIntent {
+    pub fn source_id(&self) -> &ReplacementSourceId {
+        match self {
+            Self::Retarget { source_id, .. } | Self::KeepInPlace { source_id } => source_id,
+        }
+    }
+
+    fn is_retarget(&self) -> bool {
+        matches!(self, Self::Retarget { .. })
+    }
+}
+
+/// 一次初始重定向安装要装什么。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitialRetargetSelection {
+    /// `#349` 切片③b 之前唯一的形状：整包**恰好一个**源槽位，重定向到一个目标，
+    /// 源由分析推断。多槽位包在这一档下仍报 `SourceNotRetargetable`——与切片③b 之前
+    /// 逐字相同的行为。前端要装多槽位包得改发 [`Self::PerSlot`]（`#349` 切片④）。
+    SoleSource { target_id: ReplacementTargetId },
+    /// 逐槽位意图（D2 三态）。不在列表里的槽位就是「不装」。
+    PerSlot(Vec<InitialRetargetSlotIntent>),
+}
+
+impl InitialRetargetSelection {
+    /// 单目标形状下的那个目标。`PerSlot` 返回 `None`——多槽位选择没有单值「目标」，
+    /// 这正是 `#349` 之前的模型不成立的地方。
+    pub fn sole_target_id(&self) -> Option<&ReplacementTargetId> {
+        match self {
+            Self::SoleSource { target_id } => Some(target_id),
+            Self::PerSlot(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewInitialRetargetInstallRequest {
     pub game_id: GameId,
     pub profile_id: ProfileId,
     pub mod_id: ModId,
-    pub target_id: ReplacementTargetId,
+    pub selection: InitialRetargetSelection,
     pub layer: FileLayer,
 }
 
@@ -133,8 +206,9 @@ pub struct PlannedInitialRetargetInstall {
     revision_id: ModRevisionId,
     layer: FileLayer,
     analysis: ReplacementAnalysis,
-    target: ReplacementTarget,
-    retarget_plan: RetargetPlan,
+    /// 与 `retarget_plans` 一一对应、同序。「保持原位」的槽位在这里是它自己解析出的目标。
+    targets: Vec<ReplacementTarget>,
+    retarget_plans: Vec<RetargetPlan>,
     install_plan: InstallPlan,
 }
 
@@ -186,21 +260,54 @@ impl PlannedInitialRetargetInstall {
         &self.analysis
     }
 
-    pub fn target(&self) -> &ReplacementTarget {
-        &self.target
+    pub fn targets(&self) -> &[ReplacementTarget] {
+        &self.targets
     }
 
-    pub fn retarget_plan(&self) -> &RetargetPlan {
-        &self.retarget_plan
+    pub fn retarget_plans(&self) -> &[RetargetPlan] {
+        &self.retarget_plans
     }
 
     pub fn install_plan(&self) -> &InstallPlan {
         &self.install_plan
     }
 
-    pub fn binding_id(&self) -> &ReplacementBindingId {
-        self.retarget_plan.binding().id()
+    /// 需要各自 staging 根的绑定——**只有重定向的**。
+    ///
+    /// 「保持原位」的 identity 绑定不在其中：它的文件不经字节改写，提交时直接读沙箱原包。
+    pub fn staged_binding_ids(&self) -> Vec<ReplacementBindingId> {
+        self.retarget_plans
+            .iter()
+            .filter(|plan| !is_identity_retarget_plan(plan))
+            .map(|plan| plan.binding().id().clone())
+            .collect()
     }
+
+    /// 提交时的源路由：只有走 staging 的绑定进得来。
+    pub fn source_routing(&self) -> Result<RetargetSourceRouting, ReplacementWorkflowError> {
+        let mut routing = RetargetSourceRouting::empty();
+        for plan in &self.retarget_plans {
+            if is_identity_retarget_plan(plan) {
+                continue;
+            }
+            routing
+                .merge(plan.source_routing())
+                .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        }
+        Ok(routing)
+    }
+}
+
+/// 「保持原位」产出的计划：目标就是源槽位自己，所以字节不用改、不用进 staging。
+///
+/// 判据与 `is_identity_replacement_binding` 对齐（源与目标的 internal_id 及 path_family
+/// 同一），只是这里看的是尚未转成快照的计划。
+fn is_identity_retarget_plan(plan: &RetargetPlan) -> bool {
+    plan.binding().created_at_unix_millis() == 0
+        && plan.actions().iter().all(|action| {
+            action.source_internal_id() == action.target_internal_id()
+                && action.source_path_family() == action.target_path_family()
+        })
 }
 
 struct ResolvedImportedReplacement {
@@ -234,6 +341,54 @@ pub struct MaterializeRetargetRequest {
 pub struct MaterializedRetarget {
     retarget_plan: RetargetPlan,
     install_plan: InstallPlan,
+}
+
+/// 每个重定向绑定有自己的 staging 根，所以 materializer 要按绑定现取（`#349` 切片③b）。
+///
+/// 定义成 trait 而不是让 `ReplacementWorkflowService` 自己拼路径：staging 根的磁盘布局
+/// （`install/retarget-staging/<binding uuid>/`）是运行时组装层的知识，app 层不该知道。
+pub trait RetargetStagingMaterializerFactory {
+    fn materializer_for(
+        &self,
+        binding_id: &ReplacementBindingId,
+    ) -> Result<Box<dyn RetargetStagingMaterializer>, ReplacementWorkflowError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaterializedInitialRetargetInstall {
+    install_plan: InstallPlan,
+    source_routing: RetargetSourceRouting,
+}
+
+impl MaterializedInitialRetargetInstall {
+    pub fn install_plan(&self) -> &InstallPlan {
+        &self.install_plan
+    }
+
+    pub fn source_routing(&self) -> &RetargetSourceRouting {
+        &self.source_routing
+    }
+
+    pub fn into_parts(self) -> (InstallPlan, RetargetSourceRouting) {
+        (self.install_plan, self.source_routing)
+    }
+}
+
+/// 一个重定向计划要落进 staging 的文件清单。与 `materialize_retarget` 逐字同构。
+fn retarget_staging_files(plan: &RetargetPlan) -> Vec<RetargetStagingFile> {
+    plan.actions()
+        .iter()
+        .map(|action| {
+            let file = RetargetStagingFile::new(
+                action.package_file_id().clone(),
+                action.target_relative_path().clone(),
+            );
+            match action.content_transform() {
+                Some(invocation) => file.with_content_transform(invocation.clone()),
+                None => file,
+            }
+        })
+        .collect()
 }
 
 impl MaterializedRetarget {
@@ -331,17 +486,41 @@ impl ReplacementService {
         layer: FileLayer,
         revision_id: Option<ModRevisionId>,
     ) -> Result<InstallPlan, RetargetMaterializeError> {
-        plan.validate_transform_facts()?;
-        let snapshot = ReplacementBindingSnapshot::from_retarget_plan(plan, revision_id);
-        let providers = plan.actions().iter().map(|action| {
-            InstallFileProvider::new(
-                plan.binding().mod_id().clone(),
-                action.package_file_id().clone(),
-                action.target_relative_path().clone(),
-                layer.clone(),
-            )
-        });
-        Ok(InstallPlan::from_providers(providers).with_replacement_bindings(vec![snapshot])?)
+        self.build_retarget_install_plan_for_all(std::slice::from_ref(plan), layer, revision_id)
+    }
+
+    /// 把 N 个重定向计划合并成**一个**安装计划。
+    ///
+    /// `#349` 切片③b：一个包里的多件装备各自绑定、各自产出，但只提交一次。合并发生在
+    /// provider 层而不是「拼接两个 `InstallPlan`」——`InstallPlan::from_providers` 的冲突
+    /// 判定要看见全部 provider 才能发现「两个槽位重定向到了同一个目标」，分开构造再拼
+    /// 会让那种撞车漏过去。
+    ///
+    /// 单计划输入与切片③b 之前**逐字等价**：provider 顺序、绑定快照、`plan_hash` 都不变。
+    pub fn build_retarget_install_plan_for_all(
+        &self,
+        plans: &[RetargetPlan],
+        layer: FileLayer,
+        revision_id: Option<ModRevisionId>,
+    ) -> Result<InstallPlan, RetargetMaterializeError> {
+        let mut snapshots = Vec::with_capacity(plans.len());
+        let mut providers = Vec::new();
+        for plan in plans {
+            plan.validate_transform_facts()?;
+            snapshots.push(ReplacementBindingSnapshot::from_retarget_plan(
+                plan,
+                revision_id.clone(),
+            ));
+            providers.extend(plan.actions().iter().map(|action| {
+                InstallFileProvider::new(
+                    plan.binding().mod_id().clone(),
+                    action.package_file_id().clone(),
+                    action.target_relative_path().clone(),
+                    layer.clone(),
+                )
+            }));
+        }
+        Ok(InstallPlan::from_providers(providers).with_replacement_bindings(snapshots)?)
     }
 
     fn adapter_for(
@@ -504,49 +683,126 @@ impl ReplacementWorkflowService {
         let mod_id = request.mod_id.clone();
         self.ensure_initial_install_allowed(&request.game_id, &profile_id, &mod_id)?;
         let resolved = self.resolve_imported_replacement(&request.game_id, &request.mod_id)?;
-        let source = resolved
-            .analysis
-            .single_source()
-            .cloned()
-            .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?;
-        let target = self
-            .catalog_for(&request.game_id)?
-            .find_replacement_target(&request.target_id)
-            .map_err(map_catalog_error)?;
-        let binding = ReplacementBinding::new(
-            ReplacementBindingId::parse(format!("binding-{}", Uuid::new_v4()))
-                .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?,
-            request.mod_id,
-            request.profile_id,
-            source.id().clone(),
-            target.id().clone(),
-            self.clock
-                .now_unix_millis()
-                .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?,
-        )
-        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+        let slots = match &request.selection {
+            // 源由分析推断，多槽位包在这里就报错——切片③b 之前逐字相同的行为。
+            InitialRetargetSelection::SoleSource { target_id } => {
+                let source = resolved
+                    .analysis
+                    .single_source()
+                    .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?;
+                vec![InitialRetargetSlotIntent::Retarget {
+                    source_id: source.id().clone(),
+                    target_id: target_id.clone(),
+                }]
+            }
+            InitialRetargetSelection::PerSlot(slots) => slots.clone(),
+        };
+        if slots.is_empty() {
+            return Err(ReplacementWorkflowError::SourceNotRetargetable);
+        }
+        let mut claimed_sources = BTreeSet::new();
+        for slot in &slots {
+            if !claimed_sources.insert(slot.source_id().clone()) {
+                return Err(ReplacementWorkflowError::DuplicateSlotIntent);
+            }
+        }
+        let catalog = self.catalog_for(&request.game_id)?;
         let content_reader = ImportedReplacementContentReader {
             reader: self.file_reader.as_ref(),
             package_id: &resolved.package_id,
             sandbox_root: &resolved.sandbox_root,
         };
-        let retarget_plan = self
-            .replacement
-            .build_retarget_plan_with_content(
-                RetargetPlanRequest {
-                    game_id: request.game_id,
-                    binding,
-                    assets: resolved.assets,
-                    // 同上：单绑定提交，本计划承载包级随行资源。
-                    carries_package_companions: true,
-                },
-                &content_reader,
-            )
-            .map_err(ReplacementWorkflowError::Analysis)?;
+
+        /*
+         * 包级随行资源（族级作者目录、族级 `epv/` `sound/`）属于包、不属于任何槽位，
+         * 一个包只装一次，所以在 N 个绑定里指定**恰好一个**承载者（`#349` 切片③b-2）。
+         *
+         * 选第一个**重定向**的槽位，而不是第一个槽位：「保持原位」的槽位按原路径安装，
+         * 而包级文件的目标路径也正是原路径——两边都产出就会撞成阻断冲突。全是「保持原位」
+         * 时才回落到第一个槽位（那时只有它会带，同样只带一次）。
+         */
+        let carrier_index = slots
+            .iter()
+            .position(InitialRetargetSlotIntent::is_retarget)
+            .unwrap_or(0);
+
+        let mut targets = Vec::with_capacity(slots.len());
+        let mut retarget_plans = Vec::with_capacity(slots.len());
+        for (index, slot) in slots.iter().enumerate() {
+            let source = resolved
+                .analysis
+                .sources()
+                .iter()
+                .find(|source| source.id() == slot.source_id())
+                .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?;
+            let (target, binding) = match slot {
+                InitialRetargetSlotIntent::Retarget { target_id, .. } => {
+                    let target = catalog
+                        .find_replacement_target(target_id)
+                        .map_err(map_catalog_error)?;
+                    let binding = ReplacementBinding::new(
+                        ReplacementBindingId::parse(format!("binding-{}", Uuid::new_v4()))
+                            .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?,
+                        mod_id.clone(),
+                        profile_id.clone(),
+                        source.id().clone(),
+                        target.id().clone(),
+                        self.clock
+                            .now_unix_millis()
+                            .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?,
+                    )
+                    .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+                    (target, binding)
+                }
+                InitialRetargetSlotIntent::KeepInPlace { .. } => {
+                    let target = self.self_target_for(&request.game_id, source)?;
+                    let binding = ReplacementBinding::new(
+                        canonical_source_binding_id(
+                            &request.game_id,
+                            &profile_id,
+                            &mod_id,
+                            source.id(),
+                            target.id(),
+                        )?,
+                        mod_id.clone(),
+                        profile_id.clone(),
+                        source.id().clone(),
+                        target.id().clone(),
+                        0,
+                    )
+                    .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
+                    (target, binding)
+                }
+            };
+            let retarget_plan = self
+                .replacement
+                .build_retarget_plan_with_content(
+                    RetargetPlanRequest {
+                        game_id: request.game_id.clone(),
+                        binding,
+                        assets: resolved.assets.clone(),
+                        carries_package_companions: index == carrier_index,
+                    },
+                    &content_reader,
+                )
+                .map_err(ReplacementWorkflowError::Analysis)?;
+            targets.push(target);
+            retarget_plans.push(retarget_plan);
+        }
+
+        // 「保持原位」的自身目标与别的槽位的重定向目标同样可能撞（把 A 换到 B 的位置、
+        // 同时让 B 保持原位），所以检查放在**全部**目标解析完之后，而不是只看 Retarget。
+        let mut claimed_targets = BTreeSet::new();
+        for target in &targets {
+            if !claimed_targets.insert(target.id().clone()) {
+                return Err(ReplacementWorkflowError::DuplicateSlotTarget);
+            }
+        }
+
         let install_plan = self
             .replacement
-            .build_retarget_install_plan(
-                &retarget_plan,
+            .build_retarget_install_plan_for_all(
+                &retarget_plans,
                 request.layer.clone(),
                 Some(resolved.revision_id.clone()),
             )
@@ -558,10 +814,39 @@ impl ReplacementWorkflowService {
             revision_id: resolved.revision_id,
             layer: request.layer,
             analysis: resolved.analysis,
-            target,
-            retarget_plan,
+            targets,
+            retarget_plans,
             install_plan,
         })
+    }
+
+    /// 「保持原位」需要的那个目标：源槽位自己。
+    ///
+    /// 与 `preview_canonical_source_install_plan` 同一套解析（catalog 里 target_type /
+    /// internal_id / path_family 三者都匹配且**唯一**）。解析不出就明确报错，不猜——
+    /// 猜错会把这个槽位的文件装到别的装备上。
+    fn self_target_for(
+        &self,
+        game_id: &GameId,
+        source: &hmm_core::ReplacementSource,
+    ) -> Result<ReplacementTarget, ReplacementWorkflowError> {
+        let catalog = self
+            .catalog_for(game_id)?
+            .replacement_catalog()
+            .map_err(map_catalog_error)?;
+        let mut matching = catalog.targets().iter().filter(|target| {
+            target.target_type() == source.source_type()
+                && target.internal_id() == source.internal_id()
+                && target
+                    .metadata()
+                    .get("path_family")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(source.path_family())
+        });
+        match (matching.next(), matching.next()) {
+            (Some(target), None) => Ok(target.clone()),
+            _ => Err(ReplacementWorkflowError::KeepInPlaceUnavailable),
+        }
     }
 
     /// 初始重定向安装不得覆盖其他 Mod 已管理的目标文件。
@@ -599,23 +884,42 @@ impl ReplacementWorkflowService {
         Ok(install_plan)
     }
 
-    /// 返回 `MaterializedRetarget` 而不是裸的 `InstallPlan`：提交方还需要
-    /// `source_routing()`——「哪些 `package_file_id` 该从 staging 读」只在这里可知。
+    /// 逐个绑定 materialize，然后把 N 个计划合并成一次提交。
+    ///
+    /// `#349` 切片③b：每个重定向绑定有自己的 staging 根，所以 materializer 要**按绑定现取**
+    /// （`factory`）。「保持原位」的 identity 绑定跳过 staging——它的文件不经字节改写，
+    /// 提交时直接读沙箱原包。
+    ///
+    /// 中途失败时，已经建好的 staging 目录由调用方按 `planned.staged_binding_ids()` 清理：
+    /// 那份清单在调用前就能取到，不依赖本函数的返回值。
     pub fn materialize_initial_install(
         &self,
-        staging: &dyn RetargetStagingMaterializer,
+        factory: &dyn RetargetStagingMaterializerFactory,
         planned: PlannedInitialRetargetInstall,
-    ) -> Result<MaterializedRetarget, ReplacementWorkflowError> {
-        self.replacement
-            .materialize_retarget(
-                staging,
-                MaterializeRetargetRequest {
-                    plan: planned.retarget_plan,
-                    layer: planned.layer,
-                    revision_id: Some(planned.revision_id),
-                },
-            )
-            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)
+    ) -> Result<MaterializedInitialRetargetInstall, ReplacementWorkflowError> {
+        let source_routing = planned.source_routing()?;
+        let layer = planned.layer.clone();
+        let revision_id = planned.revision_id.clone();
+        for plan in &planned.retarget_plans {
+            if is_identity_retarget_plan(plan) {
+                continue;
+            }
+            let materializer = factory.materializer_for(plan.binding().id())?;
+            let staging_files = retarget_staging_files(plan);
+            materializer
+                .materialize(&staging_files)
+                .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        }
+        // staging 落盘之后再重建安装计划：与 `materialize_retarget` 同序（先算计划、再落盘、
+        // 计划不变），保证 `plan_hash` 与预览阶段逐字一致。
+        let install_plan = self
+            .replacement
+            .build_retarget_install_plan_for_all(&planned.retarget_plans, layer, Some(revision_id))
+            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        Ok(MaterializedInitialRetargetInstall {
+            install_plan,
+            source_routing,
+        })
     }
 
     pub fn preview_reinstall_target(
