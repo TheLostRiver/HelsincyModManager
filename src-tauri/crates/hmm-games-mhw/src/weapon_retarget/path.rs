@@ -73,6 +73,22 @@ impl WeaponResourceRoot {
         })
     }
 
+    /// 从**完整资源路径**里截出它所属的槽位根，认不出就返回 `None`。
+    ///
+    /// `#349`：分类器需要给「解析成模型失败」的文件也定位槽位——例如源槽位目录里有个
+    /// `arrow.mod3`，部件名认不出（`UnknownPart`），但它显然属于 `nativePC/wp/bow/bow017`。
+    /// 定位到槽位之后它才能被记进那个单元的「无法判断如何改写」清单，而不是拖累整包。
+    ///
+    /// 注意 `WeaponModelAssetPath::parse` 里部件名的解析**在**槽位根之前，所以那条路径上
+    /// 拿不到根；这里单独走一遍前 4 段。
+    pub fn of_resource_path(value: &str) -> Option<Self> {
+        let segments = value.split('/').collect::<Vec<_>>();
+        if segments.len() < RESOURCE_ROOT_SEGMENT_COUNT {
+            return None;
+        }
+        Self::parse(&segments[..RESOURCE_ROOT_SEGMENT_COUNT].join("/")).ok()
+    }
+
     pub fn normalized_path(&self) -> &InstallTargetPath {
         &self.normalized_path
     }

@@ -519,7 +519,11 @@ fn rewritten_references_land_on_files_the_plan_actually_produces() {
     ];
     let plan = plan_for(BLACK_KNIGHT_TWO003, "two019", &references).expect("计划");
 
-    let pair_closure = analyze_mhw_weapon_assets(&assets(BLACK_KNIGHT_TWO003)).expect("closure");
+    let pair_closure = analyze_mhw_weapon_assets(&assets(BLACK_KNIGHT_TWO003))
+        .expect("closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     let pair = pair_closure.pairs().first().expect("one pair");
     let output = transform_mhw_weapon_mrl3_texture_paths(
         pair,
@@ -638,7 +642,11 @@ fn a_variant_parts_rewritten_references_land_on_files_the_plan_actually_produces
     ]);
     let plan = plan_for(&paths, "swo019", &references).expect("计划");
 
-    let closure = analyze_mhw_weapon_assets(&assets(&paths)).expect("closure");
+    let closure = analyze_mhw_weapon_assets(&assets(&paths))
+        .expect("closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone();
     let variant = closure
         .pairs()
         .iter()
@@ -725,32 +733,54 @@ fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package
 }
 
 #[test]
-fn a_model_that_does_not_carry_the_source_slot_number_still_fails_closed() {
+fn a_model_that_does_not_carry_the_source_slot_number_is_flagged_not_guessed() {
     /*
      * 放宽的是「前缀不必登记」，不是「什么都收」。源槽位目录内的模型若**不带本槽位的
      * 数字**，改名规则无从下手——把它当伴生文件搬运，它 MRL3 里指向源槽位的引用不会被
-     * 改写，重定向后断链，而且是静默断链。
+     * 改写，重定向后断链，而且是静默断链。所以它**不能**混进随行档。
+     *
+     * `#349`：但它也不该拖累整包。此前这里否决整包（`weapon_unknown_part`），于是一把
+     * 完好的太刀因为多了个认不出名字的模型就整个不可用。现在它被单独标记、原样留在源
+     * 路径，包照常可重定向——「不猜」与「不否决」是两件事。
      */
     for unknown in ["zzz999", "nodigits"] {
         let mut paths = fox_longsword_registered();
         let injected = format!("nativePC/wp/swo/swo035/mod/{unknown}.mod3");
         paths.push(&injected);
 
-        let error = MhwReplacementAdapter
+        let analysis = MhwReplacementAdapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {
                 game_id: GameId::mhw(),
                 assets: assets(&paths),
             })
-            .expect_err("不带本槽位数字的模型不得被猜");
+            .unwrap_or_else(|error| panic!("{unknown} 不该拒整包，实际 {error:?}"));
 
+        assert_eq!(
+            analysis.sources().len(),
+            1,
+            "{unknown} 仍然只有一个源槽位（太刀本体）"
+        );
+
+        // 分类器层面确认它落到了 `unresolved_models`，既没被猜、也没拖累整包。
+        let unit = analyze_mhw_weapon_assets(&assets(&paths))
+            .expect("分析应当成立")
+            .sole_unit()
+            .expect("恰好一个单元")
+            .clone();
+        assert_eq!(
+            unit.unresolved_models()
+                .iter()
+                .map(|model| model.relative_path().as_str())
+                .collect::<Vec<_>>(),
+            vec![injected.as_str()],
+            "{unknown} 必须被标为无法判断如何改写"
+        );
         assert!(
-            matches!(
-                error,
-                ReplacementAdapterError::AnalysisRejected {
-                    code: "weapon_unknown_part"
-                }
-            ),
-            "{unknown} 实际是 {error:?}"
+            !unit
+                .companions()
+                .iter()
+                .any(|companion| companion.relative_path().as_str() == injected),
+            "{unknown} 绝不能混进随行档"
         );
     }
 }
@@ -764,26 +794,46 @@ fn a_digit_or_nested_part_id_after_the_part_prefix_is_not_treated_as_a_variant()
      * 守卫①：`saya0351` 是更长的数字串，不是 `saya035` + 变体 `1`。
      * 守卫②：`saya035saya035` 无法判断作者意图，且内层不会被改写。
      */
+    // 基线：注入之前本体有几个模型对。注入不该改变这个数。
+    let baseline_pairs = analyze_mhw_weapon_assets(&assets(&fox_longsword_registered()))
+        .expect("基线分析")
+        .sole_unit()
+        .expect("恰好一个单元")
+        .pairs()
+        .len();
+
     for unknown in ["saya0351", "saya035saya035"] {
         let mut paths = fox_longsword_registered();
         let injected = format!("nativePC/wp/swo/swo035/mod/{unknown}.mod3");
         paths.push(&injected);
 
-        let error = MhwReplacementAdapter
-            .analyze_replacement_assets(ReplacementAnalysisRequest {
-                game_id: GameId::mhw(),
-                assets: assets(&paths),
-            })
-            .expect_err("{unknown} 不得被当成变体后缀");
+        // `#349`：守卫的语义不变（**不猜**），变的只是处置——标记那个文件，而不是否决整包。
+        let unit = analyze_mhw_weapon_assets(&assets(&paths))
+            .unwrap_or_else(|error| panic!("{unknown} 不该拒整包，实际 {error:?}"))
+            .sole_unit()
+            .expect("恰好一个单元")
+            .clone();
 
+        assert_eq!(
+            unit.unresolved_models()
+                .iter()
+                .map(|model| model.relative_path().as_str())
+                .collect::<Vec<_>>(),
+            vec![injected.as_str()],
+            "{unknown} 不得被当成变体后缀，必须标为无法判断如何改写"
+        );
         assert!(
-            matches!(
-                error,
-                ReplacementAdapterError::AnalysisRejected {
-                    code: "weapon_unknown_part"
-                }
-            ),
-            "{unknown} 实际是 {error:?}"
+            !unit
+                .companions()
+                .iter()
+                .any(|companion| companion.relative_path().as_str() == injected),
+            "{unknown} 绝不能混进随行档"
+        );
+        // 太刀本体照常可重定向：模型对数与注入前一致。
+        assert_eq!(
+            unit.pairs().len(),
+            baseline_pairs,
+            "{unknown} 不该影响本体的模型对"
         );
     }
 }

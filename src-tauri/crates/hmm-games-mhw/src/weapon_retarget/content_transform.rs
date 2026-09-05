@@ -52,8 +52,13 @@ impl ContentTransformer for MhwWeaponMrl3TexturePathTransformer {
             ReplacementAsset::new(request.package_file_id().clone(), source_relative_path),
             ReplacementAsset::new(companion_package_file_id.clone(), companion_relative_path),
         ];
-        let closure = analyze_mhw_weapon_assets(&assets)
+        let analysis = analyze_mhw_weapon_assets(&assets)
             .map_err(|error| ContentTransformerError::rejected(error.code()))?;
+        // 这里的输入恰好是一对 MOD3/MRL3，因此必然只有一个单元、一个模型对。
+        // 多于一个就说明调用方传错了资源，属于 `InvalidInvocation` 而不是包的问题。
+        let [closure] = analysis.units() else {
+            return Err(ContentTransformerError::InvalidInvocation);
+        };
         let pair = closure
             .pairs()
             .first()

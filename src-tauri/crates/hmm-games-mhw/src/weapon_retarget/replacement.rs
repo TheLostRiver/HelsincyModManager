@@ -1,9 +1,9 @@
 use super::{
     analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation, MhwWeaponCatalogSource,
     WeaponAnalysisError, WeaponBinaryError, WeaponCompanionPlacement, WeaponMainId,
-    WeaponModelPair, WeaponPathError, WeaponSourceClosure, WeaponTargetMetadata,
-    WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
-    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
+    WeaponModelPair, WeaponPackageAnalysis, WeaponPathError, WeaponSourceClosure,
+    WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
+    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 use crate::armor_retarget::{
     resolve_target_allowing_legacy_ids, MhwArmorCatalog, MhwArmorReplacementAdapter,
@@ -174,8 +174,8 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
         request: ReplacementAnalysisRequest,
     ) -> ReplacementAdapterResult<ReplacementAnalysis> {
         ensure_mhw(&request.game_id)?;
-        let closure = analyze_mhw_weapon_assets(&request.assets).map_err(map_analysis_error)?;
-        analysis_from_closure(&closure)
+        let analysis = analyze_mhw_weapon_assets(&request.assets).map_err(map_analysis_error)?;
+        analysis_from_units(&analysis)
     }
 
     fn build_retarget_plan(
@@ -191,10 +191,19 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
         content_reader: &dyn ReplacementAssetContentReader,
     ) -> ReplacementAdapterResult<RetargetPlan> {
         ensure_mhw(&request.game_id)?;
-        let closure = analyze_mhw_weapon_assets(&request.assets).map_err(map_analysis_error)?;
-        if request.binding.source_id() != closure.source_id() {
-            return Err(ReplacementAdapterError::SourceBindingMismatch);
-        }
+        let analysis = analyze_mhw_weapon_assets(&request.assets).map_err(map_analysis_error)?;
+        /*
+         * `#349`：按 binding 指定的源**在单元里挑**，而不是要求整包恰好一个槽位。
+         *
+         * binding 本来就带 `source_id`，所以「包里有几个槽位」与「这次要装哪个」是两件事。
+         * 此前分类器在多槽位时否决整包，这里也就只可能拿到唯一的那个；现在多槽位包能正常
+         * 分析出来，建计划就按 binding 选中的那个单元来。挑不到才是真正的绑定不匹配。
+         */
+        let closure = analysis
+            .units()
+            .iter()
+            .find(|unit| unit.source_id() == request.binding.source_id())
+            .ok_or(ReplacementAdapterError::SourceBindingMismatch)?;
 
         let target = weapon_target(request.binding.target_id())?;
         if target.target_type().as_str() != "weapon" {
@@ -211,9 +220,9 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
             });
         }
 
-        let loaded_pairs = load_pair_contents(&closure, content_reader)?;
-        let source = source_from_closure(&closure)?;
-        let actions = build_weapon_actions(&closure, &target_main, &loaded_pairs)?;
+        let loaded_pairs = load_pair_contents(closure, content_reader)?;
+        let source = source_from_closure(closure)?;
+        let actions = build_weapon_actions(closure, &target_main, &loaded_pairs)?;
         let warnings = (source.internal_id() == target_main.as_str())
             .then_some(ReplacementWarning::SourceMatchesTarget)
             .into_iter()
@@ -225,8 +234,8 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
             WEAPON_ADAPTER_ID,
             WEAPON_STRATEGY_ID,
             WEAPON_STRATEGY_VERSION,
-            source_closure_digest(&closure, &loaded_pairs),
-            part_set_digest(&closure),
+            source_closure_digest(closure, &loaded_pairs),
+            part_set_digest(closure),
             plan.content_transform_set_sha256(),
         )
         .and_then(|facts| {
@@ -287,16 +296,25 @@ fn ensure_mhw(game_id: &GameId) -> ReplacementAdapterResult<()> {
     }
 }
 
-fn analysis_from_closure(
-    closure: &WeaponSourceClosure,
+/// `#349`：包里的**每个**槽位都作为一个源呈现出去。
+///
+/// `ReplacementAnalysis` 的 `sources` 一直是列表（还自带 id 去重与 game 一致性校验），
+/// 是这里此前把它压成 `vec![单个]`、并让分类器在多槽位时否决整包。现在如实报出全部。
+fn analysis_from_units(
+    analysis: &WeaponPackageAnalysis,
 ) -> ReplacementAdapterResult<ReplacementAnalysis> {
-    let source = source_from_closure(closure)?;
-    let warnings = closure
-        .warnings()
-        .iter()
-        .map(|_| ReplacementWarning::WeaponPartialPartSet)
+    let mut sources = Vec::with_capacity(analysis.units().len());
+    let mut partial_part_set = false;
+    for closure in analysis.units() {
+        sources.push(source_from_closure(closure)?);
+        partial_part_set |= !closure.warnings().is_empty();
+    }
+    // 警告是包级的一句提示，多个单元都缺件也只说一次。
+    let warnings = partial_part_set
+        .then_some(ReplacementWarning::WeaponPartialPartSet)
+        .into_iter()
         .collect();
-    ReplacementAnalysis::new(GameId::mhw(), vec![source], closure.asset_count(), warnings)
+    ReplacementAnalysis::new(GameId::mhw(), sources, analysis.asset_count(), warnings)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)
 }
 

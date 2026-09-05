@@ -44,10 +44,12 @@ pub use weapon_retarget::{
     WeaponCompanionPlacement, WeaponExcludedAsset, WeaponFamily, WeaponFamilyError, WeaponMainId,
     WeaponMod3Preflight, WeaponModelAssetKind, WeaponModelAssetPath, WeaponModelPair,
     WeaponModelPairPreflight, WeaponMrl3Preflight, WeaponMrl3TransformOutput,
-    WeaponMrl3TransformReport, WeaponPartId, WeaponPartRole, WeaponPathError, WeaponResourceRoot,
-    WeaponSecondaryPart, WeaponSourceAsset, WeaponSourceClosure, WeaponTargetMetadata,
-    WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES, MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION,
-    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
+    WeaponMrl3TransformReport, WeaponPackageAnalysis, WeaponPartId, WeaponPartRole,
+    WeaponPathError, WeaponResourceRoot, WeaponSecondaryPart, WeaponSourceAsset,
+    WeaponSourceClosure, WeaponTargetMetadata, WeaponTargetStatus, WeaponUnresolvedModel,
+    WeaponUnresolvedModelReason, MHW_WEAPON_BINARY_MAX_BYTES,
+    MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
+    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";
