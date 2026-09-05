@@ -143,10 +143,6 @@ impl InitialRetargetSlotIntent {
             Self::Retarget { source_id, .. } | Self::KeepInPlace { source_id } => source_id,
         }
     }
-
-    fn is_retarget(&self) -> bool {
-        matches!(self, Self::Retarget { .. })
-    }
 }
 
 /// 一次初始重定向安装要装什么。
@@ -717,14 +713,16 @@ impl ReplacementWorkflowService {
          * 包级随行资源（族级作者目录、族级 `epv/` `sound/`）属于包、不属于任何槽位，
          * 一个包只装一次，所以在 N 个绑定里指定**恰好一个**承载者（`#349` 切片③b-2）。
          *
-         * 选第一个**重定向**的槽位，而不是第一个槽位：「保持原位」的槽位按原路径安装，
-         * 而包级文件的目标路径也正是原路径——两边都产出就会撞成阻断冲突。全是「保持原位」
-         * 时才回落到第一个槽位（那时只有它会带，同样只带一次）。
+         * 承载者是谁不影响正确性：包级文件的目标路径恒等于原路径，两档绑定都能把它装到位
+         * （重定向绑定经 staging 转一手，identity 绑定直接读沙箱原包）。承重的只有「恰好
+         * 一个」——多于一个会让同一个 `target_path` 出现多个 provider、撞成阻断冲突；
+         * 一个都没有则这些文件不进计划。承载者必然在 `slots` 里，所以不会因为槽位被
+         * 「不装」而丢。
+         *
+         * 取第一个，不做偏好：曾经这里选「第一个重定向的槽位」并注释成「否则会撞」，
+         * 那个理由是错的（反向验证里把它改成恒取 0 之后一条用例都没转红），留着只会误导。
          */
-        let carrier_index = slots
-            .iter()
-            .position(InitialRetargetSlotIntent::is_retarget)
-            .unwrap_or(0);
+        let carrier_index = 0;
 
         let mut targets = Vec::with_capacity(slots.len());
         let mut retarget_plans = Vec::with_capacity(slots.len());
