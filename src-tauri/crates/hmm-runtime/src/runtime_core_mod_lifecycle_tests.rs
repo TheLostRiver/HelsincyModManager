@@ -1,11 +1,12 @@
 use super::{retarget_reinstall_staging_root, HmmRuntime, RetargetStagingCleanup};
 use hmm_app::{
-    BuildImportedModInstallPlanRequest, InstallManifestQueryRequest, InstallManifestStatus,
-    InstallRecoveryScanRequest, InstallRecoveryStatus, PreviewInitialRetargetInstallRequest,
-    ReinstallPlanPreview, ReinstallPreviewRequest, ReinstallPreviewStatus, ReinstallTargetCounts,
-    RetargetReinstallRequest, StartImportModRevisionTaskRequest, StartImportModTaskRequest,
-    StartInstallTaskRequest, StartReinstallTaskRequest, StartRetargetInstallTaskRequest,
-    StartRetargetReinstallTaskRequest, StartUninstallTaskRequest, TaskKind, TaskStatus,
+    BuildImportedModInstallPlanRequest, InitialRetargetSelection, InstallManifestQueryRequest,
+    InstallManifestStatus, InstallRecoveryScanRequest, InstallRecoveryStatus,
+    PreviewInitialRetargetInstallRequest, ReinstallPlanPreview, ReinstallPreviewRequest,
+    ReinstallPreviewStatus, ReinstallTargetCounts, RetargetReinstallRequest,
+    StartImportModRevisionTaskRequest, StartImportModTaskRequest, StartInstallTaskRequest,
+    StartReinstallTaskRequest, StartRetargetInstallTaskRequest, StartRetargetReinstallTaskRequest,
+    StartUninstallTaskRequest, TaskKind, TaskStatus,
 };
 use hmm_core::{
     FileLayer, GameDirectoryStatus, GameId, InstallManifest, ModId, ModRevisionId, ProfileId,
@@ -649,7 +650,9 @@ fn headless_composition_blocks_initial_retarget_when_required_prerequisites_are_
         game_id: GameId::mhw(),
         profile_id: profile_id.clone(),
         mod_id: mod_id.clone(),
-        target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        selection: InitialRetargetSelection::SoleSource {
+            target_id: ReplacementTargetId::parse("mhw:armor:fatalis-alpha").expect("target id"),
+        },
         layer: FileLayer::new("base", 0),
     };
     let preflight = state
@@ -669,7 +672,11 @@ fn headless_composition_blocks_initial_retarget_when_required_prerequisites_are_
         game_id: preview_request.game_id,
         profile_id: preview_request.profile_id,
         mod_id: preview_request.mod_id,
-        target_id: preview_request.target_id,
+        target_id: preview_request
+            .selection
+            .sole_target_id()
+            .cloned()
+            .expect("sole target"),
         layer: preview_request.layer,
     };
     let task = state

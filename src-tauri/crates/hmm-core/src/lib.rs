@@ -102,7 +102,7 @@ pub use replacement::{
 };
 pub use retarget::{
     ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,
-    RetargetPlan,
+    RetargetPlan, RetargetSourceOrigin, RetargetSourceRouting,
 };
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,

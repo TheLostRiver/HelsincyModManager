@@ -17,10 +17,10 @@ use hmm_app::{
     GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
-    InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
-    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
-    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
-    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InitialRetargetInstallStatusReader, InitialRetargetSelection, InstallCommitError,
+    InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
+    InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
+    InstallRecoveryActionExecutor, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
@@ -44,15 +44,15 @@ use hmm_app::{
     ReinstallTaskPrepared, ReinstallTaskRunner, ReinstallTaskService, ReplacementOccupancyService,
     ReplacementWorkflowError, ReplacementWorkflowService, RetargetInstallTaskRunner,
     RetargetInstallTaskService, RetargetReinstallRequest, RetargetReinstallTaskExecutor,
-    SaveBackupAutoSchedulerService, SaveBackupBackgroundService, SaveBackupBackgroundWorker,
-    SaveBackupCenterService, SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService,
-    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
-    SaveProfileMaintenanceScopeRegistry, SaveRestoreService, SaveRestoreTaskRunner,
-    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, Sha256SaveRestoreTokenCodec,
-    StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
-    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
-    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
-    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    RetargetStagingMaterializerFactory, SaveBackupAutoSchedulerService,
+    SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
+    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
+    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
+    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
+    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
+    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
+    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -103,13 +103,13 @@ use hmm_ports::{
     ModStorageDirectoryInspector, ModStorageMigrationJournalRepository, ModStorageMigrator,
     ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
-    ReplacementSelectionRepository, SaveBackupBackgroundRegistry,
+    ReplacementSelectionRepository, RetargetStagingMaterializer, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
     SaveBackupSchedulerStateRepository, SaveBackupWriter, SaveRestoreSourceValidator,
     SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
     ThumbnailCacheMaintenance, ThumbnailStore, MIN_LOG_STORAGE_MAX_BYTES,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -2134,20 +2134,44 @@ impl ConfiguredInitialRetargetInstallPlanner {
         }
     }
 
-    fn materializer_for(
+    /// 按绑定发 materializer——每个重定向绑定有自己的 staging 根（`#349` 切片③b）。
+    fn staging_factory_for(
         &self,
         planned: &PlannedInitialRetargetInstall,
-    ) -> Result<FileSystemRetargetStagingMaterializer, ReplacementWorkflowError> {
+    ) -> Result<ConfiguredRetargetStagingMaterializerFactory, ReplacementWorkflowError> {
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
             .map_err(|_| ReplacementWorkflowError::SandboxUnavailable)?;
-        let staging_root = retarget_staging_root(&self.app_data_dir, planned.binding_id())
+        Ok(ConfiguredRetargetStagingMaterializerFactory {
+            source_root,
+            app_data_dir: self.app_data_dir.clone(),
+            content_transformers: Arc::clone(&self.content_transformers),
+        })
+    }
+}
+
+struct ConfiguredRetargetStagingMaterializerFactory {
+    source_root: PathBuf,
+    app_data_dir: PathBuf,
+    content_transformers: Arc<ContentTransformerRegistry>,
+}
+
+impl RetargetStagingMaterializerFactory for ConfiguredRetargetStagingMaterializerFactory {
+    fn materializer_for(
+        &self,
+        binding_id: &ReplacementBindingId,
+    ) -> Result<Box<dyn RetargetStagingMaterializer>, ReplacementWorkflowError> {
+        let staging_root = retarget_staging_root(&self.app_data_dir, binding_id)
             .ok_or(ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(FileSystemRetargetStagingMaterializer::new_with_registry(
-            staging_root,
-            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
-            Arc::clone(&self.content_transformers),
+        Ok(Box::new(
+            FileSystemRetargetStagingMaterializer::new_with_registry(
+                staging_root,
+                Arc::new(FileSystemInstallSourceFileReader::new(
+                    self.source_root.clone(),
+                )),
+                Arc::clone(&self.content_transformers),
+            ),
         ))
     }
 }
@@ -2163,15 +2187,37 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
                     game_id: request.game_id,
                     profile_id: request.profile_id,
                     mod_id: request.mod_id,
-                    target_id: request.target_id,
+                    // 任务请求目前只携带一个目标，源由分析推断——与切片③b 之前逐字相同。
+                    // 逐槽位意图（D2 三态）要等前端能发出来（`#349` 切片④）。
+                    selection: InitialRetargetSelection::SoleSource {
+                        target_id: request.target_id,
+                    },
                     layer: request.layer,
                 })?;
-        let materializer = self.materializer_for(&planned)?;
+        let factory = self.staging_factory_for(&planned)?;
         let revision_id = planned.revision_id().clone();
-        let plan = self
-            .workflow
-            .materialize_initial_install(&materializer, planned)?;
-        Ok(InitialRetargetInstallPlan { plan, revision_id })
+        // 中途失败时已建好的 staging 目录要清掉。这份清单在 materialize 之前取，
+        // 因为 `planned` 会被 move 进去——漏掉任何一个都会留下孤儿暂存目录。
+        let staged_binding_ids = planned.staged_binding_ids();
+        let materialized = match self.workflow.materialize_initial_install(&factory, planned) {
+            Ok(materialized) => materialized,
+            Err(error) => {
+                for binding_id in &staged_binding_ids {
+                    if let Some(staging_root) =
+                        retarget_staging_root(&self.app_data_dir, binding_id)
+                    {
+                        discard_retarget_staging(&staging_root);
+                    }
+                }
+                return Err(error);
+            }
+        };
+        let (plan, source_routing) = materialized.into_parts();
+        Ok(InitialRetargetInstallPlan {
+            plan,
+            revision_id,
+            source_routing,
+        })
     }
 
     fn revalidate_initial_install(
@@ -2304,38 +2350,97 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
                 FileSystemInstallSourceFileReader::new(source_root),
             ))
         };
-        let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
-            match request.plan.replacement_bindings.as_slice() {
-                [] => (imported_source_files()?, None),
-                [snapshot] if is_identity_replacement_binding(snapshot) => {
-                    (imported_source_files()?, None)
+        /*
+         * `#349` 切片③b：源文件读取按 `package_file_id` **路由**，不再是「一个 staging 根，
+         * 或者失败」。路由由组装计划的一方给出（`request.source_routing`），因为归属信息
+         * 不在 `InstallPlan` 里——`InstallAction` 没有绑定字段，而 `hmm-install-plan-v1`
+         * 段对 action 逐条哈希，加字段会静默改掉所有既有 `plan_hash`（`#286` 踩过）。
+         *
+         * 空路由 = 整个计划都读沙箱原包：未重定向的标准安装（含它携带的 identity 绑定）。
+         *
+         * 非空路由是**全映射**：每个动作的来源都被显式记录，`Staged` 读对应绑定的
+         * staging 根、`ImportedPackage` 读沙箱原包。沙箱读取器按路由**按需**构造，
+         * 整个计划都来自 staging 时不去碰沙箱。
+         */
+        /*
+         * 切片③b 之前，「有非 identity 绑定 ⇒ 必读 staging」是被这里的 match 强制的
+         * （`[snapshot]` 非 identity 唯一的出路就是 staging reader）。路由把这个判断移到了
+         * 组装侧，所以不变量在这里显式钉住，而且按**覆盖面**钉而不是存在性——按绑定检查
+         * （「这个绑定至少有一个文件被路由覆盖」）挡不住「十个动作只记了一个」。
+         *
+         * 空路由那一档也围住：「有重定向绑定但路由是空的」同样是漏记。所以只要计划带了
+         * 重定向绑定、**或者**路由非空，就要求全覆盖；只有「没有重定向绑定 + 空路由」
+         * （未重定向的标准安装）才走沙箱直读。
+         *
+         * **这道闸门是纵深防御，不是「漏记不写盘」的唯一保护。** 反向验证里把它退回按绑定
+         * 检查、乃至整个去掉，半覆盖的用例都不转红——因为 `InstallCommitService::commit_plan`
+         * 先把**全部**源文件读进 `sourced_actions` 才写盘（`install.rs:405-407`），任一读取
+         * 失败就一个字节都不落地。闸门买到的是**更早、更明确**的失败：在构造任何读取器之前
+         * 就拒绝，而不是等到读第 N 个文件时报一个通用的 `SourceRead`。留着它是因为它不依赖
+         * 下游那个顺序——那是 `InstallCommitService` 的实现细节，不是这里能假设的契约。
+         */
+        let carries_retarget_binding = request
+            .plan
+            .replacement_bindings
+            .iter()
+            .any(|snapshot| !is_identity_replacement_binding(snapshot));
+        if carries_retarget_binding || !request.source_routing.is_empty() {
+            let fully_routed = request.plan.actions.iter().all(|action| {
+                request
+                    .source_routing
+                    .covers(&action.provider.package_file_id)
+            });
+            if !fully_routed {
+                return Err(source_error());
+            }
+        }
+        /*
+         * 路由点名的绑定必须都是**这个计划里**的绑定。
+         *
+         * 指向计划外的绑定不会静默装错（那个 staging 根下没有这个动作的 `target_path`，
+         * 读取会失败），但失败点在读文件的时候、错误码是通用的 `SourceRead`。这里提前拒绝，
+         * 把「组装方给出的路由与计划不同步」这类错误挡在读写之前。
+         *
+         * 做不到的是「逐动作比对它**应该**属于哪个绑定」：归属的唯一来源就是路由本身，
+         * 提交侧没有独立的第二份可比——要有，就得把归属存进计划（撞 `hmm-install-plan-v1`
+         * 的逐条哈希，`#286` 踩过）或者提交时重跑一次分析。所以这里能钉的是内部一致性。
+         */
+        let plan_binding_ids = request
+            .plan
+            .replacement_bindings
+            .iter()
+            .map(|snapshot| snapshot.binding_id().clone())
+            .collect::<BTreeSet<_>>();
+        if request
+            .source_routing
+            .staged_entries()
+            .any(|(_, binding_id)| !plan_binding_ids.contains(binding_id))
+        {
+            return Err(source_error());
+        }
+        let (source_files, staging_roots): (Arc<dyn InstallSourceFileReader>, Vec<PathBuf>) =
+            if request.source_routing.is_empty() {
+                (imported_source_files()?, Vec::new())
+            } else {
+                let mut roots_by_package_file = BTreeMap::new();
+                let mut staging_roots = BTreeSet::new();
+                for (package_file_id, binding_id) in request.source_routing.staged_entries() {
+                    let staging_root = retarget_staging_root(&self.app_data_dir, binding_id)
+                        .ok_or_else(source_error)?;
+                    staging_roots.insert(staging_root.clone());
+                    roots_by_package_file.insert(package_file_id.clone(), staging_root);
                 }
-                [snapshot] => {
-                    let staging_root =
-                        retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
-                            .ok_or_else(source_error)?;
-                    let reader = RetargetStagingInstallSourceFileReader::from_install_plan(
-                        staging_root.clone(),
-                        &request.plan,
-                    )
-                    .map_err(|_| source_error())?;
-                    (Arc::new(reader), Some(staging_root))
-                }
-                /*
-                 * `#349` 切片③b 的边界：多个绑定意味着多个 staging 目录，而
-                 * `RetargetStagingInstallSourceFileReader` 只认一个根——它按 `target_path`
-                 * 在那个根下取文件，无从知道某个 `package_file_id` 属于哪个绑定。
-                 *
-                 * 归属信息**不在** `InstallPlan` 里（`InstallAction` 没有绑定字段，加字段会
-                 * 动 `hmm-install-plan-v1` 段的逐条哈希），它只在组装计划的那一刻可知。
-                 * 所以多绑定的提交要等切片③b 把「一次提交 N 个绑定」的工作流做出来，届时
-                 * 由组装方给出 `package_file_id -> staging_root` 的路由。
-                 *
-                 * 在那之前失败关闭：`#349` 切片①/③a 让多槽位包能被**分析**出来、模型层面
-                 * 允许多绑定，但运行时一次仍只提交一个绑定。宁可在这里明确拒绝，也不要
-                 * 拿错的 staging 根去读文件——那会静默装错内容。
-                 */
-                _ => return Err(source_error()),
+                let passthrough = match request.source_routing.reads_imported_package() {
+                    true => Some(imported_source_files()?),
+                    false => None,
+                };
+                let reader = RetargetStagingInstallSourceFileReader::routed(
+                    roots_by_package_file,
+                    &request.plan,
+                    passthrough,
+                )
+                .map_err(|_| source_error())?;
+                (Arc::new(reader), staging_roots.into_iter().collect())
             };
         let service = InstallCommitService::new_with_recovery_records(
             source_files,
@@ -2363,13 +2468,16 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             }
             None => service.commit_plan(commit_request),
         };
-        if let Some(staging_root) = staging_root.filter(|_| should_clean_up_staging(&result)) {
-            if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
-                record_runtime_warning(
-                    "retarget.staging_cleanup_failed",
-                    "post_commit",
-                    "retarget_staging_cleanup_failed",
-                );
+        // 多绑定意味着多个 staging 目录，逐个清理——漏掉任何一个都会留下孤儿暂存目录。
+        if should_clean_up_staging(&result) {
+            for staging_root in &staging_roots {
+                if std::fs::remove_dir_all(staging_root).is_err() && staging_root.exists() {
+                    record_runtime_warning(
+                        "retarget.staging_cleanup_failed",
+                        "post_commit",
+                        "retarget_staging_cleanup_failed",
+                    );
+                }
             }
         }
         result
@@ -2438,10 +2546,14 @@ mod core_mod_lifecycle_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_core::{GameDirectoryStatus, GameId, GameInstance, ModId, ProfileId};
+    use hmm_core::{
+        GameDirectoryStatus, GameId, GameInstance, ModId, PreviewImageRejectionReason, ProfileId,
+        RetargetSourceRouting,
+    };
     use hmm_ports::{
-        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult,
-        SaveBackupBackgroundSettingsRepository,
+        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult, GameRunningStatus,
+        SaveBackupBackgroundSettingsRepository, StoredImportPreviewImage, StoredModImportAnalysis,
+        StoredModPackageMetadata,
     };
     use std::fs::{self, File, FileTimes};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -3231,5 +3343,390 @@ mod tests {
         }
 
         panic!("task {task_id} did not reach expected status {expected:?}");
+    }
+
+    /// 记录「有没有去找过原包」。切片③b 的两条用例都以 `SourceRead` 失败告终，
+    /// 区分它们的唯一信号就是这个标记：在闸门处被拒 = 从未访问；通过闸门 = 访问过。
+    struct TrackingSandboxLocator {
+        looked_up: Arc<AtomicBool>,
+    }
+
+    impl ModImportSandboxLocator for TrackingSandboxLocator {
+        fn sandbox_root_for_package(&self, _package_id: &str) -> anyhow::Result<PathBuf> {
+            self.looked_up.store(true, Ordering::SeqCst);
+            anyhow::bail!("sandbox is unavailable in this test")
+        }
+    }
+
+    struct StaticAnalysisRepository;
+
+    impl ModImportResultRepository for StaticAnalysisRepository {
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> anyhow::Result<()> {
+            panic!("commit routing test must not write the import catalog")
+        }
+
+        fn list_analysis(&self) -> anyhow::Result<Vec<StoredModImportAnalysis>> {
+            panic!("commit routing test must not list the import catalog")
+        }
+
+        fn get_analysis(&self, mod_id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
+            Ok(Some(StoredModImportAnalysis {
+                mod_id: mod_id.to_owned(),
+                task_id: "task-a".to_owned(),
+                package_id: "package-a".to_owned(),
+                display_name: "test mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+            }))
+        }
+    }
+
+    struct NotRunningGameDetector;
+
+    impl GameRunningDetector for NotRunningGameDetector {
+        fn game_running_status(&self, _game_id: &GameId) -> GameRunningStatus {
+            GameRunningStatus::NotRunning
+        }
+    }
+
+    fn commit_request_with_binding(
+        source_routing: RetargetSourceRouting,
+        created_at_unix_millis: u128,
+        target_main: &str,
+        package_file_ids: &[&str],
+    ) -> ImportedModInstallCommitRequest {
+        let mod_id = ModId::new("mod-weapon");
+        let profile_id = ProfileId::new("default");
+        let source_id =
+            hmm_core::ReplacementSourceId::parse("mhw:weapon:one001").expect("source id");
+        let binding = hmm_core::ReplacementBinding::new(
+            ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                .expect("binding id"),
+            mod_id.clone(),
+            profile_id.clone(),
+            source_id.clone(),
+            hmm_core::ReplacementTargetId::parse(format!("mhw:weapon:{target_main}"))
+                .expect("target id"),
+            created_at_unix_millis,
+        )
+        .expect("binding");
+        let snapshot = hmm_core::ReplacementBindingSnapshot::new(
+            binding,
+            None,
+            "one001",
+            target_main,
+            "wp/one",
+            "wp/one",
+            hmm_core::ReplacementTargetKind::parse("weapon").expect("kind"),
+        )
+        .expect("snapshot");
+        let plan = hmm_core::InstallPlan::from_providers(package_file_ids.iter().map(|id| {
+            let stem = id.trim_end_matches(".mod3");
+            hmm_core::InstallFileProvider::new(
+                mod_id.clone(),
+                hmm_core::PackageFileId::new(*id),
+                hmm_core::InstallTargetPath::parse(
+                    format!("nativePC/wp/one/{target_main}/mod/{stem}.mod3"),
+                    ["nativePC"],
+                )
+                .expect("target path"),
+                hmm_core::FileLayer::new("base", 0),
+            )
+        }))
+        .with_replacement_bindings(vec![snapshot])
+        .expect("plan with binding");
+        ImportedModInstallCommitRequest {
+            game_id: GameId::mhw(),
+            mod_id,
+            revision_id: None,
+            profile_id,
+            plan,
+            source_routing,
+        }
+    }
+
+    fn committer_for(
+        app_data_dir: PathBuf,
+        game_root: PathBuf,
+        looked_up: Arc<AtomicBool>,
+    ) -> ConfiguredInstallCommitter {
+        ConfiguredInstallCommitter::new(
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(configured_game_instance(
+                    game_root.to_str().expect("game root"),
+                    1,
+                )),
+            }),
+            Arc::new(StaticAnalysisRepository),
+            Arc::new(TrackingSandboxLocator { looked_up }),
+            app_data_dir,
+            Arc::new(NotRunningGameDetector),
+        )
+    }
+
+    /// `#349` 切片③b 的承重闸门：**重定向绑定的产出只在它的 staging 根里。**
+    ///
+    /// 路由没覆盖这个绑定时，源文件读取会退回沙箱原包——字节是**未重定向**的，
+    /// 却会被写进重定向后的目标路径。装上去了、不报错，内容是错的。所以必须在
+    /// 读任何源文件**之前**拒绝提交。
+    ///
+    /// 切片③b 之前这条不变量由 `match plan.replacement_bindings` 强制（非 identity
+    /// 绑定唯一的出路就是 staging reader）；路由把判断移到了组装侧，闸门因此必须显式。
+    #[test]
+    fn commit_refuses_a_retarget_binding_that_the_routing_does_not_cover() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(
+            temp.path().join("app-data"),
+            temp.path().join("game"),
+            Arc::clone(&looked_up),
+        );
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            RetargetSourceRouting::empty(),
+            42,
+            "one002",
+            &["pair.mod3"],
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "未被路由覆盖的重定向绑定必须在读取任何源文件之前就被拒绝"
+        );
+    }
+
+    /// 建一个真实的 staging 根，让「没有闸门时会发生什么」变得可观测。
+    fn materialize_staging_root_for(
+        app_data_dir: &Path,
+        binding_uuid: &str,
+        target_main: &str,
+        stem: &str,
+        bytes: &[u8],
+    ) -> PathBuf {
+        let staging_root = app_data_dir
+            .join("install")
+            .join("retarget-staging")
+            .join(binding_uuid);
+        let staged = staging_root
+            .join("nativePC")
+            .join("wp")
+            .join("one")
+            .join(target_main)
+            .join("mod");
+        fs::create_dir_all(&staged).expect("staging tree");
+        fs::write(staged.join(format!("{stem}.mod3")), bytes).expect("staged bytes");
+        staging_root
+    }
+
+    fn materialize_staging_root(app_data_dir: &Path, target_main: &str, stem: &str) -> PathBuf {
+        materialize_staging_root_for(
+            app_data_dir,
+            "11111111-1111-4111-8111-111111111111",
+            target_main,
+            stem,
+            b"staged-bytes",
+        )
+    }
+
+    fn game_tree_is_empty(game_root: &Path) -> bool {
+        fn visit(dir: &Path) -> bool {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return true;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if !visit(&path) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+        visit(game_root)
+    }
+
+    /// **半覆盖**的路由必须失败，且一个字节都不写进游戏目录。
+    ///
+    /// 钉的是**性质**，不是某一道实现：这个性质有**两道**保护，
+    /// 单独移除任一道这条都不会转红（反向验证实测）。
+    ///
+    /// 1. 本函数的逐动作闸门——在构造任何读取器之前拒绝；
+    /// 2. `InstallCommitService::commit_plan` 先把全部源文件读进 `sourced_actions` 才写盘
+    ///    （`install.rs:405-407`），任一读取失败就一个字节都不落地。
+    ///
+    /// staging 根在这里**真实存在**：否则读取器构造就先失败，测试会退化成「staging 目录
+    /// 不存在也装不上」，两道保护一道都测不到。
+    #[test]
+    fn commit_refuses_a_partially_routed_plan_before_touching_the_game_directory() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root.clone(), Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                    .expect("binding id"),
+            )
+            .expect("route the first action only");
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3", "second.mod3"],
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(
+            game_tree_is_empty(&game_root),
+            "半覆盖的路由必须在写入游戏目录之前就被拒绝，不能装一半"
+        );
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "拒绝要发生在构造任何读取器之前"
+        );
+    }
+
+    /// 对照组：同样的计划、同样的 staging 根，路由**全覆盖**时闸门放行。
+    ///
+    /// 与上一条唯一的差别是第二个动作有没有被记进路由。没有这条对照，上一条无法区分
+    /// 「闸门拦住了」与「这个计划本来就装不上」。
+    #[test]
+    fn commit_accepts_a_fully_routed_plan_and_reads_the_imported_package() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root, Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                    .expect("binding id"),
+            )
+            .expect("stage the retargeted action");
+        routing
+            .read_from_package(hmm_core::PackageFileId::new("second.mod3"))
+            .expect("read the other action from the package");
+
+        let _ = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3", "second.mod3"],
+        ));
+
+        assert!(
+            looked_up.load(Ordering::SeqCst),
+            "全覆盖的路由该放行，`ImportedPackage` 那一档要去找原包"
+        );
+    }
+
+    /// 路由点名了**计划里没有的**绑定：组装方与计划不同步，在读写之前拒绝。
+    ///
+    /// 这条钉的是**残留 staging 目录**这个真实场景：陌生绑定的根如果恰好存在、里面又恰好
+    /// 有这个动作的 `target_path`（提交失败留下的孤儿目录就是这个形状），没有这道检查时
+    /// 读取会**成功**，把那份陌生字节写进游戏目录。所以这里把陌生根造出来并放上可辨认的
+    /// 字节，断言游戏目录里一个文件都没有——而不是依赖「陌生根恰好不存在」这个偶然。
+    #[test]
+    fn commit_refuses_a_routing_that_names_a_binding_outside_the_plan() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let app_data_dir = temp.path().join("app-data");
+        let game_root = temp.path().join("game");
+        fs::create_dir_all(&game_root).expect("game root");
+        materialize_staging_root(&app_data_dir, "one002", "first");
+        // 上一次提交失败留下的孤儿 staging 目录，内容与本计划无关。
+        materialize_staging_root_for(
+            &app_data_dir,
+            "22222222-2222-4222-8222-222222222222",
+            "one002",
+            "first",
+            b"WRONG-stranger-bytes",
+        );
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(app_data_dir, game_root.clone(), Arc::clone(&looked_up));
+        let mut routing = RetargetSourceRouting::empty();
+        // 计划里的绑定是 `binding-1111...`，这里点名那个孤儿目录的绑定。
+        routing
+            .stage(
+                hmm_core::PackageFileId::new("first.mod3"),
+                ReplacementBindingId::parse("binding-22222222-2222-4222-8222-222222222222")
+                    .expect("binding id"),
+            )
+            .expect("route to a stranger binding");
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            routing,
+            42,
+            "one002",
+            &["first.mod3"],
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(
+            game_tree_is_empty(&game_root),
+            "陌生绑定的字节一个都不该落进游戏目录"
+        );
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "拒绝要发生在构造任何读取器之前"
+        );
+    }
+
+    /// 对照组：identity 绑定（`保持原位`）本来就该读原包，空路由不是错误。
+    ///
+    /// 它与上一条**同样**以 `SourceRead` 失败告终（本测试的沙箱定位器故意不可用），
+    /// 所以判据只能是「有没有去找过原包」——否则两条用例根本区分不开，闸门放宽了也照样绿。
+    #[test]
+    fn commit_lets_an_identity_binding_read_the_imported_package_without_routing() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(
+            temp.path().join("app-data"),
+            temp.path().join("game"),
+            Arc::clone(&looked_up),
+        );
+
+        // `is_identity_replacement_binding`：created_at == 0 且源/目标同一。
+        let _ = committer.commit_install_plan(commit_request_with_binding(
+            RetargetSourceRouting::empty(),
+            0,
+            "one001",
+            &["pair.mod3"],
+        ));
+
+        assert!(
+            looked_up.load(Ordering::SeqCst),
+            "identity 绑定该走原包读取，不该被重定向闸门拦下"
+        );
     }
 }

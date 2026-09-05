@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use hmm_core::{
     FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId, ReplacementBindingSnapshot,
+    RetargetSourceRouting,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
@@ -102,6 +103,9 @@ pub struct ImportedModInstallCommitRequest {
     pub revision_id: Option<ModRevisionId>,
     pub profile_id: ProfileId,
     pub plan: InstallPlan,
+    /// 「哪些 `package_file_id` 该从 staging 读、读哪个绑定的根」。故意与 `plan` 分开
+    /// 传递——归属信息不在计划里（见 `RetargetSourceRouting`）。未重定向安装是空路由。
+    pub source_routing: RetargetSourceRouting,
 }
 
 pub trait ImportedModInstallPlanner: Send + Sync {
@@ -779,6 +783,9 @@ impl InstallTaskRunner {
                             revision_id: revision_id.clone(),
                             profile_id: request.profile_id.clone(),
                             plan,
+                            // 标准安装装的是原包文件本身，不经 staging：空路由。
+                            // 这里携带的 identity 绑定（`保持原位`）同样读原包。
+                            source_routing: RetargetSourceRouting::empty(),
                         }))
                 }
                 Err(error) => Err(error),
