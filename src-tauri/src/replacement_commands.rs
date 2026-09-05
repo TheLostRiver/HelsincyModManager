@@ -524,6 +524,12 @@ fn analysis_error_to_command_error(error: ReplacementServiceError) -> CommandErr
             | hmm_ports::ReplacementAdapterError::AmbiguousSourceSlot
             | hmm_ports::ReplacementAdapterError::SourceBindingMismatch,
         ) => "replacement_source_not_retargetable",
+        // #356：认得出源槽位、但本游戏当前没有可选目标（防具 catalog 只覆盖女装）。
+        // 与上面那组分开是因为玩家的下一步不同：那组是「这个包不行」，这条是
+        // 「包没问题，是我们还没覆盖到」，让玩家去换包是错的引导。
+        ReplacementServiceError::Adapter(
+            hmm_ports::ReplacementAdapterError::SourceHasNoAvailableTargets,
+        ) => "replacement_source_has_no_targets",
         ReplacementServiceError::Adapter(
             hmm_ports::ReplacementAdapterError::TargetCatalogMissing { .. }
             | hmm_ports::ReplacementAdapterError::TargetCatalogUnavailable,

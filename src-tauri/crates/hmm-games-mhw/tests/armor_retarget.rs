@@ -447,10 +447,16 @@ fn armor_analysis_blocks_multiple_slots_and_male_or_mixed_sources() {
         .contains(&ReplacementWarning::UnsupportedSource));
 }
 
+/*
+ * `#349` 切片②：包里同时有女装槽位和男装槽位时，**女装那件照常可重定向**。
+ *
+ * 这条曾经断言 `AmbiguousSourceSlot`（拒整包）。那是 `#349` 的病根——判定粒度错了：
+ * 「作者一次发布多件装备」是正常的发布习惯，不是坏包。绑定点名了哪个槽位，就按那个槽位建
+ * 计划；包里还有别的槽位与它无关。
+ */
 #[test]
-fn armor_retarget_plan_rejects_ambiguous_source_unknown_target_and_binding_mismatch() {
-    let adapter = MhwArmorReplacementAdapter;
-    let ambiguous = adapter
+fn a_female_slot_is_still_retargetable_when_the_package_also_carries_a_male_slot() {
+    let plan = MhwArmorReplacementAdapter
         .build_retarget_plan(RetargetPlanRequest {
             game_id: GameId::mhw(),
             binding: binding(ROSE_DRESS_SOURCE_ID, "mhw:armor:fatalis-alpha"),
@@ -460,9 +466,52 @@ fn armor_retarget_plan_rejects_ambiguous_source_unknown_target_and_binding_misma
             ]),
             carries_package_companions: true,
         })
-        .expect_err("ambiguous source");
-    assert_eq!(ambiguous, ReplacementAdapterError::AmbiguousSourceSlot);
+        .expect("女装槽位不该被同包里的男装槽位拖累");
 
+    // 只带自己那个槽位的文件：男装槽位既不属于本绑定，也没有可选目标。
+    assert_eq!(
+        plan.actions()
+            .iter()
+            .map(|action| action.source_relative_path().as_str())
+            .collect::<Vec<_>>(),
+        vec!["nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3"]
+    );
+    assert_eq!(
+        target_of(
+            &plan,
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3"
+        ),
+        "nativePC/pl/f_equip/pl129_0000/body/mod/f_body129_0000.mod3"
+    );
+}
+
+/*
+ * `#356`：男装包必须报「没有可选目标」，不是「源槽位有歧义」。
+ *
+ * 包里只有一个槽位，报歧义与事实相反，而且把玩家引向「换个包」——真正的成因是 catalog 只
+ * 覆盖女装（实测 269 条目标全是 `pl/f_equip`），包本身没有任何问题。
+ */
+#[test]
+fn a_male_armor_package_reports_that_it_has_no_targets_rather_than_being_ambiguous() {
+    let error = MhwArmorReplacementAdapter
+        .build_retarget_plan(RetargetPlanRequest {
+            game_id: GameId::mhw(),
+            binding: binding("mhw:armor:m_equip:pl078_0000", "mhw:armor:fatalis-alpha"),
+            assets: assets(&["nativePC/pl/m_equip/pl078_0000/body/mod/m_body078_0000.mod3"]),
+            carries_package_companions: true,
+        })
+        .expect_err("男装暂时没有可选目标");
+
+    assert_eq!(
+        error,
+        ReplacementAdapterError::SourceHasNoAvailableTargets,
+        "单槽位包不得报「源槽位有歧义」——包里明明只有一个槽位"
+    );
+}
+
+#[test]
+fn armor_retarget_plan_rejects_unknown_target_and_binding_mismatch() {
+    let adapter = MhwArmorReplacementAdapter;
     let missing_id = ReplacementTargetId::parse("mhw:armor:missing").expect("target id");
     let missing = adapter
         .build_retarget_plan(RetargetPlanRequest {
@@ -525,4 +574,140 @@ fn armor_retarget_plan_rejects_duplicate_normalized_target_paths() {
         .expect_err("duplicate final target");
 
     assert_eq!(error, ReplacementAdapterError::InvalidRetargetPlan);
+}
+
+/*
+ * 多槽位夹具（`#355`）。
+ *
+ * 语料库里 11 个真实外观包**全是单槽位**，一个多槽位样本都没有（`#349` 正文第三节已如实
+ * 承认这个限制），所以这份清单是构造的。构造必须复刻真实命名约定——两个源槽位号
+ * （`pl078_0000` / `pl123_0000`）与作者自建目录的形态都取自真实包，只是把它们组合进同一个
+ * 包。用编造的文件名会让代码、文档、测试三方自洽地错（`#337` 的病根）。
+ */
+const TWO_ARMOR_SETS: &[&str] = &[
+    // 作者自建目录：属于**包**，与哪个槽位装到哪都无关，一个包只装一次。
+    "nativePC/pl/f_equip/mod_pl_twosets/shared_BM.tex",
+    "nativePC/pl/f_equip/mod_pl_twosets/shared_CMM.tex",
+    // 槽位 A。`_BM.tex` 是**槽位级**原路径文件：只有装 A 的绑定才该带它。
+    "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3",
+    "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mrl3",
+    "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000_BM.tex",
+    // 槽位 B。
+    "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000.mod3",
+    "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000.mrl3",
+    "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000_BM.tex",
+];
+
+const SLOT_B_SOURCE_ID: &str = "mhw:armor:f_equip:pl123_0000";
+/// catalog 里 `pl001_0000` 的目标 id（`mhw-armor-targets.v1.json` 实测）。
+const LEATHER_TARGET_ID: &str =
+    "mhw:armor:67663de427bb57b42d289ea193d8e865bb949ffaeee8a9e9caecdc1ee54662eb";
+
+fn two_set_plan(source_id: &str, target_id: &str, carries: bool) -> RetargetPlan {
+    MhwArmorReplacementAdapter
+        .build_retarget_plan(RetargetPlanRequest {
+            game_id: GameId::mhw(),
+            binding: binding(source_id, target_id),
+            assets: assets(TWO_ARMOR_SETS),
+            carries_package_companions: carries,
+        })
+        .expect("多槽位包的每个槽位都该能各自建计划")
+}
+
+fn source_paths(plan: &RetargetPlan) -> Vec<&str> {
+    let mut paths = plan
+        .actions()
+        .iter()
+        .map(|action| action.source_relative_path().as_str())
+        .collect::<Vec<_>>();
+    paths.sort_unstable();
+    paths
+}
+
+/*
+ * `#349` 切片② 的核心：一个包里两套防具，各自绑定、各自建计划。
+ *
+ * 断言到**逐字的路径集合**而不是「没报错」：只断言 `is_ok()` 会漏掉「建出来了但带错了文件」
+ * ——而那正是下面两条 latent bug 的表现形态。
+ */
+#[test]
+fn each_armor_slot_in_a_multi_slot_package_builds_its_own_plan() {
+    let plan_a = two_set_plan(ROSE_DRESS_SOURCE_ID, "mhw:armor:fatalis-alpha", true);
+
+    assert_eq!(
+        target_of(
+            &plan_a,
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3"
+        ),
+        "nativePC/pl/f_equip/pl129_0000/body/mod/f_body129_0000.mod3"
+    );
+
+    let plan_b = two_set_plan(SLOT_B_SOURCE_ID, LEATHER_TARGET_ID, false);
+
+    assert_eq!(
+        target_of(
+            &plan_b,
+            "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000.mod3"
+        ),
+        "nativePC/pl/f_equip/pl001_0000/body/mod/f_body001_0000.mod3"
+    );
+}
+
+/*
+ * 槽位内的 `.tex` 属于**那个槽位**，不属于包。
+ *
+ * 旧实现把它和作者自建目录混在同一个 `kept_in_place` 里、且不按槽位过滤，于是槽位 A 的计划
+ * 会把槽位 B 的贴图按原路径一起装进去——玩家只想换第一套，第二套的贴图也落了盘。
+ */
+#[test]
+fn a_slots_plan_does_not_carry_another_slots_in_place_textures() {
+    let plan_a = two_set_plan(ROSE_DRESS_SOURCE_ID, "mhw:armor:fatalis-alpha", true);
+
+    assert_eq!(
+        source_paths(&plan_a),
+        vec![
+            "nativePC/pl/f_equip/mod_pl_twosets/shared_BM.tex",
+            "nativePC/pl/f_equip/mod_pl_twosets/shared_CMM.tex",
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3",
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mrl3",
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000_BM.tex",
+        ],
+        "槽位 A 的计划不得出现任何 pl123_0000 的文件"
+    );
+
+    // 槽位级 `.tex` 仍然留在**原路径**（#342：防具侧零二进制改写，搬走就是静默断链）。
+    assert_eq!(
+        target_of(
+            &plan_a,
+            "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000_BM.tex"
+        ),
+        "nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000_BM.tex"
+    );
+}
+
+/*
+ * 包级随行文件由**恰好一个**绑定承载。
+ *
+ * 旧实现无条件把它们塞进每个计划。多绑定一次提交时，同一个 `target_path` 会出现多个
+ * provider，在 `InstallPlan` 里撞成阻断冲突——`#349` ③b 给这条路径具名过
+ * （`DuplicateSlotTarget`）。承载者是谁不影响正确性，承重的只有「恰好一个」。
+ */
+#[test]
+fn package_level_companions_ride_only_with_the_designated_carrier() {
+    let carrier = two_set_plan(ROSE_DRESS_SOURCE_ID, "mhw:armor:fatalis-alpha", true);
+    let passenger = two_set_plan(SLOT_B_SOURCE_ID, LEATHER_TARGET_ID, false);
+
+    assert!(
+        source_paths(&carrier).contains(&"nativePC/pl/f_equip/mod_pl_twosets/shared_BM.tex"),
+        "承载者必须带上包级随行文件"
+    );
+    assert_eq!(
+        source_paths(&passenger),
+        vec![
+            "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000.mod3",
+            "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000.mrl3",
+            "nativePC/pl/f_equip/pl123_0000/body/mod/f_body123_0000_BM.tex",
+        ],
+        "非承载者一个包级随行文件都不该带，否则两个绑定撞同一个 target_path"
+    );
 }
