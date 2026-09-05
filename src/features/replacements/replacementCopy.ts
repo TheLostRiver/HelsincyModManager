@@ -248,6 +248,10 @@ export const replacementCopy = {
         replacement_source_not_retargetable: {
           message: "该 Mod 不是当前可自动处理的单源外观包。",
         },
+        replacement_source_has_no_targets: {
+          message: "这件装备暂时没有可替换的目标。",
+          hint: "目前只支持把女性防具换到女性防具外观，男性防具的目标列表还没有做。这个包本身没有问题。",
+        },
         replacement_target_catalog_unavailable: { message: "替换目标目录暂不可用。" },
         replacement_analysis_unavailable: { message: "替换分析暂不可用。" },
         weapon_source_content_unavailable: {
@@ -516,6 +520,10 @@ export const replacementCopy = {
         replacement_package_unavailable: { message: "The import package is currently unavailable." },
         replacement_source_not_retargetable: {
           message: "This mod is not a single-source appearance package that can be handled automatically.",
+        },
+        replacement_source_has_no_targets: {
+          message: "This piece has no replacement targets yet.",
+          hint: "Only female armour can be retargeted onto female armour appearances right now; the target list for male armour has not been built. Nothing is wrong with this package.",
         },
         replacement_target_catalog_unavailable: { message: "The replacement target catalog is temporarily unavailable." },
         replacement_analysis_unavailable: { message: "Replacement analysis is temporarily unavailable." },
@@ -789,6 +797,10 @@ export const replacementCopy = {
         replacement_package_unavailable: { message: "インポートパッケージは現在利用できません。" },
         replacement_source_not_retargetable: {
           message: "この Mod は現在自動処理できる単一ソースの外観パッケージではありません。",
+        },
+        replacement_source_has_no_targets: {
+          message: "この装備には置き換え先がまだありません。",
+          hint: "現在は女性防具を女性防具の外観に置き換える場合のみ対応しており、男性防具の置き換え先一覧は未整備です。このパッケージ自体に問題はありません。",
         },
         replacement_target_catalog_unavailable: { message: "置換ターゲットのカタログは一時的に利用できません。" },
         replacement_analysis_unavailable: { message: "置換分析は一時的に利用できません。" },
