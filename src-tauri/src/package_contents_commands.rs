@@ -56,7 +56,21 @@ pub struct PackageContentEntryDto {
 #[serde(rename_all = "camelCase")]
 pub struct PackageContentsDto {
     pub content_root: PackageContentRootDto,
+    /// 允许被选作内容根的全部目录，与 `contentRoot` 当前是哪个无关。
+    ///
+    /// 与 `contentRoot` 分开的理由：玩家选定之后 `contentRoot` 会收敛成 `single`，候选若
+    /// 跟着消失他就**改不了主意**。这份清单同时是 `set_mod_package_content_root` 的白名单。
+    pub candidates: Vec<String>,
     pub entries: Vec<PackageContentEntryDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPackageContentRootRequestDto {
+    pub game_id: Option<String>,
+    pub mod_id: Option<String>,
+    /// 沙箱根相对路径；空串表示沙箱根本身。必须是 `candidates` 里的一项。
+    pub content_root: Option<String>,
 }
 
 #[tauri::command]
@@ -65,6 +79,53 @@ pub fn get_mod_package_contents(
     state: State<'_, AppState>,
 ) -> Result<PackageContentsDto, CommandErrorDto> {
     let request = package_contents_request_from_dto(request)?;
+    state
+        .package_contents_query
+        .query(request)
+        .map(Into::into)
+        .map_err(package_contents_error_to_command_error)
+}
+
+/// 记下玩家为这个包选定的内容根（`#354` 切片 D2）。
+///
+/// 选择**按包持久化**：提交安装时会从沙箱重建计划，重装同理，选择若只活在预览里，重建那
+/// 一刻就没了。设置时即校验白名单，不接受任意路径。
+#[tauri::command]
+pub fn set_mod_package_content_root(
+    request: SetPackageContentRootRequestDto,
+    state: State<'_, AppState>,
+) -> Result<PackageContentsDto, CommandErrorDto> {
+    // `content_root` 允许是空串（沙箱根本身），所以不能走 `required_id`——那会把
+    // 「显式选了沙箱根」误判成「没传值」。
+    let content_root = request.content_root.unwrap_or_default();
+    let query = package_contents_request_from_dto(PackageContentsRequestDto {
+        game_id: request.game_id,
+        mod_id: request.mod_id,
+    })?;
+
+    state
+        .package_contents_query
+        .choose_content_root(query.clone(), &content_root)
+        .map_err(package_contents_error_to_command_error)?;
+    // 回读一次：前端拿到的是**设置生效之后**的分档结果，不用自己推演。
+    state
+        .package_contents_query
+        .query(query)
+        .map(Into::into)
+        .map_err(package_contents_error_to_command_error)
+}
+
+/// 撤销选择，回到自动解析。合集包会重新变成「等玩家决定」。
+#[tauri::command]
+pub fn clear_mod_package_content_root(
+    request: PackageContentsRequestDto,
+    state: State<'_, AppState>,
+) -> Result<PackageContentsDto, CommandErrorDto> {
+    let request = package_contents_request_from_dto(request)?;
+    state
+        .package_contents_query
+        .clear_content_root(request.clone())
+        .map_err(package_contents_error_to_command_error)?;
     state
         .package_contents_query
         .query(request)
@@ -124,6 +185,7 @@ impl From<PackageContents> for PackageContentsDto {
     fn from(value: PackageContents) -> Self {
         Self {
             content_root: value.content_root.into(),
+            candidates: value.candidates,
             entries: value
                 .entries
                 .into_iter()

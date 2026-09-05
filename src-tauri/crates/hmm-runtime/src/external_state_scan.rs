@@ -204,6 +204,10 @@ impl ConfiguredExternalStateScanner {
     /// 单文件上限复用 MHW 武器二进制的既有上界（256 MiB），而不是自造一个：
     /// 扫描与安装对「一个 MOD 文件能有多大」应当有同一口径。它不是总量上限——
     /// `read_install_file` 逐文件读并立即收敛成 32 字节摘要，峰值只有单文件大小。
+    ///
+    /// 参数多是**装配层的固有形状**（与同文件的 `new` 同因），把它们打包成一个 struct 只是
+    /// 把同样的字段挪个地方，不减少调用方要提供的东西。
+    #[allow(clippy::too_many_arguments)]
     pub fn with_real_filesystem(
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
