@@ -89,7 +89,8 @@ use mod_storage_commands::{
     validate_mod_storage_dir,
 };
 use package_contents_commands::{
-    clear_mod_package_content_root, get_mod_package_contents, set_mod_package_content_root,
+    clear_mod_package_content_root, clear_mod_package_file_selection, get_mod_package_contents,
+    set_mod_package_content_root, set_mod_package_file_selection,
 };
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
@@ -200,6 +201,8 @@ pub fn run() {
             get_mod_package_contents,
             set_mod_package_content_root,
             clear_mod_package_content_root,
+            set_mod_package_file_selection,
+            clear_mod_package_file_selection,
             start_install_task,
             start_uninstall_task,
             get_install_manifest_status,

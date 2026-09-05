@@ -50,6 +50,11 @@ pub struct PackageContentEntryDto {
     /// UI 因此不能把它直接渲染成「不会被安装」，理由见 `hmm-app` 的
     /// `package_contents_query` 模块头。
     pub rejected_by_game: bool,
+    /// 玩家把这个文件勾掉了（`#354` 切片 D3）。
+    ///
+    /// 与 `installable` / `rejectedByGame` 分开：那两条是「本游戏允许不允许」，这一条是
+    /// 「玩家要不要」。合并就说不清「它为什么不装」。
+    pub excluded_by_player: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -61,7 +66,18 @@ pub struct PackageContentsDto {
     /// 与 `contentRoot` 分开的理由：玩家选定之后 `contentRoot` 会收敛成 `single`，候选若
     /// 跟着消失他就**改不了主意**。这份清单同时是 `set_mod_package_content_root` 的白名单。
     pub candidates: Vec<String>,
+    /// 玩家勾掉的 `packageFileId`。整包仍逐条列在 `entries` 里——勾掉不等于看不见。
+    pub excluded_files: Vec<String>,
     pub entries: Vec<PackageContentEntryDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPackageFileSelectionRequestDto {
+    pub game_id: Option<String>,
+    pub mod_id: Option<String>,
+    /// 要**排除**的 `packageFileId` 清单。空清单 = 整包都装。
+    pub excluded_files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -186,6 +202,7 @@ impl From<PackageContents> for PackageContentsDto {
         Self {
             content_root: value.content_root.into(),
             candidates: value.candidates,
+            excluded_files: value.excluded_files,
             entries: value
                 .entries
                 .into_iter()
@@ -195,6 +212,7 @@ impl From<PackageContents> for PackageContentsDto {
                     target_path: entry.target_path,
                     installable: entry.installable,
                     rejected_by_game: entry.rejected_by_game,
+                    excluded_by_player: entry.excluded_by_player,
                 })
                 .collect(),
         }
@@ -221,6 +239,50 @@ impl From<PackageContentRoot> for PackageContentRootDto {
             },
         }
     }
+}
+
+/// 记下玩家在这个包里勾掉的文件（`#354` 切片 D3）。
+///
+/// 传的是**要排除的**清单，不是要保留的：空清单 = 整包都装 = 计划逐字不变。用「保留清单」
+/// 的话，包重新解压出的新文件会**静默不装**，而少装一个文件装完不报错。
+#[tauri::command]
+pub fn set_mod_package_file_selection(
+    request: SetPackageFileSelectionRequestDto,
+    state: State<'_, AppState>,
+) -> Result<PackageContentsDto, CommandErrorDto> {
+    let excluded = request.excluded_files.unwrap_or_default();
+    let query = package_contents_request_from_dto(PackageContentsRequestDto {
+        game_id: request.game_id,
+        mod_id: request.mod_id,
+    })?;
+
+    state
+        .package_contents_query
+        .exclude_files(query.clone(), &excluded)
+        .map_err(package_contents_error_to_command_error)?;
+    state
+        .package_contents_query
+        .query(query)
+        .map(Into::into)
+        .map_err(package_contents_error_to_command_error)
+}
+
+/// 撤销全部勾选，回到「整包都装」。
+#[tauri::command]
+pub fn clear_mod_package_file_selection(
+    request: PackageContentsRequestDto,
+    state: State<'_, AppState>,
+) -> Result<PackageContentsDto, CommandErrorDto> {
+    let request = package_contents_request_from_dto(request)?;
+    state
+        .package_contents_query
+        .clear_excluded_files(request.clone())
+        .map_err(package_contents_error_to_command_error)?;
+    state
+        .package_contents_query
+        .query(request)
+        .map(Into::into)
+        .map_err(package_contents_error_to_command_error)
 }
 
 #[cfg(test)]

@@ -1505,6 +1505,8 @@ preview_imported_mod_install_plan(input)
 get_mod_package_contents(input)
 set_mod_package_content_root(input)
 clear_mod_package_content_root(input)
+set_mod_package_file_selection(input)
+clear_mod_package_file_selection(input)
 start_install_task(input)
 start_uninstall_task(input)
 get_install_manifest_status(input)
@@ -1546,6 +1548,11 @@ cancel_task(taskId)
 - 选择**按 package 持久化**：`start_install_task` 提交时会从 sandbox 重建 `InstallPlan`，重装同理，选择若只活在预览请求里，重建那一刻就没了，装出来的位置与玩家看到的预览不一致。
 - 选择对**建计划、重定向分析、外部状态扫描、CLI 自动化**四条链路一致生效——它们共用同一个扫描器实现。前端不得假设某条链路会忽略它。
 - `clear_mod_package_content_root` 撤销选择、回到自动解析；包内有多个 `nativePC` 时会重新变回 `ambiguous`（等玩家决定），这是预期行为而不是失败。
+- `set_mod_package_file_selection` 记下玩家勾掉的文件（`#354` 切片 D3）。前端提交的是**要排除的** `packageFileId` 清单，**不是要保留的**：空清单 = 整包都装 = 计划逐字不变。用「保留清单」的话，包重新解压出的新文件会**静默不装**，而少装一个文件装完不报错。
+- `set_mod_package_file_selection` 与 `clear_mod_package_file_selection` 都**回读**并返回设置生效之后的 `PackageContentsDto`。
+- 勾掉的文件**仍然逐条列在 `entries` 里**，只是 `excludedByPlayer` 为 `true`——勾掉不等于看不见，否则玩家勾不回来。`excludedFiles` 是同一份事实的集合形式。
+- `entries[].excludedByPlayer` 与 `installable` / `rejectedByGame` 是**三条互相独立的事实**，前端不得合并：前者是「玩家要不要」，后两者是「本游戏允许不允许」。合并就说不清「它为什么不装」。
+- 排除项**不校验是否仍然存在**，与内容根刻意不同：陈旧的排除项最坏只是不命中任何文件，而陈旧的内容根会让路径从错误的根起算——后者必须 fail closed，前者不该。
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 在锁外构建 plan 和 prerequisite decision，并在获取写锁前立即重读同一个
   provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前
