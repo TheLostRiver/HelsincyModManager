@@ -279,11 +279,21 @@ impl PlannedInitialRetargetInstall {
             .collect()
     }
 
-    /// 提交时的源路由：只有走 staging 的绑定进得来。
+    /// 提交时的源路由：**覆盖每一个动作**，两种来源都显式记录。
+    ///
+    /// 「保持原位」的槽位记 `ImportedPackage` 而不是干脆不记——不记会让「组装方漏了一个
+    /// 文件」与「这个文件本来就该读原包」在提交侧无法区分，漏记的文件会拿未重定向的原包
+    /// 字节写进重定向后的目标路径。提交侧因此能逐动作核对覆盖面（见
+    /// `ConfiguredInstallCommitter`）。
     pub fn source_routing(&self) -> Result<RetargetSourceRouting, ReplacementWorkflowError> {
         let mut routing = RetargetSourceRouting::empty();
         for plan in &self.retarget_plans {
             if is_identity_retarget_plan(plan) {
+                for action in plan.actions() {
+                    routing
+                        .read_from_package(action.package_file_id().clone())
+                        .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+                }
                 continue;
             }
             routing

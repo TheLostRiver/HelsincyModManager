@@ -79,7 +79,7 @@ fn retarget_plan_routes_every_action_to_its_own_binding() {
     assert_eq!(routing.len(), plan.actions().len());
     for action in plan.actions() {
         assert_eq!(
-            routing.binding_for(action.package_file_id()),
+            routing.staged_binding_for(action.package_file_id()),
             Some(plan.binding().id()),
         );
     }
@@ -108,11 +108,11 @@ fn merged_routing_keeps_each_binding_for_its_own_files() {
 
     assert_eq!(routing.len(), 2);
     assert_eq!(
-        routing.binding_for(&PackageFileId::new("first.mod3")),
+        routing.staged_binding_for(&PackageFileId::new("first.mod3")),
         Some(first.binding().id()),
     );
     assert_eq!(
-        routing.binding_for(&PackageFileId::new("second.mod3")),
+        routing.staged_binding_for(&PackageFileId::new("second.mod3")),
         Some(second.binding().id()),
     );
     assert_eq!(
@@ -148,7 +148,7 @@ fn routing_rejects_two_bindings_claiming_one_package_file() {
     assert!(error.to_string().contains("family/shared.epv"));
     // 拒绝之后归属仍是先写的那一个——没有被覆盖。
     assert_eq!(
-        routing.binding_for(&PackageFileId::new("family/shared.epv")),
+        routing.staged_binding_for(&PackageFileId::new("family/shared.epv")),
         Some(&ReplacementBindingId::parse("binding-first").expect("binding id")),
     );
 }
@@ -187,6 +187,9 @@ fn empty_routing_reports_itself_as_empty() {
 
     assert!(routing.is_empty());
     assert_eq!(routing.len(), 0);
-    assert_eq!(routing.binding_for(&PackageFileId::new("anything")), None);
+    assert_eq!(
+        routing.staged_binding_for(&PackageFileId::new("anything")),
+        None
+    );
     assert!(routing.binding_ids().is_empty());
 }
