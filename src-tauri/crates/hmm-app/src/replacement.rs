@@ -482,6 +482,9 @@ impl ReplacementWorkflowService {
                     game_id: game_id.clone(),
                     binding,
                     assets: resolved.assets,
+                    // 一次只提交一个绑定，所以它就是包级随行资源的唯一承载者。
+                    // 多绑定提交（`#349` 切片③b-3）会在 N 个绑定里指定恰好一个。
+                    carries_package_companions: true,
                 },
                 &content_reader,
             )
@@ -534,6 +537,8 @@ impl ReplacementWorkflowService {
                     game_id: request.game_id,
                     binding,
                     assets: resolved.assets,
+                    // 同上：单绑定提交，本计划承载包级随行资源。
+                    carries_package_companions: true,
                 },
                 &content_reader,
             )
@@ -670,6 +675,8 @@ impl ReplacementWorkflowService {
                     game_id: request.game_id,
                     binding,
                     assets: resolved.assets,
+                    // 同上：单绑定提交，本计划承载包级随行资源。
+                    carries_package_companions: true,
                 },
                 &content_reader,
             )
