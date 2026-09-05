@@ -60,7 +60,7 @@ use hmm_ports::{
     AppClock, CancellationToken, CrossProcessWriteAdmissionError, GameConfigRepository,
     GameFileFingerprint, InstallGameFileInspector, InstallGameFileSystem,
     InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
-    ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ModPackageContentRootRepository, ModPackageInstallFileReader, ModPackageInstallFileScanner,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -212,13 +212,19 @@ impl ConfiguredExternalStateScanner {
         allowed_roots: Vec<String>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         clock: Arc<dyn AppClock>,
+        content_root_choices: Arc<dyn ModPackageContentRootRepository>,
     ) -> Self {
-        let scanner: Arc<dyn ModPackageInstallFileScanner> =
-            Arc::new(SandboxModPackageInstallFileScanner);
+        // `#354` D2：外部状态扫描必须与安装**同口径**（`prepare_targets` 的注释明写这一点）。
+        // 玩家为某个包选定过内容根时，扫描若还按自动解析走，比对出来的「这个 MOD 装了没有」
+        // 就是错的——比对的是它**本来会装成什么**，而不是它实际会装成什么。
+        let scanner: Arc<dyn ModPackageInstallFileScanner> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
+        );
         // 同一个对象同时实现「扫描」与「读取」两个 trait：沙箱侧的扫描结果
         // 与读取路径必须出自同一套判定（#284 的内容根解析）。
-        let package_reader: Arc<dyn ModPackageInstallFileReader> =
-            Arc::new(SandboxModPackageInstallFileScanner);
+        let package_reader: Arc<dyn ModPackageInstallFileReader> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(content_root_choices),
+        );
         Self::new(
             game_config_repository,
             mod_import_result_repository,
