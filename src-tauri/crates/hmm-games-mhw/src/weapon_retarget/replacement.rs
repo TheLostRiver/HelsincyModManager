@@ -49,14 +49,17 @@ const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v1";
 const WEAPON_ADAPTER_ID: &str = "mhw.weapon";
 const WEAPON_STRATEGY_ID: &str = "mrl3-texture-path";
 /// v2（#336 切片②）：随行文件进入重定向计划。
+/// v3（#336 切片③）：命中可执行 / 脚本拒绝清单的文件不再产出动作。
 ///
-/// 同一个包在 v1 与 v2 下产出的 action 集合不同（v2 多出伴生文件），`file_count` 与
-/// 三个闭包哈希随之变化——bump 就是为了让这个差异在 facts 里可见。
+/// 每次 bump 的理由相同：同一个包在相邻两版下产出的 action 集合不同（v2 多出伴生文件，
+/// v3 少掉被拒绝的文件），`file_count` 与三个闭包哈希随之变化——bump 就是为了让这个差异
+/// 在 facts 里可见。带 `.exe` 的包按 v2 装过之后，v3 重装会少写那一个文件，这正是需要
+/// 由版本号标记的行为变化。
 ///
-/// bump 安全性已查证：facts 随 manifest 落盘且有 `Wire` 兼容类型，存量安装读回自己当时
-/// 的值；`plan_hash` 的两处比对（`install_recovery.rs`、`reinstall_commit.rs`）都在单次
-/// 操作生命周期内，不存在跨版本比较。
-const WEAPON_STRATEGY_VERSION: u32 = 2;
+/// bump 安全性已查证（切片② 结论，切片③ 不改变前提）：facts 随 manifest 落盘且有 `Wire`
+/// 兼容类型，存量安装读回自己当时的值；`plan_hash` 的两处比对（`install_recovery.rs`、
+/// `reinstall_commit.rs`）都在单次操作生命周期内，不存在跨版本比较。
+const WEAPON_STRATEGY_VERSION: u32 = 3;
 
 /// WR-05 起 Production 与 Sandbox 共用同一份聚合 catalog。
 ///
@@ -234,6 +237,10 @@ impl ReplacementAdapter for MhwWeaponReplacementAdapter {
                 plan.actions().len() as u32,
             )
         })
+        // 审计留痕（#336 切片③）：被拒绝清单丢弃的文件数随 manifest 落盘，
+        // 并由 `hmm-app` 的 replacement audit 写进 Audit Log。只出计数不出路径——
+        // 路径属于第三方 Mod 内容，`SECURITY.md` 禁止进日志。
+        .map(|facts| facts.with_excluded_file_count(closure.excluded().len() as u32))
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
         plan.with_adapter_facts(facts)
             .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)

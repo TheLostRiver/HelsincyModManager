@@ -1,9 +1,13 @@
-use super::path::{parse_safe_relative_path, strip_leading_package_dirs};
+use super::path::parse_safe_relative_path;
 use super::{
     WeaponFamily, WeaponModelAssetKind, WeaponModelAssetPath, WeaponPartId, WeaponPartRole,
     WeaponPathError, WeaponResourceRoot,
 };
-use crate::{generate_mhw_equipment_stable_id, EquipmentCandidateTargetKind};
+use crate::package_path::strip_leading_package_dirs;
+use crate::{
+    generate_mhw_equipment_stable_id, is_rejected_executable_file_name,
+    EquipmentCandidateTargetKind,
+};
 use hmm_core::{InstallTargetPath, PackageFileId, ReplacementSourceId};
 use hmm_ports::ReplacementAsset;
 use std::collections::{BTreeMap, BTreeSet};
@@ -169,12 +173,34 @@ impl WeaponCompanionAsset {
     }
 }
 
+/// 一个被拒绝清单挡下的包内文件：适配器看见了它，但**不会**为它产出任何动作。
+///
+/// 保留路径而不是只记数量，是为了让切片⑤ 的 UI 能列出具体被排除了什么——用户看到
+/// 「已排除 3 个非游戏资源文件」却不知道是哪三个，同样属于「错误信息不指向可操作的
+/// 下一步」。投影到日志、CLI 或诊断包时必须只出计数，路径属于第三方 Mod 内容。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeaponExcludedAsset {
+    package_file_id: PackageFileId,
+    relative_path: InstallTargetPath,
+}
+
+impl WeaponExcludedAsset {
+    pub fn package_file_id(&self) -> &PackageFileId {
+        &self.package_file_id
+    }
+
+    pub fn relative_path(&self) -> &InstallTargetPath {
+        &self.relative_path
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeaponSourceClosure {
     source_id: ReplacementSourceId,
     root: WeaponResourceRoot,
     pairs: Vec<WeaponModelPair>,
     companions: Vec<WeaponCompanionAsset>,
+    excluded: Vec<WeaponExcludedAsset>,
     asset_count: usize,
     warnings: Vec<WeaponAnalysisWarning>,
 }
@@ -200,6 +226,12 @@ impl WeaponSourceClosure {
         &self.companions
     }
 
+    pub fn excluded(&self) -> &[WeaponExcludedAsset] {
+        &self.excluded
+    }
+
+    /// 会被计划处理的资源数。**不含**被拒绝的文件——它们不会落盘，算进「已匹配」
+    /// 会让前端的「本次影响 N 个文件」比实际多。
     pub fn asset_count(&self) -> usize {
         self.asset_count
     }
@@ -352,13 +384,14 @@ pub fn analyze_mhw_weapon_assets(
      * 第二遍：源根已定，把剩下的文件分档。
      *
      * - 不在 `nativePC/wp/` 下（防具、NPC、readme、预览图…）→ 忽略，与本武器无关
+     * - 命中可执行 / 脚本拒绝清单 → 拒绝（切片③），不产出动作、计数
      * - 在源槽位目录**之内** → 随行·需重定位（贴图、特效、`.evwp`、`.ctc`…）
      * - 在 `nativePC/wp/` 下但与槽位无关 → 随行·原样（作者自建目录、族级 `epv/`、`sound/`）
      *
-     * 这一遍**不产生任何错误**：真实包里这三类都是常态。危险类型（可执行等）的拒绝
-     * 属 hmm-install-safety 边界，见 #336 切片③。
+     * 除 ②b 的未登记部件外这一遍**不产生错误**：真实包里这几类都是常态。
      */
     let mut companions = Vec::with_capacity(unclassified.len());
+    let mut excluded = Vec::new();
     for (asset, error) in unclassified {
         let segments = asset.relative_path.as_str().split('/').collect::<Vec<_>>();
         let under_weapon_tree =
@@ -366,6 +399,26 @@ pub fn analyze_mhw_weapon_assets(
         if !under_weapon_tree {
             continue;
         }
+
+        /*
+         * 拒绝清单排在所有归档分支之前（#336 切片③）。
+         *
+         * 顺序是有意的：命中拒绝清单的文件不该有机会落进任何一档随行处置，也不该因为
+         * 恰好长得像别的东西而改变结论。当前 `.mod3`/`.mrl3` 都不在清单里，两条分支
+         * 事实上不重叠；把拒绝放在前面是为了让「以后往清单里加扩展名」不会意外地
+         * 被后面的分支抢先。
+         */
+        if segments
+            .last()
+            .is_some_and(|name| is_rejected_executable_file_name(name))
+        {
+            excluded.push(WeaponExcludedAsset {
+                package_file_id: asset.package_file_id,
+                relative_path: asset.relative_path,
+            });
+            continue;
+        }
+
         let inside_root = root.contains(&asset.relative_path);
 
         /*
@@ -458,6 +511,7 @@ pub fn analyze_mhw_weapon_assets(
         root,
         pairs,
         companions,
+        excluded,
         asset_count,
         warnings,
     })

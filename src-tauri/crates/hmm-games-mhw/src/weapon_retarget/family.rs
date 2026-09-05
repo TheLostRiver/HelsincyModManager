@@ -259,6 +259,7 @@ impl WeaponMainId {
             role,
             number: self.number,
             has_bs_prefix: self.has_bs_prefix,
+            variant_suffix: String::new(),
         })
     }
 }
@@ -270,23 +271,71 @@ pub struct WeaponPartId {
     role: WeaponPartRole,
     number: u16,
     has_bs_prefix: bool,
+    /// 已登记部件 ID 之后作者自加的变体后缀，如 `saya035ol` 的 `ol`（#336 ②b）。
+    ///
+    /// 它标识**另一个模型**，不是同一个部件的别名：`saya035` 与 `saya035ol` 各自成对、
+    /// 各自改名。后缀必须逐字带到目标部件上，否则两者会双双改成 `saya019` 而互相覆盖。
+    variant_suffix: String,
 }
 
 impl WeaponPartId {
     pub fn parse_for_main(value: &str, main_id: &WeaponMainId) -> Result<Self, WeaponFamilyError> {
-        let main_part = main_id.part_for_role(WeaponPartRole::Main)?;
-        if value == main_part.as_str() {
-            return Ok(main_part);
-        }
-
+        let mut candidates = vec![main_id.part_for_role(WeaponPartRole::Main)?];
         if let Some(secondary) = main_id.family().secondary_part() {
-            let secondary_part = main_id.part_for_role(secondary.role())?;
-            if value == secondary_part.as_str() {
-                return Ok(secondary_part);
-            }
+            candidates.push(main_id.part_for_role(secondary.role())?);
         }
 
-        Err(WeaponFamilyError::UnknownPart)
+        if let Some(exact) = candidates.iter().find(|part| value == part.as_str()) {
+            return Ok(exact.clone());
+        }
+
+        /*
+         * 变体后缀（#336 ②b）。泡狐太刀的 `saya035ol` 过去在这里判 `UnknownPart`，
+         * 而 `analysis.rs` 把它升级成否决整包——库里唯一一把太刀 Mod 因此不可重定向。
+         *
+         * 它本质上不是「没见过的部件」：前缀就是本族已登记的鞘 `saya035`，作者只是加了
+         * 个变体标记。`part_rename::rename_part_prefix` **本来就能算对** `saya035ol` →
+         * `saya019ol`，挡住它的只有这里的全等比较。所以放宽的是识别，不是改名规则。
+         *
+         * 两条守卫与 `rename_part_prefix` 逐字相同，理由也相同——两处必须对同一个文件名
+         * 得出同一个结论，否则磁盘改名与 MRL3 引用改写会分叉：
+         *
+         * 守卫① 后缀不能以数字开头。部件 ID 是 `<prefix><3 位数字>`，否则 `saya0351`
+         *       会被读成 `saya035` + 变体 `1`。
+         * 守卫② 后缀里不能再出现任何部件 ID。`swo035saya035` 无法判断作者意图，
+         *       且改名后内层的 `saya035` 不会被改写，会产生断链。
+         */
+        let matched = candidates
+            .iter()
+            .filter(|part| value.starts_with(part.as_str()))
+            // 同族部件 ID 可能互为前缀，取最长命中。
+            .max_by_key(|part| part.as_str().len());
+        let Some(part) = matched else {
+            return Err(WeaponFamilyError::UnknownPart);
+        };
+        let suffix = &value[part.as_str().len()..];
+
+        if suffix.is_empty()
+            || suffix.as_bytes()[0].is_ascii_digit()
+            || candidates
+                .iter()
+                .any(|candidate| suffix.contains(candidate.as_str()))
+        {
+            return Err(WeaponFamilyError::UnknownPart);
+        }
+        Ok(part.clone().with_variant_suffix(suffix))
+    }
+
+    /// 把变体后缀接到部件 ID 上。目标部件由 `part_for_role` 产出（不带后缀），
+    /// 重定向时用本方法把源部件的后缀原样接过去。
+    pub(super) fn with_variant_suffix(mut self, suffix: &str) -> Self {
+        self.canonical.push_str(suffix);
+        self.variant_suffix = suffix.to_owned();
+        self
+    }
+
+    pub fn variant_suffix(&self) -> &str {
+        &self.variant_suffix
     }
 
     pub fn as_str(&self) -> &str {

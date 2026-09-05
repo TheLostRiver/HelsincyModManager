@@ -163,7 +163,23 @@ weapon_retarget/
 ## 14 类 Family Registry
 
 `family` 和 `part_prefix` 都是 ASCII 小写稳定 token。下表只冻结有公开结构证据的默认副件；任何
-`extra_parts`、patch model 或新 prefix 都要独立证据、设计更新和负测，不能由 catalog 任意放宽。
+`extra_parts`、patch model 或**新 prefix** 都要独立证据、设计更新和负测，不能由 catalog 任意放宽。
+
+> **变体后缀不属于「新 prefix」（#336 ②b，2026-09-05）。** 真实包里存在 `saya035ol.mod3` 这类
+> 文件：prefix 仍是本表冻结的 `saya`，作者只是在部件 ID 后加了变体标记。旧实现在
+> `WeaponPartId::parse_for_main` 用**全等比较**识别部件，于是这类文件判 `weapon_unknown_part`
+> 并**否决整包**——库里唯一一把太刀 Mod（泡狐太刀）因此完全不可重定向。
+>
+> 现在识别放宽为「已登记部件 ID + 变体后缀」，后缀逐字带到目标部件上（`saya035ol` →
+> `saya019ol`）。放宽的**只是识别**：改名规则没有变，`rename_part_prefix` 本来就能算对这个
+> 名字。两条守卫与 `rename_part_prefix` 逐字相同，因为磁盘改名与 MRL3 引用改写必须对同一个
+> 文件名得出同一个结论：
+>
+> - 后缀不能以数字开头（`saya0351` 是更长的数字串，不是变体）
+> - 后缀里不能再出现任何部件 ID（`saya035saya035` 无法判断意图，且内层不会被改写）
+>
+> 前缀完全对不上本表任何部件的模型（如 `zzz035.mod3`）仍然失败关闭——那才是真正的新
+> prefix，需要走本节开头的独立证据流程。
 
 | Weapon | family | main prefix | v1 已知副件 role / prefix |
 | --- | --- | --- | --- |
@@ -311,9 +327,13 @@ v1 source closure 必须满足：
 - 恰好一个 weapon source root。
 - 恰好一个 family，且所有 model asset 的 main id 相同。
 - 至少一个已注册 part 的完整 MOD3/MRL3 pair。
-- source root 内没有未知扩展名、未知 part、嵌套额外目录或大小写碰撞。
+- source root 内没有未知 part 的 `.mod3`/`.mrl3`（②b 未落地前失败关闭）或大小写碰撞。
 - package 中没有第二个 `nativePC/wp` root，也没有其他会随安装写入的 `nativePC` 混合 payload。
 - readme、preview 和 importer 已分类为非安装 payload 的元数据不进入 closure。
+
+> #336 切片② 起，「source root 内没有未知扩展名」不再成立：真实包必然携带 `.tex` `.dds`
+> `.evwp` `.ctc` `.efx` 等伴生文件，旧口径会把库里 4/4 真实包全部否决。分类改为两遍法，
+> 第二遍把非模型文件分成「随行·需重定位」「随行·原样」「拒绝」三档，见下表。
 
 一个 family 的默认副件整体缺失可以产生 `partial_part_set` warning；某个已经出现的 part 缺少 MOD3
 或 MRL3 则是 blocker。这样允许 main-only 或副件-only 的窄模型替换，但不允许半个 binary pair。
@@ -338,10 +358,11 @@ Target 必须同时满足：
 | --- | --- | --- | --- |
 | 已验证 Iceborne `.mod3` | `path_only` | 已识别 family/part、完整 pair、支持的 header/version | 字节逐字节复制；只改目标路径 |
 | 已验证 Iceborne `.mrl3` | `binary_transformer_required` | 完整 pair、bounds/path preflight、注册 transformer 版本 | 只改已解析 texture path 字段 |
-| `.tex` | `unsupported` | 无 | 等待独立格式/引用闭包证据 |
-| `.ctc` / `.ccl` | `unsupported` | 无 | 物理/碰撞语义未证明 |
-| `.efx` / `.sobj` / patch model | `unsupported` | 无 | 需要独立 parser/transformer 设计 |
-| 未知扩展名或未知二进制版本 | `unsupported` | 无 | fail closed |
+| `.tex` `.dds` `.ctc` `.ccl` `.efx` `.epv3` `.evwp`… | `companion`（#336 切片②） | 在唯一 source root 内 | 字节逐字节复制；换槽位段 + 按部件 ID 前缀改名 |
+| 同上但与槽位无关（作者自建目录、族级 `epv/` `sound/`） | `companion_verbatim`（#336 切片②） | 在 `nativePC/wp/` 下 | 字节与路径都不动，原样安装 |
+| `.bat .cmd .com .dll .exe .jar .js .lnk .msi .ps1 .scr .vbs` | `rejected`（#336 切片③） | 无 | 不产出动作；计入 `excluded_file_count` 与 Audit Log |
+| 未知 part 的 `.mod3` / `.mrl3` | `unsupported` | 无 | fail closed（②b 未落地） |
+| 未知二进制版本 | `unsupported` | 无 | fail closed |
 
 “MOD3 path-only”不是对任意 `.mod3` 的声明。parser 必须先验证受支持的 Iceborne signature/version、
 offset/count bounds 和 pair；不满足时仍是 `unsupported`。
@@ -409,11 +430,19 @@ ReplacementBindingSnapshot
     source_closure_digest
     part_set_digest
     transform_set_digest
+    part_count
+    file_count
+    excluded_file_count            // #336 切片③：被拒绝清单丢弃、未进入计划的文件数
 ```
 
 要求：
 
 - 新字段对旧 Armor manifest 默认 `None`，不得重写既有 Armor binding。
+- `part_count` / `file_count` / `excluded_file_count` 都必须带 `#[serde(default)]`，
+  否则切片③ 之前写下的 manifest 反序列化会炸。
+- `excluded_file_count` **不进** `plan_hash` 的 `hmm-replacement-adapter-facts-v1` 摘要：
+  它随之变化的 action 集合已经被 `hmm-install-plan-v1` 段逐条哈希，而向一个已定版的
+  域分隔摘要追加字段会静默改变所有既有 binding 的哈希值。
 - invocation 必须进入 RetargetPlan/InstallPlan token hash、batch facts digest 和 recovery snapshot。
 - adapter facts 是 core 不解释的版本化数据；core 只做大小限制、确定性序列化和 hash。
 - transformer registry 由 runtime composition 按精确 id/version 注入；未知或重复注册失败启动/preview。

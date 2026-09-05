@@ -310,6 +310,13 @@ pub struct ReplacementAdapterFacts {
     part_count: u32,
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     file_count: u32,
+    /// 被拒绝清单挡下、**没有**进入计划的包内文件数（#336 切片③）。
+    ///
+    /// 与 `file_count` 是互斥的两堆：`file_count` 是计划真正会写盘的动作数，这里是
+    /// 「适配器看见但主动丢弃」的数量。留在 facts 里是为了让「装的时候少了 N 个文件」
+    /// 这件事随 manifest 落盘可审计——否则拒绝就是一次无痕的静默丢弃。
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    excluded_file_count: u32,
 }
 
 #[derive(Deserialize)]
@@ -327,6 +334,8 @@ struct ReplacementAdapterFactsWire {
     part_count: u32,
     #[serde(default)]
     file_count: u32,
+    #[serde(default)]
+    excluded_file_count: u32,
 }
 
 impl ReplacementAdapterFacts {
@@ -371,6 +380,7 @@ impl ReplacementAdapterFacts {
             transformer_identities: Vec::new(),
             part_count: 0,
             file_count: 0,
+            excluded_file_count: 0,
         })
     }
 
@@ -399,6 +409,15 @@ impl ReplacementAdapterFacts {
         self.part_count = part_count;
         self.file_count = file_count;
         Ok(self)
+    }
+
+    /// 记录本次分析中被适配器主动丢弃、不进入计划的包内文件数（#336 切片③ 的拒绝清单）。
+    ///
+    /// 与 `with_transformers` 相互独立：`0` 是常态（绝大多数包没有可拒绝的文件），
+    /// 所以这里不像 `part_count` / `file_count` 那样把 `0` 当成非法值。
+    pub fn with_excluded_file_count(mut self, excluded_file_count: u32) -> Self {
+        self.excluded_file_count = excluded_file_count;
+        self
     }
 
     pub fn schema_version(&self) -> u32 {
@@ -440,6 +459,10 @@ impl ReplacementAdapterFacts {
     pub fn file_count(&self) -> u32 {
         self.file_count
     }
+
+    pub fn excluded_file_count(&self) -> u32 {
+        self.excluded_file_count
+    }
 }
 
 impl TryFrom<ReplacementAdapterFactsWire> for ReplacementAdapterFacts {
@@ -455,6 +478,9 @@ impl TryFrom<ReplacementAdapterFactsWire> for ReplacementAdapterFacts {
             wire.part_set_sha256,
             wire.transform_set_sha256,
         )?;
+        // `excluded_file_count` 与 transformer 三元组无关，两条分支都要带过去：
+        // 一个没有 transformer 的适配器同样可以丢弃非游戏资源文件。
+        let facts = facts.with_excluded_file_count(wire.excluded_file_count);
         if wire.transformer_identities.is_empty() && wire.part_count == 0 && wire.file_count == 0 {
             Ok(facts)
         } else {

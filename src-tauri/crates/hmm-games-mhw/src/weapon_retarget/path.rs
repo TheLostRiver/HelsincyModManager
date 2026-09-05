@@ -247,9 +247,15 @@ impl WeaponModelAssetPath {
             return Err(WeaponPathError::CrossFamilyTarget);
         }
 
+        /*
+         * 变体后缀必须跟着走（#336 ②b）：`saya035ol` 的目标是 `saya019ol`，不是 `saya019`。
+         * 丢掉后缀会让它与同族的 `saya035` 双双落到 `saya019`，两个不同模型互相覆盖，
+         * 而且是**静默**覆盖——计划看起来完全成功。
+         */
         let target_part = target_main_id
             .part_for_role(self.part_id.role())
-            .map_err(|_| WeaponPathError::UnknownPart)?;
+            .map_err(|_| WeaponPathError::UnknownPart)?
+            .with_variant_suffix(self.part_id.variant_suffix());
         let mut target_segments = self.segments.clone();
         target_segments[3] = target_main_id.as_str().to_owned();
         target_segments[5] = format!("{}.{}", target_part.as_str(), self.kind.extension());
@@ -279,28 +285,6 @@ pub(crate) fn parse_safe_relative_path(value: &str) -> Result<InstallTargetPath,
         | InstallTargetPathError::WindowsDrivePrefix
         | InstallTargetPathError::InvalidSegment => WeaponPathError::UnsafePath,
     })
-}
-
-/// 真实 Mod 压缩包常在 `nativePC` 之外包一层作者自建目录
-/// （`MyWeaponMod/nativePC/wp/two/001/mod/two001.mod3`），而武器语法要求首段
-/// 即 `nativePC`。这里把外层目录剥离掉，让这类最常见的包形态能被识别。
-///
-/// **只能在已经通过 `parse_safe_relative_path` 校验的路径上调用**——先校验、
-/// 后剥离。顺序一旦颠倒，`a/../../evil/nativePC/wp/...` 就能借剥离绕过父目录
-/// 遍历检测。
-///
-/// 路径中不含 `nativePC` 段时返回 `None`，交由调用方按"与武器无关的文件"处理。
-pub(crate) fn strip_leading_package_dirs(
-    normalized: &InstallTargetPath,
-) -> Option<InstallTargetPath> {
-    let segments = normalized.as_str().split('/').collect::<Vec<_>>();
-    let start = segments
-        .iter()
-        .position(|segment| *segment == NATIVE_PC_ROOT)?;
-    if start == 0 {
-        return Some(normalized.clone());
-    }
-    InstallTargetPath::parse(segments[start..].join("/"), [NATIVE_PC_ROOT]).ok()
 }
 
 fn map_family_error(error: WeaponFamilyError) -> WeaponPathError {
