@@ -11,6 +11,8 @@ use std::sync::Arc;
 
 mod armor_retarget;
 mod equipment_catalog_candidate;
+mod executable_reject_list;
+mod package_path;
 mod prerequisites;
 mod save_directory;
 mod weapon_retarget;
@@ -27,6 +29,11 @@ pub use equipment_catalog_candidate::{
     EquipmentCandidateValidationIssue, EquipmentCandidateValidationReport,
     MHW_EQUIPMENT_CANDIDATE_JSON_SCHEMA, MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION,
 };
+// 拒绝清单不是武器专属概念：防具侧（#336 切片⑥）落地时应复用同一份，
+// 所以放在 crate 级而不是 weapon_retarget 里。
+pub use executable_reject_list::{
+    is_rejected_executable_file_name, MHW_EXECUTABLE_REJECT_EXTENSIONS,
+};
 pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
 pub use weapon_retarget::{
     analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation,
@@ -34,13 +41,13 @@ pub use weapon_retarget::{
     transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter, MhwReplacementCatalog,
     MhwWeaponCatalogSource, MhwWeaponMrl3TexturePathTransformer, WeaponAnalysisError,
     WeaponAnalysisWarning, WeaponBinaryError, WeaponCatalogSourceError, WeaponCompanionAsset,
-    WeaponCompanionPlacement, WeaponFamily, WeaponFamilyError, WeaponMainId, WeaponMod3Preflight,
-    WeaponModelAssetKind, WeaponModelAssetPath, WeaponModelPair, WeaponModelPairPreflight,
-    WeaponMrl3Preflight, WeaponMrl3TransformOutput, WeaponMrl3TransformReport, WeaponPartId,
-    WeaponPartRole, WeaponPathError, WeaponResourceRoot, WeaponSecondaryPart, WeaponSourceAsset,
-    WeaponSourceClosure, WeaponTargetMetadata, WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES,
-    MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID,
-    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
+    WeaponCompanionPlacement, WeaponExcludedAsset, WeaponFamily, WeaponFamilyError, WeaponMainId,
+    WeaponMod3Preflight, WeaponModelAssetKind, WeaponModelAssetPath, WeaponModelPair,
+    WeaponModelPairPreflight, WeaponMrl3Preflight, WeaponMrl3TransformOutput,
+    WeaponMrl3TransformReport, WeaponPartId, WeaponPartRole, WeaponPathError, WeaponResourceRoot,
+    WeaponSecondaryPart, WeaponSourceAsset, WeaponSourceClosure, WeaponTargetMetadata,
+    WeaponTargetStatus, MHW_WEAPON_BINARY_MAX_BYTES, MHW_WEAPON_CATALOG_SOURCE_SCHEMA_VERSION,
+    MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 
 const DISPLAY_NAME: &str = "Monster Hunter: World - Iceborne";

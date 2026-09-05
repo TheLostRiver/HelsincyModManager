@@ -1,4 +1,4 @@
-use super::part_rename::{rename_part_prefix, PartRename};
+use super::part_rename::{rename_weapon_stem, PartRename};
 use super::{WeaponBinaryError, WeaponFamily, WeaponMainId, WeaponResourceRoot};
 
 const MAX_GAME_RESOURCE_SEGMENTS: usize = 32;
@@ -141,36 +141,35 @@ impl GameResourceReference {
 
         let mut target_segments = self.segments.clone();
         target_segments[reference_root.main_segment_index] = target_main_id.as_str().to_owned();
-        let mappings = part_mappings(source_root, target_main_id)?;
+        let source_main_id = source_root.main_id();
         let tail_start = reference_root.main_segment_index + 1;
         let tail_end = target_segments.len() - 1;
+        /*
+         * 中间目录段（`mod/`、`epv/`…）不该带部件 ID。带了说明这条引用的结构超出规则的
+         * 表达能力，改名可能只改对一半——失败关闭，不猜。
+         */
         for segment in &target_segments[tail_start..tail_end] {
-            if mappings.iter().any(|(source, _)| segment.contains(source)) {
+            if !matches!(
+                rename_weapon_stem(segment, source_main_id, target_main_id),
+                PartRename::Unrelated
+            ) {
                 return Err(WeaponBinaryError::ReferenceAmbiguous);
             }
         }
         target_segments[tail_end] =
-            retarget_filename_segment(&target_segments[tail_end], &mappings)?;
+            retarget_filename_segment(&target_segments[tail_end], source_main_id, target_main_id)?;
         Ok(Some(target_segments.join(&self.separator.to_string())))
     }
 }
 
-fn part_mappings(
-    source_root: &WeaponResourceRoot,
-    target_main_id: &WeaponMainId,
-) -> Result<Vec<(String, String)>, WeaponBinaryError> {
-    // 与磁盘文件重定位共用同一张对照表（part_rename::part_mappings），保证两处改名一致。
-    super::part_rename::part_mappings(source_root.main_id(), target_main_id)
-        .map_err(|_| WeaponBinaryError::CrossFamilyTarget)
-}
-
 fn retarget_filename_segment(
     segment: &str,
-    mappings: &[(String, String)],
+    source_main_id: &WeaponMainId,
+    target_main_id: &WeaponMainId,
 ) -> Result<String, WeaponBinaryError> {
-    // 统一走前缀替换规则（见 part_rename）。旧版只认「整段相等」与「去扩展名后相等」，
-    // 真实贴图名 `two003_BML` 只「包含」部件 ID，会被判 ambiguous——#336 的 L5。
-    match rename_part_prefix(segment, mappings) {
+    // 与磁盘改名**共用同一个函数**（`part_rename::rename_weapon_stem`），保证两处对同一个
+    // 文件名得出同一个结论。分叉的后果是重定向「成功」但游戏里贴图缺失。
+    match rename_weapon_stem(segment, source_main_id, target_main_id) {
         PartRename::Renamed(renamed) => Ok(renamed),
         PartRename::Unrelated => Ok(segment.to_owned()),
         PartRename::Ambiguous => Err(WeaponBinaryError::ReferenceAmbiguous),
