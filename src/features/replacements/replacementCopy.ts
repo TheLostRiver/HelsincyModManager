@@ -255,6 +255,18 @@ export const replacementCopy = {
           hint: "请重新导入该 Mod。",
         },
         replacement_target_not_found: { message: "所选替换目标已不存在。" },
+        replacement_duplicate_slot_intent: {
+          message: "同一件装备被设置了两次。",
+          hint: "请为这个包里的每件装备各选一个目标。",
+        },
+        replacement_duplicate_slot_target: {
+          message: "这个包里有两件装备指向了同一个替换目标。",
+          hint: "请把其中一件换成别的目标，或者选择「不安装」。",
+        },
+        replacement_keep_in_place_unavailable: {
+          message: "这件装备无法「保持原位」——它的原始槽位不在可替换目标清单里。",
+          hint: "请为它选一个替换目标，或者选择「不安装」。",
+        },
         replacement_install_state_unavailable: { message: "无法确认当前安装状态。" },
         replacement_initial_install_blocked: {
           message: "当前安装或恢复状态不允许首次替换安装。",
@@ -512,6 +524,19 @@ export const replacementCopy = {
           hint: "Re-import the mod.",
         },
         replacement_target_not_found: { message: "The selected replacement target no longer exists." },
+        replacement_duplicate_slot_intent: {
+          message: "One piece of gear was configured twice.",
+          hint: "Choose a single target for each piece of gear in this package.",
+        },
+        replacement_duplicate_slot_target: {
+          message: "Two pieces of gear in this package point at the same replacement target.",
+          hint: "Point one of them at a different target, or leave it out of the install.",
+        },
+        replacement_keep_in_place_unavailable: {
+          message:
+            "This piece of gear cannot stay in place — its original slot is not a replaceable target.",
+          hint: "Pick a replacement target for it, or leave it out of the install.",
+        },
         replacement_install_state_unavailable: { message: "The current install status could not be confirmed." },
         replacement_initial_install_blocked: {
           message: "The current install or recovery status does not allow a first replacement install.",
@@ -772,6 +797,18 @@ export const replacementCopy = {
           hint: "Mod を再インポートしてください。",
         },
         replacement_target_not_found: { message: "選択した置換ターゲットは既に存在しません。" },
+        replacement_duplicate_slot_intent: {
+          message: "同じ装備が二重に設定されています。",
+          hint: "このパッケージ内の装備ごとにターゲットを 1 つ選んでください。",
+        },
+        replacement_duplicate_slot_target: {
+          message: "このパッケージ内の 2 つの装備が同じ置換ターゲットを指しています。",
+          hint: "どちらかを別のターゲットに変更するか、インストール対象から外してください。",
+        },
+        replacement_keep_in_place_unavailable: {
+          message: "この装備は「元の位置に残す」ことができません。元のスロットが置換ターゲットに含まれていません。",
+          hint: "置換ターゲットを選ぶか、インストール対象から外してください。",
+        },
         replacement_install_state_unavailable: { message: "現在のインストール状態を確認できません。" },
         replacement_initial_install_blocked: {
           message: "現在のインストール／復旧状態では初回の置換インストールを実行できません。",
