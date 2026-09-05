@@ -176,6 +176,8 @@ fn facts_for_install_batch(
                 &input.layer,
             )
             .map_err(|error| anyhow::anyhow!(error.code()))?;
+        // `#349` 切片③b 的边界：`input.replacement_binding_snapshot` 是单值，批量项一次
+        // 只能携带一个绑定。多绑定的批量提交等切片③b 把工作流做出来，在那之前失败关闭。
         let current_binding = match plan.replacement_bindings.as_slice() {
             [] => None,
             [binding] => Some(binding),
@@ -876,6 +878,7 @@ fn resolve_batch_plan_request(
                         &input.layer,
                     )
                     .map_err(|_| BatchAutomationError::new(unavailable_code))?;
+                // 同上：`#349` 切片③b 的边界，单值字段一次只承载一个绑定。
                 input.replacement_binding_snapshot =
                     match install_plan.replacement_bindings.as_slice() {
                         [] => None,
