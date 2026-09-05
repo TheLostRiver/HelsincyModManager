@@ -69,6 +69,9 @@ fn pair(main_id: &str, part_id: &str) -> WeaponModelPair {
     ];
     analyze_mhw_weapon_assets(&assets)
         .expect("artificial pair closure")
+        .sole_unit()
+        .expect("恰好一个可重定向单元")
+        .clone()
         .pairs()[0]
         .clone()
 }

@@ -461,6 +461,7 @@ impl ReinstallPreviewService {
                 }
                 InstallManifestValidationError::DuplicateReplacementBindingId
                 | InstallManifestValidationError::DuplicateReplacementBindingMod
+                | InstallManifestValidationError::DuplicateReplacementBindingSource
                 | InstallManifestValidationError::ReplacementBindingProfileMismatch
                 | InstallManifestValidationError::ReplacementBindingOwnerMissing
                 | InstallManifestValidationError::ReplacementBindingRevisionMismatch => {
@@ -1007,6 +1008,7 @@ fn manifest_validation_blocking_reason(
         }
         InstallManifestValidationError::DuplicateReplacementBindingId
         | InstallManifestValidationError::DuplicateReplacementBindingMod
+        | InstallManifestValidationError::DuplicateReplacementBindingSource
         | InstallManifestValidationError::ReplacementBindingProfileMismatch
         | InstallManifestValidationError::ReplacementBindingOwnerMissing
         | InstallManifestValidationError::ReplacementBindingRevisionMismatch => {
