@@ -60,21 +60,15 @@ impl InstallTargetPath {
             .expect("normalized target paths always have a root")
             .to_owned();
 
-        let is_allowed = allowed_roots
+        let canonicalized = allowed_roots
             .into_iter()
             .filter_map(|allowed_root| normalize_allowed_root(allowed_root.as_ref()))
-            .any(|allowed_root| {
-                normalized == allowed_root
-                    || normalized
-                        .strip_prefix(&allowed_root)
-                        .is_some_and(|remainder| remainder.starts_with('/'))
-            });
+            .find_map(|allowed_root| canonicalize_allowed_root(&normalized, &allowed_root));
 
-        if !is_allowed {
-            return Err(InstallTargetPathError::TargetRootNotAllowed { root });
+        match canonicalized {
+            Some(canonicalized) => Ok(Self(canonicalized)),
+            None => Err(InstallTargetPathError::TargetRootNotAllowed { root }),
         }
-
-        Ok(Self(normalized))
     }
 
     pub fn as_str(&self) -> &str {
@@ -633,6 +627,36 @@ fn normalize_allowed_root(value: &str) -> Option<String> {
     normalize_relative_path(value).ok()
 }
 
+/// 目标路径落在 `allowed_root` 之下时，返回把根前缀替换成 `allowed_root` **原样大小写**
+/// 的路径；否则返回 `None`。前缀比对按段边界做，且**大小写不敏感**。
+///
+/// 为什么要归一化（`#292`）：包内游戏根的大小写由 Mod 作者决定，真实第三方包里 `nativepc/`
+/// 很常见。此前这里按字节比对 allowed root，非规范写法的整包会被过滤掉，装成空计划，
+/// `#285` 报「包内没有找到可安装的文件」——而预览图能正常显示（内容根解析本就大小写不敏感），
+/// 玩家看到的是自相矛盾的提示。
+///
+/// 只把比对放宽、保留原样大小写（`#292` 方案 A）会更糟：清单里会同时出现 `nativePC/x` 与
+/// `nativepc/x`，而在 NTFS 上它们是**同一个文件**，冲突检测因此失效——两个 Mod 互相覆盖
+/// 却不被发现。改写成规范大小写则相反：两种写法收敛到同一个 `target_path`，冲突照常报出来。
+///
+/// **只改根前缀**：其余段的大小写是内容的一部分，必须逐字保留（真实包里有 `PGR/` 这类
+/// 全大写目录和 `two003_BML.PNG` 这类文件名）。这与 `#345` 在包内路径入口只归一化根段
+/// 是同一条口径。
+fn canonicalize_allowed_root(normalized: &str, allowed_root: &str) -> Option<String> {
+    let prefix = normalized.get(..allowed_root.len())?;
+
+    if !prefix.eq_ignore_ascii_case(allowed_root) {
+        return None;
+    }
+
+    // 段边界：`nativePCX/a` 不算落在 `nativePC` 之下。
+    match &normalized[allowed_root.len()..] {
+        "" => Some(allowed_root.to_owned()),
+        remainder if remainder.starts_with('/') => Some(format!("{allowed_root}{remainder}")),
+        _ => None,
+    }
+}
+
 fn normalize_target_path(value: &str) -> Result<String, InstallTargetPathError> {
     normalize_relative_path(value)
 }
@@ -729,6 +753,92 @@ mod tests {
             Err(InstallTargetPathError::TargetRootNotAllowed {
                 root: "other".to_owned()
             })
+        );
+    }
+
+    // `#292`：根段的大小写由 Mod 作者决定，落到清单里必须是**同一个**规范写法。
+    // 判据是**等价性**而不是「小写也能过」——只断言 `is_ok()` 会漏掉「认了但把非规范
+    // 大小写原样带进清单」这类更隐蔽的失败（那正是 `#292` 方案 A 的缺陷：NTFS 上
+    // `content/x` 与 `CONTENT/x` 是同一个文件，冲突检测会失效）。
+    #[test]
+    fn target_path_canonicalizes_the_root_segment_casing() {
+        let canonical = InstallTargetPath::parse("content/models/player.mod3", allowed_roots())
+            .expect("规范写法必须通过");
+
+        for variant in [
+            "Content/models/player.mod3",
+            "CONTENT/models/player.mod3",
+            "coNTEnt/models/player.mod3",
+        ] {
+            let parsed = InstallTargetPath::parse(variant, allowed_roots())
+                .unwrap_or_else(|error| panic!("{variant} 应当被接受，实际 {error:?}"));
+
+            assert_eq!(
+                parsed, canonical,
+                "{variant} 必须与规范写法产出逐字相同的目标路径"
+            );
+        }
+    }
+
+    // 只归一化**根前缀**：其余段的大小写是内容的一部分（真实包里有 `PGR/`、
+    // `two003_BML.PNG`），改了就会在磁盘上写出错误的文件名。
+    #[test]
+    fn target_path_keeps_non_root_segment_casing_verbatim() {
+        let path = InstallTargetPath::parse("CONTENT/PGR/two003_BML.PNG", allowed_roots())
+            .expect("大小写变体的根段应被接受");
+
+        assert_eq!(path.as_str(), "content/PGR/two003_BML.PNG");
+    }
+
+    // 段边界不能因为大小写不敏感而失守：`contentx` 不是 `content`。
+    #[test]
+    fn target_path_rejects_a_root_that_merely_shares_a_prefix() {
+        let result = InstallTargetPath::parse("CONTENTX/player.mod3", allowed_roots());
+
+        assert_eq!(
+            result,
+            Err(InstallTargetPathError::TargetRootNotAllowed {
+                root: "CONTENTX".to_owned()
+            })
+        );
+    }
+
+    // 安全校验仍在根匹配**之前**跑：大小写变体不能借归一化绕过遍历检测。
+    #[test]
+    fn target_path_still_rejects_traversal_under_a_case_variant_root() {
+        let result = InstallTargetPath::parse("CONTENT/../outside.bin", allowed_roots());
+
+        assert_eq!(result, Err(InstallTargetPathError::ParentTraversal));
+    }
+
+    // 同一个计划里的两种写法收敛到同一个 `target_path`，于是**照常**被报成冲突，
+    // 而不是在 NTFS 上互相静默覆盖。
+    #[test]
+    fn plan_reports_conflict_between_two_casings_of_the_same_target() {
+        let providers = vec![
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new("a"),
+                InstallTargetPath::parse("content/models/player.mod3", allowed_roots())
+                    .expect("target should be valid"),
+                FileLayer::new("base", 0),
+            ),
+            InstallFileProvider::new(
+                ModId::new("mod-b"),
+                PackageFileId::new("b"),
+                InstallTargetPath::parse("CONTENT/models/player.mod3", allowed_roots())
+                    .expect("target should be valid"),
+                FileLayer::new("base", 0),
+            ),
+        ];
+
+        let plan = InstallPlan::from_providers(providers);
+
+        assert!(plan.actions.is_empty(), "冲突未解决时不应产出动作");
+        assert_eq!(plan.conflicts.len(), 1, "两种写法必须被判为同一个目标");
+        assert_eq!(
+            plan.conflicts[0].target_path.as_str(),
+            "content/models/player.mod3"
         );
     }
 

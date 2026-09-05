@@ -8,6 +8,7 @@ use super::{
 use crate::armor_retarget::{
     resolve_target_allowing_legacy_ids, MhwArmorCatalog, MhwArmorReplacementAdapter,
 };
+use crate::package_path::segment_after_native_pc_root;
 use hmm_core::{
     ContentTransformerIdentity, GameId, LocalizedText, ReplacementAdapterFacts,
     ReplacementAnalysis, ReplacementCatalog, ReplacementCatalogVersion, ReplacementSource,
@@ -273,11 +274,9 @@ fn contains_weapon_plan_candidate(request: &RetargetPlanRequest) -> bool {
 /// 注意这里**不会**把防具包误判成武器：防具路径是 `nativePC/pl/...`、
 /// `nativePC/ch/...` 等，`nativePC` 之后紧跟的分量不是 `wp`。
 fn is_weapon_path(path: &str) -> bool {
-    path.replace('\\', "/")
-        .split('/')
-        .skip_while(|segment| *segment != "nativePC")
-        .nth(1)
-        == Some("wp")
+    // 游戏根这一段按大小写不敏感定位（#345）：真实包里 `nativepc` / `NativePC` 很常见，
+    // 而它们在 Windows 上与 `nativePC` 是同一个目录。归一化在 `package_path`，见那里的说明。
+    segment_after_native_pc_root(path).as_deref() == Some("wp")
 }
 
 fn ensure_mhw(game_id: &GameId) -> ReplacementAdapterResult<()> {

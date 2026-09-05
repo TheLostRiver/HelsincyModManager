@@ -213,11 +213,20 @@ pub(super) fn parse_model_pair(
         return Err(WeaponBinaryError::PairIncompatible);
     }
 
+    // 配对由**结构**建立：同一个族根、同一个部件 ID、一个 MOD3 配一个 MRL3（上面那组
+    // 判定）。这里**不再**要求两侧的材质集合完全相同（`#346`）。
+    //
+    // 那条比对是同一病根的第六处：它用 MOD3 的材质集合去关联 MRL3，而改写链路根本不读
+    // 这个关联——`mrl3_transform` 两次调用本函数都把 `ParsedMod3` 丢掉（`_`），只比对
+    // **MRL3 自己**的材质哈希前后一致；`material_set_sha256` 没有任何生产消费者。
+    //
+    // 真实数据也证伪了它：弓包的 `ya017.mod3` 有一条名为 `Shadow_invalid_Mt__1` 的失效
+    // 材质槽（派生哈希 0x63cbeb97），而配对的 `ya017.mrl3` 在那一位存的是 0xfac2ba2d，
+    // 另一条则两侧一致（0x2c70b9ad）。文件本身可用（安装正常、游戏内正常），只是两侧
+    // 材质集合不必逐条对上。作为对照，`bow017` / `swo035` / `saya035ol` 三对是完全相等的
+    // ——相等是常态，但不是格式约束。
     let mod3 = parse_mod3(mod3_bytes)?;
     let mrl3 = parse_mrl3(mrl3_bytes)?;
-    if mod3.material_hashes != mrl3.material_hashes {
-        return Err(WeaponBinaryError::PairIncompatible);
-    }
     Ok((mod3, mrl3))
 }
 
@@ -333,6 +342,14 @@ fn parse_mod3(bytes: &[u8]) -> Result<ParsedMod3, WeaponBinaryError> {
         (true, vertex_remap_offset),
     ])?;
 
+    // 材质名的**字节**约束承重：它们界定了进 `material_set_sha256` 的字节，而那个摘要
+    // 进 facts、也参与 MOD3/MRL3 配对比对。所以 NUL 终止、非空、可打印 ASCII、首尾非
+    // 空格全部保留。
+    //
+    // 但**重名不是错误**（`#346`）：两个网格共用同一材质是正常的，不是损坏信号。
+    // `BTreeSet` 天然去重，摘要仍然确定。实证：`bow017.mod3` 的 9 条材质里
+    // `Ch_Wp_Mt__1` 出现两次，去重后 8 条——与配对的 `bow017.mrl3` 的 8 条材质恰好对上，
+    // 去重才是对的口径。
     let mut material_hashes = BTreeSet::new();
     for index in 0..material_count {
         let start = material_range.start + index * MOD3_MATERIAL_ENTRY_SIZE;
@@ -348,58 +365,37 @@ fn parse_mod3(bytes: &[u8]) -> Result<ParsedMod3, WeaponBinaryError> {
                 .all(|byte| byte.is_ascii() && (0x20..=0x7e).contains(byte))
             || name.first() == Some(&b' ')
             || name.last() == Some(&b' ')
-            || !material_hashes.insert(crc32(name) ^ u32::MAX)
         {
             return Err(WeaponBinaryError::FormatInvalid);
         }
+        material_hashes.insert(crc32(name) ^ u32::MAX);
     }
 
-    let vertex_buffer_size_u64 =
-        u64::try_from(vertex_buffer_size).map_err(|_| WeaponBinaryError::FormatInvalid)?;
-    let face_buffer_size_u64 =
-        u64::try_from(face_buffer_size).map_err(|_| WeaponBinaryError::FormatInvalid)?;
-    for index in 0..mesh_count {
-        let start = mesh_range.start + index * MOD3_MESH_ENTRY_SIZE;
-        let mesh_vertex_count = u64::from(read_u16(bytes, start + 2)?);
-        let material_id = usize::from(read_u16(bytes, start + 6)?);
-        let block_size = u64::from(bytes[start + 14]);
-        let vertex_sub = u64::from(read_u32(bytes, start + 16)?);
-        let mesh_vertex_offset = u64::from(read_u32(bytes, start + 20)?);
-        let before_face_count = u64::from(read_u32(bytes, start + 28)?);
-        let mesh_face_count = u64::from(read_u32(bytes, start + 32)?);
-        let vertex_base = u64::from(read_u32(bytes, start + 36)?);
-        let before_vertex_count = u64::from(read_u32(bytes, start + 60)?);
-
-        if material_id >= material_count
-            || mesh_vertex_count == 0
-            || mesh_face_count == 0
-            || mesh_face_count % 3 != 0
-            || block_size == 0
-            || before_vertex_count
-                .checked_add(mesh_vertex_count)
-                .is_none_or(|end| end > u64::from(vertex_count))
-        {
-            return Err(WeaponBinaryError::FormatInvalid);
-        }
-        let vertex_end = vertex_sub
-            .checked_add(vertex_base)
-            .and_then(|base| base.checked_mul(block_size))
-            .and_then(|relative| relative.checked_add(mesh_vertex_offset))
-            .and_then(|start| {
-                mesh_vertex_count
-                    .checked_mul(block_size)
-                    .and_then(|length| start.checked_add(length))
-            })
-            .ok_or(WeaponBinaryError::FormatInvalid)?;
-        let face_end = before_face_count
-            .checked_add(mesh_face_count)
-            .and_then(|count| count.checked_mul(2))
-            .ok_or(WeaponBinaryError::FormatInvalid)?;
-        if vertex_end > vertex_buffer_size_u64 || face_end > face_buffer_size_u64 {
-            return Err(WeaponBinaryError::FormatInvalid);
-        }
-    }
-
+    // 这里**不再**逐网格复算顶点/面的算术（`#346`）。
+    //
+    // MOD3 从不被改写：它的 `content_transform` 恒为 `None`，逐字节复制；改写只发生在
+    // MRL3，且 `mrl3_transform` 只比对 **MRL3 自己**的材质哈希前后一致，不使用 MOD3 的
+    // 网格数据做关联。那些算术校验保护的是**我们根本不会读的数据**，不是内存安全边界。
+    // 真正的边界在上面且全部保留：magic / version、各计数上限、区间落在文件内、区间不
+    // 重叠、offset 单调、算术溢出、文件信封。
+    //
+    // 被删掉的检查都建立在**未经证实的字段语义**上，其中两条已被真实数据证伪：
+    //
+    // - `<offset+60> + meshVertexCount <= vertexCount`：offset 60 在多数文件里确实像
+    //   「之前的顶点数」（干净的累加序列），但从游戏 chunk 提取的原版文件里它保留的是
+    //   原始模型的绝对索引（`ya017.mod3`：1203 + 196 > 196）。逐条复算沙箱库里 17 个
+    //   真实 MOD3，**6 个文件**违反此式（玫瑰礼服 5 个部位全违反，违反的网格数分别是
+    //   3 / 12 / 1 / 8 / 7）。防具链路目前不调武器预检，所以这颗雷一直没炸。
+    // - 材质名唯一性：见上面的材质循环，`bow017.mod3` 两个网格共用 `Ch_Wp_Mt__1`。
+    // - `vertexEnd > vertexBufferSize`、`faceEnd > faceBufferSize`：用**同一族**未证实的
+    //   字段语义（`+16` / `+20` / `+28` / `+36` 以及 `+14` 的块大小）算出来的，只是还没
+    //   撞上反例——留着是定时炸弹。
+    // - `materialId < materialCount`：我们从不按网格索引材质。
+    // - `meshVertexCount` / `meshFaceCount` / `blockSize` 非零、`meshFaceCount % 3 == 0`：
+    //   同样是对不参与写入、不参与哈希的字段的语义猜测。
+    //
+    // 结论上的那条线：MRL3 我们要改写它的字节，必须解析对，校验承重；MOD3 我们逐字节
+    // 复制，预检只是闸门，只做身份确认（magic / version / 计数 / 区间）与取材质哈希。
     let material_hashes = material_hashes.into_iter().collect::<Vec<_>>();
     let material_set_sha256 = material_set_sha256(&material_hashes);
     Ok(ParsedMod3 {
