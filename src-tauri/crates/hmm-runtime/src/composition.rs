@@ -817,6 +817,7 @@ impl HmmRuntime {
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
                 Arc::clone(&package_content_scanner),
+                Arc::clone(&content_root_choices),
                 clone_game_adapters(&game_adapters),
             ));
         let prerequisites: Arc<dyn GamePrerequisiteDecisionProvider> = game_setup.clone();

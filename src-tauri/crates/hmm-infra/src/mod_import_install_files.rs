@@ -174,6 +174,13 @@ impl ModPackageContentScanner for SandboxModPackageInstallFileScanner {
         Ok(ModPackageContents {
             entries,
             content_root,
+            // 候选**始终**是完整清单，与当前选了哪个无关：否则玩家选定之后就改不了主意。
+            // 与 `effective_content_root` 的白名单出自同一个函数，界面能选的与扫描认的
+            // 因此不会分叉。
+            candidates: candidate_content_roots(request.sandbox_root)?
+                .into_iter()
+                .map(|(relative, _)| relative)
+                .collect(),
         })
     }
 }

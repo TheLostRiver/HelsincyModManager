@@ -234,7 +234,14 @@ pub enum ModPackageContentRoot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModPackageContents {
     pub entries: Vec<ModPackageContentEntry>,
+    /// 本次扫描**实际生效**的内容根。
     pub content_root: ModPackageContentRoot,
+    /// 这个包**允许**被选作内容根的全部目录，与当前选了哪个无关。
+    ///
+    /// 与 [`Self::content_root`] 分开的理由：玩家选定之后 `content_root` 会收敛成
+    /// `Single(选中的那个)`，若候选也跟着消失，他就**改不了主意**了。这份清单同时是
+    /// 设置选择时的白名单——界面能选的与扫描认的出自同一处，不会分叉。
+    pub candidates: Vec<String>,
 }
 
 pub struct ModPackageContentScanRequest<'a> {
