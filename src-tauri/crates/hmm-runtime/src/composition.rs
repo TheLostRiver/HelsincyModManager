@@ -109,7 +109,7 @@ use hmm_ports::{
     SaveRestoreTransactionRepository, StoredModRevision, TaskLogWriter, TextLogReader,
     ThumbnailCacheMaintenance, ThumbnailStore, MIN_LOG_STORAGE_MAX_BYTES,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -2168,10 +2168,15 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
                 })?;
         let materializer = self.materializer_for(&planned)?;
         let revision_id = planned.revision_id().clone();
-        let plan = self
+        let materialized = self
             .workflow
             .materialize_initial_install(&materializer, planned)?;
-        Ok(InitialRetargetInstallPlan { plan, revision_id })
+        let source_routing = materialized.source_routing();
+        Ok(InitialRetargetInstallPlan {
+            plan: materialized.into_parts().1,
+            revision_id,
+            source_routing,
+        })
     }
 
     fn revalidate_initial_install(
@@ -2304,38 +2309,67 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
                 FileSystemInstallSourceFileReader::new(source_root),
             ))
         };
-        let (source_files, staging_root): (Arc<dyn InstallSourceFileReader>, Option<PathBuf>) =
-            match request.plan.replacement_bindings.as_slice() {
-                [] => (imported_source_files()?, None),
-                [snapshot] if is_identity_replacement_binding(snapshot) => {
-                    (imported_source_files()?, None)
+        /*
+         * `#349` 切片③b：源文件读取按 `package_file_id` **路由**，不再是「一个 staging 根，
+         * 或者失败」。路由由组装计划的一方给出（`request.source_routing`），因为归属信息
+         * 不在 `InstallPlan` 里——`InstallAction` 没有绑定字段，而 `hmm-install-plan-v1`
+         * 段对 action 逐条哈希，加字段会静默改掉所有既有 `plan_hash`（`#286` 踩过）。
+         *
+         * 空路由 = 没有任何文件来自 staging：未重定向的标准安装，以及「保持原位」
+         * （identity 绑定）都走这一档，直接读沙箱原包。
+         *
+         * 非空路由下，只有路由里点名的文件读 staging；其余文件（「保持原位」的槽位、
+         * 族级随行文件）读沙箱。沙箱读取器**按需**构造：整个计划都来自 staging 时不去
+         * 碰沙箱，与切片③b 之前的行为一致。
+         */
+        /*
+         * 切片③b 之前，「有非 identity 绑定 ⇒ 必读 staging」是被这里的 match 强制的
+         * （`[snapshot]` 非 identity 唯一的出路就是 staging reader）。路由把这个判断
+         * 移到了组装侧，所以不变量必须在这里显式钉住：**重定向绑定的产出只在 staging 里，
+         * 路由缺了它就会去读沙箱原包的字节、装进重定向后的目标路径——静默装错内容。**
+         * 宁可拒绝提交。
+         */
+        for snapshot in &request.plan.replacement_bindings {
+            if is_identity_replacement_binding(snapshot) {
+                continue;
+            }
+            let staged_by_this_binding = request
+                .source_routing
+                .entries()
+                .any(|(_, binding_id)| binding_id == snapshot.binding_id());
+            if !staged_by_this_binding {
+                return Err(source_error());
+            }
+        }
+        let (source_files, staging_roots): (Arc<dyn InstallSourceFileReader>, Vec<PathBuf>) =
+            if request.source_routing.is_empty() {
+                (imported_source_files()?, Vec::new())
+            } else {
+                let mut roots_by_package_file = BTreeMap::new();
+                let mut staging_roots = BTreeSet::new();
+                for (package_file_id, binding_id) in request.source_routing.entries() {
+                    let staging_root = retarget_staging_root(&self.app_data_dir, binding_id)
+                        .ok_or_else(source_error)?;
+                    staging_roots.insert(staging_root.clone());
+                    roots_by_package_file.insert(package_file_id.clone(), staging_root);
                 }
-                [snapshot] => {
-                    let staging_root =
-                        retarget_staging_root(&self.app_data_dir, snapshot.binding_id())
-                            .ok_or_else(source_error)?;
-                    let reader = RetargetStagingInstallSourceFileReader::from_install_plan(
-                        staging_root.clone(),
-                        &request.plan,
-                    )
-                    .map_err(|_| source_error())?;
-                    (Arc::new(reader), Some(staging_root))
-                }
-                /*
-                 * `#349` 切片③b 的边界：多个绑定意味着多个 staging 目录，而
-                 * `RetargetStagingInstallSourceFileReader` 只认一个根——它按 `target_path`
-                 * 在那个根下取文件，无从知道某个 `package_file_id` 属于哪个绑定。
-                 *
-                 * 归属信息**不在** `InstallPlan` 里（`InstallAction` 没有绑定字段，加字段会
-                 * 动 `hmm-install-plan-v1` 段的逐条哈希），它只在组装计划的那一刻可知。
-                 * 所以多绑定的提交要等切片③b 把「一次提交 N 个绑定」的工作流做出来，届时
-                 * 由组装方给出 `package_file_id -> staging_root` 的路由。
-                 *
-                 * 在那之前失败关闭：`#349` 切片①/③a 让多槽位包能被**分析**出来、模型层面
-                 * 允许多绑定，但运行时一次仍只提交一个绑定。宁可在这里明确拒绝，也不要
-                 * 拿错的 staging 根去读文件——那会静默装错内容。
-                 */
-                _ => return Err(source_error()),
+                let needs_passthrough = request.plan.actions.iter().any(|action| {
+                    request
+                        .source_routing
+                        .binding_for(&action.provider.package_file_id)
+                        .is_none()
+                });
+                let passthrough = match needs_passthrough {
+                    true => Some(imported_source_files()?),
+                    false => None,
+                };
+                let reader = RetargetStagingInstallSourceFileReader::routed(
+                    roots_by_package_file,
+                    &request.plan,
+                    passthrough,
+                )
+                .map_err(|_| source_error())?;
+                (Arc::new(reader), staging_roots.into_iter().collect())
             };
         let service = InstallCommitService::new_with_recovery_records(
             source_files,
@@ -2363,13 +2397,16 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             }
             None => service.commit_plan(commit_request),
         };
-        if let Some(staging_root) = staging_root.filter(|_| should_clean_up_staging(&result)) {
-            if std::fs::remove_dir_all(&staging_root).is_err() && staging_root.exists() {
-                record_runtime_warning(
-                    "retarget.staging_cleanup_failed",
-                    "post_commit",
-                    "retarget_staging_cleanup_failed",
-                );
+        // 多绑定意味着多个 staging 目录，逐个清理——漏掉任何一个都会留下孤儿暂存目录。
+        if should_clean_up_staging(&result) {
+            for staging_root in &staging_roots {
+                if std::fs::remove_dir_all(staging_root).is_err() && staging_root.exists() {
+                    record_runtime_warning(
+                        "retarget.staging_cleanup_failed",
+                        "post_commit",
+                        "retarget_staging_cleanup_failed",
+                    );
+                }
             }
         }
         result
@@ -2438,10 +2475,14 @@ mod core_mod_lifecycle_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hmm_core::{GameDirectoryStatus, GameId, GameInstance, ModId, ProfileId};
+    use hmm_core::{
+        GameDirectoryStatus, GameId, GameInstance, ModId, PreviewImageRejectionReason, ProfileId,
+        RetargetSourceRouting,
+    };
     use hmm_ports::{
-        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult,
-        SaveBackupBackgroundSettingsRepository,
+        DebugLogControl, GameConfigRepositoryError, GameConfigRepositoryResult, GameRunningStatus,
+        SaveBackupBackgroundSettingsRepository, StoredImportPreviewImage, StoredModImportAnalysis,
+        StoredModPackageMetadata,
     };
     use std::fs::{self, File, FileTimes};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -3231,5 +3272,185 @@ mod tests {
         }
 
         panic!("task {task_id} did not reach expected status {expected:?}");
+    }
+
+    /// 记录「有没有去找过原包」。切片③b 的两条用例都以 `SourceRead` 失败告终，
+    /// 区分它们的唯一信号就是这个标记：在闸门处被拒 = 从未访问；通过闸门 = 访问过。
+    struct TrackingSandboxLocator {
+        looked_up: Arc<AtomicBool>,
+    }
+
+    impl ModImportSandboxLocator for TrackingSandboxLocator {
+        fn sandbox_root_for_package(&self, _package_id: &str) -> anyhow::Result<PathBuf> {
+            self.looked_up.store(true, Ordering::SeqCst);
+            anyhow::bail!("sandbox is unavailable in this test")
+        }
+    }
+
+    struct StaticAnalysisRepository;
+
+    impl ModImportResultRepository for StaticAnalysisRepository {
+        fn save_analysis(&self, _analysis: &StoredModImportAnalysis) -> anyhow::Result<()> {
+            panic!("commit routing test must not write the import catalog")
+        }
+
+        fn list_analysis(&self) -> anyhow::Result<Vec<StoredModImportAnalysis>> {
+            panic!("commit routing test must not list the import catalog")
+        }
+
+        fn get_analysis(&self, mod_id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
+            Ok(Some(StoredModImportAnalysis {
+                mod_id: mod_id.to_owned(),
+                task_id: "task-a".to_owned(),
+                package_id: "package-a".to_owned(),
+                display_name: "test mod".to_owned(),
+                metadata: StoredModPackageMetadata::default(),
+                preview_image: StoredImportPreviewImage::Fallback {
+                    reason: PreviewImageRejectionReason::Missing,
+                },
+            }))
+        }
+    }
+
+    struct NotRunningGameDetector;
+
+    impl GameRunningDetector for NotRunningGameDetector {
+        fn game_running_status(&self, _game_id: &GameId) -> GameRunningStatus {
+            GameRunningStatus::NotRunning
+        }
+    }
+
+    fn commit_request_with_binding(
+        source_routing: RetargetSourceRouting,
+        created_at_unix_millis: u128,
+        target_main: &str,
+    ) -> ImportedModInstallCommitRequest {
+        let mod_id = ModId::new("mod-weapon");
+        let profile_id = ProfileId::new("default");
+        let source_id =
+            hmm_core::ReplacementSourceId::parse("mhw:weapon:one001").expect("source id");
+        let binding = hmm_core::ReplacementBinding::new(
+            ReplacementBindingId::parse("binding-11111111-1111-4111-8111-111111111111")
+                .expect("binding id"),
+            mod_id.clone(),
+            profile_id.clone(),
+            source_id.clone(),
+            hmm_core::ReplacementTargetId::parse(format!("mhw:weapon:{target_main}"))
+                .expect("target id"),
+            created_at_unix_millis,
+        )
+        .expect("binding");
+        let snapshot = hmm_core::ReplacementBindingSnapshot::new(
+            binding,
+            None,
+            "one001",
+            target_main,
+            "wp/one",
+            "wp/one",
+            hmm_core::ReplacementTargetKind::parse("weapon").expect("kind"),
+        )
+        .expect("snapshot");
+        let plan = hmm_core::InstallPlan::from_providers([hmm_core::InstallFileProvider::new(
+            mod_id.clone(),
+            hmm_core::PackageFileId::new("pair.mod3"),
+            hmm_core::InstallTargetPath::parse(
+                format!("nativePC/wp/one/{target_main}/mod/{target_main}.mod3"),
+                ["nativePC"],
+            )
+            .expect("target path"),
+            hmm_core::FileLayer::new("base", 0),
+        )])
+        .with_replacement_bindings(vec![snapshot])
+        .expect("plan with binding");
+        ImportedModInstallCommitRequest {
+            game_id: GameId::mhw(),
+            mod_id,
+            revision_id: None,
+            profile_id,
+            plan,
+            source_routing,
+        }
+    }
+
+    fn committer_for(
+        app_data_dir: PathBuf,
+        game_root: PathBuf,
+        looked_up: Arc<AtomicBool>,
+    ) -> ConfiguredInstallCommitter {
+        ConfiguredInstallCommitter::new(
+            Arc::new(StaticGameConfigRepository {
+                instance: Some(configured_game_instance(
+                    game_root.to_str().expect("game root"),
+                    1,
+                )),
+            }),
+            Arc::new(StaticAnalysisRepository),
+            Arc::new(TrackingSandboxLocator { looked_up }),
+            app_data_dir,
+            Arc::new(NotRunningGameDetector),
+        )
+    }
+
+    /// `#349` 切片③b 的承重闸门：**重定向绑定的产出只在它的 staging 根里。**
+    ///
+    /// 路由没覆盖这个绑定时，源文件读取会退回沙箱原包——字节是**未重定向**的，
+    /// 却会被写进重定向后的目标路径。装上去了、不报错，内容是错的。所以必须在
+    /// 读任何源文件**之前**拒绝提交。
+    ///
+    /// 切片③b 之前这条不变量由 `match plan.replacement_bindings` 强制（非 identity
+    /// 绑定唯一的出路就是 staging reader）；路由把判断移到了组装侧，闸门因此必须显式。
+    #[test]
+    fn commit_refuses_a_retarget_binding_that_the_routing_does_not_cover() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(
+            temp.path().join("app-data"),
+            temp.path().join("game"),
+            Arc::clone(&looked_up),
+        );
+
+        let result = committer.commit_install_plan(commit_request_with_binding(
+            RetargetSourceRouting::empty(),
+            42,
+            "one002",
+        ));
+
+        assert!(matches!(
+            result,
+            Err(InstallCommitError::Failed {
+                phase: InstallCommitPhase::SourceRead
+            })
+        ));
+        assert!(
+            !looked_up.load(Ordering::SeqCst),
+            "未被路由覆盖的重定向绑定必须在读取任何源文件之前就被拒绝"
+        );
+    }
+
+    /// 对照组：identity 绑定（`保持原位`）本来就该读原包，空路由不是错误。
+    ///
+    /// 它与上一条**同样**以 `SourceRead` 失败告终（本测试的沙箱定位器故意不可用），
+    /// 所以判据只能是「有没有去找过原包」——否则两条用例根本区分不开，闸门放宽了也照样绿。
+    #[test]
+    fn commit_lets_an_identity_binding_read_the_imported_package_without_routing() {
+        let temp = tempfile::tempdir().expect("temp root");
+        let looked_up = Arc::new(AtomicBool::new(false));
+        let committer = committer_for(
+            temp.path().join("app-data"),
+            temp.path().join("game"),
+            Arc::clone(&looked_up),
+        );
+
+        // `is_identity_replacement_binding`：created_at == 0 且源/目标同一。
+        let _ = committer.commit_install_plan(commit_request_with_binding(
+            RetargetSourceRouting::empty(),
+            0,
+            "one001",
+        ));
+
+        assert!(
+            looked_up.load(Ordering::SeqCst),
+            "identity 绑定该走原包读取，不该被重定向闸门拦下"
+        );
     }
 }

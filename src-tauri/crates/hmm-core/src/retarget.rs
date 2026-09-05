@@ -1,10 +1,11 @@
 use crate::{
     ContentTransformInvocation, GameId, InstallTargetPath, PackageFileId, ReplacementAdapterFacts,
-    ReplacementBinding, ReplacementSourceId, ReplacementTargetKind,
+    ReplacementBinding, ReplacementBindingId, ReplacementSourceId, ReplacementTargetKind,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -53,6 +54,8 @@ pub enum RetargetError {
     MissingTransformFacts,
     #[error("retarget plan transform facts do not match its actions")]
     TransformFactsMismatch,
+    #[error("retarget source routing maps package file {package_file_id} to two bindings")]
+    AmbiguousSourceRouting { package_file_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -479,6 +482,84 @@ impl RetargetPlan {
 
     pub fn adapter_facts(&self) -> Option<&ReplacementAdapterFacts> {
         self.adapter_facts.as_ref()
+    }
+
+    /// 这个计划的产出落在哪个绑定的 staging 根下——`RetargetSourceRouting` 的单绑定片段。
+    /// 多绑定提交把每个计划的片段合并起来（`RetargetSourceRouting::merge`）。
+    pub fn source_routing(&self) -> RetargetSourceRouting {
+        let mut routing = RetargetSourceRouting::empty();
+        for action in &self.actions {
+            // `RetargetPlan::new` 已拒绝重复 `package_file_id`，这里不会冲突。
+            let _ = routing.stage(action.package_file_id().clone(), self.binding.id().clone());
+        }
+        routing
+    }
+}
+
+/// 「某个 `package_file_id` 的字节该从哪儿读」。
+///
+/// `#349` 切片③b：一个安装计划可以同时包含多个绑定的重定向产出（各自一个 staging 根）
+/// 与「保持原位」的原包文件（直接读沙箱）。这份归属信息**故意不在 `InstallPlan` 里**——
+/// `InstallAction` 没有绑定字段，而 `hmm-install-plan-v1` 段对 action **逐条哈希**，
+/// 追加字段会静默改掉所有既有 `plan_hash`（`#286` 踩过这个坑）。归属只在**组装计划的
+/// 那一刻**可知，所以由组装方给出这份路由、随提交请求一起传递，不落进计划、不参与任何摘要。
+///
+/// 只记录**受重定向**的文件。不在其中的 `package_file_id` 一律按原包路径读（「保持原位」
+/// 与未重定向安装都走这一档），空路由 = 整个计划都不涉及 staging。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RetargetSourceRouting {
+    bindings_by_package_file: BTreeMap<PackageFileId, ReplacementBindingId>,
+}
+
+impl RetargetSourceRouting {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// 记录一个受重定向文件的归属。同一个 `package_file_id` 被两个绑定声明是组装错误：
+    /// 谁的 staging 根都可能是对的，拿错了就静默装错内容，所以在这里就拒绝。
+    pub fn stage(
+        &mut self,
+        package_file_id: PackageFileId,
+        binding_id: ReplacementBindingId,
+    ) -> Result<(), RetargetError> {
+        match self.bindings_by_package_file.entry(package_file_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(binding_id);
+                Ok(())
+            }
+            Entry::Occupied(entry) => Err(RetargetError::AmbiguousSourceRouting {
+                package_file_id: entry.key().as_str().to_owned(),
+            }),
+        }
+    }
+
+    pub fn merge(&mut self, other: Self) -> Result<(), RetargetError> {
+        for (package_file_id, binding_id) in other.bindings_by_package_file {
+            self.stage(package_file_id, binding_id)?;
+        }
+        Ok(())
+    }
+
+    pub fn binding_for(&self, package_file_id: &PackageFileId) -> Option<&ReplacementBindingId> {
+        self.bindings_by_package_file.get(package_file_id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bindings_by_package_file.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.bindings_by_package_file.len()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (&PackageFileId, &ReplacementBindingId)> {
+        self.bindings_by_package_file.iter()
+    }
+
+    /// 涉及的绑定集合——提交后按它清理 staging 目录。
+    pub fn binding_ids(&self) -> BTreeSet<ReplacementBindingId> {
+        self.bindings_by_package_file.values().cloned().collect()
     }
 }
 

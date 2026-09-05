@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use hmm_core::{
     FileLayer, GameId, InstallPlan, ModId, ModRevisionId, ProfileId, ReplacementTargetId,
+    RetargetSourceRouting,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy,
@@ -37,6 +38,9 @@ pub struct StartRetargetInstallTaskRequest {
 pub struct InitialRetargetInstallPlan {
     pub plan: InstallPlan,
     pub revision_id: ModRevisionId,
+    /// 与 `plan` 分开传递的源路由，提交时决定每个文件从哪个 staging 根读。
+    /// 见 `RetargetSourceRouting`——归属信息不进计划。
+    pub source_routing: RetargetSourceRouting,
 }
 
 pub trait InitialRetargetInstallPlanner: Send + Sync {
@@ -140,6 +144,7 @@ impl RetargetInstallTaskRunner {
         };
         let revision_id = planned.revision_id;
         let plan = planned.plan;
+        let source_routing = planned.source_routing;
         let action_count = plan.actions.len();
         let adapter_facts = unique_adapter_audit_facts(&plan.replacement_bindings);
         let cleanup_plan = plan.clone();
@@ -291,6 +296,7 @@ impl RetargetInstallTaskRunner {
                     revision_id: Some(revision_id),
                     profile_id: request.profile_id.clone(),
                     plan,
+                    source_routing,
                 })
         };
 
@@ -481,6 +487,8 @@ mod tests {
                     request.layer,
                 )]),
                 revision_id: ModRevisionId::new("revision-a"),
+                // 无绑定的计划不经 staging，空路由。
+                source_routing: RetargetSourceRouting::empty(),
             })
         }
 
@@ -590,9 +598,17 @@ mod tests {
             )])
             .with_replacement_bindings(vec![snapshot])
             .expect("plan with binding");
+            let mut source_routing = RetargetSourceRouting::empty();
+            source_routing
+                .stage(
+                    PackageFileId::new("body"),
+                    ReplacementBindingId::parse("binding-a").expect("binding id"),
+                )
+                .expect("source routing");
             Ok(InitialRetargetInstallPlan {
                 plan,
                 revision_id: ModRevisionId::new("revision-a"),
+                source_routing,
             })
         }
 

@@ -218,46 +218,112 @@ fn validate_batch(files: &[RetargetStagingFile]) -> Result<(), RetargetStagingEr
     Ok(())
 }
 
+struct StagedSourceFile {
+    reader: Arc<FileSystemInstallSourceFileReader>,
+    target_path: InstallTargetPath,
+}
+
+/// 按 `package_file_id` 路由的安装源读取器。
+///
+/// `#349` 切片③b：一个计划可以同时包含多个绑定的重定向产出与「保持原位」的原包文件，
+/// 所以「源」不再是一个根。受重定向的文件各自落在自己绑定的 staging 根下（内部按
+/// `target_path` 布局）；其余文件交给 `passthrough`（沙箱原包，按 `package_file_id` 读）。
+///
+/// 路由由**组装计划的一方**给出，不从 `InstallPlan` 反推——见 `RetargetSourceRouting`。
 pub struct RetargetStagingInstallSourceFileReader {
-    reader: FileSystemInstallSourceFileReader,
-    targets_by_package_file: BTreeMap<PackageFileId, InstallTargetPath>,
+    staged: BTreeMap<PackageFileId, StagedSourceFile>,
+    passthrough: Option<Arc<dyn InstallSourceFileReader>>,
 }
 
 impl RetargetStagingInstallSourceFileReader {
+    /// 单根：计划里的每个动作都来自同一个 staging 根，没有直通文件。
     pub fn from_install_plan(staging_root: PathBuf, plan: &InstallPlan) -> Result<Self> {
-        ensure_existing_directory(&staging_root, "retarget staging root")?;
-        ensure_contained_existing_path(&staging_root, &staging_root)?;
-        let mut targets_by_package_file = BTreeMap::new();
+        let roots = plan
+            .actions
+            .iter()
+            .map(|action| {
+                (
+                    action.provider.package_file_id.clone(),
+                    staging_root.clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        Self::routed(roots, plan, None)
+    }
+
+    /// 多根 + 直通：`staging_roots` 给出每个**受重定向**文件落在哪个根下，不在其中的
+    /// `package_file_id` 交给 `passthrough`。
+    ///
+    /// 至少要有一个受重定向文件——整个计划都直通时调用方该直接用沙箱读取器，别绕这一层。
+    pub fn routed(
+        staging_roots: BTreeMap<PackageFileId, PathBuf>,
+        plan: &InstallPlan,
+        passthrough: Option<Arc<dyn InstallSourceFileReader>>,
+    ) -> Result<Self> {
+        if staging_roots.is_empty() {
+            anyhow::bail!("retarget staging plan mapping is empty");
+        }
+        let mut readers_by_root =
+            BTreeMap::<PathBuf, Arc<FileSystemInstallSourceFileReader>>::new();
+        for staging_root in staging_roots.values() {
+            if readers_by_root.contains_key(staging_root) {
+                continue;
+            }
+            ensure_existing_directory(staging_root, "retarget staging root")?;
+            ensure_contained_existing_path(staging_root, staging_root)?;
+            readers_by_root.insert(
+                staging_root.clone(),
+                Arc::new(FileSystemInstallSourceFileReader::new(staging_root.clone())),
+            );
+        }
+
+        let mut staged = BTreeMap::new();
+        let mut routed_count = 0usize;
         for action in &plan.actions {
+            let Some(staging_root) = staging_roots.get(&action.provider.package_file_id) else {
+                continue;
+            };
+            routed_count += 1;
+            // staging 内部按 `target_path` 布局，所以计划不能在这一步再改写目标路径
+            // （层叠重映射）——否则按 `target_path` 去 staging 里取文件会取不到。
+            // 同一个受重定向文件出现两次也是歧义：两条动作的目标路径不同，取哪个都可能错。
             if action.target_path != action.provider.target_path
-                || targets_by_package_file
+                || staged
                     .insert(
                         action.provider.package_file_id.clone(),
-                        action.target_path.clone(),
+                        StagedSourceFile {
+                            reader: Arc::clone(&readers_by_root[staging_root]),
+                            target_path: action.target_path.clone(),
+                        },
                     )
                     .is_some()
             {
                 anyhow::bail!("retarget staging plan mapping is ambiguous");
             }
         }
-        if targets_by_package_file.is_empty() {
-            anyhow::bail!("retarget staging plan mapping is empty");
+        // 路由里出现了计划中没有的文件，说明组装方与计划已经不同步，宁可拒绝也不要
+        // 半信半疑地提交。
+        if routed_count != staging_roots.len() {
+            anyhow::bail!("retarget staging routing references files outside the plan");
         }
         Ok(Self {
-            reader: FileSystemInstallSourceFileReader::new(staging_root),
-            targets_by_package_file,
+            staged,
+            passthrough,
         })
     }
 }
 
 impl InstallSourceFileReader for RetargetStagingInstallSourceFileReader {
     fn read_source_file(&self, package_file_id: &PackageFileId) -> Result<Vec<u8>> {
-        let target = self
-            .targets_by_package_file
-            .get(package_file_id)
-            .context("retarget staging package file is not mapped")?;
-        self.reader
-            .read_source_file(&PackageFileId::new(target.as_str()))
+        if let Some(staged) = self.staged.get(package_file_id) {
+            return staged
+                .reader
+                .read_source_file(&PackageFileId::new(staged.target_path.as_str()));
+        }
+        self.passthrough
+            .as_ref()
+            .context("retarget staging package file is not mapped")?
+            .read_source_file(package_file_id)
     }
 }
 
