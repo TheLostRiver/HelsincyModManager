@@ -1503,6 +1503,8 @@ launch_failed
 preview_install_plan(input)
 preview_imported_mod_install_plan(input)
 get_mod_package_contents(input)
+set_mod_package_content_root(input)
+clear_mod_package_content_root(input)
 start_install_task(input)
 start_uninstall_task(input)
 get_install_manifest_status(input)
@@ -1538,6 +1540,12 @@ cancel_task(taskId)
 - `get_mod_package_contents` 每条 entry 携带**三条互相独立的事实**：`targetPath`（相对内容根的安装路径，不在内容根之下或内容根未定时为 `null`）、`installable`（能否落进该 game adapter 声明的允许安装根）、`rejectedByGame`（命中该游戏的「绝不安装」清单）。**前端不得把它们合并成单一的「会不会装」**：拒绝清单当前只在重定向链路上强制执行，普通安装链路尚未套用，合并必然在其中一条链路上给出与实际相反的答案。
 - `get_mod_package_contents` 的 `contentRoot.kind` 三档必须分开呈现：`single`/`fallback` 的 `path` 是 sandbox 相对路径（`fallback` 为空串，表示内容根就是 sandbox 根本身），`ambiguous` 的 `path` 为 `null` 且候选在 `candidates` 里。`fallback` 与 `ambiguous` 不可混同——前者是「根已确定」，后者是「等玩家挑」。
 - `get_mod_package_contents` 返回的路径是 sandbox 相对路径与内容根相对路径，不含完整本地路径；错误 message 同样不得包含宿主绝对路径。
+- `get_mod_package_contents` 的 `candidates` 是这个包**允许**被选作内容根的全部目录，与 `contentRoot` 当前是哪个**无关**。两者必须分开呈现：玩家选定之后 `contentRoot` 会收敛成 `single`，`candidates` 若跟着消失他就改不了主意。
+- `set_mod_package_content_root` 记录玩家为这个包选定的内容根（`#354` 切片 D2）。前端只提交 `gameId`、`modId` 和一个**取自 `candidates` 的值**；后端在设置这一步即校验白名单，不接受任意路径。`contentRoot` 允许是空串——那表示内容根就是 sandbox 根本身，与「没传值」不是一回事。
+- `set_mod_package_content_root` 与 `clear_mod_package_content_root` 都**回读**并返回设置生效之后的 `PackageContentsDto`，前端不必自己推演新状态。
+- 选择**按 package 持久化**：`start_install_task` 提交时会从 sandbox 重建 `InstallPlan`，重装同理，选择若只活在预览请求里，重建那一刻就没了，装出来的位置与玩家看到的预览不一致。
+- 选择对**建计划、重定向分析、外部状态扫描、CLI 自动化**四条链路一致生效——它们共用同一个扫描器实现。前端不得假设某条链路会忽略它。
+- `clear_mod_package_content_root` 撤销选择、回到自动解析；包内有多个 `nativePC` 时会重新变回 `ambiguous`（等玩家决定），这是预期行为而不是失败。
 - `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 在锁外构建 plan 和 prerequisite decision，并在获取写锁前立即重读同一个
   provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前

@@ -55,6 +55,7 @@ fn an_ambiguous_content_root_exposes_the_candidates_for_the_player_to_choose() {
 #[test]
 fn the_dto_keeps_installability_and_reject_list_hits_as_separate_fields() {
     let dto = PackageContentsDto::from(PackageContents {
+        candidates: vec![String::new()],
         content_root: PackageContentRoot::Fallback,
         entries: vec![PackageContentEntry {
             package_file_id: "nativePC/wp/two/bs_two012/mod/MHWTexConverter_by_Jodo.exe".to_owned(),
@@ -76,6 +77,7 @@ fn the_dto_keeps_installability_and_reject_list_hits_as_separate_fields() {
 #[test]
 fn entries_outside_the_content_root_survive_the_projection() {
     let dto = PackageContentsDto::from(PackageContents {
+        candidates: vec![String::new(), "黑骑士大剑".to_owned()],
         content_root: PackageContentRoot::Single("黑骑士大剑".to_owned()),
         entries: vec![
             entry("readme.txt", None),

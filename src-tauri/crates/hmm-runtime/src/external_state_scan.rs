@@ -60,7 +60,7 @@ use hmm_ports::{
     AppClock, CancellationToken, CrossProcessWriteAdmissionError, GameConfigRepository,
     GameFileFingerprint, InstallGameFileInspector, InstallGameFileSystem,
     InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
-    ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ModPackageContentRootRepository, ModPackageInstallFileReader, ModPackageInstallFileScanner,
 };
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -204,6 +204,10 @@ impl ConfiguredExternalStateScanner {
     /// 单文件上限复用 MHW 武器二进制的既有上界（256 MiB），而不是自造一个：
     /// 扫描与安装对「一个 MOD 文件能有多大」应当有同一口径。它不是总量上限——
     /// `read_install_file` 逐文件读并立即收敛成 32 字节摘要，峰值只有单文件大小。
+    ///
+    /// 参数多是**装配层的固有形状**（与同文件的 `new` 同因），把它们打包成一个 struct 只是
+    /// 把同样的字段挪个地方，不减少调用方要提供的东西。
+    #[allow(clippy::too_many_arguments)]
     pub fn with_real_filesystem(
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
@@ -212,13 +216,19 @@ impl ConfiguredExternalStateScanner {
         allowed_roots: Vec<String>,
         write_locks: Arc<GameProfileWriteLockRegistry>,
         clock: Arc<dyn AppClock>,
+        content_root_choices: Arc<dyn ModPackageContentRootRepository>,
     ) -> Self {
-        let scanner: Arc<dyn ModPackageInstallFileScanner> =
-            Arc::new(SandboxModPackageInstallFileScanner);
+        // `#354` D2：外部状态扫描必须与安装**同口径**（`prepare_targets` 的注释明写这一点）。
+        // 玩家为某个包选定过内容根时，扫描若还按自动解析走，比对出来的「这个 MOD 装了没有」
+        // 就是错的——比对的是它**本来会装成什么**，而不是它实际会装成什么。
+        let scanner: Arc<dyn ModPackageInstallFileScanner> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
+        );
         // 同一个对象同时实现「扫描」与「读取」两个 trait：沙箱侧的扫描结果
         // 与读取路径必须出自同一套判定（#284 的内容根解析）。
-        let package_reader: Arc<dyn ModPackageInstallFileReader> =
-            Arc::new(SandboxModPackageInstallFileScanner);
+        let package_reader: Arc<dyn ModPackageInstallFileReader> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(content_root_choices),
+        );
         Self::new(
             game_config_repository,
             mod_import_result_repository,

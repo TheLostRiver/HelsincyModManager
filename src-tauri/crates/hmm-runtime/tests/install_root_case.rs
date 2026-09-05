@@ -97,7 +97,7 @@ fn plan_targets(root_segment: &str) -> Vec<(String, String)> {
         Arc::new(FixtureSandboxLocator {
             root: sandbox_root.clone(),
         }),
-        Arc::new(SandboxModPackageInstallFileScanner),
+        Arc::new(SandboxModPackageInstallFileScanner::without_content_root_choices()),
         vec![mhw_adapter(temp.path())],
     );
 
@@ -203,7 +203,7 @@ fn plan_targets_allowing_empty(root_segment: &str) -> Vec<String> {
         Arc::new(FixtureSandboxLocator {
             root: sandbox_root.clone(),
         }),
-        Arc::new(SandboxModPackageInstallFileScanner),
+        Arc::new(SandboxModPackageInstallFileScanner::without_content_root_choices()),
         vec![mhw_adapter(temp.path())],
     );
 

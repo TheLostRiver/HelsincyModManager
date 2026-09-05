@@ -17,7 +17,8 @@
 use hmm_core::{GameId, InstallTargetPath, ModId};
 use hmm_ports::{
     GameAdapter, ModImportResultRepository, ModImportSandboxLocator, ModPackageContentRoot,
-    ModPackageContentScanRequest, ModPackageContentScanner, ModPackageInstallFileScanError,
+    ModPackageContentRootRepository, ModPackageContentScanRequest, ModPackageContentScanner,
+    ModPackageInstallFileScanError,
 };
 use std::sync::Arc;
 use thiserror::Error;
@@ -54,7 +55,10 @@ pub enum PackageContentRoot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageContents {
     pub entries: Vec<PackageContentEntry>,
+    /// 当前**实际生效**的内容根。
     pub content_root: PackageContentRoot,
+    /// 允许被选作内容根的全部目录，与当前选了哪个无关——玩家要能改主意（`#354` D2）。
+    pub candidates: Vec<String>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -71,6 +75,14 @@ pub enum PackageContentsQueryError {
     GameAdapterNotFound { game_id: GameId },
     #[error("imported mod package contents could not be scanned")]
     ScanFailed(ModPackageInstallFileScanError),
+    /// 要设置的内容根不在这个包的候选清单里。
+    ///
+    /// 在**设置**这一步就拦下，而不是存进去等扫描时才失败关闭：否则玩家会以为选好了，
+    /// 直到下一次安装才发现不对。
+    #[error("the requested content root is not a candidate of this package")]
+    ContentRootNotACandidate,
+    #[error("the content root choice could not be persisted")]
+    ContentRootChoiceUnavailable,
 }
 
 impl PackageContentsQueryError {
@@ -83,6 +95,10 @@ impl PackageContentsQueryError {
             Self::GameAdapterNotFound { .. } => "package_contents_game_adapter_not_found",
             // 扫描侧已有稳定错误码（符号链接、深度上限等），原样透出，不在这里重新发明。
             Self::ScanFailed(error) => error.code(),
+            Self::ContentRootNotACandidate => "package_contents_content_root_not_a_candidate",
+            Self::ContentRootChoiceUnavailable => {
+                "package_contents_content_root_choice_unavailable"
+            }
         }
     }
 }
@@ -102,6 +118,7 @@ struct PackageContentsSources {
     result_repository: Arc<dyn ModImportResultRepository>,
     sandbox_locator: Arc<dyn ModImportSandboxLocator>,
     content_scanner: Arc<dyn ModPackageContentScanner>,
+    content_root_choices: Arc<dyn ModPackageContentRootRepository>,
     game_adapters: Vec<Arc<dyn GameAdapter>>,
 }
 
@@ -120,6 +137,7 @@ impl PackageContentsQueryService {
         result_repository: Arc<dyn ModImportResultRepository>,
         sandbox_locator: Arc<dyn ModImportSandboxLocator>,
         content_scanner: Arc<dyn ModPackageContentScanner>,
+        content_root_choices: Arc<dyn ModPackageContentRootRepository>,
         game_adapters: Vec<Arc<dyn GameAdapter>>,
     ) -> Self {
         Self {
@@ -127,6 +145,7 @@ impl PackageContentsQueryService {
                 result_repository,
                 sandbox_locator,
                 content_scanner,
+                content_root_choices,
                 game_adapters,
             })),
         }
@@ -211,7 +230,70 @@ impl PackageContentsQueryService {
                 ModPackageContentRoot::Single(root) => PackageContentRoot::Single(root),
                 ModPackageContentRoot::Ambiguous(roots) => PackageContentRoot::Ambiguous(roots),
             },
+            candidates: contents.candidates,
         })
+    }
+
+    /// 记下玩家为这个包选定的内容根（`#354` 切片 D2）。
+    ///
+    /// **在这里就校验白名单**，而不是等扫描时失败关闭：存下一个非候选的值，玩家会以为
+    /// 选好了，直到下一次安装才报错。校验用的候选与扫描认的出自同一处
+    /// （`scan_package_contents` 的 `candidates`）。
+    pub fn choose_content_root(
+        &self,
+        request: PackageContentsQueryRequest,
+        content_root: &str,
+    ) -> Result<(), PackageContentsQueryError> {
+        let sources = self
+            .sources
+            .as_ref()
+            .ok_or(PackageContentsQueryError::SourcesUnavailable)?;
+        let package_id = self.package_id_for(sources, &request.mod_id)?;
+
+        let contents = self.query(request)?;
+        if !contents
+            .candidates
+            .iter()
+            .any(|candidate| candidate == content_root)
+        {
+            return Err(PackageContentsQueryError::ContentRootNotACandidate);
+        }
+
+        sources
+            .content_root_choices
+            .save_content_root(&package_id, content_root)
+            .map_err(|_| PackageContentsQueryError::ContentRootChoiceUnavailable)
+    }
+
+    /// 撤销选择，回到自动解析。合集包会重新变成「等玩家决定」。
+    pub fn clear_content_root(
+        &self,
+        request: PackageContentsQueryRequest,
+    ) -> Result<(), PackageContentsQueryError> {
+        let sources = self
+            .sources
+            .as_ref()
+            .ok_or(PackageContentsQueryError::SourcesUnavailable)?;
+        let package_id = self.package_id_for(sources, &request.mod_id)?;
+        sources
+            .content_root_choices
+            .clear_content_root(&package_id)
+            .map_err(|_| PackageContentsQueryError::ContentRootChoiceUnavailable)
+    }
+
+    fn package_id_for(
+        &self,
+        sources: &PackageContentsSources,
+        mod_id: &ModId,
+    ) -> Result<String, PackageContentsQueryError> {
+        Ok(sources
+            .result_repository
+            .get_analysis(mod_id.as_str())
+            .map_err(|_| PackageContentsQueryError::AnalysisUnavailable)?
+            .ok_or_else(|| PackageContentsQueryError::ModNotFound {
+                mod_id: mod_id.clone(),
+            })?
+            .package_id)
     }
 }
 
