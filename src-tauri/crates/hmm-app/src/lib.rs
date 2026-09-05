@@ -300,11 +300,12 @@ pub use reinstall_task::{
 pub use replacement::{
     is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    MaterializeRetargetRequest, MaterializedRetarget, PlannedInitialRetargetInstall,
+    InitialRetargetSelection, InitialRetargetSlotIntent, MaterializeRetargetRequest,
+    MaterializedInitialRetargetInstall, MaterializedRetarget, PlannedInitialRetargetInstall,
     PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
     ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
-    RetargetReinstallRequest,
+    RetargetReinstallRequest, RetargetStagingMaterializerFactory,
 };
 pub use replacement_audit::ReplacementAdapterAuditFacts;
 pub use replacement_occupancy::{ReplacementOccupancyService, ReplacementTargetOccupancy};
