@@ -31,16 +31,16 @@ use hmm_infra::{
     FileSystemInstallSourceFileReader, FileSystemModStorageDirectoryInspector,
     JsonAppSettingsRepository, JsonGameConfigRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonModImportResultRepository,
-    JsonReinstallRecoveryTransactionRepository, PlatformSteamRootProvider,
-    ReadOnlyJsonGamePrerequisiteRuleRepository, RealGameDirectoryProbeFactory,
-    SandboxModPackageInstallFileScanner, SteamGameDiscoveryService, SystemClock,
-    TaskScopedModImportSandboxLocator,
+    JsonModPackageContentRootRepository, JsonReinstallRecoveryTransactionRepository,
+    PlatformSteamRootProvider, ReadOnlyJsonGamePrerequisiteRuleRepository,
+    RealGameDirectoryProbeFactory, SandboxModPackageInstallFileScanner, SteamGameDiscoveryService,
+    SystemClock, TaskScopedModImportSandboxLocator,
 };
 use hmm_ports::{
     AppSettingsRepository, BatchPlanFactsProvider, GameAdapter, GameConfigRepository,
     GamePrerequisiteRuleRepository, InstallManifestRepository, InstallRecoveryRecordRepository,
     InstallSourceFileReader, ModImportResultRepository, ModImportSandboxLocator,
-    ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ModPackageContentRootRepository, ModPackageInstallFileReader, ModPackageInstallFileScanner,
     ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore, ReplacementAdapter,
     ReplacementCatalogProvider, StoredModRevision,
 };
@@ -544,10 +544,18 @@ impl ReadOnlyInstallAutomation {
                 &mod_storage.root,
                 environment.sandbox_data_dir(),
             ));
-        let file_scanner: Arc<dyn ModPackageInstallFileScanner> =
-            Arc::new(SandboxModPackageInstallFileScanner);
-        let file_reader: Arc<dyn ModPackageInstallFileReader> =
-            Arc::new(SandboxModPackageInstallFileScanner);
+        // `#354` D2：CLI/自动化的安装链路与 GUI 必须看到同一个内容根，否则同一个包在两条
+        // 链路上会装到不同位置。
+        let content_root_choices: Arc<dyn ModPackageContentRootRepository> =
+            Arc::new(JsonModPackageContentRootRepository::new(
+                app_data_dir.join("install").join("content-root-choices"),
+            ));
+        let file_scanner: Arc<dyn ModPackageInstallFileScanner> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
+        );
+        let file_reader: Arc<dyn ModPackageInstallFileReader> = Arc::new(
+            SandboxModPackageInstallFileScanner::new(content_root_choices),
+        );
         let prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(ReadOnlyJsonGamePrerequisiteRuleRepository::new(
                 app_data_dir

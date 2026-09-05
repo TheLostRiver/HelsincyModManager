@@ -29,6 +29,7 @@ mod mod_revision_catalog;
 mod mod_revision_catalog_tests;
 mod mod_storage_inspector;
 mod mod_storage_migrator;
+mod package_content_root;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod reinstall;
@@ -105,6 +106,7 @@ pub use mod_storage_inspector::FileSystemModStorageDirectoryInspector;
 pub use mod_storage_migrator::{
     FileSystemModStorageMigrator, JsonModStorageMigrationJournalRepository,
 };
+pub use package_content_root::JsonModPackageContentRootRepository;
 pub use prerequisite_rules_repository::{
     JsonGamePrerequisiteRuleRepository, ReadOnlyJsonGamePrerequisiteRuleRepository,
 };

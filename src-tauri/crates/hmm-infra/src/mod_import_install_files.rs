@@ -1,22 +1,81 @@
-use crate::content_root::{resolve_content_root, ContentRootResolution};
+use crate::content_root::{native_pc_parents, resolve_content_root, ContentRootResolution};
 use crate::controlled_fs::{
     ensure_regular_file_metadata, open_existing_directory_chain, open_existing_directory_nofollow,
     open_regular_file_nofollow,
 };
 use anyhow::{Context, Result};
 use hmm_ports::{
-    ModPackageContentEntry, ModPackageContentRoot, ModPackageContentScanRequest,
-    ModPackageContentScanner, ModPackageContents, ModPackageInstallFile,
-    ModPackageInstallFileReadRequest, ModPackageInstallFileReader, ModPackageInstallFileScanError,
-    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    ModPackageContentEntry, ModPackageContentRoot, ModPackageContentRootRepository,
+    ModPackageContentScanRequest, ModPackageContentScanner, ModPackageContents,
+    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
+    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
+    NoStoredContentRoot,
 };
 use std::fs;
 use std::io::Read;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 const MAX_SANDBOX_INSTALL_FILE_SCAN_DEPTH: usize = 64;
 
-pub struct SandboxModPackageInstallFileScanner;
+pub struct SandboxModPackageInstallFileScanner {
+    /*
+     * `#354` 切片 D2：玩家选定的内容根。
+     *
+     * 放在**扫描器内部**而不是让每个调用方各传一个参数，是为了让「三处对内容根同结论」
+     * 由构造保证而不是靠纪律：`scan_install_files` 有三个生产调用方（建计划、重定向分析、
+     * 外部状态扫描），任一处漏传就会重演 #284 的「图能显示、却装不上」。
+     */
+    content_root_choices: Arc<dyn ModPackageContentRootRepository>,
+}
+
+impl SandboxModPackageInstallFileScanner {
+    pub fn new(content_root_choices: Arc<dyn ModPackageContentRootRepository>) -> Self {
+        Self {
+            content_root_choices,
+        }
+    }
+
+    /// 不读取任何玩家选择的扫描器：行为与 D2 之前完全一致。
+    pub fn without_content_root_choices() -> Self {
+        Self::new(Arc::new(NoStoredContentRoot))
+    }
+
+    /// 本次扫描该用哪个内容根。
+    ///
+    /// 记录在案的选择**必须复验**：它得仍然是这个包的合法候选（某个 `nativePC` 的父目录，
+    /// 或沙箱根本身）。不验的话，一条陈旧或被改过的记录就能让我们从任意目录起算目标路径
+    /// ——而那类错误装完不报错，只是文件落在别处。
+    fn effective_content_root(
+        &self,
+        package_id: &str,
+        sandbox_root: &Path,
+    ) -> Result<PathBuf, ModPackageInstallFileScanError> {
+        let resolution = resolve_content_root(sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+
+        let Some(choice) = self
+            .content_root_choices
+            .load_content_root(package_id)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?
+        else {
+            return resolution
+                .install_root()
+                .map(Path::to_path_buf)
+                // 多个 nativePC 不是「坏包」，而是需要玩家自己决定。返回枚举而不是笼统
+                // 错误，好让上层把它呈现成可操作的提示（#284 review 的 R1）。玩家选定之后
+                // 就不会再走到这里。
+                .ok_or(ModPackageInstallFileScanError::AmbiguousContentRoot);
+        };
+
+        let chosen = candidate_content_roots(sandbox_root)?
+            .into_iter()
+            .find(|(relative, _)| relative == &choice)
+            .map(|(_, absolute)| absolute)
+            .ok_or(ModPackageInstallFileScanError::StaleContentRootChoice)?;
+        Ok(chosen)
+    }
+}
 
 impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
     fn scan_install_files(
@@ -30,25 +89,44 @@ impl ModPackageInstallFileScanner for SandboxModPackageInstallFileScanner {
         // 因此先解析出真正的**内容根**，再据此计算目标路径。这里与预览图扫描
         // 共用 `resolve_content_root`，保证两边对「内容根在哪」判断一致，
         // 不会出现「图能显示、却装不上」。
-        let resolution = resolve_content_root(request.sandbox_root)
-            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
-        let Some(content_root) = resolution.install_root() else {
-            // 多个 nativePC 不是「坏包」，而是需要玩家自己决定。返回枚举而不是
-            // 笼统错误，好让上层把它呈现成可操作的提示（#284 review 的 R1）。
-            return Err(ModPackageInstallFileScanError::AmbiguousContentRoot);
-        };
+        let content_root = self.effective_content_root(request.package_id, request.sandbox_root)?;
 
         let mut files = Vec::new();
         collect_sandbox_install_files(
             request.sandbox_root,
-            content_root,
-            content_root,
+            &content_root,
+            &content_root,
             0,
             &mut files,
         )?;
         files.sort_by(|left, right| left.target_path.cmp(&right.target_path));
         Ok(files)
     }
+}
+
+/// 这个包**允许**被选作内容根的全部目录：每个 `nativePC` 的父目录，加沙箱根本身。
+///
+/// 返回 `(沙箱相对路径, 绝对路径)`。沙箱根的相对路径是空串。
+///
+/// 这份清单同时是**白名单**：玩家的选择只有落在其中才作数，`scan_package_contents` 报给
+/// 界面的候选也取自同一处，界面能选的与扫描认的因此不会分叉。
+fn candidate_content_roots(
+    sandbox_root: &Path,
+) -> Result<Vec<(String, PathBuf)>, ModPackageInstallFileScanError> {
+    let mut candidates = vec![(String::new(), sandbox_root.to_path_buf())];
+    for parent in
+        native_pc_parents(sandbox_root).map_err(|_| ModPackageInstallFileScanError::Unavailable)?
+    {
+        let relative = parent
+            .strip_prefix(sandbox_root)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        let relative = sandbox_relative_directory_path(relative)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+        if candidates.iter().all(|(known, _)| known != &relative) {
+            candidates.push((relative, parent));
+        }
+    }
+    Ok(candidates)
 }
 
 impl ModPackageContentScanner for SandboxModPackageInstallFileScanner {
@@ -59,9 +137,29 @@ impl ModPackageContentScanner for SandboxModPackageInstallFileScanner {
         // 与 `scan_install_files` 共用同一份内容根解析——两处对「内容根在哪」必须同结论，
         // 否则会重演 #284 的「图能显示、却装不上」。差别只在**处置**：那边遇到多个
         // nativePC 直接失败，这里如实报告候选，因为玩家要挑就得先看得见。
-        let resolution = resolve_content_root(request.sandbox_root)
-            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
-        let content_root = content_root_from_resolution(request.sandbox_root, &resolution)?;
+        //
+        // `#354` D2：玩家已经选过就报 `Single(选定的根)`，界面因此显示的是**当前生效的**
+        // 那个根，而不是又问一遍。选择的合法性由 `effective_content_root` 复验，这里只在
+        // 它认可之后照实呈现。
+        let content_root = match self
+            .content_root_choices
+            .load_content_root(request.package_id)
+            .map_err(|_| ModPackageInstallFileScanError::Unavailable)?
+        {
+            Some(_) => ModPackageContentRoot::Single(
+                sandbox_relative_directory_path(
+                    self.effective_content_root(request.package_id, request.sandbox_root)?
+                        .strip_prefix(request.sandbox_root)
+                        .map_err(|_| ModPackageInstallFileScanError::Unavailable)?,
+                )
+                .map_err(|_| ModPackageInstallFileScanError::Unavailable)?,
+            ),
+            None => {
+                let resolution = resolve_content_root(request.sandbox_root)
+                    .map_err(|_| ModPackageInstallFileScanError::Unavailable)?;
+                content_root_from_resolution(request.sandbox_root, &resolution)?
+            }
+        };
 
         // 从**沙箱根**而不是内容根开始遍历：包装目录之外的 readme、预览图同样属于包内容，
         // 玩家要能看见它们才谈得上「知道这个包里有什么」。是否可安装由上层按内容根分档。
@@ -337,12 +435,154 @@ mod tests {
     use std::fs;
 
     fn scan_contents(sandbox_root: &Path) -> ModPackageContents {
-        SandboxModPackageInstallFileScanner
+        SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_package_contents(ModPackageContentScanRequest {
                 package_id: "package-a",
                 sandbox_root,
             })
             .expect("scan package contents")
+    }
+
+    /// 测试用的内容根选择仓储：只记一条，够表达「选过 / 没选过」。
+    #[derive(Default)]
+    struct StubContentRootChoices {
+        choice: Option<String>,
+    }
+
+    impl StubContentRootChoices {
+        fn chose(value: &str) -> Arc<Self> {
+            Arc::new(Self {
+                choice: Some(value.to_owned()),
+            })
+        }
+    }
+
+    impl ModPackageContentRootRepository for StubContentRootChoices {
+        fn load_content_root(&self, _package_id: &str) -> anyhow::Result<Option<String>> {
+            Ok(self.choice.clone())
+        }
+
+        fn save_content_root(&self, _package_id: &str, _content_root: &str) -> anyhow::Result<()> {
+            unreachable!("scanner never writes")
+        }
+
+        fn clear_content_root(&self, _package_id: &str) -> anyhow::Result<()> {
+            unreachable!("scanner never writes")
+        }
+    }
+
+    /// 两个 `nativePC` 的合集包夹具：`大剑/` 与 `太刀/` 各一套。
+    fn collection_package(sandbox_root: &Path) {
+        fs::create_dir_all(sandbox_root.join("大剑/nativePC/wp/two")).expect("create fixture");
+        fs::create_dir_all(sandbox_root.join("太刀/nativePC/wp/swo")).expect("create fixture");
+        fs::write(sandbox_root.join("大剑/nativePC/wp/two/two003.mod3"), b"a")
+            .expect("write fixture");
+        fs::write(sandbox_root.join("太刀/nativePC/wp/swo/swo035.mod3"), b"b")
+            .expect("write fixture");
+    }
+
+    /*
+     * `#354` 切片 D2 的核心：合集包在玩家选定之后**能装上**。
+     *
+     * 此前这类包永远停在 `AmbiguousContentRoot`，前端文案是「请拆分后分别导入」——把工作
+     * 推回给玩家。这是 `#354` 正文点名的那条非安全包级否决。
+     *
+     * 断言逐字的 `target_path`：只断言 `is_ok()` 会漏掉「选了大剑却按太刀的根算路径」，
+     * 而那类错误装完不报错，只是文件落在别处。
+     */
+    #[test]
+    fn a_collection_package_installs_once_the_player_picks_a_content_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        collection_package(&sandbox_root);
+
+        let files = SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose("大剑"))
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect("选定内容根之后合集包必须能装");
+
+        assert_eq!(
+            files,
+            vec![ModPackageInstallFile {
+                package_file_id: "大剑/nativePC/wp/two/two003.mod3".to_owned(),
+                target_path: "nativePC/wp/two/two003.mod3".to_owned(),
+            }],
+            "只装选中的那个根之下的文件，另一个根不进计划"
+        );
+    }
+
+    /// 没有记录时行为**逐字不变**：合集包仍然停在「需要玩家决定」。
+    /// D2 只增加一条出路，不改变还没做选择时的语义。
+    #[test]
+    fn a_collection_package_without_a_choice_still_asks_the_player_to_decide() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        collection_package(&sandbox_root);
+
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
+            .scan_install_files(ModPackageInstallFileScanRequest {
+                package_id: "package-a",
+                sandbox_root: &sandbox_root,
+            })
+            .expect_err("没选之前仍要玩家决定");
+
+        assert_eq!(error, ModPackageInstallFileScanError::AmbiguousContentRoot);
+    }
+
+    /*
+     * 记录在案的选择**必须是这个包的合法候选**，否则失败关闭。
+     *
+     * 不验的话，一条陈旧或被改过的记录就能让我们从任意目录起算目标路径。退回自动解析同样
+     * 不行——那等于「玩家选了 A，我们装到 B」，装完不报错、文件落在别处，属于最难发现的
+     * 一类。所以这里报 `StaleContentRootChoice` 让上层提示重新选。
+     */
+    #[test]
+    fn a_recorded_choice_that_is_not_a_candidate_fails_closed() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        collection_package(&sandbox_root);
+
+        for stale in ["锤", "大剑/nativePC", "..", "大剑/nativePC/wp"] {
+            let error =
+                SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose(stale))
+                    .scan_install_files(ModPackageInstallFileScanRequest {
+                        package_id: "package-a",
+                        sandbox_root: &sandbox_root,
+                    })
+                    .expect_err("非候选的内容根必须失败关闭");
+
+            assert_eq!(
+                error,
+                ModPackageInstallFileScanError::StaleContentRootChoice,
+                "{stale} 不是这个包的合法候选"
+            );
+        }
+    }
+
+    /// 选定之后，包内容查询报的是**当前生效的**那个根，而不是又列一遍候选。
+    /// 界面因此显示「内容根：大剑」，与实际会装成什么一致。
+    #[test]
+    fn package_contents_report_the_chosen_root_instead_of_asking_again() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("package-a");
+        collection_package(&sandbox_root);
+
+        let contents =
+            SandboxModPackageInstallFileScanner::new(StubContentRootChoices::chose("太刀"))
+                .scan_package_contents(ModPackageContentScanRequest {
+                    package_id: "package-a",
+                    sandbox_root: &sandbox_root,
+                })
+                .expect("scan package contents");
+
+        assert_eq!(
+            contents.content_root,
+            ModPackageContentRoot::Single("太刀".to_owned())
+        );
+        // 整包仍然逐条列出——选了根不等于别的文件就看不见了。
+        assert_eq!(content_paths(&contents).len(), 2);
     }
 
     fn content_paths(contents: &ModPackageContents) -> Vec<&str> {
@@ -503,7 +743,7 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let error = SandboxModPackageInstallFileScanner
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_package_contents(ModPackageContentScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -521,7 +761,7 @@ mod tests {
         fs::write(sandbox_root.join("nativePC/models/player.mod3"), b"model")
             .expect("write fixture");
 
-        let files = SandboxModPackageInstallFileScanner
+        let files = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -551,7 +791,7 @@ mod tests {
         )
         .expect("write fixture");
 
-        let files = SandboxModPackageInstallFileScanner
+        let files = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -580,7 +820,7 @@ mod tests {
         )
         .expect("write fixture");
 
-        let files = SandboxModPackageInstallFileScanner
+        let files = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -612,7 +852,7 @@ mod tests {
         .expect("write fixture");
         fs::write(sandbox_root.join("外层说明.txt"), b"outside").expect("write outside");
 
-        let files = SandboxModPackageInstallFileScanner
+        let files = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -640,7 +880,7 @@ mod tests {
         )
         .expect("write fixture");
 
-        let files = SandboxModPackageInstallFileScanner
+        let files = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -662,7 +902,7 @@ mod tests {
         fs::write(sandbox_root.join("nativePC/models/a.mod3"), b"a").expect("write a");
         fs::write(sandbox_root.join("wrapper/nativePC/models/b.mod3"), b"b").expect("write b");
 
-        let error = SandboxModPackageInstallFileScanner
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -682,7 +922,7 @@ mod tests {
         fs::write(sandbox_root.join("mod-a/nativePC/models/a.mod3"), b"a").expect("write a");
         fs::write(sandbox_root.join("mod-b/nativePC/models/b.mod3"), b"b").expect("write b");
 
-        let error = SandboxModPackageInstallFileScanner
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -706,7 +946,7 @@ mod tests {
 
         fs::create_dir_all(&deep_dir).expect("create deep fixture dirs");
 
-        let error = SandboxModPackageInstallFileScanner
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -728,7 +968,7 @@ mod tests {
         )
         .expect("write fixture");
 
-        let reader = SandboxModPackageInstallFileScanner;
+        let reader = SandboxModPackageInstallFileScanner::without_content_root_choices();
         let package_file_id = PackageFileId::new("nativePC/wp/one/one001/mod/one001.mod3");
         let bytes = reader
             .read_install_file(ModPackageInstallFileReadRequest {
@@ -783,7 +1023,7 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        let error = SandboxModPackageInstallFileScanner
+        let error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .scan_install_files(ModPackageInstallFileScanRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
@@ -791,7 +1031,7 @@ mod tests {
             .expect_err("junction should be rejected");
 
         let package_file_id = PackageFileId::new("nativePC/junction/escape.mod3");
-        let read_error = SandboxModPackageInstallFileScanner
+        let read_error = SandboxModPackageInstallFileScanner::without_content_root_choices()
             .read_install_file(ModPackageInstallFileReadRequest {
                 package_id: "package-a",
                 sandbox_root: &sandbox_root,
