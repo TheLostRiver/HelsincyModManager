@@ -111,6 +111,12 @@ impl GameAdapter for MonsterHunterWorldAdapter {
         vec![NATIVE_PC_DIR.to_owned()]
     }
 
+    /// 与重定向分类器共用同一个判定函数，不另起一份清单——两处得出不同结论会让
+    /// 「界面说会被排除、实际装进去了」这种矛盾无声发生。
+    fn is_rejected_install_file_name(&self, file_name: &str) -> bool {
+        is_rejected_executable_file_name(file_name)
+    }
+
     fn process_image_names(&self) -> Vec<String> {
         vec![EXECUTABLE_NAME.to_owned()]
     }

@@ -156,6 +156,62 @@ pub trait ModPackageInstallFileScanner: Send + Sync {
     ) -> Result<Vec<ModPackageInstallFile>, ModPackageInstallFileScanError>;
 }
 
+/// 包内容树的一条目：沙箱里的一个真实文件。
+///
+/// 与 [`ModPackageInstallFile`] 的区别是**覆盖面**，不是格式：那一条只列内容根之下的文件，
+/// 而且要求内容根唯一——多个 `nativePC` 时 [`ModPackageInstallFileScanner`] 直接返回
+/// [`ModPackageInstallFileScanError::AmbiguousContentRoot`]，一个文件都拿不到。
+///
+/// 玩家要在界面里挑内容根、挑装哪些文件，前提是先能**看见整包**。所以这里列沙箱内全部
+/// 文件、不做任何按内容根的取舍，并把内容根解析结果如实带出去，分档交给上层。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPackageContentEntry {
+    /// 沙箱根相对路径，正斜杠分隔。与 [`ModPackageInstallFile::package_file_id`] 同源同形，
+    /// 因此可以直接用作读取文件的 `package_file_id`。
+    pub package_file_id: String,
+    pub size_bytes: u64,
+}
+
+/// 内容根解析结果的端口形态。
+///
+/// 路径一律是**沙箱根相对**的正斜杠字符串，空串表示沙箱根本身——这份结果要原样穿到前端，
+/// 用 `PathBuf` 会把宿主的绝对路径与分隔符带出去。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModPackageContentRoot {
+    /// 沙箱内没有 `nativePC`：回退为沙箱根。
+    Fallback,
+    /// 恰好一个 `nativePC`：内容根是它**所在的目录**。
+    Single(String),
+    /// 多个 `nativePC`（合集包）。
+    ///
+    /// **不替玩家挑一个**——静默挑会写入他没预期的文件。候选如实列出，由玩家决定。
+    Ambiguous(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModPackageContents {
+    pub entries: Vec<ModPackageContentEntry>,
+    pub content_root: ModPackageContentRoot,
+}
+
+pub struct ModPackageContentScanRequest<'a> {
+    pub package_id: &'a str,
+    pub sandbox_root: &'a Path,
+}
+
+pub trait ModPackageContentScanner: Send + Sync {
+    /// 列出整包内容。
+    ///
+    /// 复用 [`ModPackageInstallFileScanError`] 是因为两个方法共用同一套沙箱防御
+    /// （符号链接、深度上限、不可读），错误码也该一致。但本方法**永远不会返回**
+    /// [`ModPackageInstallFileScanError::AmbiguousContentRoot`]：内容根有歧义正是它要
+    /// 如实报告的状态之一，而不是失败。
+    fn scan_package_contents(
+        &self,
+        request: ModPackageContentScanRequest<'_>,
+    ) -> Result<ModPackageContents, ModPackageInstallFileScanError>;
+}
+
 pub struct ModPackageInstallFileReadRequest<'a> {
     pub package_id: &'a str,
     pub sandbox_root: &'a Path,
