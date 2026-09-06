@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ClearModPackageContentRootInput,
   ClearModPackageFileSelectionInput,
   GetModPackageContentsInput,
   PackageContents,
+  SetModPackageContentRootInput,
   SetModPackageFileSelectionInput,
 } from "./packageContentsTypes";
 
@@ -18,6 +20,39 @@ export function getModPackageContents(
   input: GetModPackageContentsInput,
 ): Promise<PackageContents> {
   return invoke<PackageContents>("get_mod_package_contents", {
+    request: {
+      gameId: input.gameId,
+      modId: input.modId,
+    },
+  });
+}
+
+/**
+ * 记下玩家为这个包选定的内容根（`#354` 切片 D2）。
+ *
+ * 选择**按包持久化**：提交安装时会从沙箱重建计划，重装同理，选择若只活在预览里，重建那
+ * 一刻就没了。提交的值必须取自 `candidates`，后端在设置这一步即校验白名单。
+ *
+ * 与勾选不同，这一条**没有草稿**：内容根一改，整棵树的 `targetPath` 与 `installable` 全部
+ * 重算，只能由后端回读给出。所以是选中即提交，界面拿回读结果重绘。
+ */
+export function setModPackageContentRoot(
+  input: SetModPackageContentRootInput,
+): Promise<PackageContents> {
+  return invoke<PackageContents>("set_mod_package_content_root", {
+    request: {
+      gameId: input.gameId,
+      modId: input.modId,
+      contentRoot: input.contentRoot,
+    },
+  });
+}
+
+/** 撤销选择，回到自动解析。合集包会重新变回「等玩家决定」。 */
+export function clearModPackageContentRoot(
+  input: ClearModPackageContentRootInput,
+): Promise<PackageContents> {
+  return invoke<PackageContents>("clear_mod_package_content_root", {
     request: {
       gameId: input.gameId,
       modId: input.modId,

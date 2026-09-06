@@ -32,6 +32,11 @@ export type InstallConfigCopy = {
     path: (path: string) => string;
     fallbackDetail: string;
     ambiguousDetail: (candidateCount: number) => string;
+    chooseLabel: string;
+    /** 空串候选的显示名——沙箱根本身。 */
+    candidateRoot: string;
+    reset: string;
+    chooseFailed: string;
   };
   facts: {
     notInstallable: InstallConfigFactCopy;
@@ -63,6 +68,10 @@ export type InstallConfigCopy = {
     failedTitle: string;
     failedDetail: string;
     retry: string;
+    /** 陈旧内容根：唯一有恢复路径的失败。 */
+    staleContentRootTitle: string;
+    staleContentRootDetail: string;
+    staleContentRootAction: string;
   };
 };
 
@@ -87,6 +96,10 @@ export const installConfigCopy = {
       fallbackDetail: "包里没有多余的包装目录，直接从根目录开始算安装路径。",
       ambiguousDetail: (candidateCount) =>
         `这个包里有 ${candidateCount} 个可以当作内容根的目录，需要你指定用哪一个。`,
+      chooseLabel: "从哪一层开始算安装路径",
+      candidateRoot: "包的根目录",
+      reset: "恢复自动",
+      chooseFailed: "内容根没能改成，仍是原来那个。请重试。",
     },
     facts: {
       notInstallable: {
@@ -126,6 +139,10 @@ export const installConfigCopy = {
       failedTitle: "读不到包内容",
       failedDetail: "包可能已被移动或删除。重新导入之后再试。",
       retry: "重试",
+      staleContentRootTitle: "之前选定的内容根不见了",
+      staleContentRootDetail:
+        "这个包的内容变过，你选的那一层已经不在了。为免装错地方，安装配置暂时打不开——清除这次选择就能重新挑一个。",
+      staleContentRootAction: "清除选择并重新读取",
     },
   },
   en: {
@@ -148,6 +165,10 @@ export const installConfigCopy = {
       fallbackDetail: "The package has no extra wrapper directory, so install paths start at its root.",
       ambiguousDetail: (candidateCount) =>
         `This package has ${candidateCount} directories that could serve as the content root. Pick one.`,
+      chooseLabel: "Where install paths start from",
+      candidateRoot: "Package root",
+      reset: "Back to automatic",
+      chooseFailed: "The content root did not change and is still the previous one. Try again.",
     },
     facts: {
       notInstallable: {
@@ -188,6 +209,10 @@ export const installConfigCopy = {
       failedTitle: "Cannot read package contents",
       failedDetail: "The package may have been moved or deleted. Import it again and retry.",
       retry: "Retry",
+      staleContentRootTitle: "The content root you picked is gone",
+      staleContentRootDetail:
+        "This package changed and the level you picked no longer exists. To avoid installing to the wrong place, the configuration stays closed until you clear that choice and pick again.",
+      staleContentRootAction: "Clear the choice and reload",
     },
   },
   ja: {
@@ -210,6 +235,10 @@ export const installConfigCopy = {
       fallbackDetail: "余分なラッパーディレクトリがないため、ルートから直接インストールパスを算出します。",
       ambiguousDetail: (candidateCount) =>
         `このパッケージにはコンテンツルートになり得るディレクトリが ${candidateCount} 件あります。どれを使うか指定してください。`,
+      chooseLabel: "インストールパスの起点",
+      candidateRoot: "パッケージのルート",
+      reset: "自動に戻す",
+      chooseFailed: "コンテンツルートを変更できませんでした。元のままです。再試行してください。",
     },
     facts: {
       notInstallable: {
@@ -250,6 +279,10 @@ export const installConfigCopy = {
       failedTitle: "パッケージ内容を読み取れません",
       failedDetail: "パッケージが移動または削除された可能性があります。再インポートしてからお試しください。",
       retry: "再試行",
+      staleContentRootTitle: "選択したコンテンツルートが見つかりません",
+      staleContentRootDetail:
+        "パッケージの内容が変わり、選択した階層がなくなっています。誤った場所へのインストールを避けるため設定を開けません。選択を消去すれば選び直せます。",
+      staleContentRootAction: "選択を消去して再読み込み",
     },
   },
 } satisfies LocaleDictionary<InstallConfigCopy>;

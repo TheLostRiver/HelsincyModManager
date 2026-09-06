@@ -12,13 +12,22 @@ import {
   summarizeTree,
 } from "./packageContentTree";
 import { PackageContentTreeView } from "./PackageContentTreeView";
+import { ContentRootPanel } from "./ContentRootPanel";
 import { computeDirectorySelection, isSameSelection, toggleSelection } from "./packageContentSelection";
-import { clearModPackageFileSelection, setModPackageFileSelection } from "./packageContentsApi";
+import {
+  clearModPackageContentRoot,
+  clearModPackageFileSelection,
+  setModPackageContentRoot,
+  setModPackageFileSelection,
+} from "./packageContentsApi";
+import { classifyPackageContentsError, type PackageContentsFailure } from "./packageContentsError";
 import type { InstallConfigTarget } from "./InstallConfigTargetProvider";
 import type { PackageContents } from "./packageContentsTypes";
 
 /*
- * 「安装配置」的悬浮覆盖层（`#354` 切片 D4，第一片：只读的包内容树）。
+ * 「安装配置」的悬浮覆盖层（`#354` 切片 D4）。
+ *
+ * 装之前先看清包里有什么，并决定装哪些（D4-2 逐文件勾选）、从哪一层开始装（D4-3 内容根）。
  *
  * 为什么是覆盖层而不是整页路由：这是个**事务型**界面——打开、看、改、提交或放弃、关闭。
  * 覆盖层天然有这套退出语义，而整页路由没有「放弃」这个概念（离开就是离开）。它也因此
@@ -31,7 +40,8 @@ import type { PackageContents } from "./packageContentsTypes";
 type LoadState =
   | { status: "loading" }
   | { status: "ready"; contents: PackageContents }
-  | { status: "failed" };
+  /** `failure` 决定给不给恢复路径：陈旧的内容根能靠清除选择救回来，其余只能重试。 */
+  | { status: "failed"; failure: PackageContentsFailure };
 
 type InstallConfigOverlayProps = {
   target: InstallConfigTarget;
@@ -55,6 +65,8 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
+  const [contentRootBusy, setContentRootBusy] = useState(false);
+  const [contentRootFailed, setContentRootFailed] = useState(false);
 
   const { modId } = target;
 
@@ -74,9 +86,9 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
         setDraftExcluded(new Set(contents.excludedFiles));
         setSaveFailed(false);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
-          setState({ status: "failed" });
+          setState({ status: "failed", failure: classifyPackageContentsError(error) });
         }
       });
 
@@ -166,10 +178,53 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   };
 
   /*
-   * 有未保存的改动时不直接关，先在页脚问一句。
+   * 内容根：选中即提交，拿回读结果重绘。
    *
-   * 用页脚而不是再套一层模态：嵌套模态会把焦点管理和 Esc 的语义搅成一团（Esc 该关哪个？），
+   * **不动勾选草稿**——排除集合按 `packageFileId`（沙箱根相对路径）存，与内容根无关，
+   * 换个根它照样有效。改内容根就把玩家没保存的勾选清掉，是白丢数据。内容根变化后
+   * 某些排除项可能落到新内容根之外，那属于「陈旧排除项」，后端明确是无害放过。
+   */
+  const applyContentRoot = async (run: () => Promise<PackageContents>) => {
+    setContentRootBusy(true);
+    setContentRootFailed(false);
+    try {
+      setState({ status: "ready", contents: await run() });
+    } catch {
+      setContentRootFailed(true);
+    } finally {
+      setContentRootBusy(false);
+    }
+  };
+
+  const handleChooseContentRoot = (contentRoot: string) =>
+    applyContentRoot(() => setModPackageContentRoot({ gameId: "mhw", modId, contentRoot }));
+
+  const handleResetContentRoot = () =>
+    applyContentRoot(() => clearModPackageContentRoot({ gameId: "mhw", modId }));
+
+  /*
+   * 陈旧内容根的出路。
+   *
+   * 这一档整个查询是失败的，界面上没有内容根面板可点，所以恢复入口只能长在错误状态里。
+   * 清掉记录之后重新加载：合集包会退回「等玩家决定」，玩家可以重新挑一个。
+   */
+  const handleClearStaleContentRoot = async () => {
+    setState({ status: "loading" });
+    try {
+      await clearModPackageContentRoot({ gameId: "mhw", modId });
+    } catch {
+      // 清除本身失败也照常重载：重载会重新分档，届时给出当时真实的失败原因。
+    }
+    setReloadToken((token) => token + 1);
+  };
+
+  /*
+   * 有未保存的改动时不直接关，先问一句（确认条见 `CloseConfirmBanner`）。
+   *
+   * 不再套一层模态：嵌套模态会把焦点管理和 Esc 的语义搅成一团（Esc 该关哪个？），
    * 而这里要问的只是一个是非题。
+   *
+   * 只盯勾选草稿：内容根是选中即提交的，没有「未保存」这一说。
    */
   const handleRequestClose = () => {
     if (isDirty) {
@@ -218,21 +273,50 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
             {copy.states.loading}
           </p>
         ) : state.status === "failed" ? (
-          <div className="install-config__empty">
-            <h3>{copy.states.failedTitle}</h3>
-            <p>{copy.states.failedDetail}</p>
-            <button
-              type="button"
-              className="install-config__retry"
-              onClick={() => setReloadToken((token) => token + 1)}
-            >
-              <RotateCcw size={15} aria-hidden="true" />
-              {copy.states.retry}
-            </button>
-          </div>
+          state.failure === "stale-content-root" ? (
+            /*
+             * 陈旧内容根：唯一有出路的失败。
+             *
+             * 后端在这一档失败关闭是对的——退回自动解析等于「玩家选了 A，我们装到 B」，
+             * 装完不报错、文件落在别处。但代价是包整个打不开，所以这里必须给出恢复动作，
+             * 否则玩家看到的是死胡同。
+             */
+            <div className="install-config__empty is-recoverable">
+              <h3>{copy.states.staleContentRootTitle}</h3>
+              <p>{copy.states.staleContentRootDetail}</p>
+              <button
+                type="button"
+                className="install-config__button is-primary"
+                onClick={handleClearStaleContentRoot}
+              >
+                <RotateCcw size={15} aria-hidden="true" />
+                {copy.states.staleContentRootAction}
+              </button>
+            </div>
+          ) : (
+            <div className="install-config__empty">
+              <h3>{copy.states.failedTitle}</h3>
+              <p>{copy.states.failedDetail}</p>
+              <button
+                type="button"
+                className="install-config__retry"
+                onClick={() => setReloadToken((token) => token + 1)}
+              >
+                <RotateCcw size={15} aria-hidden="true" />
+                {copy.states.retry}
+              </button>
+            </div>
+          )
         ) : (
           <>
-            <ContentRootPanel contents={state.contents} copy={copy} />
+            <ContentRootPanel
+              contents={state.contents}
+              copy={copy}
+              busy={contentRootBusy}
+              failed={contentRootFailed}
+              onChoose={handleChooseContentRoot}
+              onReset={handleResetContentRoot}
+            />
 
             <div className="install-config__summary" role="status">
               <span>
@@ -396,38 +480,3 @@ function SelectionActions({
   );
 }
 
-function ContentRootPanel({
-  contents,
-  copy,
-}: {
-  contents: PackageContents;
-  copy: InstallConfigCopy;
-}) {
-  const { contentRoot } = contents;
-
-  return (
-    <section className="install-config__content-root" aria-label={copy.contentRoot.heading}>
-      <div className="install-config__content-root-head">
-        <span className="install-config__content-root-heading">{copy.contentRoot.heading}</span>
-        <span
-          className={`install-config-fact install-config-fact--${
-            contentRoot.kind === "ambiguous" ? "warning" : "neutral"
-          }`}
-        >
-          {copy.contentRoot.kind[contentRoot.kind]}
-        </span>
-      </div>
-      <p className="install-config__content-root-detail">
-        {contentRoot.kind === "ambiguous"
-          ? copy.contentRoot.ambiguousDetail(contents.candidates.length)
-          : /*
-             * `fallback` 的 path 是空串（内容根就是沙箱根本身），拿它去拼「从 X 开始」会得到
-             * 一句没有主语的话，所以这一档走自己的说明句。空串与 null 不是一回事。
-             */
-            contentRoot.kind === "fallback" || !contentRoot.path
-            ? copy.contentRoot.fallbackDetail
-            : copy.contentRoot.path(contentRoot.path)}
-      </p>
-    </section>
-  );
-}
