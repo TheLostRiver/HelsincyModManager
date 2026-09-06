@@ -5,6 +5,7 @@ import { AppRouteProvider } from "./app/routing/AppRouteProvider";
 import { RouterOutlet } from "./app/routing/RouterOutlet";
 import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
 import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
+import { InstallConfigTargetProvider } from "./features/install-config/InstallConfigTargetProvider";
 import { ExternalStateSessionProvider } from "./features/mods/ExternalStateSessionProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
@@ -32,9 +33,14 @@ export function App() {
                         {/* #275：存储目录快照与迁移进度要活过路由切换，且库页要读同一份
                             writesFrozen 来禁用导入 / 删除入口。 */}
                         <ModStorageSettingsProvider>
-                          <AppShell>
-                            <RouterOutlet />
-                          </AppShell>
+                          {/* #354 D4：安装配置是覆盖层不是路由。挂在这一层是因为它由 Provider
+                              自己渲染面板（保证同时只有一个），而面板走 FeedbackPortal，
+                              必须在 FeedbackProvider 之内。 */}
+                          <InstallConfigTargetProvider>
+                            <AppShell>
+                              <RouterOutlet />
+                            </AppShell>
+                          </InstallConfigTargetProvider>
                         </ModStorageSettingsProvider>
                       </ExternalStateSessionProvider>
                     </ProfileSaveDirectoryDiscoveryProvider>

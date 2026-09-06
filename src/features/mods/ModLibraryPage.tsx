@@ -123,6 +123,7 @@ import { PreviewImageDialog } from "./PreviewImageDialog";
 import { previewImageViewCopy } from "./previewImageViewCopy";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
 import { useModStorageSettings } from "../settings/ModStorageSettingsProvider";
+import { useInstallConfigTarget } from "../install-config/InstallConfigTargetProvider";
 import { getModStorageFreezeReason } from "../settings/modStorageTypes";
 import { useModLibraryQuery } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
@@ -329,6 +330,7 @@ function recoveryPanelStateForItem(item: ModLibraryItem): InstallPlanDetailSheet
 export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const { locale } = useI18n();
   const modStorage = useModStorageSettings();
+  const { openInstallConfig } = useInstallConfigTarget();
   const storageWriteFreezeReason = getModStorageFreezeReason(modStorage.writesFrozen, locale);
   const { pushToast } = useFeedback();
   const copy = resolveCopy(modLibraryCopy, locale);
@@ -1646,6 +1648,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       case "view-preview":
         setPreviewModId(modId);
         break;
+      case "install-config": {
+        // 名字只用于页头显示；取不到就退回 id，不因此挡住入口。
+        const item = libraryItemsRef.current.find((entry) => entry.id === modId);
+        openInstallConfig({ modId, modName: item?.name ?? modId });
+        break;
+      }
       case "info-settings":
         setDetailDialogState(createDetailDialogState(modId, libraryItemsRef.current, "details"));
         break;
