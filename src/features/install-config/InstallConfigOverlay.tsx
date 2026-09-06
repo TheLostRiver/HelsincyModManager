@@ -348,6 +348,8 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
                 selectionStates={selectionStates}
                 excludedFiles={draftExcluded}
                 onToggleSelection={handleToggleSelection}
+                // 「算不出目标路径」的两种成因只有靠包级的内容根状态才分得开。
+                contentRootKind={state.contents.contentRoot.kind}
                 copy={copy}
               />
             )}

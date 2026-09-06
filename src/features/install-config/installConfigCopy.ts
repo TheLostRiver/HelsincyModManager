@@ -15,6 +15,17 @@ export type InstallConfigFactCopy = {
   detail: string;
 };
 
+/**
+ * 说明句里要带上算出来的目标路径的那一档。
+ *
+ * 「算得出路径」与「这个路径能不能装」是两件事。只说「不被接受」而不给出算出来的是什么，
+ * 玩家没法判断问题出在内容根挑错了还是这个文件本来就不该装。
+ */
+export type InstallConfigTargetPathFactCopy = {
+  label: string;
+  detail: (targetPath: string) => string;
+};
+
 export type InstallConfigCopy = {
   page: {
     /* 面板标题是 Mod 名（玩家要确认的是「哪个包」），「安装配置」这层身份由图标与入口菜单承担。 */
@@ -39,13 +50,23 @@ export type InstallConfigCopy = {
     chooseFailed: string;
   };
   facts: {
-    notInstallable: InstallConfigFactCopy;
+    /*
+     * 「装不了」的三档成因（D4-4）。
+     *
+     * D4-1 只有一条笼统的「不在安装范围」，而三种成因里有两种玩家**有办法可想**：内容根
+     * 未定就去挑一个，不在内容根之下就换一个更浅的。合并成一句等于把出路藏起来。
+     */
+    outsideContentRoot: InstallConfigFactCopy;
+    contentRootUndecided: InstallConfigFactCopy;
+    pathNotAccepted: InstallConfigTargetPathFactCopy;
     rejectedByGame: InstallConfigFactCopy;
     excludedByPlayer: InstallConfigFactCopy;
   };
   tree: {
     directoryAria: (input: { name: string; fileCount: number }) => string;
     fileCount: (count: number) => string;
+    /** 文件行的悬停说明：算出来的安装路径。树的层级看不出内容根被剥掉了哪一层。 */
+    targetPathTitle: (targetPath: string) => string;
     expand: string;
     collapse: string;
   };
@@ -102,9 +123,19 @@ export const installConfigCopy = {
       chooseFailed: "内容根没能改成，仍是原来那个。请重试。",
     },
     facts: {
-      notInstallable: {
-        label: "不在安装范围",
-        detail: "这个文件不在内容根之下，或者它的路径不被本游戏接受，因此不会进入安装计划。",
+      outsideContentRoot: {
+        label: "内容根之外",
+        detail:
+          "这个文件不在内容根之下，算不出安装路径，因此不会进入安装计划。若它本该装上，把内容根换到更浅的一层就能把它纳进来。",
+      },
+      contentRootUndecided: {
+        label: "等内容根",
+        detail: "内容根还没指定，暂时算不出这个文件的安装路径。在上方选定内容根之后就有了。",
+      },
+      pathNotAccepted: {
+        label: "路径不被接受",
+        detail: (targetPath) =>
+          `算出来的安装路径是 ${targetPath}，但本游戏只接受特定的顶层目录，因此它不会进入安装计划。`,
       },
       rejectedByGame: {
         label: "游戏拒绝清单",
@@ -118,6 +149,7 @@ export const installConfigCopy = {
     tree: {
       directoryAria: ({ name, fileCount }) => `目录 ${name}，含 ${fileCount} 个文件`,
       fileCount: (count) => `${count} 个文件`,
+      targetPathTitle: (targetPath) => `安装到 ${targetPath}`,
       expand: "展开",
       collapse: "折叠",
     },
@@ -171,10 +203,20 @@ export const installConfigCopy = {
       chooseFailed: "The content root did not change and is still the previous one. Try again.",
     },
     facts: {
-      notInstallable: {
-        label: "Outside install scope",
+      outsideContentRoot: {
+        label: "Outside content root",
         detail:
-          "This file sits outside the content root, or its path is not accepted by this game, so it will not enter the install plan.",
+          "This file sits outside the content root, so no install path can be computed and it will not enter the install plan. If it should be installed, move the content root to a shallower level to include it.",
+      },
+      contentRootUndecided: {
+        label: "Awaiting content root",
+        detail:
+          "The content root is not decided yet, so this file has no install path for now. Picking one above resolves it.",
+      },
+      pathNotAccepted: {
+        label: "Path not accepted",
+        detail: (targetPath) =>
+          `The computed install path is ${targetPath}, but this game only accepts specific top-level directories, so it will not enter the install plan.`,
       },
       rejectedByGame: {
         label: "Game reject list",
@@ -188,6 +230,7 @@ export const installConfigCopy = {
     tree: {
       directoryAria: ({ name, fileCount }) => `Directory ${name}, ${fileCount} files`,
       fileCount: (count) => `${count} files`,
+      targetPathTitle: (targetPath) => `Installs to ${targetPath}`,
       expand: "Expand",
       collapse: "Collapse",
     },
@@ -241,10 +284,20 @@ export const installConfigCopy = {
       chooseFailed: "コンテンツルートを変更できませんでした。元のままです。再試行してください。",
     },
     facts: {
-      notInstallable: {
-        label: "対象範囲外",
+      outsideContentRoot: {
+        label: "コンテンツルート外",
         detail:
-          "コンテンツルートの外にあるか、このゲームが受け付けないパスのため、インストール計画に入りません。",
+          "このファイルはコンテンツルートの外にあるためインストールパスを算出できず、インストール計画に入りません。入れたい場合はコンテンツルートをより浅い階層に変更してください。",
+      },
+      contentRootUndecided: {
+        label: "コンテンツルート待ち",
+        detail:
+          "コンテンツルートが未指定のため、このファイルのインストールパスはまだ算出できません。上で指定すると確定します。",
+      },
+      pathNotAccepted: {
+        label: "パスが非対応",
+        detail: (targetPath) =>
+          `算出されたインストールパスは ${targetPath} ですが、このゲームは特定のトップレベルディレクトリのみを受け付けるため、インストール計画には入りません。`,
       },
       rejectedByGame: {
         label: "ゲームの拒否リスト",
@@ -258,6 +311,7 @@ export const installConfigCopy = {
     tree: {
       directoryAria: ({ name, fileCount }) => `ディレクトリ ${name}、${fileCount} ファイル`,
       fileCount: (count) => `${count} ファイル`,
+      targetPathTitle: (targetPath) => `${targetPath} にインストール`,
       expand: "展開",
       collapse: "折りたたむ",
     },
