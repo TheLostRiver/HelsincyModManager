@@ -35,6 +35,14 @@ export type ModalSurfaceProps = {
   busy?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   role?: "dialog" | "alertdialog";
+  /**
+   * 追加到面板上的类名，用于覆盖默认尺寸。
+   *
+   * `dialog` 档是 560px 居中、`sheet` 档是右侧贴边，两者都不适合内容本身就需要大面积的
+   * 场景（如包内容树）。这类面板自带一个类名来放大尺寸，而不是把新档位塞进 `kind`——
+   * 尺寸是调用方的诉求，交互形态才是 `kind` 该管的事。
+   */
+  panelClassName?: string;
 };
 
 export function ModalSurface({
@@ -52,6 +60,7 @@ export function ModalSurface({
   busy = false,
   initialFocusRef,
   role = "dialog",
+  panelClassName,
 }: ModalSurfaceProps) {
   const { locale } = useI18n();
   const resolvedCloseLabel = closeLabel ?? resolveCopy(feedbackCopy, locale).modalCloseLabel;
@@ -173,7 +182,7 @@ export function ModalSurface({
       >
         <section
           ref={panelRef}
-          className={`feedback-modal is-${kind}`}
+          className={`feedback-modal is-${kind}${panelClassName ? ` ${panelClassName}` : ""}`}
           role={role}
           aria-modal="true"
           aria-labelledby={titleId}
