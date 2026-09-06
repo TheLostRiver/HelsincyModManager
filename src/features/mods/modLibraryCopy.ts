@@ -154,6 +154,8 @@ export type ModLibraryCopy = {
   contextMenu: {
     installOrUninstall: string;
     statusUnavailable: string;
+    /** `#354` D4：打开事务型的「安装配置」路由。 */
+    installConfig: string;
     infoSettings: string;
     fileModify: string;
     jumpToNexus: string;
@@ -381,6 +383,7 @@ export const modLibraryCopy = {
     contextMenu: {
       installOrUninstall: "安装 / 卸载 Mod",
       statusUnavailable: "当前 Mod 状态不可用",
+      installConfig: "安装配置",
       infoSettings: "MOD 信息设置",
       fileModify: "MOD 文件修改",
       jumpToNexus: "跳到 NexusMods",
@@ -609,6 +612,7 @@ export const modLibraryCopy = {
     contextMenu: {
       installOrUninstall: "Install / uninstall mod",
       statusUnavailable: "Mod status unavailable",
+      installConfig: "Install configuration",
       infoSettings: "Mod info settings",
       fileModify: "Mod file editing",
       jumpToNexus: "Open on NexusMods",
@@ -837,6 +841,7 @@ export const modLibraryCopy = {
     contextMenu: {
       installOrUninstall: "Mod をインストール / アンインストール",
       statusUnavailable: "Mod の状態を取得できません",
+      installConfig: "インストール設定",
       infoSettings: "Mod 情報設定",
       fileModify: "Mod ファイル編集",
       jumpToNexus: "NexusMods で開く",

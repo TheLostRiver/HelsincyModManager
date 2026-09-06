@@ -1,0 +1,253 @@
+/*
+ * 「安装配置」覆盖层的样式（`#354` 切片 D4）。
+ *
+ * 行高与缩进是**常量共享**的：`ROW_HEIGHT` / `INDENT_PER_LEVEL` 在
+ * `PackageContentTreeView.tsx` 里参与窗口区间与绝对定位的计算，这里的 `height` 必须与之
+ * 一致，否则滚动位置会与行号错位。改一处就要改另一处。
+ */
+
+/*
+ * 放大默认的 dialog 尺寸。
+ *
+ * `.feedback-modal` 默认 `width: min(560px, 100%)`——那是给确认框定的，装不下一棵树。
+ * 宽度封顶 1440px 而不是一味吃满视口：维护者的 CSS 视口约 2400px，行铺得太宽反而让
+ * 文件名与右侧徽章离得老远，读起来更累。
+ */
+.feedback-modal.install-config-modal {
+  width: min(1440px, 92vw);
+  height: min(1040px, 88dvh);
+  max-height: none;
+}
+
+/* 正文本身不滚动，滚动交给内部的树——否则会出现内外两条滚动条。 */
+.install-config-modal .feedback-modal__body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.install-config {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* 内容根 */
+
+.install-config__content-root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted);
+}
+
+.install-config__content-root-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.install-config__content-root-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.install-config__content-root-detail {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* 摘要 */
+
+.install-config__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+/* 三条事实的徽章：各自一色，不合并成单一结论 */
+
+.install-config-fact {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.install-config-fact--neutral {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.install-config-fact--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.install-config-fact--accent {
+  background: var(--color-accent-weak);
+  color: var(--color-accent);
+}
+
+/* 树 */
+
+.install-config-tree {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.install-config-tree:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.install-config-tree__canvas {
+  position: relative;
+  width: 100%;
+}
+
+.install-config-tree__row {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 与 ROW_HEIGHT 常量绑定，改一处必须改另一处。 */
+  height: 32px;
+  padding-inline-end: 12px;
+  font-size: 13px;
+  color: var(--color-text-soft);
+  cursor: default;
+  user-select: none;
+}
+
+.install-config-tree__row:hover {
+  background: var(--color-surface-muted);
+}
+
+.install-config-tree__row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-accent-alpha-12);
+}
+
+.install-config-tree__twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.install-config-tree__icon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.install-config-tree__row[aria-expanded] .install-config-tree__icon {
+  color: var(--color-accent);
+}
+
+.install-config-tree__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: var(--layout-text-overflow);
+  white-space: nowrap;
+}
+
+.install-config-tree__meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.install-config-tree__facts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* 状态 */
+
+.install-config__status {
+  margin: 0;
+  padding: 18px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.install-config__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-subtle);
+}
+
+.install-config__empty h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.install-config__empty p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.install-config__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.install-config__retry:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.install-config__retry:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
