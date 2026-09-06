@@ -4,6 +4,7 @@ import type { PackageTreeRow } from "./packageContentTree";
 import { resolveTreeKeyAction, resolveVisibleWindow } from "./packageContentTreeInteraction";
 import type { InstallConfigCopy } from "./installConfigCopy";
 import type { PackageContentEntry } from "./packageContentsTypes";
+import type { SelectionState } from "./packageContentSelection";
 
 /*
  * 包内容树的渲染层（`#354` 切片 D4）。
@@ -25,10 +26,22 @@ const OVERSCAN = 6;
 type PackageContentTreeViewProps = {
   rows: readonly PackageTreeRow[];
   onToggle: (path: string) => void;
+  /** 目录三态；不含可勾选文件的目录不在表里，因此不渲染勾选框。 */
+  selectionStates: ReadonlyMap<string, SelectionState>;
+  /** 被玩家勾掉的 `packageFileId`。 */
+  excludedFiles: ReadonlySet<string>;
+  onToggleSelection: (path: string) => void;
   copy: InstallConfigCopy;
 };
 
-export function PackageContentTreeView({ rows, onToggle, copy }: PackageContentTreeViewProps) {
+export function PackageContentTreeView({
+  rows,
+  onToggle,
+  selectionStates,
+  excludedFiles,
+  onToggleSelection,
+  copy,
+}: PackageContentTreeViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -85,14 +98,19 @@ export function PackageContentTreeView({ rows, onToggle, copy }: PackageContentT
     }
 
     event.preventDefault();
+    shouldFocusRef.current = true;
+
     if (action.kind === "move") {
-      shouldFocusRef.current = true;
       setActiveIndex(action.index);
       ensureIndexVisible(action.index);
       return;
     }
 
-    shouldFocusRef.current = true;
+    if (action.kind === "toggle-selection") {
+      onToggleSelection(action.path);
+      return;
+    }
+
     onToggle(action.path);
   };
 
@@ -118,6 +136,7 @@ export function PackageContentTreeView({ rows, onToggle, copy }: PackageContentT
         className="install-config-tree__canvas"
         role="tree"
         aria-label={copy.page.treeAria}
+        aria-multiselectable="true"
         style={{ height: `${rows.length * ROW_HEIGHT}px` }}
       >
         {visibleRows.map((row, offset) => {
@@ -128,11 +147,13 @@ export function PackageContentTreeView({ rows, onToggle, copy }: PackageContentT
               row={row}
               index={index}
               isActive={index === activeIndex}
+              selectionState={resolveRowSelection(row, selectionStates, excludedFiles)}
               onActivate={() => {
                 shouldFocusRef.current = true;
                 setActiveIndex(index);
               }}
               onToggle={onToggle}
+              onToggleSelection={onToggleSelection}
               copy={copy}
             />
           );
@@ -142,16 +163,47 @@ export function PackageContentTreeView({ rows, onToggle, copy }: PackageContentT
   );
 }
 
+/**
+ * 一行的勾选状态；`null` 表示这一行**没有勾选框**。
+ *
+ * 装不了的文件不给勾选框，而不是给一个 disabled 的——灰着的勾选框会暗示「想办法就能
+ * 启用」，而这里根本没有办法可想：它不在内容根之下、或路径不被本游戏接受。
+ */
+function resolveRowSelection(
+  row: PackageTreeRow,
+  selectionStates: ReadonlyMap<string, SelectionState>,
+  excludedFiles: ReadonlySet<string>,
+): SelectionState | null {
+  if (row.node.kind === "directory") {
+    return selectionStates.get(row.node.path) ?? null;
+  }
+  if (!row.node.entry.installable) {
+    return null;
+  }
+  return excludedFiles.has(row.node.path) ? "unchecked" : "checked";
+}
+
 type TreeRowProps = {
   row: PackageTreeRow;
   index: number;
   isActive: boolean;
+  selectionState: SelectionState | null;
   onActivate: () => void;
   onToggle: (path: string) => void;
+  onToggleSelection: (path: string) => void;
   copy: InstallConfigCopy;
 };
 
-function TreeRow({ row, index, isActive, onActivate, onToggle, copy }: TreeRowProps) {
+function TreeRow({
+  row,
+  index,
+  isActive,
+  selectionState,
+  onActivate,
+  onToggle,
+  onToggleSelection,
+  copy,
+}: TreeRowProps) {
   const { node } = row;
   const isDirectory = node.kind === "directory";
 
@@ -165,6 +217,17 @@ function TreeRow({ row, index, isActive, onActivate, onToggle, copy }: TreeRowPr
       aria-posinset={row.posInSet}
       // 文件是叶子：输出 aria-expanded 会让读屏把它读成可展开节点。
       aria-expanded={isDirectory ? row.isExpanded : undefined}
+      // 勾选态挂在行上而不是内部的勾选框上：勾选框是 aria-hidden 的视觉件，
+      // 焦点始终在行，两边都报会让读屏念两遍。
+      aria-checked={
+        selectionState === null
+          ? undefined
+          : selectionState === "checked"
+            ? true
+            : selectionState === "indeterminate"
+              ? "mixed"
+              : false
+      }
       aria-label={
         isDirectory
           ? copy.tree.directoryAria({ name: node.name, fileCount: node.stats.fileCount })
@@ -182,6 +245,17 @@ function TreeRow({ row, index, isActive, onActivate, onToggle, copy }: TreeRowPr
         }
       }}
     >
+      {selectionState === null ? (
+        <span className="install-config-tree__checkbox-placeholder" aria-hidden="true" />
+      ) : (
+        <TriStateCheckbox
+          state={selectionState}
+          onToggle={() => {
+            onActivate();
+            onToggleSelection(node.path);
+          }}
+        />
+      )}
       <span className="install-config-tree__twisty" aria-hidden="true">
         {isDirectory ? row.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : null}
       </span>
@@ -196,6 +270,37 @@ function TreeRow({ row, index, isActive, onActivate, onToggle, copy }: TreeRowPr
         <FileFacts entry={node.entry} copy={copy} />
       )}
     </div>
+  );
+}
+
+/**
+ * 三态勾选框。
+ *
+ * `indeterminate` 是 DOM 属性而不是 HTML 特性，**只能用 JS 设**，React 也不会替你同步它。
+ * 勾选框自身 `tabIndex={-1}` 且 `aria-hidden`：焦点归行所有（roving tabindex），键盘走
+ * 空格键，这里只负责视觉与鼠标点击。
+ */
+function TriStateCheckbox({ state, onToggle }: { state: SelectionState; onToggle: () => void }) {
+  const ref = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = state === "indeterminate";
+    }
+  }, [state]);
+
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="install-config-tree__checkbox"
+      checked={state === "checked"}
+      tabIndex={-1}
+      aria-hidden="true"
+      onChange={onToggle}
+      // 勾选框在行内部，不拦住冒泡的话点一下会连带把目录展开/折叠。
+      onClick={(event) => event.stopPropagation()}
+    />
   );
 }
 

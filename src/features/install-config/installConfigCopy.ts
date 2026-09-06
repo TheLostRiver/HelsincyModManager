@@ -44,6 +44,19 @@ export type InstallConfigCopy = {
     expand: string;
     collapse: string;
   };
+  actions: {
+    save: string;
+    saveAndClose: string;
+    saving: string;
+    discard: string;
+    /** 页脚常驻提示：草稿与已保存状态一致时显示。 */
+    saved: string;
+    unsaved: string;
+    saveFailed: string;
+    confirmCloseDetail: string;
+    keepEditing: string;
+    discardAndClose: string;
+  };
   states: {
     loading: string;
     empty: string;
@@ -95,6 +108,18 @@ export const installConfigCopy = {
       expand: "展开",
       collapse: "折叠",
     },
+    actions: {
+      save: "保存选择",
+      saveAndClose: "保存并关闭",
+      saving: "正在保存…",
+      discard: "放弃改动",
+      saved: "选择已保存，安装时按此执行。",
+      unsaved: "有未保存的改动。",
+      saveFailed: "保存失败，选择没有生效。请重试。",
+      confirmCloseDetail: "有未保存的改动，关掉就没了。",
+      keepEditing: "继续编辑",
+      discardAndClose: "放弃并关闭",
+    },
     states: {
       loading: "正在读取包内容…",
       empty: "这个包里没有文件。",
@@ -145,6 +170,18 @@ export const installConfigCopy = {
       expand: "Expand",
       collapse: "Collapse",
     },
+    actions: {
+      save: "Save selection",
+      saveAndClose: "Save and close",
+      saving: "Saving…",
+      discard: "Discard changes",
+      saved: "Selection saved; installs will follow it.",
+      unsaved: "You have unsaved changes.",
+      saveFailed: "Saving failed, so the selection did not take effect. Try again.",
+      confirmCloseDetail: "You have unsaved changes. Closing discards them.",
+      keepEditing: "Keep editing",
+      discardAndClose: "Discard and close",
+    },
     states: {
       loading: "Reading package contents…",
       empty: "This package contains no files.",
@@ -194,6 +231,18 @@ export const installConfigCopy = {
       fileCount: (count) => `${count} ファイル`,
       expand: "展開",
       collapse: "折りたたむ",
+    },
+    actions: {
+      save: "選択を保存",
+      saveAndClose: "保存して閉じる",
+      saving: "保存中…",
+      discard: "変更を破棄",
+      saved: "選択を保存しました。インストールはこの内容に従います。",
+      unsaved: "未保存の変更があります。",
+      saveFailed: "保存に失敗したため、選択は反映されていません。再試行してください。",
+      confirmCloseDetail: "未保存の変更があります。閉じると失われます。",
+      keepEditing: "編集を続ける",
+      discardAndClose: "破棄して閉じる",
     },
     states: {
       loading: "パッケージ内容を読み込み中…",

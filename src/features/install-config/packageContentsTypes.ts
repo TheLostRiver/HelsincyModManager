@@ -61,3 +61,15 @@ export type GetModPackageContentsInput = {
   gameId: string;
   modId: string;
 };
+
+export type SetModPackageFileSelectionInput = {
+  gameId: string;
+  modId: string;
+  /** 要**排除**的 `packageFileId`。空数组 = 整包都装。 */
+  excludedFiles: string[];
+};
+
+export type ClearModPackageFileSelectionInput = {
+  gameId: string;
+  modId: string;
+};

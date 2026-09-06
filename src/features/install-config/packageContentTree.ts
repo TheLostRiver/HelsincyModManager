@@ -288,6 +288,28 @@ export function flattenVisibleRows(
   return rows;
 }
 
+/**
+ * `path` → 节点 的索引。
+ *
+ * 勾选、展开这些操作拿到的都是路径（DOM 里只有字符串），每次再遍历一遍树是 O(n)——
+ * 7340 个节点的包点一下就是一次全树扫描。建一次索引换 O(1) 查找。
+ */
+export function indexNodesByPath(nodes: readonly PackageTreeNode[]): Map<string, PackageTreeNode> {
+  const index = new Map<string, PackageTreeNode>();
+
+  const walk = (list: readonly PackageTreeNode[]): void => {
+    for (const node of list) {
+      index.set(node.path, node);
+      if (node.kind === "directory") {
+        walk(node.children);
+      }
+    }
+  };
+
+  walk(nodes);
+  return index;
+}
+
 /** 整包统计：树根那一层的聚合，用于页头摘要。 */
 export function summarizeTree(nodes: readonly PackageTreeNode[]): PackageTreeStats {
   return nodes.reduce((accumulated, node) => {
