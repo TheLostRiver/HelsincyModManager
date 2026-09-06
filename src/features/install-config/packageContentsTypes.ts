@@ -62,6 +62,21 @@ export type GetModPackageContentsInput = {
   modId: string;
 };
 
+export type SetModPackageContentRootInput = {
+  gameId: string;
+  modId: string;
+  /**
+   * 沙箱根相对路径，**必须取自 `PackageContents.candidates`**——后端在设置这一步就校验
+   * 白名单，不接受任意路径。空串合法，表示内容根就是沙箱根本身。
+   */
+  contentRoot: string;
+};
+
+export type ClearModPackageContentRootInput = {
+  gameId: string;
+  modId: string;
+};
+
 export type SetModPackageFileSelectionInput = {
   gameId: string;
   modId: string;

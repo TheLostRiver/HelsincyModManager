@@ -59,11 +59,120 @@
   color: var(--color-text);
 }
 
+/* 待指定：整块转警示色，因为这时包**装不了**，得先做个决定。 */
+.install-config__content-root.is-ambiguous {
+  border-color: var(--color-warning-dot);
+  background: var(--color-warning-bg);
+}
+
 .install-config__content-root-detail {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
+}
+
+.install-config__content-root.is-ambiguous .install-config__content-root-detail {
+  color: var(--color-warning-text);
+  font-weight: 500;
+}
+
+/* 「恢复自动」是次要操作，推到标题行最右，不与候选清单争视线。 */
+.install-config__content-root-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.install-config__content-root-reset:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--color-accent-alpha-40);
+  color: var(--color-text-soft);
+}
+
+.install-config__content-root-reset:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.install-config__content-root-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.install-config__content-root-failed {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger-text);
+}
+
+/* 候选清单 */
+
+.install-config__candidates {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.install-config__candidates-legend {
+  padding: 0;
+  margin-block-end: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/*
+ * 候选数量由包决定（每个 nativePC 的父目录 + 沙箱根本身），合集包可能有十几个。
+ * 限高并允许滚动，免得候选清单把树挤出可视区。
+ */
+.install-config__candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.install-config__candidate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-inner);
+  font-size: 13px;
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.install-config__candidate:hover {
+  background: var(--color-surface);
+}
+
+.install-config__candidate input {
+  flex: none;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.install-config__candidate-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.install-config__candidates:disabled .install-config__candidate {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 摘要 */
@@ -328,6 +437,18 @@
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface-subtle);
+}
+
+/* 有出路的失败：实线警示框，与「只能重试」的虚线兜底框区分开。 */
+.install-config__empty.is-recoverable {
+  border-style: solid;
+  border-color: var(--color-warning-dot);
+  background: var(--color-warning-bg);
+}
+
+.install-config__empty.is-recoverable h3,
+.install-config__empty.is-recoverable p {
+  color: var(--color-warning-text);
 }
 
 .install-config__empty h3 {
