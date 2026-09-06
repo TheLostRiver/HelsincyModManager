@@ -3,8 +3,13 @@ import { ChevronDown, ChevronRight, File, Folder, FolderOpen } from "lucide-reac
 import type { PackageTreeRow } from "./packageContentTree";
 import { resolveTreeKeyAction, resolveVisibleWindow } from "./packageContentTreeInteraction";
 import type { InstallConfigCopy } from "./installConfigCopy";
-import type { PackageContentEntry } from "./packageContentsTypes";
+import type { PackageContentEntry, PackageContentRootKind } from "./packageContentsTypes";
 import type { SelectionState } from "./packageContentSelection";
+import {
+  isNoteworthyTargetPathState,
+  resolveTargetPathState,
+  type TargetPathState,
+} from "./packageContentTargetPath";
 
 /*
  * 包内容树的渲染层（`#354` 切片 D4）。
@@ -31,6 +36,13 @@ type PackageContentTreeViewProps = {
   /** 被玩家勾掉的 `packageFileId`。 */
   excludedFiles: ReadonlySet<string>;
   onToggleSelection: (path: string) => void;
+  /*
+   * 目标路径分档要用到的**包级**状态。
+   *
+   * 「算不出目标路径」的两种成因在文件这一级分不开——`targetPath` 都是 `null`。只有内容根
+   * 状态能区分：未定时后端整包都给不出路径，已定时 `null` 才意味着这个文件在它之外。
+   */
+  contentRootKind: PackageContentRootKind;
   copy: InstallConfigCopy;
 };
 
@@ -40,6 +52,7 @@ export function PackageContentTreeView({
   selectionStates,
   excludedFiles,
   onToggleSelection,
+  contentRootKind,
   copy,
 }: PackageContentTreeViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +167,7 @@ export function PackageContentTreeView({
               }}
               onToggle={onToggle}
               onToggleSelection={onToggleSelection}
+              contentRootKind={contentRootKind}
               copy={copy}
             />
           );
@@ -191,6 +205,7 @@ type TreeRowProps = {
   onActivate: () => void;
   onToggle: (path: string) => void;
   onToggleSelection: (path: string) => void;
+  contentRootKind: PackageContentRootKind;
   copy: InstallConfigCopy;
 };
 
@@ -202,15 +217,31 @@ function TreeRow({
   onActivate,
   onToggle,
   onToggleSelection,
+  contentRootKind,
   copy,
 }: TreeRowProps) {
   const { node } = row;
   const isDirectory = node.kind === "directory";
+  const targetPathState = isDirectory
+    ? null
+    : resolveTargetPathState(node.entry, contentRootKind);
 
   return (
     <div
       className="install-config-tree__row"
       data-row-index={index}
+      /*
+       * 算出来的安装路径放在行的 `title` 里，不另占一列。
+       *
+       * 逐行显示完整 `targetPath` 是结构性冗余——它就是 `packageFileId` 剥掉内容根前缀的
+       * 后缀，树的层级已经把它显示了一遍。但「剥掉了哪一层」在树上看不出来，所以仍要能查，
+       * 只是不该为此挤占每一行的版面。
+       */
+      title={
+        targetPathState !== null && targetPathState.kind === "resolved"
+          ? copy.tree.targetPathTitle(targetPathState.targetPath)
+          : undefined
+      }
       role="treeitem"
       aria-level={row.level}
       aria-setsize={row.setSize}
@@ -264,10 +295,10 @@ function TreeRow({
       </span>
       <span className="install-config-tree__name">{node.name}</span>
 
-      {isDirectory ? (
+      {node.kind === "directory" ? (
         <span className="install-config-tree__meta">{copy.tree.fileCount(node.stats.fileCount)}</span>
       ) : (
-        <FileFacts entry={node.entry} copy={copy} />
+        <FileFacts entry={node.entry} contentRootKind={contentRootKind} copy={copy} />
       )}
     </div>
   );
@@ -305,28 +336,26 @@ function TriStateCheckbox({ state, onToggle }: { state: SelectionState; onToggle
 }
 
 /*
- * 三条事实各自成一枚徽章，不合并成单一的「会不会装」。
+ * 各条事实各自成一枚徽章，不合并成单一的「会不会装」。
  *
  * 合并必然说反话：拒绝清单当前只在重定向链路上强制执行，普通安装链路尚未套用，
  * 同一个文件在两条链路上的结局不同。所以这里只陈述命中了哪条事实，由玩家自己看。
+ *
+ * D4-4 把原先笼统的一枚「不在安装范围」按成因拆成三档：其中两档玩家有办法可想
+ * （挑内容根、换更浅的内容根），合成一句就把出路藏起来了。
  */
 function FileFacts({
   entry,
+  contentRootKind,
   copy,
 }: {
   entry: PackageContentEntry;
+  contentRootKind: PackageContentRootKind;
   copy: InstallConfigCopy;
 }) {
   return (
     <span className="install-config-tree__facts">
-      {!entry.installable ? (
-        <span
-          className="install-config-fact install-config-fact--neutral"
-          title={copy.facts.notInstallable.detail}
-        >
-          {copy.facts.notInstallable.label}
-        </span>
-      ) : null}
+      <TargetPathFact state={resolveTargetPathState(entry, contentRootKind)} copy={copy} />
       {entry.rejectedByGame ? (
         <span
           className="install-config-fact install-config-fact--warning"
@@ -343,6 +372,43 @@ function FileFacts({
           {copy.facts.excludedByPlayer.label}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * 目标路径那一档的徽章。
+ *
+ * `resolved` 不报——常态无需徽章，每行都挂一枚只会把真正需要注意的那几行淹掉。
+ * 算出来的路径改由行的 `title` 承载（见 `TreeRow`），不占版面。
+ *
+ * 三档共用 `neutral` 而不是各给一色：它们是同一件事（这个文件进不了安装计划）的不同成因，
+ * 颜色分档会让人以为严重程度不同。要分的是**说明句**，那才是出路所在。
+ */
+function TargetPathFact({
+  state,
+  copy,
+}: {
+  state: TargetPathState;
+  copy: InstallConfigCopy;
+}) {
+  if (!isNoteworthyTargetPathState(state)) {
+    return null;
+  }
+
+  const fact =
+    state.kind === "contentRootUndecided"
+      ? copy.facts.contentRootUndecided
+      : state.kind === "outsideContentRoot"
+        ? copy.facts.outsideContentRoot
+        : {
+            label: copy.facts.pathNotAccepted.label,
+            detail: copy.facts.pathNotAccepted.detail(state.targetPath),
+          };
+
+  return (
+    <span className="install-config-fact install-config-fact--neutral" title={fact.detail}>
+      {fact.label}
     </span>
   );
 }
