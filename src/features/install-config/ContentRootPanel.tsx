@@ -37,7 +37,7 @@ export function ContentRootPanel({
 }: ContentRootPanelProps) {
   const { contentRoot, candidates } = contents;
   // 分档与选中判断都在 `contentRootChoice` 里（那里钉住了「空串 ≠ null」这个陷阱）。
-  const detailKind = resolveContentRootDetailKind(contentRoot);
+  const detailKind = resolveContentRootDetailKind(contentRoot, candidates);
   const isAmbiguous = detailKind === "ambiguous";
 
   return (
@@ -72,7 +72,10 @@ export function ContentRootPanel({
           ? copy.contentRoot.ambiguousDetail(candidates.length)
           : detailKind === "fallback"
             ? copy.contentRoot.fallbackDetail
-            : copy.contentRoot.path(contentRoot.path ?? "")}
+            : detailKind === "rootByChoice"
+              ? // 候选恒含根目录本身，所以「另有几层」要把它减掉。
+                copy.contentRoot.rootByChoiceDetail(candidates.length - 1)
+              : copy.contentRoot.path(contentRoot.path ?? "")}
       </p>
 
       {failed ? (

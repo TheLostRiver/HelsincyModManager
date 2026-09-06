@@ -39,9 +39,17 @@ export type InstallConfigCopy = {
   contentRoot: {
     heading: string;
     kind: Record<PackageContentRootKind, string>;
-    /** `single` 用；`fallback` 与 `ambiguous` 各有自己的说明句。 */
+    /** `single` 用；其余三档各有自己的说明句。 */
     path: (path: string) => string;
+    /**
+     * 包里**没有**别的层可选时用。
+     *
+     * 这句话断言了包的结构，所以不能拿去顶替 `rootByChoiceDetail`——合集包选了根目录之后
+     * 它就是假的（候选清单里还列着另外几层）。
+     */
     fallbackDetail: string;
+    /** 有别的层可选，但当前生效的是根目录。`otherCount` 是除根目录之外的候选数。 */
+    rootByChoiceDetail: (otherCount: number) => string;
     ambiguousDetail: (candidateCount: number) => string;
     chooseLabel: string;
     /** 空串候选的显示名——沙箱根本身。 */
@@ -115,6 +123,8 @@ export const installConfigCopy = {
       },
       path: (path) => `从 ${path} 开始算安装路径`,
       fallbackDetail: "包里没有多余的包装目录，直接从根目录开始算安装路径。",
+      rootByChoiceDetail: (otherCount) =>
+        `当前从包的根目录开始算安装路径。这个包里另有 ${otherCount} 层可以当作内容根，换一层会改变所有文件的安装位置。`,
       ambiguousDetail: (candidateCount) =>
         `这个包里有 ${candidateCount} 个可以当作内容根的目录，需要你指定用哪一个。`,
       chooseLabel: "从哪一层开始算安装路径",
@@ -195,6 +205,8 @@ export const installConfigCopy = {
       },
       path: (path) => `Install paths are computed from ${path}`,
       fallbackDetail: "The package has no extra wrapper directory, so install paths start at its root.",
+      rootByChoiceDetail: (otherCount) =>
+        `Install paths currently start at the package root. This package has ${otherCount} other level(s) that could serve as the content root; switching changes where every file lands.`,
       ambiguousDetail: (candidateCount) =>
         `This package has ${candidateCount} directories that could serve as the content root. Pick one.`,
       chooseLabel: "Where install paths start from",
@@ -276,6 +288,8 @@ export const installConfigCopy = {
       },
       path: (path) => `${path} を起点にインストールパスを算出します`,
       fallbackDetail: "余分なラッパーディレクトリがないため、ルートから直接インストールパスを算出します。",
+      rootByChoiceDetail: (otherCount) =>
+        `現在はパッケージのルートからインストールパスを算出しています。このパッケージにはコンテンツルートになり得る階層が他に ${otherCount} 件あり、切り替えると全ファイルのインストール先が変わります。`,
       ambiguousDetail: (candidateCount) =>
         `このパッケージにはコンテンツルートになり得るディレクトリが ${candidateCount} 件あります。どれを使うか指定してください。`,
       chooseLabel: "インストールパスの起点",
