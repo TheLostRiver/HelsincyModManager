@@ -143,3 +143,35 @@ export function isSameSelection(left: ReadonlySet<string>, right: readonly strin
   }
   return right.every((fileId) => left.has(fileId));
 }
+
+/**
+ * 草稿与后端记录**差了几处**（`#354` 切片 D4-4b）。
+ *
+ * 计划预览读的是后端持久化的状态，草稿没保存它就看不见。这个数字用来把这段时间差
+ * 说具体——「有 2 处未保存的改动，下面的计划还没算上」远比笼统的「可能已过期」有用：
+ * 玩家能据此判断值不值得先保存一下再看。
+ *
+ * 数的是**对称差**：勾掉两个和勾回两个都是两处改动，方向不影响「差了多少」。
+ * 遍历去重后的集合而不是原数组——记录理论上不含重复（后端写入前排序去重），
+ * 但这个数字直接显示给玩家，不值得赌。
+ */
+export function countSelectionDrift(
+  draft: ReadonlySet<string>,
+  saved: readonly string[],
+): number {
+  const savedSet = new Set(saved);
+  let drift = 0;
+
+  for (const fileId of draft) {
+    if (!savedSet.has(fileId)) {
+      drift += 1;
+    }
+  }
+  for (const fileId of savedSet) {
+    if (!draft.has(fileId)) {
+      drift += 1;
+    }
+  }
+
+  return drift;
+}
