@@ -354,6 +354,124 @@
   color: var(--color-danger-text);
 }
 
+/*
+ * 安装计划预览（D4-4b）。
+ *
+ * 贴在树下方、页脚上方：它回答的是「这些选择的结果是什么」，而结果要跟在选择之后。
+ * `flex: none` 让它按内容定高，把伸缩留给树——预览只有几行，树才是需要空间的那个。
+ */
+.install-config__plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted);
+}
+
+.install-config__plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.install-config__plan-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/*
+ * 陈旧标记：草稿改了但还没保存，下面那份计划算的是旧状态。
+ *
+ * 占满剩余宽度并配警示底色——这是整块预览里唯一「你看到的可能不是你以为的」的地方，
+ * 不能让它混在普通文字里。
+ */
+.install-config__plan-stale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--color-warning-dot);
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.install-config__plan-stale span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.install-config__plan-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.install-config__plan-count {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.install-config__plan-targets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.install-config__plan-targets-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.install-config__plan-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+/* 内容根未定不是错误，是还没轮到算计划——用中性的待决色，不报红。 */
+.install-config__plan-status.is-pending {
+  color: var(--color-text-muted);
+}
+
+.install-config__plan-status.is-failed {
+  color: var(--color-danger-text);
+}
+
+.install-config__plan-prerequisite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-card);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.install-config__plan-prerequisite.is-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.install-config__plan-prerequisite.is-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
 /* 页脚动作 */
 
 .install-config__actions {
@@ -396,6 +514,19 @@
 .install-config__button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/*
+ * 嵌在窄条里的按钮（陈旧标记、失败行）。
+ *
+ * 默认的 8px/16px 是给页脚定的，塞进一条 pill 里会把整条撑高一截，看起来像两层控件。
+ */
+.install-config__button.is-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  font-size: 12px;
 }
 
 .install-config__button.is-primary {

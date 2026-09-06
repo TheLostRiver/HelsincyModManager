@@ -78,6 +78,26 @@ export type InstallConfigCopy = {
     expand: string;
     collapse: string;
   };
+  plan: {
+    heading: string;
+    loading: string;
+    /** 计划里实际会执行几条。与摘要条的 `installableCount` **不是**一回事，见下方注释。 */
+    actionCount: (count: number) => string;
+    empty: string;
+    targetsLabel: string;
+    targetGroup: (input: { prefix: string; fileCount: number }) => string;
+    /**
+     * 草稿脏时的陈旧标记。
+     *
+     * 必须带上具体处数：笼统的「可能已过期」玩家无从判断值不值得先保存一下再看。
+     */
+    stale: (driftCount: number) => string;
+    staleAction: string;
+    /** 内容根未定：这不是错误，是还没轮到算计划。 */
+    needsContentRoot: string;
+    failed: string;
+    retry: string;
+  };
   actions: {
     save: string;
     saveAndClose: string;
@@ -163,6 +183,23 @@ export const installConfigCopy = {
       expand: "展开",
       collapse: "折叠",
     },
+    plan: {
+      heading: "安装计划",
+      loading: "正在计算安装计划…",
+      /*
+       * 与摘要条的「N 个在安装范围内」**不是**同一个数：那个是「能不能装」，不减玩家勾掉的；
+       * 这个是计划里实际会执行几条，已经减过。全界面只有这里报告它。
+       */
+      actionCount: (count) => `将安装 ${count} 个文件`,
+      empty: "按当前选择，这个包不会安装任何文件。",
+      targetsLabel: "落点",
+      targetGroup: ({ prefix, fileCount }) => `${prefix}（${fileCount}）`,
+      stale: (driftCount) => `有 ${driftCount} 处未保存的勾选改动，下面的计划还没算上。`,
+      staleAction: "保存并刷新",
+      needsContentRoot: "先在上方选定内容根，才能算出这个包会装到哪里。",
+      failed: "算不出安装计划。",
+      retry: "重新计算",
+    },
     actions: {
       save: "保存选择",
       saveAndClose: "保存并关闭",
@@ -246,6 +283,20 @@ export const installConfigCopy = {
       expand: "Expand",
       collapse: "Collapse",
     },
+    plan: {
+      heading: "Install plan",
+      loading: "Computing the install plan…",
+      actionCount: (count) => `Will install ${count} file${count === 1 ? "" : "s"}`,
+      empty: "With the current selection this package installs nothing.",
+      targetsLabel: "Lands in",
+      targetGroup: ({ prefix, fileCount }) => `${prefix} (${fileCount})`,
+      stale: (driftCount) =>
+        `${driftCount} unsaved selection change${driftCount === 1 ? "" : "s"} are not reflected in the plan below.`,
+      staleAction: "Save and refresh",
+      needsContentRoot: "Pick a content root above to see where this package lands.",
+      failed: "The install plan could not be computed.",
+      retry: "Recompute",
+    },
     actions: {
       save: "Save selection",
       saveAndClose: "Save and close",
@@ -328,6 +379,20 @@ export const installConfigCopy = {
       targetPathTitle: (targetPath) => `${targetPath} にインストール`,
       expand: "展開",
       collapse: "折りたたむ",
+    },
+    plan: {
+      heading: "インストール計画",
+      loading: "インストール計画を計算中…",
+      actionCount: (count) => `${count} 件のファイルをインストールします`,
+      empty: "現在の選択では、このパッケージは何もインストールしません。",
+      targetsLabel: "配置先",
+      targetGroup: ({ prefix, fileCount }) => `${prefix}（${fileCount}）`,
+      stale: (driftCount) =>
+        `未保存の選択変更が ${driftCount} 件あり、下の計画には反映されていません。`,
+      staleAction: "保存して更新",
+      needsContentRoot: "上でコンテンツルートを指定すると、配置先を算出できます。",
+      failed: "インストール計画を算出できません。",
+      retry: "再計算",
     },
     actions: {
       save: "選択を保存",

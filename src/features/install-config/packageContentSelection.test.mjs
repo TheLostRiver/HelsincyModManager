@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { buildPackageContentTree } from "./packageContentTree.ts";
 import {
   computeDirectorySelection,
+  countSelectionDrift,
   isSameSelection,
   selectableFileIdsUnder,
   toggleSelection,
@@ -203,4 +204,57 @@ test("比较排除集合看内容不看引用——勾掉再勾回来不算改�
   assert.equal(isSameSelection(new Set(["a"]), ["b"]), false);
   // 长度相同但内容不同：靠 size 比较会漏判，必须逐项查。
   assert.equal(isSameSelection(new Set(["a", "b"]), ["a", "c"]), false);
+});
+
+/*
+ * 草稿与后端记录差了几处（D4-4b）。
+ *
+ * 计划预览读的是后端持久化状态，草稿没保存它就看不见。这个数字把那段时间差说具体，
+ * 玩家据此判断值不值得先保存一下再看。
+ */
+test("没有改动时漂移是 0", () => {
+  assert.equal(countSelectionDrift(new Set(), []), 0);
+  assert.equal(countSelectionDrift(new Set(["a", "b"]), ["b", "a"]), 0, "顺序无关");
+});
+
+test("勾掉和勾回都算改动，方向不影响数量", () => {
+  // 草稿多勾掉了两个。
+  assert.equal(countSelectionDrift(new Set(["a", "b"]), []), 2);
+  // 草稿把已保存的两个勾回来了——同样是两处改动。
+  assert.equal(countSelectionDrift(new Set(), ["a", "b"]), 2);
+});
+
+/*
+ * 一进一出必须数成 2 而不是 0。
+ *
+ * 只比大小（`draft.size - saved.length`）的话这种情况会得 0，而它明明有两处改动，
+ * 计划也确实会变——那正是最该提示玩家去保存的时候。
+ */
+test("一进一出数成两处，不能靠比大小抵消", () => {
+  assert.equal(countSelectionDrift(new Set(["a"]), ["b"]), 2);
+  assert.equal(countSelectionDrift(new Set(["a", "c"]), ["b", "c"]), 2, "共同项不计入");
+});
+
+/** 记录里理论上不含重复（后端写入前排序去重），但这个数字直接显示给玩家，不赌。 */
+test("记录里的重复项不会把漂移数撑大", () => {
+  assert.equal(countSelectionDrift(new Set(), ["a", "a"]), 1);
+});
+
+/** 与「有没有改动」的判断必须同口径，否则会出现「显示有改动但数字是 0」。 */
+test("漂移为 0 等价于 isSameSelection 为真", () => {
+  const cases = [
+    [new Set(), []],
+    [new Set(["a"]), ["a"]],
+    [new Set(["a"]), ["b"]],
+    [new Set(["a", "b"]), ["a"]],
+    [new Set(), ["a"]],
+  ];
+
+  for (const [draft, saved] of cases) {
+    assert.equal(
+      countSelectionDrift(draft, saved) === 0,
+      isSameSelection(draft, saved),
+      `${[...draft]} vs ${saved} 两处判断必须同口径`,
+    );
+  }
 });

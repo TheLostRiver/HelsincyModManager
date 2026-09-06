@@ -13,7 +13,19 @@ import {
 } from "./packageContentTree";
 import { PackageContentTreeView } from "./PackageContentTreeView";
 import { ContentRootPanel } from "./ContentRootPanel";
-import { computeDirectorySelection, isSameSelection, toggleSelection } from "./packageContentSelection";
+import {
+  computeDirectorySelection,
+  countSelectionDrift,
+  isSameSelection,
+  toggleSelection,
+} from "./packageContentSelection";
+import { modLifecycleCopy } from "../mods/modLifecycleCopy";
+import { previewInstallPlanForImportedMod } from "../mods/modInstallPlanApi";
+import { classifyInstallPlanPreviewError } from "./installPlanPreview";
+import {
+  InstallPlanPreviewPanel,
+  type InstallPlanPreviewState,
+} from "./InstallPlanPreviewPanel";
 import {
   clearModPackageContentRoot,
   clearModPackageFileSelection,
@@ -51,6 +63,11 @@ type InstallConfigOverlayProps = {
 export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(installConfigCopy, locale);
+  /*
+   * 前置条件的文案与码表复用 Mod 生命周期那一套：三语已穷尽 14 个 `GamePrerequisiteDecisionCode`，
+   * 在这个 feature 里再抄一份只会随后端加码而漂移。
+   */
+  const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
 
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set<string>());
@@ -67,6 +84,14 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [contentRootBusy, setContentRootBusy] = useState(false);
   const [contentRootFailed, setContentRootFailed] = useState(false);
+  const [plan, setPlan] = useState<InstallPlanPreviewState>({ status: "loading" });
+  /*
+   * 预览要重算的时机：换包、勾选保存生效、内容根变了、手动重试。
+   *
+   * 前两者会改后端持久化状态，第三者会让整棵树的 `targetPath` 重算——三种都会让上一份
+   * 预览过期。用一个计数器统一触发，省得每处各写一遍加载逻辑。
+   */
+  const [planToken, setPlanToken] = useState(0);
 
   const { modId } = target;
 
@@ -97,6 +122,44 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
     };
   }, [modId, reloadToken]);
 
+  /*
+   * 计划预览。
+   *
+   * 内容根未定时这条命令必然失败（`install_planning_imported_mod_ambiguous_content_root`），
+   * 但**仍然照发**：前端不替后端预判结果。少一次 IPC 换来一个「前端自己判断 ambiguous」的
+   * 分叉点，不划算——两边一旦对内容根判断不一致，界面就会说与实际相反的话。
+   */
+  useEffect(() => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    let cancelled = false;
+    setPlan({ status: "loading" });
+
+    previewInstallPlanForImportedMod({
+      gameId: "mhw",
+      modId,
+      // 与 Mod 库的安装入口同一套值，否则预览的计划与真装的不是同一个。
+      layerName: "base",
+      layerPriority: 0,
+    })
+      .then((preview) => {
+        if (!cancelled) {
+          setPlan({ status: "ready", preview });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setPlan({ status: "failed", failure: classifyInstallPlanPreviewError(error) });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modId, planToken, state.status]);
+
   const tree = useMemo(
     () => (state.status === "ready" ? buildPackageContentTree(state.contents.entries) : []),
     [state],
@@ -112,6 +175,11 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
 
   const savedExcluded = state.status === "ready" ? state.contents.excludedFiles : [];
   const isDirty = !isSameSelection(draftExcluded, savedExcluded);
+  /*
+   * 计划预览读的是后端持久化状态，看不见草稿。差几处就如实说几处——笼统的「可能已过期」
+   * 玩家没法判断值不值得先保存一下再看。
+   */
+  const planDriftCount = countSelectionDrift(draftExcluded, savedExcluded);
 
   const handleToggle = useCallback((path: string) => {
     setExpandedPaths((current) => {
@@ -155,6 +223,12 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       // 两条命令都**回读**并返回生效之后的结果，直接用它，不自己推演。
       setState({ status: "ready", contents });
       setDraftExcluded(new Set(contents.excludedFiles));
+      /*
+       * 排除集合变了，计划跟着变——这一步让「保存」顺带回答「那结果是什么」。
+       *
+       * `state.status` 一直是 `ready`，加载 effect 不会自己重跑，必须显式推一下。
+       */
+      setPlanToken((token) => token + 1);
       return true;
     } catch {
       setSaveFailed(true);
@@ -189,6 +263,8 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
     setContentRootFailed(false);
     try {
       setState({ status: "ready", contents: await run() });
+      // 换了内容根，整棵树的 targetPath 全变了，上一份计划整个作废。
+      setPlanToken((token) => token + 1);
     } catch {
       setContentRootFailed(true);
     } finally {
@@ -353,6 +429,16 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
                 copy={copy}
               />
             )}
+
+            <InstallPlanPreviewPanel
+              state={plan}
+              copy={copy}
+              prerequisiteCopy={lifecycleCopy.prerequisite}
+              driftCount={planDriftCount}
+              saving={saving}
+              onSaveAndRefresh={() => void handleSave()}
+              onRetry={() => setPlanToken((token) => token + 1)}
+            />
           </>
         )}
       </div>
