@@ -1,0 +1,619 @@
+/*
+ * 「安装配置」覆盖层的样式（`#354` 切片 D4）。
+ *
+ * 行高与缩进是**常量共享**的：`ROW_HEIGHT` / `INDENT_PER_LEVEL` 在
+ * `PackageContentTreeView.tsx` 里参与窗口区间与绝对定位的计算，这里的 `height` 必须与之
+ * 一致，否则滚动位置会与行号错位。改一处就要改另一处。
+ */
+
+/*
+ * 放大默认的 dialog 尺寸。
+ *
+ * `.feedback-modal` 默认 `width: min(560px, 100%)`——那是给确认框定的，装不下一棵树。
+ * 宽度封顶 1440px 而不是一味吃满视口：维护者的 CSS 视口约 2400px，行铺得太宽反而让
+ * 文件名与右侧徽章离得老远，读起来更累。
+ */
+.feedback-modal.install-config-modal {
+  width: min(1440px, 92vw);
+  height: min(1040px, 88dvh);
+  max-height: none;
+}
+
+/* 正文本身不滚动，滚动交给内部的树——否则会出现内外两条滚动条。 */
+.install-config-modal .feedback-modal__body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.install-config {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* 内容根 */
+
+.install-config__content-root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted);
+}
+
+.install-config__content-root-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.install-config__content-root-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* 待指定：整块转警示色，因为这时包**装不了**，得先做个决定。 */
+.install-config__content-root.is-ambiguous {
+  border-color: var(--color-warning-dot);
+  background: var(--color-warning-bg);
+}
+
+.install-config__content-root-detail {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.install-config__content-root.is-ambiguous .install-config__content-root-detail {
+  color: var(--color-warning-text);
+  font-weight: 500;
+}
+
+/* 「恢复自动」是次要操作，推到标题行最右，不与候选清单争视线。 */
+.install-config__content-root-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.install-config__content-root-reset:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--color-accent-alpha-40);
+  color: var(--color-text-soft);
+}
+
+.install-config__content-root-reset:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.install-config__content-root-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.install-config__content-root-failed {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger-text);
+}
+
+/* 候选清单 */
+
+.install-config__candidates {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.install-config__candidates-legend {
+  padding: 0;
+  margin-block-end: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/*
+ * 候选数量由包决定（每个 nativePC 的父目录 + 沙箱根本身），合集包可能有十几个。
+ * 限高并允许滚动，免得候选清单把树挤出可视区。
+ */
+.install-config__candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.install-config__candidate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-inner);
+  font-size: 13px;
+  color: var(--color-text-soft);
+  cursor: pointer;
+}
+
+.install-config__candidate:hover {
+  background: var(--color-surface);
+}
+
+.install-config__candidate input {
+  flex: none;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.install-config__candidate-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.install-config__candidates:disabled .install-config__candidate {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 摘要 */
+
+.install-config__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+/* 三条事实的徽章：各自一色，不合并成单一结论 */
+
+.install-config-fact {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.install-config-fact--neutral {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+}
+
+.install-config-fact--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.install-config-fact--accent {
+  background: var(--color-accent-weak);
+  color: var(--color-accent);
+}
+
+/* 树 */
+
+.install-config-tree {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.install-config-tree:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.install-config-tree__canvas {
+  position: relative;
+  width: 100%;
+}
+
+.install-config-tree__row {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 与 ROW_HEIGHT 常量绑定，改一处必须改另一处。 */
+  height: 32px;
+  padding-inline-end: 12px;
+  font-size: 13px;
+  color: var(--color-text-soft);
+  cursor: default;
+  user-select: none;
+}
+
+.install-config-tree__row:hover {
+  background: var(--color-surface-muted);
+}
+
+.install-config-tree__row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-accent-alpha-12);
+}
+
+/*
+ * 勾选框与占位块必须**同宽**：装不了的文件不渲染勾选框（灰着的框会暗示「想办法能启用」），
+ * 但名字仍要与兄弟行对齐，否则整列文件名会参差不齐。
+ */
+.install-config-tree__checkbox,
+.install-config-tree__checkbox-placeholder {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+}
+
+.install-config-tree__checkbox {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.install-config-tree__twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.install-config-tree__icon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.install-config-tree__row[aria-expanded] .install-config-tree__icon {
+  color: var(--color-accent);
+}
+
+.install-config-tree__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: var(--layout-text-overflow);
+  white-space: nowrap;
+}
+
+.install-config-tree__meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.install-config-tree__facts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/*
+ * 关闭确认条。
+ *
+ * 位置紧贴 header 之下（也就是关闭按钮正下方），配警示底色——第一版摆在页脚，玩家点完
+ * 右上角的 X 视线停在原地，一千多像素外的页脚变化他看不见，实测「像是没反应」。
+ */
+.install-config__close-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 12px 14px;
+  border: 1px solid var(--color-warning-dot);
+  border-radius: var(--radius-card);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.install-config__close-confirm-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 保存失败时就地转红：玩家的视线在这一条上，报去页脚等于不报。 */
+.install-config__close-confirm.is-failed {
+  border-color: var(--color-danger-dot);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+/*
+ * 安装计划预览（D4-4b）。
+ *
+ * 贴在树下方、页脚上方：它回答的是「这些选择的结果是什么」，而结果要跟在选择之后。
+ * `flex: none` 让它按内容定高，把伸缩留给树——预览只有几行，树才是需要空间的那个。
+ */
+.install-config__plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted);
+}
+
+.install-config__plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.install-config__plan-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/*
+ * 陈旧标记：草稿改了但还没保存，下面那份计划算的是旧状态。
+ *
+ * 占满剩余宽度并配警示底色——这是整块预览里唯一「你看到的可能不是你以为的」的地方，
+ * 不能让它混在普通文字里。
+ */
+.install-config__plan-stale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--color-warning-dot);
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.install-config__plan-stale span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.install-config__plan-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.install-config__plan-count {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.install-config__plan-targets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.install-config__plan-targets-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.install-config__plan-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+/* 内容根未定不是错误，是还没轮到算计划——用中性的待决色，不报红。 */
+.install-config__plan-status.is-pending {
+  color: var(--color-text-muted);
+}
+
+.install-config__plan-status.is-failed {
+  color: var(--color-danger-text);
+}
+
+.install-config__plan-prerequisite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-card);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.install-config__plan-prerequisite.is-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+}
+
+.install-config__plan-prerequisite.is-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+/* 页脚动作 */
+
+.install-config__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+/* 提示占满剩余宽度，把按钮推到右侧；两种页脚状态下按钮位置因此不跳。 */
+.install-config__actions-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.install-config__button {
+  flex: none;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.install-config__button:hover:not(:disabled) {
+  background: var(--color-surface-muted);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.install-config__button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.install-config__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/*
+ * 嵌在窄条里的按钮（陈旧标记、失败行）。
+ *
+ * 默认的 8px/16px 是给页脚定的，塞进一条 pill 里会把整条撑高一截，看起来像两层控件。
+ */
+.install-config__button.is-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.install-config__button.is-primary {
+  background: var(--color-primary-action-bg);
+  border-color: var(--color-primary-action-border);
+  color: var(--color-primary-action-text);
+}
+
+.install-config__button.is-primary:hover:not(:disabled) {
+  background: var(--color-primary-action-bg-hover);
+  border-color: var(--color-primary-action-border);
+}
+
+.install-config__button.is-danger {
+  border-color: var(--color-danger-text);
+  color: var(--color-danger-text);
+}
+
+.install-config__button.is-danger:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-text);
+}
+
+/* 状态 */
+
+.install-config__status {
+  margin: 0;
+  padding: 18px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.install-config__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-subtle);
+}
+
+/* 有出路的失败：实线警示框，与「只能重试」的虚线兜底框区分开。 */
+.install-config__empty.is-recoverable {
+  border-style: solid;
+  border-color: var(--color-warning-dot);
+  background: var(--color-warning-bg);
+}
+
+.install-config__empty.is-recoverable h3,
+.install-config__empty.is-recoverable p {
+  color: var(--color-warning-text);
+}
+
+.install-config__empty h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.install-config__empty p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.install-config__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.install-config__retry:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-accent-alpha-40);
+}
+
+.install-config__retry:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
