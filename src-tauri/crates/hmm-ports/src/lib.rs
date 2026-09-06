@@ -91,11 +91,12 @@ pub use mod_import::{
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageContentEntry, ModPackageContentRoot,
     ModPackageContentRootRepository, ModPackageContentScanRequest, ModPackageContentScanner,
-    ModPackageContents, ModPackageInstallFile, ModPackageInstallFileReadRequest,
-    ModPackageInstallFileReader, ModPackageInstallFileScanError, ModPackageInstallFileScanRequest,
-    ModPackageInstallFileScanner, ModPackageMetadata, ModPackageMetadataAnalysis,
-    ModPackageMetadataAnalyzer, NoStoredContentRoot, PreparedModPackage, StoredImportPreviewImage,
-    StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    ModPackageContents, ModPackageFileSelectionRepository, ModPackageInstallFile,
+    ModPackageInstallFileReadRequest, ModPackageInstallFileReader, ModPackageInstallFileScanError,
+    ModPackageInstallFileScanRequest, ModPackageInstallFileScanner, ModPackageMetadata,
+    ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, NoStoredContentRoot,
+    NoStoredFileSelection, PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
     StoredModRevision, MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 pub use mod_import_archive::{

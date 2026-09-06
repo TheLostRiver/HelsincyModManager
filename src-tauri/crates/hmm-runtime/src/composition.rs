@@ -81,12 +81,12 @@ use hmm_infra::{
     InMemoryPendingSaveDirectoryCandidateStore, JsonAppSettingsRepository,
     JsonGameConfigRepository, JsonGamePrerequisiteRuleRepository, JsonInstallManifestRepository,
     JsonInstallRecoveryRecordRepository, JsonModPackageContentRootRepository,
-    JsonModStorageMigrationJournalRepository, JsonReinstallRecoveryTransactionRepository,
-    JsonReplacementSelectionRepository, LogStorageBudgetOutcome, LogStorageBudgetReport,
-    PlatformCrossProcessWriteAdmission, PlatformSteamRootProvider, RealGameDirectoryProbeFactory,
-    ReqwestSteamProfileHttpTransport, RetargetStagingInstallSourceFileReader,
-    SandboxModPackageInstallFileScanner, SandboxModPackageMetadataAnalyzer,
-    SandboxPackagePreviewScanner, SqliteProfileRepository,
+    JsonModPackageFileSelectionRepository, JsonModStorageMigrationJournalRepository,
+    JsonReinstallRecoveryTransactionRepository, JsonReplacementSelectionRepository,
+    LogStorageBudgetOutcome, LogStorageBudgetReport, PlatformCrossProcessWriteAdmission,
+    PlatformSteamRootProvider, RealGameDirectoryProbeFactory, ReqwestSteamProfileHttpTransport,
+    RetargetStagingInstallSourceFileReader, SandboxModPackageInstallFileScanner,
+    SandboxModPackageMetadataAnalyzer, SandboxPackagePreviewScanner, SqliteProfileRepository,
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
@@ -102,9 +102,9 @@ use hmm_ports::{
     GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageContentRootRepository, ModPackageContentScanner,
-    ModPackageInstallFileReader, ModPackageInstallFileScanner, ModStorageDirectoryInspector,
-    ModStorageMigrationJournalRepository, ModStorageMigrator, ProfileRepository,
-    ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
+    ModPackageFileSelectionRepository, ModPackageInstallFileReader, ModPackageInstallFileScanner,
+    ModStorageDirectoryInspector, ModStorageMigrationJournalRepository, ModStorageMigrator,
+    ProfileRepository, ProfileSaveDirectoryValidator, ProfileSaveSettingsRepository,
     ReinstallRecoveryTransactionRepository, ReplacementAdapter, ReplacementCatalogProvider,
     ReplacementSelectionRepository, RetargetStagingMaterializer, SaveBackupBackgroundRegistry,
     SaveBackupBackgroundSettingsRepository, SaveBackupRepository,
@@ -795,12 +795,20 @@ impl HmmRuntime {
             Arc::new(JsonModPackageContentRootRepository::new(
                 app_data_dir.join("install").join("content-root-choices"),
             ));
-        let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> = Arc::new(
-            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
-        );
-        let install_file_reader: Arc<dyn ModPackageInstallFileReader> = Arc::new(
-            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
-        );
+        let file_selection: Arc<dyn ModPackageFileSelectionRepository> =
+            Arc::new(JsonModPackageFileSelectionRepository::new(
+                app_data_dir.join("install").join("file-selections"),
+            ));
+        let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> =
+            Arc::new(SandboxModPackageInstallFileScanner::new(
+                Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
+            ));
+        let install_file_reader: Arc<dyn ModPackageInstallFileReader> =
+            Arc::new(SandboxModPackageInstallFileScanner::new(
+                Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
+            ));
         let install_planning = Arc::new(InstallPlanningService::with_imported_mod_sources(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_import_sandbox_locator),
@@ -809,15 +817,18 @@ impl HmmRuntime {
         ));
         // 与安装计划**共用**同一个扫描器实现：两处对「内容根在哪」必须同结论，否则界面上
         // 看到的分档与实际装出来的东西会分叉（#284 那类「图能显示、却装不上」的翻版）。
-        let package_content_scanner: Arc<dyn ModPackageContentScanner> = Arc::new(
-            SandboxModPackageInstallFileScanner::new(Arc::clone(&content_root_choices)),
-        );
+        let package_content_scanner: Arc<dyn ModPackageContentScanner> =
+            Arc::new(SandboxModPackageInstallFileScanner::new(
+                Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
+            ));
         let package_contents_query =
             Arc::new(PackageContentsQueryService::with_imported_mod_sources(
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
                 Arc::clone(&package_content_scanner),
                 Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
                 clone_game_adapters(&game_adapters),
             ));
         let prerequisites: Arc<dyn GamePrerequisiteDecisionProvider> = game_setup.clone();
@@ -890,6 +901,7 @@ impl HmmRuntime {
                 Arc::clone(&install_write_locks),
                 Arc::new(SystemClock),
                 Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
             ));
         let external_state_scan_tasks = Arc::new(ExternalStateScanTaskService::new(
             Arc::clone(&task_manager),

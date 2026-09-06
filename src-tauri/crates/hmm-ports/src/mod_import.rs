@@ -192,6 +192,44 @@ impl ModPackageContentRootRepository for NoStoredContentRoot {
     }
 }
 
+/// 玩家在某个**包**里勾掉的文件（`#354` 切片 D3）。
+///
+/// # 为什么存「排除集合」而不是「包含集合」
+///
+/// 两个理由，都不是风格问题：
+///
+/// 1. **默认全选必须是空集合。** 没有记录 ⇒ 排除集合为空 ⇒ 计划一个字节不变。用包含集合的话
+///    「没有记录」与「一个都不装」在表示上撞车，得再造一个哨兵值来区分。
+/// 2. **包重新解压出新文件时要优雅降级。** 排除集合让没见过的新文件**照常安装**（作者补了个
+///    贴图，玩家自然想要）；包含集合会让它们**静默不装**——而「少装了一个文件」装完不报错，
+///    正是最难发现的那一类。
+///
+/// 元素是 `package_file_id`（沙箱根相对路径）。集合里有而包里没有的条目是**无害的**：
+/// 它只是不再命中任何文件。这一点与内容根不同——那边的陈旧值会让路径从错误的根起算，
+/// 所以必须失败关闭。
+pub trait ModPackageFileSelectionRepository: Send + Sync {
+    fn load_excluded_files(&self, package_id: &str) -> Result<Vec<String>>;
+    fn save_excluded_files(&self, package_id: &str, excluded: &[String]) -> Result<()>;
+    fn clear_excluded_files(&self, package_id: &str) -> Result<()>;
+}
+
+/// 不记录任何勾选的仓储：行为与 D3 之前完全一致。
+pub struct NoStoredFileSelection;
+
+impl ModPackageFileSelectionRepository for NoStoredFileSelection {
+    fn load_excluded_files(&self, _package_id: &str) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    fn save_excluded_files(&self, _package_id: &str, _excluded: &[String]) -> Result<()> {
+        anyhow::bail!("file selection is not supported by this repository")
+    }
+
+    fn clear_excluded_files(&self, _package_id: &str) -> Result<()> {
+        anyhow::bail!("file selection is not supported by this repository")
+    }
+}
+
 pub trait ModPackageInstallFileScanner: Send + Sync {
     fn scan_install_files(
         &self,
@@ -242,6 +280,10 @@ pub struct ModPackageContents {
     /// `Single(选中的那个)`，若候选也跟着消失，他就**改不了主意**了。这份清单同时是
     /// 设置选择时的白名单——界面能选的与扫描认的出自同一处，不会分叉。
     pub candidates: Vec<String>,
+    /// 玩家勾掉的 `package_file_id`（`#354` 切片 D3）。
+    ///
+    /// **整包仍然逐条列在 [`Self::entries`] 里**——勾掉不等于看不见，否则玩家没法勾回来。
+    pub excluded_files: Vec<String>,
 }
 
 pub struct ModPackageContentScanRequest<'a> {

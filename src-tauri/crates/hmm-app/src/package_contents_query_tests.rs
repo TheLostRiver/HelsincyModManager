@@ -87,6 +87,22 @@ impl ModPackageContentRootRepository for StubContentRootChoices {
     }
 }
 
+struct StubFileSelection;
+
+impl ModPackageFileSelectionRepository for StubFileSelection {
+    fn load_excluded_files(&self, _package_id: &str) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    fn save_excluded_files(&self, _package_id: &str, _excluded: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    fn clear_excluded_files(&self, _package_id: &str) -> Result<()> {
+        Ok(())
+    }
+}
+
 struct StubLocator;
 
 impl ModImportSandboxLocator for StubLocator {
@@ -121,6 +137,7 @@ fn service(contents: ModPackageContents) -> PackageContentsQueryService {
         Arc::new(StubLocator),
         Arc::new(StubScanner { contents }),
         Arc::new(StubContentRootChoices),
+        Arc::new(StubFileSelection),
         vec![Arc::new(StubAdapter {
             allowed_roots: vec!["nativePC".to_owned()],
             rejected_extensions: vec!["exe".to_owned()],
@@ -154,6 +171,7 @@ fn the_reject_list_hit_and_installability_are_reported_as_separate_facts() {
         ],
         content_root: ModPackageContentRoot::Fallback,
         candidates: Vec::new(),
+        excluded_files: Vec::new(),
     });
 
     let model = &contents.entries[0];
@@ -179,6 +197,7 @@ fn an_ambiguous_content_root_yields_entries_without_target_paths() {
         entries: vec![entry("大剑/nativePC/wp/two003.mod3"), entry("readme.txt")],
         content_root: ModPackageContentRoot::Ambiguous(vec!["大剑".to_owned(), "太刀".to_owned()]),
         candidates: Vec::new(),
+        excluded_files: Vec::new(),
     });
 
     assert_eq!(
@@ -203,6 +222,7 @@ fn files_outside_the_content_root_are_listed_without_a_target_path() {
         ],
         content_root: ModPackageContentRoot::Single("黑骑士大剑".to_owned()),
         candidates: Vec::new(),
+        excluded_files: Vec::new(),
     });
 
     assert_eq!(contents.entries[0].target_path, None);
@@ -234,6 +254,7 @@ fn a_sibling_directory_sharing_the_content_root_prefix_is_not_swallowed() {
         ],
         content_root: ModPackageContentRoot::Single("皮肤".to_owned()),
         candidates: Vec::new(),
+        excluded_files: Vec::new(),
     });
 
     assert_eq!(
@@ -252,6 +273,7 @@ fn a_missing_mod_is_reported_distinctly_from_an_unavailable_sandbox() {
         entries: Vec::new(),
         content_root: ModPackageContentRoot::Fallback,
         candidates: Vec::new(),
+        excluded_files: Vec::new(),
     })
     .query(PackageContentsQueryRequest {
         game_id: GameId::mhw(),
@@ -281,6 +303,7 @@ fn scan_failures_keep_their_own_stable_code() {
         Arc::new(StubLocator),
         Arc::new(FailingScanner),
         Arc::new(StubContentRootChoices),
+        Arc::new(StubFileSelection),
         vec![Arc::new(StubAdapter {
             allowed_roots: vec!["nativePC".to_owned()],
             rejected_extensions: Vec::new(),
@@ -330,6 +353,7 @@ fn service_with_choices(
         Arc::new(StubLocator),
         Arc::new(StubScanner { contents }),
         choices,
+        Arc::new(StubFileSelection),
         vec![Arc::new(StubAdapter {
             allowed_roots: vec!["nativePC".to_owned()],
             rejected_extensions: Vec::new(),
@@ -342,6 +366,7 @@ fn collection_contents() -> ModPackageContents {
         entries: vec![entry("大剑/nativePC/wp/two003.mod3")],
         content_root: ModPackageContentRoot::Ambiguous(vec!["大剑".to_owned(), "太刀".to_owned()]),
         candidates: vec![String::new(), "大剑".to_owned(), "太刀".to_owned()],
+        excluded_files: Vec::new(),
     }
 }
 
@@ -421,6 +446,7 @@ fn the_candidate_list_is_projected_independently_of_the_effective_root() {
         entries: Vec::new(),
         content_root: ModPackageContentRoot::Single("大剑".to_owned()),
         candidates: vec![String::new(), "大剑".to_owned(), "太刀".to_owned()],
+        excluded_files: Vec::new(),
     });
 
     assert_eq!(
@@ -431,4 +457,117 @@ fn the_candidate_list_is_projected_independently_of_the_effective_root() {
         contents.candidates,
         vec![String::new(), "大剑".to_owned(), "太刀".to_owned()]
     );
+}
+
+/// 记录勾选写入的仓储。
+#[derive(Default)]
+struct RecordingFileSelection {
+    saved: std::sync::Mutex<Option<(String, Vec<String>)>>,
+    cleared: std::sync::Mutex<Vec<String>>,
+}
+
+impl ModPackageFileSelectionRepository for RecordingFileSelection {
+    fn load_excluded_files(&self, _package_id: &str) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    fn save_excluded_files(&self, package_id: &str, excluded: &[String]) -> Result<()> {
+        *self.saved.lock().expect("lock") = Some((package_id.to_owned(), excluded.to_vec()));
+        Ok(())
+    }
+
+    fn clear_excluded_files(&self, package_id: &str) -> Result<()> {
+        self.cleared
+            .lock()
+            .expect("lock")
+            .push(package_id.to_owned());
+        Ok(())
+    }
+}
+
+fn service_with_file_selection(
+    selection: Arc<RecordingFileSelection>,
+) -> PackageContentsQueryService {
+    PackageContentsQueryService::with_imported_mod_sources(
+        Arc::new(StubRepository),
+        Arc::new(StubLocator),
+        Arc::new(StubScanner {
+            contents: ModPackageContents {
+                entries: Vec::new(),
+                content_root: ModPackageContentRoot::Fallback,
+                candidates: vec![String::new()],
+                excluded_files: Vec::new(),
+            },
+        }),
+        Arc::new(StubContentRootChoices),
+        selection,
+        vec![Arc::new(StubAdapter {
+            allowed_roots: vec!["nativePC".to_owned()],
+            rejected_extensions: Vec::new(),
+        })],
+    )
+}
+
+/// 勾选按 **package_id** 存，与内容根同口径。
+#[test]
+fn an_exclusion_set_is_persisted_against_the_package() {
+    let selection = Arc::new(RecordingFileSelection::default());
+    service_with_file_selection(Arc::clone(&selection))
+        .exclude_files(request(), &["a.exe".to_owned()])
+        .expect("排除");
+
+    assert_eq!(
+        *selection.saved.lock().expect("lock"),
+        Some(("package-a".to_owned(), vec!["a.exe".to_owned()]))
+    );
+}
+
+/*
+ * 排除项**不校验是否仍然存在**——与内容根刻意不同。
+ *
+ * 陈旧的排除项最坏只是不命中任何文件；而陈旧的内容根会让路径从错误的根起算。后者必须失败
+ * 关闭，前者不该：为一个已经不存在的排除项把整个包挡住，是拿安全当借口降低接受率。
+ */
+#[test]
+fn an_exclusion_entry_that_no_longer_exists_is_accepted_rather_than_rejected() {
+    let selection = Arc::new(RecordingFileSelection::default());
+    service_with_file_selection(Arc::clone(&selection))
+        .exclude_files(request(), &["已经不在包里的.tex".to_owned()])
+        .expect("陈旧排除项不该被拒绝");
+
+    assert!(selection.saved.lock().expect("lock").is_some());
+}
+
+#[test]
+fn clearing_the_exclusion_set_targets_the_same_package() {
+    let selection = Arc::new(RecordingFileSelection::default());
+    service_with_file_selection(Arc::clone(&selection))
+        .clear_excluded_files(request())
+        .expect("清除");
+
+    assert_eq!(*selection.cleared.lock().expect("lock"), vec!["package-a"]);
+}
+
+/// `excluded_by_player` 与另外三条事实各自独立投影，不合并。
+#[test]
+fn player_exclusions_are_projected_as_their_own_fact() {
+    let contents = query(ModPackageContents {
+        entries: vec![
+            entry("nativePC/wp/two/bs_two012/mod/bs_two012.mod3"),
+            entry("nativePC/wp/two/bs_two012/mod/MHWTexConverter_by_Jodo.exe"),
+        ],
+        content_root: ModPackageContentRoot::Fallback,
+        candidates: vec![String::new()],
+        excluded_files: vec!["nativePC/wp/two/bs_two012/mod/MHWTexConverter_by_Jodo.exe".to_owned()],
+    });
+
+    assert!(!contents.entries[0].excluded_by_player);
+
+    let excluded = &contents.entries[1];
+    assert!(excluded.excluded_by_player, "玩家勾掉了它");
+    assert!(
+        excluded.installable,
+        "「玩家不要」不该把「本游戏允许装」也一起涂掉——三条事实各自独立"
+    );
+    assert_eq!(contents.excluded_files.len(), 1);
 }
