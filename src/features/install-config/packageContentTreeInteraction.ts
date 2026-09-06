@@ -45,7 +45,8 @@ export function resolveVisibleWindow(input: {
 export type TreeKeyAction =
   | { kind: "move"; index: number }
   | { kind: "expand"; path: string }
-  | { kind: "collapse"; path: string };
+  | { kind: "collapse"; path: string }
+  | { kind: "toggle-selection"; path: string };
 
 /**
  * 把一次按键翻译成树的动作，`null` 表示不处理（调用方因此不该 `preventDefault`）。
@@ -71,6 +72,15 @@ export function resolveTreeKeyAction(
       return activeIndex < rows.length - 1 ? { kind: "move", index: activeIndex + 1 } : null;
     case "ArrowUp":
       return activeIndex > 0 ? { kind: "move", index: activeIndex - 1 } : null;
+    /*
+     * 空格切换勾选，是 ARIA tree 在多选场景下的标准键位。
+     *
+     * 不在这里判断「这个节点能不能勾」：可勾选性取决于 `installable`，那是选择模型的知识。
+     * 一律产出动作、一律 `preventDefault`——空格在树里本来也不该滚动页面。落到不可勾选的
+     * 节点上时 `toggleSelection` 是空操作。
+     */
+    case " ":
+      return current ? { kind: "toggle-selection", path: current.node.path } : null;
     case "Home":
       return { kind: "move", index: 0 };
     case "End":

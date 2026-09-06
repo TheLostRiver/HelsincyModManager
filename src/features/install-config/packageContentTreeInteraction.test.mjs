@@ -169,9 +169,24 @@ test("左键在根层节点上不做任何事", () => {
   assert.equal(resolveTreeKeyAction("ArrowLeft", { rows, activeIndex: 3 }), null);
 });
 
+test("空格切换当前行的勾选，目录与文件都产出动作", () => {
+  const rows = fixtureRows();
+
+  // index 0 = dir（目录），index 2 = a.txt（文件）
+  assert.deepEqual(resolveTreeKeyAction(" ", { rows, activeIndex: 0 }), {
+    kind: "toggle-selection",
+    path: "dir",
+  });
+  assert.deepEqual(resolveTreeKeyAction(" ", { rows, activeIndex: 2 }), {
+    kind: "toggle-selection",
+    path: "dir/a.txt",
+  });
+});
+
 test("无关按键一律不处理，调用方据此放行默认行为", () => {
   const rows = fixtureRows();
 
+  // 注意 Escape 必须放行：模态靠它关闭，树拦下来玩家就关不掉面板了。
   for (const key of ["a", "Tab", "Enter", "PageDown", "Escape"]) {
     assert.equal(resolveTreeKeyAction(key, { rows, activeIndex: 0 }), null, `${key} 不该被拦截`);
   }
