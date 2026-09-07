@@ -1,5 +1,6 @@
 mod app_log;
 mod app_settings_repository;
+mod archive_extraction;
 mod audit_log;
 mod content_root;
 mod controlled_fs;

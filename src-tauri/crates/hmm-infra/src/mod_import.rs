@@ -1,6 +1,9 @@
+use crate::archive_extraction::{
+    extract_archive, pump_reader_into_sink, ArchiveChunkSink, ArchiveEntryHeader, ArchiveEntryKind,
+    ArchiveExtractionLimits, ArchiveSource,
+};
 use crate::controlled_fs::{
-    create_new_regular_file, open_child_directory_nofollow, open_existing_directory_chain,
-    open_existing_directory_nofollow, open_or_create_child_directory,
+    open_child_directory_nofollow, open_existing_directory_chain, open_existing_directory_nofollow,
     open_or_create_directory_chain, open_or_create_directory_nofollow, open_regular_file_nofollow,
     remove_child_tree_nofollow,
 };
@@ -14,7 +17,6 @@ use hmm_ports::{
     ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalysis,
     ModPackageMetadataAnalyzer, NonArchiveFile, PreparedModPackage, UnsupportedArchiveFormat,
 };
-use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
@@ -51,7 +53,7 @@ fn open_directory_for_sync(path: &Path) -> std::io::Result<File> {
 pub struct ZipModImportPackagePreparer {
     sandbox_root: PathBuf,
     storage_root: Option<PathBuf>,
-    limits: ZipExtractionLimits,
+    limits: ArchiveExtractionLimits,
 }
 
 pub struct FileSystemDiagnosticPackageExporter {
@@ -68,7 +70,7 @@ impl ZipModImportPackagePreparer {
         Self {
             sandbox_root,
             storage_root: None,
-            limits: ZipExtractionLimits::default(),
+            limits: default_extraction_limits(),
         }
     }
 
@@ -79,7 +81,7 @@ impl ZipModImportPackagePreparer {
         Self {
             sandbox_root: mod_import_sandbox_root_path(&storage_root),
             storage_root: Some(storage_root),
-            limits: ZipExtractionLimits::default(),
+            limits: default_extraction_limits(),
         }
     }
 
@@ -154,20 +156,12 @@ impl ModImportSandboxLocator for TaskScopedModImportSandboxLocator {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ZipExtractionLimits {
-    max_entries: usize,
-    max_single_file_bytes: u64,
-    max_total_uncompressed_bytes: u64,
-}
-
-impl Default for ZipExtractionLimits {
-    fn default() -> Self {
-        Self {
-            max_entries: DEFAULT_ZIP_MAX_ENTRIES,
-            max_single_file_bytes: DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES,
-            max_total_uncompressed_bytes: DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES,
-        }
+/// 默认限额。类型来自外壳——两处各定义一份迟早漂移。
+fn default_extraction_limits() -> ArchiveExtractionLimits {
+    ArchiveExtractionLimits {
+        max_entries: DEFAULT_ZIP_MAX_ENTRIES,
+        max_single_file_bytes: DEFAULT_ZIP_MAX_SINGLE_FILE_BYTES,
+        max_total_uncompressed_bytes: DEFAULT_ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES,
     }
 }
 
@@ -630,7 +624,7 @@ fn extract_zip_archive_with_limits<R>(
     archive_file: &mut R,
     sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
-    limits: ZipExtractionLimits,
+    limits: ArchiveExtractionLimits,
 ) -> std::result::Result<(), ModImportPrepareError>
 where
     R: Read + Seek + ?Sized,
@@ -646,57 +640,63 @@ where
             return Err(explain_unopenable_archive(archive_file, zip_error));
         }
     };
-    reject_too_many_archive_entries(archive.len(), limits.max_entries)?;
-    let mut seen_paths = HashSet::new();
-    // 两个计数器各管一头:声明值用于写盘前的快速失败,实际写入量才是承重的判据(#367)。
-    let mut total_uncompressed_bytes = 0_u64;
-    let mut total_written_bytes = 0_u64;
+    // 七条门禁全部由与格式无关的外壳施加（T21-B）。zip 这里只当一个「按顺序产出条目」
+    // 的适配器——新增格式时不得再复制一份门禁。
+    let mut source = ZipArchiveSource {
+        archive: &mut archive,
+        index: 0,
+    };
+    extract_archive(&mut source, sandbox_root, cancellation_token, limits)?;
+    Ok(())
+}
 
-    for index in 0..archive.len() {
-        ensure_not_cancelled(cancellation_token)?;
-        let mut entry = archive
-            .by_index(index)
-            .context("failed to read zip archive entry")?;
-        reject_symlink_entry(&entry)?;
-        reject_oversized_archive_entry(&entry, limits.max_single_file_bytes)?;
+/// zip 的格式适配器。**只做三件事**：报条目总数、产出条目头、把字节推给 sink。
+/// 任何门禁都不在这里——它们在 `archive_extraction` 里，对所有格式一视同仁。
+struct ZipArchiveSource<'a, R: Read + Seek + ?Sized> {
+    archive: &'a mut zip::ZipArchive<&'a mut R>,
+    index: usize,
+}
 
-        let relative_path = safe_zip_entry_path(entry.name())?;
-        reject_case_insensitive_collision(&mut seen_paths, &relative_path)?;
-        if entry.is_dir() {
-            let _ = open_or_create_archive_directory(sandbox_root, &relative_path)?;
-            continue;
-        }
-
-        total_uncompressed_bytes = total_uncompressed_bytes.saturating_add(entry.size());
-        reject_oversized_archive_total(
-            total_uncompressed_bytes,
-            limits.max_total_uncompressed_bytes,
-        )?;
-
-        let parent = relative_path.parent().unwrap_or_else(|| Path::new(""));
-        let parent = open_or_create_archive_directory(sandbox_root, parent)?;
-        let file_name = relative_path
-            .file_name()
-            .context("unsafe archive path: missing file name")?;
-        let mut target_file =
-            create_new_regular_file(&parent, file_name, "extracted archive file")?;
-        // #367: 上面两道判据读的是 zip 头里的**声明**大小,而声明可以说谎——实测一个声明
-        // 100 字节的条目会照吐 8 MiB 且不报任何错。所以真正承重的是这里:按**实际写入的
-        // 字节**再判一次。声明值预检不删,它负责让诚实的超大包在写第一个字节前就被拒。
-        let written = copy_entry_with_byte_budget(
-            &mut entry,
-            &mut target_file,
-            cancellation_token,
-            limits.max_single_file_bytes,
-            limits
-                .max_total_uncompressed_bytes
-                .saturating_sub(total_written_bytes),
-        )
-        .context("failed to extract archive file")?;
-        total_written_bytes = total_written_bytes.saturating_add(written);
+impl<R: Read + Seek + ?Sized> ArchiveSource for ZipArchiveSource<'_, R> {
+    fn declared_entry_count(&self) -> Option<usize> {
+        // zip 有中央目录，总数可预取——外壳因此能在写第一个字节前就拒。
+        // rar / tar 拿不到，会返回 None 并降级为边读边数。
+        Some(self.archive.len())
     }
 
-    Ok(())
+    fn next_entry(&mut self) -> Result<Option<ArchiveEntryHeader>> {
+        if self.index >= self.archive.len() {
+            return Ok(None);
+        }
+        let entry = self
+            .archive
+            .by_index(self.index)
+            .context("failed to read zip archive entry")?;
+        self.index += 1;
+        let kind = if entry.is_symlink() {
+            ArchiveEntryKind::Symlink
+        } else if entry.is_dir() {
+            ArchiveEntryKind::Directory
+        } else {
+            ArchiveEntryKind::File
+        };
+        Ok(Some(ArchiveEntryHeader {
+            name: entry.name().to_owned(),
+            kind,
+            // 声明值只供外壳做写盘前的快速失败；它可以说谎（#367），承重的是实际字节。
+            declared_size: Some(entry.size()),
+        }))
+    }
+
+    fn write_current_to(&mut self, sink: &mut dyn ArchiveChunkSink) -> Result<()> {
+        // `by_index` 只是定位 + 解本地文件头，重开一次是 O(1)。这样适配器就不必持有
+        // 一个借用 archive 的条目句柄（那会变成自引用结构）。
+        let mut entry = self
+            .archive
+            .by_index(self.index - 1)
+            .context("failed to read zip archive entry")?;
+        pump_reader_into_sink(&mut entry, sink)
+    }
 }
 
 /// tar 的 magic 不在首字节，而在偏移 257 —— 所以判别**不能**写成「统一读前 N 字节比对」。
@@ -784,151 +784,6 @@ where
         }
     }
     Ok(filled)
-}
-
-fn open_or_create_archive_directory(root: &Dir, relative_path: &Path) -> Result<Dir> {
-    let mut current = root
-        .try_clone()
-        .context("failed to clone archive sandbox directory handle")?;
-    for component in relative_path.components() {
-        let Component::Normal(name) = component else {
-            anyhow::bail!("unsafe archive path component");
-        };
-        current = open_or_create_child_directory(&current, name, "archive sandbox directory")?;
-    }
-    Ok(current)
-}
-
-fn reject_too_many_archive_entries(actual_entries: usize, max_entries: usize) -> Result<()> {
-    if actual_entries > max_entries {
-        anyhow::bail!("unsafe archive: archive entry limit exceeded");
-    }
-
-    Ok(())
-}
-
-fn reject_oversized_archive_entry(
-    entry: &zip::read::ZipFile<'_>,
-    max_single_file_bytes: u64,
-) -> Result<()> {
-    if !entry.is_dir() && entry.size() > max_single_file_bytes {
-        anyhow::bail!("unsafe archive: archive file size limit exceeded");
-    }
-
-    Ok(())
-}
-
-fn reject_oversized_archive_total(
-    total_uncompressed_bytes: u64,
-    max_total_bytes: u64,
-) -> Result<()> {
-    if total_uncompressed_bytes > max_total_bytes {
-        anyhow::bail!("unsafe archive: archive total size limit exceeded");
-    }
-
-    Ok(())
-}
-
-/// 按**实际读出的字节**施加上限，返回写入量（#367）。
-///
-/// 声明大小不可信：`zip` 2.4.2 的读侧不按声明的解压大小截断，一个声明 100 字节的条目
-/// 会照吐出全部真实数据，而且不报错（CRC 仍然对得上，说谎的只有 size 字段）。
-///
-/// 判定放在**写之前**：一旦这一块会让累计量越线就直接中止，因此一个字节都不会越界，
-/// 而不是「先写超再发现」。失败时沙箱整棵树由调用方清掉。
-fn copy_entry_with_byte_budget<R, W>(
-    reader: &mut R,
-    writer: &mut W,
-    cancellation_token: &dyn CancellationToken,
-    max_single_file_bytes: u64,
-    remaining_total_bytes: u64,
-) -> Result<u64>
-where
-    R: Read,
-    W: Write,
-{
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut written = 0_u64;
-
-    loop {
-        ensure_not_cancelled(cancellation_token)?;
-        let read = reader.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        let next_total = written.saturating_add(read as u64);
-        if next_total > max_single_file_bytes {
-            anyhow::bail!("unsafe archive: archive file size limit exceeded");
-        }
-        if next_total > remaining_total_bytes {
-            anyhow::bail!("unsafe archive: archive total size limit exceeded");
-        }
-        writer.write_all(&buffer[..read])?;
-        written = next_total;
-    }
-
-    Ok(written)
-}
-
-fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
-    if cancellation_token.is_cancelled() {
-        anyhow::bail!("mod import prepare cancelled");
-    }
-
-    Ok(())
-}
-
-fn reject_symlink_entry(entry: &zip::read::ZipFile<'_>) -> Result<()> {
-    if entry.is_symlink() {
-        anyhow::bail!("unsafe archive path: symlink entries are not allowed");
-    }
-
-    Ok(())
-}
-
-fn reject_case_insensitive_collision(
-    seen_paths: &mut HashSet<String>,
-    relative_path: &Path,
-) -> Result<()> {
-    let key = case_insensitive_path_key(relative_path);
-
-    if !seen_paths.insert(key) {
-        anyhow::bail!("unsafe archive path: case-insensitive path collision");
-    }
-
-    Ok(())
-}
-
-fn case_insensitive_path_key(relative_path: &Path) -> String {
-    relative_path
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(value) => Some(value.to_string_lossy().to_ascii_lowercase()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn safe_zip_entry_path(entry_name: &str) -> Result<PathBuf> {
-    let path = Path::new(entry_name);
-    let mut safe = PathBuf::new();
-
-    for component in path.components() {
-        match component {
-            Component::Normal(value) => safe.push(value),
-            Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                anyhow::bail!("unsafe archive path: {entry_name}");
-            }
-        }
-    }
-
-    if safe.as_os_str().is_empty() {
-        anyhow::bail!("unsafe archive path: {entry_name}");
-    }
-
-    Ok(safe)
 }
 
 #[cfg(test)]
@@ -1273,7 +1128,7 @@ mod tests {
         let archive_path = temp.path().join("too-many.zip");
         create_numbered_zip_entries(&archive_path, 3);
         let sandbox_root = temp.path().join("sandboxes");
-        let limits = ZipExtractionLimits {
+        let limits = ArchiveExtractionLimits {
             max_entries: 2,
             max_single_file_bytes: 1024,
             max_total_uncompressed_bytes: 4096,
@@ -1297,7 +1152,7 @@ mod tests {
         let archive_path = temp.path().join("single-too-large.zip");
         create_zip(&archive_path, &[("large.bin", b"large".as_slice())]);
         let sandbox_root = temp.path().join("sandboxes");
-        let limits = ZipExtractionLimits {
+        let limits = ArchiveExtractionLimits {
             max_entries: 10,
             max_single_file_bytes: 4,
             max_total_uncompressed_bytes: 4096,
@@ -1329,7 +1184,7 @@ mod tests {
             ],
         );
         let sandbox_root = temp.path().join("sandboxes");
-        let limits = ZipExtractionLimits {
+        let limits = ArchiveExtractionLimits {
             max_entries: 10,
             max_single_file_bytes: 1024,
             max_total_uncompressed_bytes: 7,
@@ -1362,7 +1217,7 @@ mod tests {
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
             storage_root: None,
-            limits: ZipExtractionLimits {
+            limits: ArchiveExtractionLimits {
                 max_entries: 10,
                 max_single_file_bytes: 64,
                 max_total_uncompressed_bytes: 1024 * 1024,
@@ -1395,7 +1250,7 @@ mod tests {
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
             storage_root: None,
-            limits: ZipExtractionLimits {
+            limits: ArchiveExtractionLimits {
                 max_entries: 10,
                 max_single_file_bytes: 1024 * 1024,
                 max_total_uncompressed_bytes: 64,
@@ -1434,7 +1289,7 @@ mod tests {
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
             storage_root: None,
-            limits: ZipExtractionLimits {
+            limits: ArchiveExtractionLimits {
                 max_entries: 10,
                 max_single_file_bytes: 8192,
                 max_total_uncompressed_bytes: 8192,
@@ -1465,7 +1320,7 @@ mod tests {
         let preparer = ZipModImportPackagePreparer {
             sandbox_root: sandbox_root.clone(),
             storage_root: None,
-            limits: ZipExtractionLimits {
+            limits: ArchiveExtractionLimits {
                 max_entries: 10,
                 max_single_file_bytes: 64,
                 max_total_uncompressed_bytes: 1024 * 1024,
