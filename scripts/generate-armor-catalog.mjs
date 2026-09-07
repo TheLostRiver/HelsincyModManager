@@ -552,17 +552,32 @@ for (const family of [...shardedTargets.keys()].sort()) {
  * 最贵的失效方式。
  */
 const fileSizePolicy = JSON.parse(readFileSync(POLICY_PATH, "utf8")).fileSize;
+/*
+ * 限额读不到时必须**报错**，不能当成「没有限制」。
+ *
+ * policy 里的键一旦改名或缺失，`bytes > undefined` 与 `lines > undefined` 都恒为 `false`——
+ * 下面那两道门禁会静默全部放行，而它看起来仍然在把关。这正是本次拆分的成因（单文件悄悄
+ * 长过体积门禁、只有发版时才发现）的翻版：**一个失效时倒向「放行」的检查等于不存在。**
+ */
+const byteLimit = fileSizePolicy?.blockBytes;
+const lineLimit = fileSizePolicy?.block?.json;
+if (!Number.isFinite(byteLimit) || !Number.isFinite(lineLimit)) {
+  throw new Error(
+    `${POLICY_PATH} 读不到 fileSize.blockBytes / fileSize.block.json，分片体积门禁拿不到限额，拒绝产出`,
+  );
+}
+
 for (const shard of writtenShards) {
   const bytes = Buffer.byteLength(shard.text, "utf8");
   const lines = shard.text.split("\n").length - 1;
-  if (bytes > fileSizePolicy.blockBytes) {
+  if (bytes > byteLimit) {
     throw new Error(
-      `${shard.path} 超出 policy 体积硬限：${bytes} / ${fileSizePolicy.blockBytes} 字节，需要更细的分片键`,
+      `${shard.path} 超出 policy 体积硬限：${bytes} / ${byteLimit} 字节，需要更细的分片键`,
     );
   }
-  if (lines > fileSizePolicy.block.json) {
+  if (lines > lineLimit) {
     throw new Error(
-      `${shard.path} 超出 policy 行数硬限：${lines} / ${fileSizePolicy.block.json} 行，需要更细的分片键`,
+      `${shard.path} 超出 policy 行数硬限：${lines} / ${lineLimit} 行，需要更细的分片键`,
     );
   }
 }
