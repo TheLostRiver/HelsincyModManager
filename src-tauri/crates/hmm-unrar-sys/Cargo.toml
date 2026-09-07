@@ -1,0 +1,19 @@
+[package]
+name = "hmm-unrar-sys"
+version = "0.1.0-alpha.0"
+description = "Minimal FFI bindings to the vendored UnRAR extraction library"
+edition.workspace = true
+repository.workspace = true
+# 不继承 workspace 的 MIT：本 crate 分发的 C++ 源码归 UnRAR 许可管辖，
+# 只有 src/ 下的绑定代码是 MIT。许可原文在 vendor/unrar/license.txt，
+# 义务落地见仓库根的 NOTICE.md。
+license = "MIT AND LicenseRef-UnRAR"
+# 声明本 crate 链接同一份原生库，避免同一进程里链进两份 unrar。
+links = "unrar"
+# vendor 目录里 159 个文件只有 48 个进编译，其余是被 #include 进去的实现片段、
+# 头文件与上游自带的构建脚手架。不列 include，是因为漏掉一个被 include 的 .cpp
+# 会变成「本地能编、别人 checkout 编不了」。
+exclude = []
+
+[build-dependencies]
+cc.workspace = true

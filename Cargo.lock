@@ -1921,6 +1921,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hmm-unrar-sys"
+version = "0.1.0-alpha.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
