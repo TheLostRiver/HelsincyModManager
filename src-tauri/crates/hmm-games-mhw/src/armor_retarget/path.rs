@@ -22,14 +22,23 @@ pub enum ArmorPathError {
     UnsafePath,
 }
 
+/// 防具的模型变体。**不是「女装／男装」，是同一件装备的两套模型**（`#356`）。
+///
+/// 这个 enum 是全 crate **唯一**回答「防具有哪些模型变体」的地方：路径解析、catalog 加载的
+/// `path_family` 白名单、治理 validator 的资源身份校验全部从它派生。
+///
+/// 之所以必须唯一：`#356` 的成因就是同一个假设被抄在多处，改了一处漏了另一处——
+/// `PATH_FAMILY = "pl/f_equip"` 那个常量假设「所有装备都有女性模型」，产出了 5 条指向不存在
+/// 路径的数据；而治理 validator 里另有一份 `path_family != "pl/f_equip"` 的硬编码，第一版
+/// 同样漏改，结果治理层拒绝 adapter 已经接受的 265 条数据、签核跑不过。加新变体时只改这里。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum ArmorEquipFamily {
+pub(crate) enum ArmorEquipFamily {
     Female,
     Male,
 }
 
 impl ArmorEquipFamily {
-    fn from_segment(segment: &str) -> Option<Self> {
+    pub(crate) fn from_segment(segment: &str) -> Option<Self> {
         match segment {
             "f_equip" => Some(Self::Female),
             "m_equip" => Some(Self::Male),
@@ -37,7 +46,20 @@ impl ArmorEquipFamily {
         }
     }
 
-    pub(super) fn path_family(self) -> &'static str {
+    /// 从 `path_family` 形态（`pl/f_equip`）反解，供 catalog 与治理 validator 校验元数据字段。
+    pub(crate) fn from_path_family(path_family: &str) -> Option<Self> {
+        path_family.strip_prefix("pl/").and_then(Self::from_segment)
+    }
+
+    /// 资源路径里的第三段（`nativePC/pl/<segment>/<slot>`）。
+    pub(crate) fn segment(self) -> &'static str {
+        match self {
+            Self::Female => "f_equip",
+            Self::Male => "m_equip",
+        }
+    }
+
+    pub(crate) fn path_family(self) -> &'static str {
         match self {
             Self::Female => "pl/f_equip",
             Self::Male => "pl/m_equip",
@@ -52,7 +74,7 @@ impl ArmorEquipFamily {
     ///
     /// 仍然保留这个闸门而不是删掉：它是「识别得出但没有可选目标」的唯一出口
     /// （`SourceHasNoAvailableTargets`），将来任何 family 的 catalog 缺位都走这里。
-    pub(super) fn is_supported(self) -> bool {
+    pub(crate) fn is_supported(self) -> bool {
         matches!(self, Self::Female | Self::Male)
     }
 }

@@ -1,4 +1,4 @@
-use crate::armor_retarget::normalize_armor_search_text;
+use crate::armor_retarget::{normalize_armor_search_text, ArmorEquipFamily};
 use hmm_core::InstallTargetPath;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -444,7 +444,7 @@ fn validate_target<'a>(
     stable_ids: &mut BTreeMap<&'a str, usize>,
     legacy_ids: &mut BTreeMap<&'a str, usize>,
     path_keys: &mut BTreeMap<String, (usize, &'a str)>,
-    display_names: &mut BTreeMap<(String, String), usize>,
+    display_names: &mut BTreeMap<(String, String, String), usize>,
     issues: &mut Vec<EquipmentCandidateValidationIssue>,
     blockers: &mut Vec<EquipmentCandidateBundleBlocker>,
 ) {
@@ -513,7 +513,7 @@ fn validate_target<'a>(
 fn validate_names(
     target: &CandidateTarget,
     index: usize,
-    display_names: &mut BTreeMap<(String, String), usize>,
+    display_names: &mut BTreeMap<(String, String, String), usize>,
     issues: &mut Vec<EquipmentCandidateValidationIssue>,
 ) {
     let scope = format!("targets[{index}].names");
@@ -536,7 +536,10 @@ fn validate_names(
                 format!("{locale_scope}.display_name"),
             );
         } else if display_names
-            .insert((locale.to_owned(), display_key), index)
+            .insert(
+                (target.path_family.clone(), locale.to_owned(), display_key),
+                index,
+            )
             .is_some()
         {
             push_issue(
@@ -646,12 +649,13 @@ fn validate_resource_identity(
 
     match target_kind {
         EquipmentCandidateTargetKind::Armor => {
-            if path_family != "pl/f_equip" {
-                return Err(EquipmentCandidateIdentityError::WrongPathFamily);
-            }
+            // `#356`：两套模型变体都是合法身份，清单只在 `ArmorEquipFamily` 一处维护。
+            // 这里此前硬编码 `pl/f_equip`，治理层因此会拒绝 adapter 已经接受的 `m_equip` 数据。
+            let family = ArmorEquipFamily::from_path_family(path_family)
+                .ok_or(EquipmentCandidateIdentityError::WrongPathFamily)?;
             if segments.len() != 4
                 || !segments[1].eq_ignore_ascii_case("pl")
-                || !segments[2].eq_ignore_ascii_case("f_equip")
+                || !segments[2].eq_ignore_ascii_case(family.segment())
                 || !is_valid_armor_internal_id(segments[3])
             {
                 return Err(EquipmentCandidateIdentityError::InvalidArmorResourcePath);

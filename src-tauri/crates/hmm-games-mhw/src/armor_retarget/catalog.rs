@@ -1,3 +1,4 @@
+use super::ArmorEquipFamily;
 use hmm_core::{
     GameId, LocalizedText, ReplacementCatalog, ReplacementCatalogVersion, ReplacementTarget,
     ReplacementTargetId, ReplacementTargetKind,
@@ -25,16 +26,14 @@ const ARMOR_CATALOG_SHARDS: [&str; 2] = [
     include_str!("../../data/armor/mhw-armor-targets.m_equip.v1.json"),
 ];
 
-/// 防具目标允许的 `path_family`（`#356`）。
+/// 防具目标的 `path_family` 白名单从 [`ArmorEquipFamily`] 派生，不在这里再抄一份清单
+/// （`#356`：同一个假设抄在多处、改一处漏一处，正是那个 issue 的成因）。
 ///
-/// **这两个值不是「男装／女装」，是同一件装备的两套模型。** 实测游戏本体（枚举
-/// `chunkG0`–`G9` 的 `pl/f_equip` 与 `pl/m_equip` 目录）：272 个槽位里 262 个两套都有，
-/// 只有 10 个是单模型的联动装。玩家的角色性别决定游戏加载哪一套——女角穿只有男模型的
-/// 「隆」，加载的仍是 `m_equip` 那套，看到的就是男性外观。
-///
-/// 所以两个 family 都必须是合法目标：此前只放行 `pl/f_equip`，导致男角玩家改任何防具
-/// 外观都会被装到游戏不读的路径去，而且装完不报错。
-const ARMOR_PATH_FAMILIES: [&str; 2] = ["pl/f_equip", "pl/m_equip"];
+/// 两个变体都必须是合法目标：此前只放行 `pl/f_equip`，导致男角玩家改任何防具外观都会被
+/// 装到游戏不读的路径去，而且装完不报错。
+fn is_supported_armor_path_family(path_family: &str) -> bool {
+    ArmorEquipFamily::from_path_family(path_family).is_some()
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MhwArmorCatalog;
@@ -304,7 +303,7 @@ fn metadata_text<'a>(
 /// 否则错误数据会静默混进 catalog——这正是留着必填想防的事。
 fn validate_armor_metadata(metadata: &BTreeMap<String, Value>) -> ReplacementCatalogResult<&str> {
     let path_family = metadata_text(metadata, "path_family")?;
-    if !ARMOR_PATH_FAMILIES.contains(&path_family) {
+    if !is_supported_armor_path_family(path_family) {
         return Err(ReplacementCatalogError::CatalogInvalid);
     }
     for optional_text in ["monster", "rank", "variant"] {

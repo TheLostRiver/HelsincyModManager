@@ -1,4 +1,7 @@
-use hmm_games_mhw::{normalize_armor_display_text, normalize_armor_search_text, MhwArmorCatalog};
+use hmm_games_mhw::{
+    generate_mhw_equipment_stable_id, normalize_armor_display_text, normalize_armor_search_text,
+    EquipmentCandidateTargetKind, MhwArmorCatalog,
+};
 use hmm_ports::ReplacementCatalogProvider;
 use std::collections::BTreeSet;
 
@@ -110,6 +113,47 @@ fn armor_catalog_is_versioned_and_uses_stable_hash_ids() {
             .len(),
         269
     );
+}
+
+/// 防具 artifact 的 `id` 必须等于治理算法对 `(armor, path_family, resource_path)` 的输出。
+///
+/// 玩家已安装的 manifest 与 binding snapshot 里存的就是这个 ID，而它**不是**随便一个哈希：
+/// 由 `docs/EQUIPMENT_CATALOG_GOVERNANCE.md` 的 Stable ID 算法从资源身份派生，生成脚本
+/// （JS）与 Rust 侧必须逐字节一致。算法或路径构造漂一点，**全部旧绑定一起失效，而且没有
+/// 任何一处会报错**——玩家看到的是「装好的 Mod 突然认不出目标了」。
+///
+/// 武器侧在 loader 里就重算并拒绝不匹配（`weapon_retarget/catalog.rs` 的
+/// `StableIdMismatch`），防具侧此前既没有 loader 校验也没有测试。这条补上等价的把关：
+/// artifact 是生成的、经签核的，在 CI 时刻钉住比每次加载都重算更划算。
+///
+/// 顺带钉住了 `m_equip` 的合法性：这个函数按治理规则校验资源身份，`path_family` 不在册
+/// 就返回 `WrongPathFamily`。
+#[test]
+fn armor_catalog_ids_match_the_governance_stable_id_algorithm() {
+    let catalog = MhwArmorCatalog
+        .replacement_catalog()
+        .expect("armor catalog");
+
+    for target in catalog.targets() {
+        let path_family = target
+            .metadata()
+            .get("path_family")
+            .and_then(|value| value.as_str())
+            .expect("path_family");
+        let resource_path = format!("nativePC/{path_family}/{}", target.internal_id());
+        let expected = generate_mhw_equipment_stable_id(
+            EquipmentCandidateTargetKind::Armor,
+            path_family,
+            &resource_path,
+        )
+        .unwrap_or_else(|error| panic!("{resource_path} 不是合法的防具资源身份: {error:?}"));
+
+        assert_eq!(
+            target.id().as_str(),
+            expected,
+            "{resource_path} 的 stable ID 与治理算法不一致"
+        );
+    }
 }
 
 /// 磁盘上的每一份分片都必须被编译进 catalog（`#356`）。
