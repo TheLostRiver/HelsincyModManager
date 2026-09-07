@@ -591,6 +591,84 @@ fn open_managed_sandbox_root(storage_root: &Path, create: bool) -> Result<Dir> {
     }
 }
 
+/// 拖拽清单的**容器层预检**（T22，#366）：只判断「这个文件能不能导入」，不解包。
+///
+/// 返回值刻意与 `prepare_package` **同一个错误类型**——于是清单里的档位与导入失败的
+/// 档位是同一套词汇，前端不必维护第二张映射表。`Ok(())` = 可导入。
+///
+/// ## 只读头，不落盘
+///
+/// 与真正解包的区别只有一条：这里**不为 rar 落暂存**，直接用玩家给的路径调 unrar。
+/// 理由是这一步只读归档头、一个字节都不写；而真正解包时仍然落一份暂存再交给它
+/// （见 `extract_archive_with_limits`）。拖一次可能有几十个文件，
+/// 为了预检把每个都完整拷一遍是不可接受的。
+///
+/// ## 它与解包链路是两个实现，靠测试钉住一致
+///
+/// 两处各写一遍「依次尝试已支持格式」难免漂移。共用代码的话，rar 的暂存与
+/// 生命周期会把签名扭得很难看，所以选了另一条：
+/// `probe_and_import_agree_on_every_fixture` 拿同一组语料同时跑预检与真实导入，
+/// 断言两者给出**同一个错误码**。漂了就红。
+pub fn probe_mod_archive(path: &Path) -> std::result::Result<(), ModImportPrepareError> {
+    let mut archive = open_archive_file_nofollow(path)?;
+
+    // 顺序与解包链路一致：zip → 7z → rar。
+    if zip::ZipArchive::new(&mut archive).is_ok() {
+        return Ok(());
+    }
+
+    archive
+        .seek(io::SeekFrom::Start(0))
+        .context("failed to rewind the mod import archive")?;
+    match sevenz_archive_source::SevenZipArchive::open(&mut archive) {
+        // 与 rar 同理：内容加密的 7z **是能打开的**，要密码要等解内容才暴露。
+        // 所以额外看一眼编解码链里有没有 AES（不解码任何数据）。
+        Ok(archive) if archive.is_content_encrypted() => {
+            return Err(ModImportPrepareError::UnsupportedArchiveFeature(
+                hmm_ports::UnsupportedArchiveFeature::Encrypted,
+            ))
+        }
+        Ok(_) => return Ok(()),
+        Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
+        Err(_) => {}
+    }
+
+    match rar_archive_source::RarArchiveSource::open(path) {
+        // **打开成功还不够**：rar 的加密与跨卷是**逐条目**的标志，`open` 看不见。
+        // 所以把头走一遍（只读头、不解压，代价很小）。
+        // 这条是被 `probe_and_import_agree_on_every_fixture` 逼出来的——
+        // 第一版只 open，于是加密包在清单里显示成「可导入」，
+        // 玩家确认之后才发现被骗。
+        Ok(mut source) => return walk_rar_headers(&mut source),
+        Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
+        Err(_) => {}
+    }
+
+    archive
+        .seek(io::SeekFrom::Start(0))
+        .context("failed to rewind the mod import archive")?;
+    let unopenable = anyhow::anyhow!("failed to read archive");
+    Err(explain_unopenable_archive(&mut archive, unopenable))
+}
+
+/// 把 rar 的条目头走一遍，只为触发**容器级**的判定（加密、跨卷）。
+/// 不调 `write_current_to`，所以不解压、不落盘。
+fn walk_rar_headers(
+    source: &mut rar_archive_source::RarArchiveSource,
+) -> std::result::Result<(), ModImportPrepareError> {
+    loop {
+        match source.next_entry() {
+            Ok(Some(_)) => {}
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                return Err(source
+                    .take_structured_failure()
+                    .unwrap_or(ModImportPrepareError::Other(error)))
+            }
+        }
+    }
+}
+
 fn open_archive_file_nofollow(path: &Path) -> Result<File> {
     let parent = path
         .parent()
@@ -2318,13 +2396,13 @@ mod tests {
         }
     }
 
-    /// 加密的 7z 落到自己的档位，而不是一句「请检查压缩包后重试」。
-    ///
-    /// 内容加密（不加密头）：包能打开、条目名读得出来，解内容时才发现要密码。
-    #[test]
-    fn an_encrypted_sevenz_lands_in_its_own_tier() {
-        let temp = tempfile::tempdir().expect("temp dir");
-        let path = temp.path().join("secret.7z");
+    /// 造一个加密的 7z。`encrypt_header` 为真时连头也加密。
+    fn write_encrypted_sevenz(
+        temp: &tempfile::TempDir,
+        name: &str,
+        encrypt_header: bool,
+    ) -> PathBuf {
+        let path = temp.path().join(name);
         let file = File::create(&path).expect("create");
         let mut writer = sevenz_rust2::ArchiveWriter::new(file).expect("writer");
         writer.set_content_methods(vec![
@@ -2334,6 +2412,9 @@ mod tests {
             .into(),
             sevenz_rust2::EncoderMethod::LZMA2.into(),
         ]);
+        if encrypt_header {
+            writer.set_encrypt_header(true);
+        }
         writer
             .push_archive_entry(
                 sevenz_rust2::ArchiveEntry::new_file("secret.txt"),
@@ -2341,7 +2422,16 @@ mod tests {
             )
             .expect("push");
         writer.finish().expect("finish");
+        path
+    }
 
+    /// 加密的 7z 落到自己的档位，而不是一句「请检查压缩包后重试」。
+    ///
+    /// 内容加密（不加密头）：包能打开、条目名读得出来，解内容时才发现要密码。
+    #[test]
+    fn an_encrypted_sevenz_lands_in_its_own_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_encrypted_sevenz(&temp, "secret.7z", false);
         let preparer = rar_preparer(&temp, default_extraction_limits());
         let error = prepare_package(&preparer, "szenc-1", &path).expect_err("加密包必须被拒");
         assert!(
@@ -2360,25 +2450,7 @@ mod tests {
     #[test]
     fn a_header_encrypted_sevenz_lands_in_its_own_tier() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let path = temp.path().join("header-secret.7z");
-        let file = File::create(&path).expect("create");
-        let mut writer = sevenz_rust2::ArchiveWriter::new(file).expect("writer");
-        writer.set_content_methods(vec![
-            sevenz_rust2::encoder_options::AesEncoderOptions::new(sevenz_rust2::Password::from(
-                "hunter2",
-            ))
-            .into(),
-            sevenz_rust2::EncoderMethod::LZMA2.into(),
-        ]);
-        writer.set_encrypt_header(true);
-        writer
-            .push_archive_entry(
-                sevenz_rust2::ArchiveEntry::new_file("secret.txt"),
-                Some(std::io::Cursor::new(b"cipher".to_vec())),
-            )
-            .expect("push");
-        writer.finish().expect("finish");
-
+        let path = write_encrypted_sevenz(&temp, "header-secret.7z", true);
         let preparer = rar_preparer(&temp, default_extraction_limits());
         let error = prepare_package(&preparer, "szhdr-1", &path).expect_err("头加密包必须被拒");
         assert_eq!(
@@ -2419,6 +2491,101 @@ mod tests {
             !sandbox_root.join("nostage-1.staging").exists(),
             "7z 走 reader，不该有暂存目录"
         );
+    }
+
+    // ---- T22（#366）：拖拽清单的容器层预检 ----
+
+    /// **预检与真实导入必须对每一份语料给出同一个档位。**
+    ///
+    /// 两者是两个实现（预检只读头、不为 rar 落暂存），难免漂移。这条用例拿同一组语料
+    /// 同时跑两边，断言错误码逐份相同——漂了就红。
+    ///
+    /// 这是清单可信的全部依据：清单说「可导入」而实际导入失败，或者反过来，
+    /// 都会让玩家在确认之后才发现被骗。
+    #[test]
+    fn probe_and_import_agree_on_every_fixture() {
+        let temp = tempfile::tempdir().expect("temp dir");
+
+        let good_zip = temp.path().join("good.zip");
+        create_zip(&good_zip, &[("a.txt", b"hello".as_slice())]);
+
+        let good_rar = write_rar(
+            &temp,
+            "good.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("a.txt", b"hi".to_vec())]),
+        );
+        let encrypted_rar = write_rar(
+            &temp,
+            "enc.rar",
+            &Rar5Archive::new(vec![
+                Rar5Entry::file("a.txt", b"x".to_vec()).with_encrypted_flag()
+            ]),
+        );
+        let volume_rar = write_rar(
+            &temp,
+            "vol.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("a.txt", b"x".to_vec())]).as_volume(),
+        );
+        let good_sevenz = write_sevenz(&temp, "good.7z", &[("a.txt", Some(b"hi".as_slice()))]);
+        let encrypted_sevenz = write_encrypted_sevenz(&temp, "enc.7z", false);
+        let header_encrypted_sevenz = write_encrypted_sevenz(&temp, "enc-hdr.7z", true);
+
+        let write_raw = |name: &str, bytes: &[u8]| {
+            let path = temp.path().join(name);
+            fs::write(&path, bytes).expect("write");
+            path
+        };
+        let exe = write_raw("thing.exe", b"MZ\x90\x00\x03\x00\x00\x00stub");
+        let gzip = write_raw("thing.gz", b"\x1f\x8bpayload");
+        let noise = write_raw("noise.bin", b"not a container at all");
+        let empty = write_raw("empty.bin", b"");
+
+        let cases: &[(&str, &Path)] = &[
+            ("good zip", &good_zip),
+            ("good rar", &good_rar),
+            ("good 7z", &good_sevenz),
+            ("encrypted rar", &encrypted_rar),
+            ("encrypted 7z", &encrypted_sevenz),
+            ("header-encrypted 7z", &header_encrypted_sevenz),
+            ("volume rar", &volume_rar),
+            ("windows executable", &exe),
+            ("gzip stream", &gzip),
+            ("noise", &noise),
+            ("empty", &empty),
+        ];
+
+        for (index, (label, path)) in cases.iter().enumerate() {
+            let probe = probe_mod_archive(path);
+            let preparer = rar_preparer(&temp, default_extraction_limits());
+            let import = prepare_package(&preparer, &format!("agree-{index}"), path);
+
+            let probe_code = probe.as_ref().err().map(|error| error.code());
+            let import_code = import.as_ref().err().map(|error| error.code());
+            assert_eq!(
+                probe_code, import_code,
+                "{label}: 预检说 {probe_code:?}，真实导入说 {import_code:?}"
+            );
+        }
+    }
+
+    /// 目录、以及根本不存在的路径，都要落到明确失败而不是 panic。
+    #[test]
+    fn probing_a_directory_or_a_missing_path_fails_cleanly() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let directory = temp.path().join("a-directory");
+        fs::create_dir(&directory).expect("mkdir");
+
+        for (label, path) in [
+            ("directory", directory),
+            ("missing", temp.path().join("nope.zip")),
+        ] {
+            let error = probe_mod_archive(&path).expect_err("{label} 必须失败");
+            assert_eq!(
+                error.code(),
+                "mod_import_prepare_failed",
+                "{label}: 得到 {error:?}"
+            );
+        }
     }
 
     #[test]
