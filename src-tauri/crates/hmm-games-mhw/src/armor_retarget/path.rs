@@ -95,8 +95,8 @@ impl ArmorResourcePath {
     pub fn parse(value: &str) -> Result<Self, ArmorPathError> {
         match classify_armor_asset(value)? {
             ArmorAsset::InSlot(path) => Ok(path),
-            ArmorAsset::SlotIndependent { .. } => Err(ArmorPathError::InvalidSlot),
-            ArmorAsset::Unrelated => Err(ArmorPathError::NotArmorPath),
+            ArmorAsset::PackageCompanion { .. } => Err(ArmorPathError::InvalidSlot),
+            ArmorAsset::OutsideGameRoot => Err(ArmorPathError::NotArmorPath),
         }
     }
 
@@ -135,22 +135,32 @@ impl ArmorResourcePath {
 /// 包内一个文件相对于防具重定向的归属。
 ///
 /// 三档没有「包坏了」这一档——#342 的病根正是把「不符合我的语法」当成「包损坏」。
+/// 也**没有「不认识所以不装」这一档**——#363 的病根正是那一档，见 [`ArmorAsset::PackageCompanion`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum ArmorAsset {
+pub(crate) enum ArmorAsset {
     /// 在某个槽位目录之内：跟着走，并按编号段改名。
     InSlot(ArmorResourcePath),
-    /// 在 `nativePC/pl/<equip>/` 下但不属于任何槽位目录（作者自建目录，
-    /// 如 `mod_pl_rosedress/`）。真机实验 A 观测到它们**原样留在原地**——
-    /// 它们被 MRL3 按原路径引用，搬走反而断链。
+    /// 在游戏根之下、但不属于任何防具槽位子树：**原样安装**，路径与字节都不动。
+    ///
+    /// 这一档合并了 #363 之前的两种归档，而那个区分本身就是缺陷来源：作者自建目录放在
+    /// family **之内**（`nativePC/pl/f_equip/<作者目录>/`）当时归「原地保留」、会安装；
+    /// 放在 family **旁边**（`nativePC/pl/<作者目录>/`）归「无关」、被静默丢弃。两种都是
+    /// 真实作者习惯，而丢掉的贴图被槽位里的 MRL3 按路径引用——装完模型在、外观是坏的。
+    ///
+    /// 判据因此不再是「我认不认识这个目录」，而是与普通安装**同一个**结构判断：在游戏根
+    /// 之下就装。普通安装的过滤只有 `InstallTargetPath::parse(path, allowed_install_roots)`
+    /// （`hmm-app` 的 `is_installable_target_path`），零内容知识；重定向没有理由比它更严，
+    /// 否则「用了重定向反而少装文件」。作者目录叫什么都不需要我们事先知道。
     ///
     /// 带上归一化后的路径：调用方不能再拿原始字符串重新解析，否则小写根与外层目录
     /// 会在第二次解析时又被打回原形（#345）。
-    SlotIndependent {
-        family: ArmorEquipFamily,
-        normalized_path: InstallTargetPath,
-    },
-    /// 与防具重定向无关（readme、预览图、武器资源、音效……）。忽略。
-    Unrelated,
+    PackageCompanion { normalized_path: InstallTargetPath },
+    /// 连游戏根都定位不到（`readme.txt`、预览图、包外说明……）。
+    ///
+    /// **不安装**——普通安装同样不装它（根归属过滤），两条路径口径一致。这一档与
+    /// [`ArmorAsset::PackageCompanion`] 的分界是「有没有游戏根」这个结构事实，
+    /// 不是「认不认识」。
+    OutsideGameRoot,
 }
 
 /// 唯一的失败是 `UnsafePath`：路径穿越、绝对路径这类真实安全信号。
@@ -166,28 +176,25 @@ pub(super) fn classify_armor_asset(value: &str) -> Result<ArmorAsset, ArmorPathE
      */
     let safe_path = parse_safe_package_path(value).map_err(|()| ArmorPathError::UnsafePath)?;
     let Some(normalized_path) = strip_leading_package_dirs(&safe_path) else {
-        return Ok(ArmorAsset::Unrelated);
+        return Ok(ArmorAsset::OutsideGameRoot);
     };
 
     let parts = normalized_path.as_str().split('/').collect::<Vec<_>>();
-    let Some(family) = (parts.first() == Some(&NATIVE_PC_ROOT) && parts.get(1) == Some(&"pl"))
+    let family = (parts.first() == Some(&NATIVE_PC_ROOT) && parts.get(1) == Some(&"pl"))
         .then(|| parts.get(2).and_then(|s| ArmorEquipFamily::from_segment(s)))
-        .flatten()
-    else {
-        return Ok(ArmorAsset::Unrelated);
-    };
+        .flatten();
 
     // 槽位目录之内，且槽位之后至少还有一段（否则它是目录本身，不是文件）。
-    let in_slot = parts.len() > ARMOR_SLOT_ROOT_SEGMENT_COUNT
+    let in_slot = family.is_some()
+        && parts.len() > ARMOR_SLOT_ROOT_SEGMENT_COUNT
         && parts
             .get(ARMOR_SLOT_ROOT_SEGMENT_COUNT - 1)
             .is_some_and(|slot| is_valid_armor_slot(slot));
-    if !in_slot {
-        return Ok(ArmorAsset::SlotIndependent {
-            family,
-            normalized_path,
-        });
-    }
+
+    // 不在槽位子树里就是包级随行：原样安装。**这里不再有「丢弃」这个出口**（#363）。
+    let Some(family) = family.filter(|_| in_slot) else {
+        return Ok(ArmorAsset::PackageCompanion { normalized_path });
+    };
 
     let slot = parts[ARMOR_SLOT_ROOT_SEGMENT_COUNT - 1].to_owned();
     Ok(ArmorAsset::InSlot(ArmorResourcePath {
