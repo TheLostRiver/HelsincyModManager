@@ -866,7 +866,8 @@ fn aggregate_catalog_exposes_full_weapon_targets() {
         .iter()
         .filter(|target| target.target_type().as_str() == "weapon")
         .collect();
-    assert_eq!(armor_count, 269, "armor 目标不应被本次接线改动");
+    // `#356` 起 armor 每件装备按实际存在的模型变体出 1 或 2 条（269 → 529）。
+    assert_eq!(armor_count, 529, "armor 目标数与 catalog 对不上");
     assert_eq!(weapon_targets.len(), 601, "WR-02B 全量武器目标必须整体在册");
 
     // path_family 是 list_compatible_targets 的过滤键（缺失等于目标不可见），
