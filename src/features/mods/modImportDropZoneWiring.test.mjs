@@ -110,3 +110,11 @@ test("存储写入被冻结时，拖进来只说原因，不开清单", () => {
   assert.match(zone, /if \(reason\) \{[\s\S]{0,200}pushToast\(/);
   assert.match(page, /disabledReason=\{storageWriteFreezeReason \?\? null\}/);
 });
+
+test("超上限的拖拽整批拒绝并报出数量，不截断", () => {
+  const source = readSource("src/features/mods/ModImportDropZone.tsx");
+  assert.match(source, /unique\.length > MAX_DROPPED_ARCHIVES/);
+  assert.match(source, /copy\.drop\.tooMany\(unique\.length, MAX_DROPPED_ARCHIVES\)/);
+  // 截断会长成 slice/splice/take。出现即视为静默丢弃。
+  assert.doesNotMatch(source, /unique\.(slice|splice)\(/);
+});

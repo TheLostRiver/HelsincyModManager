@@ -15,6 +15,7 @@ import {
   dropRowsFromPreviews,
   dropSelectAllState,
   getDropRowBlockedMessage,
+  MAX_DROPPED_ARCHIVES,
   setAllDropRowsSelected,
   toggleDropRow,
   type DropImportRun,
@@ -37,6 +38,14 @@ type ModImportDropZoneProps = {
   disabledReason?: string | null;
   onImported: () => Promise<void> | void;
 };
+
+/** 二进制单位，与备份中心、诊断页的口径一致。 */
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
+}
 
 function runStatusText(run: DropImportRun, copy: ModImportCopy): string {
   const summary = dropImportRunSummary(run);
@@ -102,6 +111,17 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
     async (paths: readonly string[]) => {
       const unique = dedupeDroppedPaths(paths);
       if (unique.length === 0) return;
+
+      // 超上限**整批拒绝并说清楚数量**，不截断：截断等于悄悄丢掉玩家拖进来的东西。
+      if (unique.length > MAX_DROPPED_ARCHIVES) {
+        pushToast({
+          eventKey: "mod-import.drop.too-many",
+          title: copy.drop.title,
+          message: copy.drop.tooMany(unique.length, MAX_DROPPED_ARCHIVES),
+          tone: "warning",
+        });
+        return;
+      }
 
       const reason = disabledReasonRef.current;
       if (reason) {
@@ -320,6 +340,11 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
                             {row.fileName}
                           </span>
                         </label>
+                        {row.sizeBytes !== null ? (
+                          <span className="mod-import-drop__size">
+                            {formatBytes(row.sizeBytes)}
+                          </span>
+                        ) : null}
                         {blockedMessage ? (
                           <span className="mod-import-drop__row-note">{blockedMessage}</span>
                         ) : null}

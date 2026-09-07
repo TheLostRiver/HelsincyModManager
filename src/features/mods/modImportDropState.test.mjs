@@ -9,6 +9,7 @@ import {
   getDropRowBlockedMessage,
   advanceDropImportRun,
   dropImportRunSummary,
+  MAX_DROPPED_ARCHIVES,
   importableDropRowCount,
   selectedDropRows,
   startDropImportRun,
@@ -17,9 +18,10 @@ import {
   toggleDropRow,
 } from "./modImportDropState.ts";
 
-const preview = (fileName, errorCode = null) => ({
+const preview = (fileName, errorCode = null, sizeBytes = 1024) => ({
   archivePath: `C:\\downloads\\${fileName}`,
   fileName,
+  sizeBytes,
   errorCode,
 });
 
@@ -187,5 +189,24 @@ test("stopping a run cancels everything that has not started yet", () => {
     { succeeded: summary.succeeded, failed: summary.failed, finished: summary.finished },
     { succeeded: 1, failed: 0, finished: 1 },
     "没跑的既不算成功也不算失败",
+  );
+});
+
+test("大小读不到不改判可导入性", () => {
+  // 判据只有一条：能不能打开归档。大小只是给玩家核对用的旁证。
+  const rows = dropRowsFromPreviews([preview("a.zip", null, null)]);
+  assert.equal(rows[0].status, "importable");
+  assert.equal(rows[0].sizeBytes, null);
+});
+
+test("一次拖太多整批拒绝，不静默截断", () => {
+  // 截断等于悄悄丢掉玩家拖进来的东西，而他多半不会去数清单有几行。
+  assert.equal(typeof MAX_DROPPED_ARCHIVES, "number");
+  assert.ok(MAX_DROPPED_ARCHIVES > 0);
+  const many = Array.from({ length: MAX_DROPPED_ARCHIVES + 1 }, (_, i) => `C:\\d\\${i}.zip`);
+  assert.equal(
+    dedupeDroppedPaths(many).length,
+    MAX_DROPPED_ARCHIVES + 1,
+    "去重不负责设上限——上限是调用方的决定，且必须让玩家看见数量",
   );
 });

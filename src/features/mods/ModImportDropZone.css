@@ -142,6 +142,13 @@
   white-space: nowrap;
 }
 
+.mod-import-drop__size {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .mod-import-drop__row-note {
   flex: 0 1 auto;
   min-width: 0;

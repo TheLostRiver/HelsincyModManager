@@ -17,6 +17,8 @@ import type { ModImportCopy } from "./modImportCopy";
 export type DroppedArchivePreview = {
   archivePath: string;
   fileName: string;
+  /** 文件字节数；`null` = 读不到。**不影响可导入性**，只是给玩家核对用。 */
+  sizeBytes: number | null;
   /** `null` = 可导入；否则是与导入失败同一套的语义码。 */
   errorCode: string | null;
 };
@@ -26,6 +28,7 @@ export type DropRowStatus = "importable" | "blocked";
 export type DropRow = {
   archivePath: string;
   fileName: string;
+  sizeBytes: number | null;
   status: DropRowStatus;
   /** 只有 `blocked` 行才有；复用导入失败的档位，不另造词汇。 */
   messageKind: ModImportFailedMessageKind | null;
@@ -51,6 +54,7 @@ export function dropRowsFromPreviews(previews: readonly DroppedArchivePreview[])
     return {
       archivePath: preview.archivePath,
       fileName: preview.fileName,
+      sizeBytes: preview.sizeBytes,
       status: importable ? "importable" : "blocked",
       messageKind: importable ? null : failedMessageKindFrom(preview.errorCode),
       selected: importable,
@@ -111,6 +115,15 @@ export function getDropRowBlockedMessage(row: DropRow, copy: ModImportCopy): str
  * 目录在后端预检里会落到 `retry-hint`，所以不必在这里预先剔除
  * ——**判定只有一处**，前端不重复实现一份「什么算压缩包」。
  */
+/**
+ * 一次拖拽能接收的文件数上限。
+ *
+ * 超了就**整批拒绝并说清楚数量**，不截断——截断等于悄悄丢掉玩家拖进来的东西，
+ * 而他多半不会去数清单有几行。上限本身是为了不让预检把界面拖住：
+ * 每个文件都要真的打开归档读头。
+ */
+export const MAX_DROPPED_ARCHIVES = 100;
+
 export function dedupeDroppedPaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
