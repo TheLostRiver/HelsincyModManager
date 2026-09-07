@@ -7,8 +7,12 @@ import {
   dropRowsFromPreviews,
   dropSelectAllState,
   getDropRowBlockedMessage,
+  advanceDropImportRun,
+  dropImportRunSummary,
   importableDropRowCount,
   selectedDropRows,
+  startDropImportRun,
+  stopDropImportRun,
   setAllDropRowsSelected,
   toggleDropRow,
 } from "./modImportDropState.ts";
@@ -130,4 +134,58 @@ test("blocked rows render the same three-language copy as a failed import", asyn
 test("duplicate paths in one drop collapse to a single row", () => {
   // 同一个文件起两个导入任务的话，第二个必然失败，玩家看到一条莫名其妙的失败。
   assert.deepEqual(dedupeDroppedPaths(["a.zip", "b.zip", "a.zip", ""]), ["a.zip", "b.zip"]);
+});
+
+test("a run walks the selected rows one at a time and records each outcome", () => {
+  const rows = dropRowsFromPreviews([
+    preview("a.zip"),
+    preview("bad.exe", "mod_import_not_an_archive"),
+    preview("b.rar"),
+  ]);
+
+  let run = startDropImportRun(rows);
+  assert.equal(run.total, 2, "被挡住的行不进队列");
+  assert.equal(run.currentPath, rows[0].archivePath);
+  assert.equal(dropImportRunSummary(run).done, false);
+
+  run = advanceDropImportRun(run, "succeeded");
+  assert.equal(run.currentPath, rows[2].archivePath, "串行推进到下一个");
+
+  run = advanceDropImportRun(run, "failed");
+  const summary = dropImportRunSummary(run);
+  assert.deepEqual(
+    { succeeded: summary.succeeded, failed: summary.failed, done: summary.done },
+    { succeeded: 1, failed: 1, done: true },
+    "部分成功要如实计数，不能一个失败就整批算失败",
+  );
+});
+
+test("an empty selection is not reported as a finished run", () => {
+  // done 若写成 finished === total，一个都没选时会立刻算「跑完」，而根本没开始。
+  const rows = setAllDropRowsSelected(dropRowsFromPreviews([preview("a.zip")]), false);
+  const run = startDropImportRun(rows);
+  assert.equal(run.total, 0);
+  assert.equal(dropImportRunSummary(run).done, true, "空队列本来就没有正在跑的");
+  assert.equal(run.currentPath, null);
+});
+
+test("stopping a run cancels everything that has not started yet", () => {
+  // 调用点的顺序是「跑完 → advance → 停止」，所以停止那一刻 advance 已经把下一个
+  // 提升成了 currentPath。它还没起步，停止必须把它也放掉。
+  const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip"), preview("c.zip")]);
+  let run = startDropImportRun(rows);
+  run = advanceDropImportRun(run, "succeeded");
+  assert.equal(run.currentPath, rows[1].archivePath, "advance 已经提升了下一个");
+
+  run = stopDropImportRun(run);
+  assert.equal(run.currentPath, null, "被提升但没起步的那个也要放掉");
+
+  const summary = dropImportRunSummary(run);
+  assert.equal(summary.done, true, "停止之后循环必须能结束");
+  assert.equal(summary.total, 3, "总数仍是玩家当初选的数量");
+  assert.deepEqual(
+    { succeeded: summary.succeeded, failed: summary.failed, finished: summary.finished },
+    { succeeded: 1, failed: 0, finished: 1 },
+    "没跑的既不算成功也不算失败",
+  );
 });

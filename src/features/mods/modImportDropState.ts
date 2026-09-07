@@ -124,3 +124,71 @@ export function dedupeDroppedPaths(paths: readonly string[]): string[] {
   }
   return result;
 }
+
+// ---- 确认之后的批量执行 ----
+//
+// 逐个**串行**跑：并发导入会同时抢沙箱与 unrar 的进程级锁（rar 不能并发调用），
+// 收益不明而失败模式很难解释。串行还让「第几个 / 共几个」这件事对玩家是准确的。
+
+export type DropImportOutcome = "succeeded" | "failed";
+
+export type DropImportRun = {
+  /** 还没开始的路径，按玩家看到的顺序。 */
+  queue: string[];
+  /** 正在跑的那个；`null` = 跑完了。 */
+  currentPath: string | null;
+  results: Record<string, DropImportOutcome>;
+  total: number;
+};
+
+export function startDropImportRun(rows: readonly DropRow[]): DropImportRun {
+  const paths = selectedDropRows(rows).map((row) => row.archivePath);
+  const [first, ...rest] = paths;
+  return {
+    queue: rest,
+    currentPath: first ?? null,
+    results: {},
+    total: paths.length,
+  };
+}
+
+/** 当前这个跑完了（成功或失败），推进到下一个。 */
+export function advanceDropImportRun(run: DropImportRun, outcome: DropImportOutcome): DropImportRun {
+  if (run.currentPath === null) return run;
+  const [next, ...rest] = run.queue;
+  return {
+    queue: rest,
+    currentPath: next ?? null,
+    results: { ...run.results, [run.currentPath]: outcome },
+    total: run.total,
+  };
+}
+
+/**
+ * 停止后续排队项。**不中断正在跑的那个**——导入任务一旦起步就由后端的任务机制管，
+ * 这里能保证的只有「不再往下起」。
+ *
+ * `currentPath` **也要清掉**，不能只清队列：调用点的顺序是「跑完 → advance → 停止」，
+ * 而 advance 已经把下一个提升成了 `currentPath`。只清 `queue` 会让那个刚被提升、
+ * 还没起步的又跑掉——恰好多跑一个，正是玩家按停止想避免的。
+ *
+ * `total` 保持原样：摘要里 `finished < total` 正是「后面那些没跑」的如实体现，
+ * 而不是把它们记成失败。
+ */
+export function stopDropImportRun(run: DropImportRun): DropImportRun {
+  return { ...run, queue: [], currentPath: null };
+}
+
+export function dropImportRunSummary(run: DropImportRun) {
+  const outcomes = Object.values(run.results);
+  const succeeded = outcomes.filter((outcome) => outcome === "succeeded").length;
+  return {
+    succeeded,
+    failed: outcomes.length - succeeded,
+    finished: outcomes.length,
+    total: run.total,
+    // 跑完 = 没有正在跑的了。**不看 finished === total**：那样一个都没选时会
+    // 立刻算成「跑完」，而实际上根本没开始。
+    done: run.currentPath === null,
+  };
+}
