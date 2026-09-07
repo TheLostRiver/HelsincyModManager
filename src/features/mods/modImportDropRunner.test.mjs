@@ -19,6 +19,7 @@ const progress = (taskId, status, phase = "mod_import.prepare.completed", extra 
 const preview = (fileName, errorCode = null) => ({
   archivePath: `C:\\downloads\\${fileName}`,
   fileName,
+  sizeBytes: 1024,
   errorCode,
 });
 

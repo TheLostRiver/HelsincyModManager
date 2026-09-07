@@ -302,6 +302,11 @@ pub struct DroppedArchivePreviewDto {
     pub archive_path: String,
     /// 展示用的文件名。后端算好，免得前端各写一份跨平台的路径切分。
     pub file_name: String,
+    /// 文件字节数。`None` = 读不到（文件已被移走、权限不足等）。
+    ///
+    /// 读不到**不构成不可导入**：真正的判据是能不能打开归档，那由 `error_code` 说了算。
+    /// 这里只是给玩家一个「我拖的是不是那个包」的旁证，所以缺了就不显示。
+    pub size_bytes: Option<u64>,
     pub error_code: Option<String>,
 }
 
@@ -322,12 +327,15 @@ pub fn preview_dropped_mod_archives(
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_default();
+            // 大小失败不升级成命令失败，也不改判可导入性：见 `size_bytes` 的说明。
+            let size_bytes = std::fs::metadata(&archive_path).ok().map(|meta| meta.len());
             let error_code = hmm_infra::probe_mod_archive(&archive_path)
                 .err()
                 .map(|error| error.code().to_owned());
             Ok(DroppedArchivePreviewDto {
                 archive_path: archive_path.to_string_lossy().into_owned(),
                 file_name,
+                size_bytes,
                 error_code,
             })
         })
