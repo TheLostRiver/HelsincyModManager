@@ -112,6 +112,60 @@ fn armor_catalog_is_versioned_and_uses_stable_hash_ids() {
     );
 }
 
+/// 磁盘上的每一份分片都必须被编译进 catalog（`#356`）。
+///
+/// `ARMOR_CATALOG_SHARDS` 登记了不存在的文件会编译失败，反过来不会：**新增一份分片却忘了
+/// 登记，编译、解析、加载全部正常，只是那批目标整体消失**——玩家侧的症状是「这些防具在列表
+/// 里根本搜不到」，没有任何报错，正是 `#356` 修的那类失效。
+///
+/// 所以这里拿目录的实际内容与加载结果对账，而不是断言一个写死的分片数：数据扩容加分片时，
+/// 这条测试不用跟着改就继续承重。整套模型缺失另有 `by_family` 的计数断言兜着。
+#[test]
+fn every_armor_catalog_shard_on_disk_is_compiled_into_the_catalog() {
+    let shard_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data/armor");
+    let mut shard_files: Vec<_> = std::fs::read_dir(&shard_dir)
+        .unwrap_or_else(|error| panic!("读不到分片目录 {}: {error}", shard_dir.display()))
+        .map(|entry| entry.expect("分片目录项").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .collect();
+    shard_files.sort();
+    assert!(
+        shard_files.len() >= 2,
+        "分片目录里只有 {} 个文件，拆分本身没生效",
+        shard_files.len()
+    );
+
+    let mut on_disk = BTreeSet::new();
+    for path in &shard_files {
+        let text = std::fs::read_to_string(path).expect("分片内容");
+        let raw: serde_json::Value = serde_json::from_str(&text).expect("分片 JSON");
+        let targets = raw["targets"].as_array().expect("targets array");
+        assert!(!targets.is_empty(), "{} 是一份空分片", path.display());
+        for target in targets {
+            on_disk.insert(target["id"].as_str().expect("target id").to_owned());
+        }
+    }
+
+    let catalog = MhwArmorCatalog
+        .replacement_catalog()
+        .expect("armor catalog");
+    let loaded: BTreeSet<_> = catalog
+        .targets()
+        .iter()
+        .map(|target| target.id().as_str().to_owned())
+        .collect();
+
+    let unregistered: Vec<_> = on_disk.difference(&loaded).collect();
+    let phantom: Vec<_> = loaded.difference(&on_disk).collect();
+    assert!(
+        unregistered.is_empty() && phantom.is_empty(),
+        "分片与 catalog 不一致：磁盘上有却没编译进来 {unregistered:?}；编译进来磁盘上却没有 {phantom:?}"
+    );
+}
+
 #[test]
 fn armor_catalog_keeps_the_original_seed_slots_and_gains_three_locales() {
     let provider = MhwArmorCatalog;

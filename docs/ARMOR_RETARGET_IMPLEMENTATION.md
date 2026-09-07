@@ -77,7 +77,8 @@ AR1 实际交付按重排后的窄边界实现，下面旧 Task 1-3 的大段代
   `ReplacementCatalog` serde/invariant contract。
 - `hmm-ports::replacement`：独立只读 `ReplacementCatalogProvider`，提供 catalog、stable-id find 与
   game-owned search；未修改目录 `GameAdapter`。
-- `hmm-games-mhw::armor_retarget::catalog`：读取 `data/mhw-armor-targets.v1.json`，校验 schema、
+- `hmm-games-mhw::armor_retarget::catalog`：读取 `data/armor/mhw-armor-targets.<family>.v1.json`
+  分片并合并（`#356`），校验 schema、
   duplicate scoped internal id、`plNNN_VVVV` 与 metadata shape，执行 NFC/中点/NFKC 搜索规范化，
   并用精确 normalized terms 区分 Fatalis / Alatreon。
 - 聚焦测试入口：`cargo test -p hmm-core --test replacement`、
@@ -229,8 +230,9 @@ src-tauri/crates/hmm-games-mhw/src/
     mod.rs
   lib.rs
 
-src-tauri/crates/hmm-games-mhw/data/
-  mhw-armor-targets.v1.json
+src-tauri/crates/hmm-games-mhw/data/armor/
+  mhw-armor-targets.f_equip.v1.json
+  mhw-armor-targets.m_equip.v1.json
 
 src-tauri/crates/hmm-infra/src/
   staging.rs

@@ -9,7 +9,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
 const MHW_ARMOR_CATALOG_SCHEMA_VERSION: u32 = 1;
-const BUNDLED_ARMOR_CATALOG: &str = include_str!("../../data/mhw-armor-targets.v1.json");
+
+/// 防具 catalog 按 `path_family` 拆成两份分片（`#356`），合并规则见 `parse_armor_catalog_shards`。
+///
+/// 529 条的单文件是 310KB / 12024 行，超出 policy 的体积硬限（256KB / 10000 行）。分片键取
+/// `path_family` 是因为它本来就是领域边界——跨变体重定向由 `retarget.rs` 拒绝，与武器侧按
+/// family 分片（`weapon_retarget/replacement.rs`）同一个道理。
+///
+/// **这份清单必须与 `data/armor/` 下的文件一一对应：少一份分片等于那一套模型的重定向目标
+/// 整体消失。** 那不是解析错误，而是「我的角色性别下什么防具都改不了」——正是 `#356` 修掉的
+/// 症状。分片文件缺失会编译失败，但「文件在磁盘上、没登记进这个数组」不会，
+/// 由 `tests/armor_catalog.rs` 的分片覆盖回归钉住。
+const ARMOR_CATALOG_SHARDS: [&str; 2] = [
+    include_str!("../../data/armor/mhw-armor-targets.f_equip.v1.json"),
+    include_str!("../../data/armor/mhw-armor-targets.m_equip.v1.json"),
+];
 
 /// 防具目标允许的 `path_family`（`#356`）。
 ///
@@ -53,7 +67,7 @@ impl ReplacementCatalogProvider for MhwArmorCatalog {
     }
 
     fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
-        parse_armor_catalog(BUNDLED_ARMOR_CATALOG)
+        parse_armor_catalog_shards(&ARMOR_CATALOG_SHARDS)
     }
 
     fn find_replacement_target(
@@ -103,19 +117,53 @@ fn normalize_middle_dot(value: char) -> char {
     }
 }
 
+/// 单文件入口，只给单元测试用（生产路径是 `ARMOR_CATALOG_SHARDS`）。
+///
+/// 它就是「一份分片」的分片解析，不是另一条实现——所以用它写的校验用例与生产加载走的是
+/// 同一段代码，不存在「测试测了一条产品不走的路」。
+#[cfg(test)]
 fn parse_armor_catalog(source: &str) -> ReplacementCatalogResult<ReplacementCatalog> {
-    let envelope: RawArmorCatalogEnvelope =
-        serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
+    parse_armor_catalog_shards(&[source])
+}
 
-    if envelope.schema_version != MHW_ARMOR_CATALOG_SCHEMA_VERSION {
-        return Err(ReplacementCatalogError::UnsupportedSchemaVersion {
-            schema_version: envelope.schema_version,
-        });
+/// 把分片合并成一份再走**同一条**校验路径。
+///
+/// 关键：**不能**各自解析完再拼 target 列表。`(path_family, internal_id)` 唯一性是在单次
+/// 校验里累积判定的（`scoped_internal_ids`），逐份校验会把它降级成「每个分片内部唯一」——
+/// 两份各自合法、合起来撞车的分片就会被放行。合并后单次校验则一条不漏。
+///
+/// 每份分片各带一份 `schema_version` / `catalog_version` / `game_id` 信封，三者都要核：
+/// schema 逐份对照支持版本，另两项跨分片必须一致，否则合出来的是个拼接怪物。
+fn parse_armor_catalog_shards(sources: &[&str]) -> ReplacementCatalogResult<ReplacementCatalog> {
+    let mut merged: Option<RawArmorCatalog> = None;
+    for source in sources {
+        let envelope: RawArmorCatalogEnvelope =
+            serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
+
+        if envelope.schema_version != MHW_ARMOR_CATALOG_SCHEMA_VERSION {
+            return Err(ReplacementCatalogError::UnsupportedSchemaVersion {
+                schema_version: envelope.schema_version,
+            });
+        }
+
+        let raw: RawArmorCatalog =
+            serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
+
+        match merged.as_mut() {
+            None => merged = Some(raw),
+            Some(base) => {
+                if base.catalog_version != raw.catalog_version || base.game_id != raw.game_id {
+                    return Err(ReplacementCatalogError::CatalogInvalid);
+                }
+                base.targets.extend(raw.targets);
+            }
+        }
     }
 
-    let raw: RawArmorCatalog =
-        serde_json::from_str(source).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
+    validate_armor_catalog(merged.ok_or(ReplacementCatalogError::CatalogInvalid)?)
+}
 
+fn validate_armor_catalog(raw: RawArmorCatalog) -> ReplacementCatalogResult<ReplacementCatalog> {
     let game_id =
         GameId::parse(raw.game_id).map_err(|_| ReplacementCatalogError::CatalogInvalid)?;
     if game_id != GameId::mhw() {
@@ -343,32 +391,34 @@ mod tests {
         // 唯一记录在案的例外：pl057_0010（男版燕尾蝶）的官方英文名与 pl019_0000（女版）
         // 逐字同为 "Butterfly β"。治理规则要求同 locale display_name 跨目标唯一、alias
         // 允许重复指向多目标，故男版 en 官方名走 alias（检索可达），display_name 不占用重名。
-        let raw: Value =
-            serde_json::from_str(BUNDLED_ARMOR_CATALOG).expect("bundled armor catalog json");
-        for target in raw["targets"].as_array().expect("targets array") {
-            let internal_id = target["internal_id"].as_str().expect("internal id");
-            let names = target["display_name"]
-                .as_object()
-                .expect("display_name object");
-            let mut keys: Vec<_> = names.keys().map(String::as_str).collect();
-            keys.sort_unstable();
-            if internal_id == "pl057_0010" {
-                assert_eq!(keys, ["ja", "zh_cn"], "pl057_0010 keeps zh_cn/ja names");
-                assert!(
-                    target["aliases"]
-                        .as_array()
-                        .expect("aliases array")
-                        .iter()
-                        .any(|alias| alias == "Butterfly β"),
-                    "pl057_0010 must keep its official English name searchable via alias"
+        // 逐份分片扫原始 JSON：语言键集是数据层事实，合并后再看会分不清是哪份分片缺的。
+        for shard in ARMOR_CATALOG_SHARDS {
+            let raw: Value = serde_json::from_str(shard).expect("bundled armor catalog shard json");
+            for target in raw["targets"].as_array().expect("targets array") {
+                let internal_id = target["internal_id"].as_str().expect("internal id");
+                let names = target["display_name"]
+                    .as_object()
+                    .expect("display_name object");
+                let mut keys: Vec<_> = names.keys().map(String::as_str).collect();
+                keys.sort_unstable();
+                if internal_id == "pl057_0010" {
+                    assert_eq!(keys, ["ja", "zh_cn"], "pl057_0010 keeps zh_cn/ja names");
+                    assert!(
+                        target["aliases"]
+                            .as_array()
+                            .expect("aliases array")
+                            .iter()
+                            .any(|alias| alias == "Butterfly β"),
+                        "pl057_0010 must keep its official English name searchable via alias"
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    keys,
+                    ["en", "ja", "zh_cn"],
+                    "armor target {internal_id} must carry the full locale set"
                 );
-                continue;
             }
-            assert_eq!(
-                keys,
-                ["en", "ja", "zh_cn"],
-                "armor target {internal_id} must carry the full locale set"
-            );
         }
     }
 
@@ -505,6 +555,77 @@ mod tests {
         assert_eq!(
             parse_armor_catalog(&source),
             Err(ReplacementCatalogError::CatalogInvalid)
+        );
+    }
+
+    /// 分片合并必须真的合并同一件装备的两套模型，而不是「两份互不相干的 catalog」。
+    ///
+    /// 这是真实数据的形状：`pl001_0000` 在两份分片里各占一条，**且逐字同名**（同一件装备的
+    /// 两套模型不该被迫叫两个名字，唯一性按 `path_family` 分组，见治理文档）。正向用例单列，
+    /// 否则下面那些拒绝用例可以被「什么都拒」满足。
+    #[test]
+    fn merges_the_same_slot_from_both_model_variant_shards() {
+        let mut female = valid_target("mhw:armor:shared-female", "pl001_0000");
+        female["metadata"]["path_family"] = json!("pl/f_equip");
+        let mut male = valid_target("mhw:armor:shared-male", "pl001_0000");
+        male["metadata"]["path_family"] = json!("pl/m_equip");
+
+        let catalog = parse_armor_catalog_shards(&[
+            &catalog_source(vec![female]),
+            &catalog_source(vec![male]),
+        ])
+        .expect("两套模型的分片必须能合并");
+
+        assert_eq!(catalog.targets().len(), 2);
+        let mut families: Vec<_> = catalog
+            .targets()
+            .iter()
+            .filter_map(|target| target.metadata().get("path_family")?.as_str())
+            .collect();
+        families.sort_unstable();
+        assert_eq!(families, ["pl/f_equip", "pl/m_equip"]);
+    }
+
+    /// 合并不得削弱任何一道校验。
+    ///
+    /// 单文件时 `(path_family, internal_id)` 唯一性是在单次校验里累积判定的。如果
+    /// `parse_armor_catalog_shards` 只是逐份解析再拼列表，这个保证会悄悄降级成
+    /// 「每个分片内部唯一」——下面每条都是「单独合法、合并冲突」，必须全部被拒。
+    #[test]
+    fn sharded_parse_still_rejects_conflicts_that_span_shards() {
+        let shard = catalog_source(vec![valid_target("mhw:armor:first", "pl999_0000")]);
+
+        // 同一个 (path_family, internal_id) 出现在两份分片里。
+        let duplicate = catalog_source(vec![valid_target("mhw:armor:second", "pl999_0000")]);
+        assert_eq!(
+            parse_armor_catalog_shards(&[&shard, &duplicate]),
+            Err(ReplacementCatalogError::CatalogInvalid),
+            "跨分片的同槽位重复必须被拒"
+        );
+
+        // 分片属于不同版本的 catalog：合出来的是个拼接怪物。
+        let other_version = catalog_source(vec![valid_target("mhw:armor:other", "pl998_0000")])
+            .replace("test-v1", "test-v2");
+        assert_eq!(
+            parse_armor_catalog_shards(&[&shard, &other_version]),
+            Err(ReplacementCatalogError::CatalogInvalid),
+            "catalog_version 不一致的分片必须被拒"
+        );
+
+        // 分片属于另一个游戏。
+        let other_game = catalog_source(vec![valid_target("mhw:armor:alien", "pl997_0000")])
+            .replace("\"mhw\"", "\"mhr\"");
+        assert_eq!(
+            parse_armor_catalog_shards(&[&shard, &other_game]),
+            Err(ReplacementCatalogError::CatalogInvalid),
+            "game_id 不一致的分片必须被拒"
+        );
+
+        // 一份分片都没有：宁可报错也不能产出一份空 catalog。
+        assert_eq!(
+            parse_armor_catalog_shards(&[]),
+            Err(ReplacementCatalogError::CatalogInvalid),
+            "空分片列表必须被拒"
         );
     }
 }

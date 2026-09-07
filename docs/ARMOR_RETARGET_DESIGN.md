@@ -200,7 +200,9 @@ AR1；AR3 的 staging I/O 继续独立建模，core/app 不携带 staging root �
 
 负责 MHW:I 专属规则：
 
-- `data/mhw-armor-targets.v1.json` armor catalog 数据、schema/catalog version 与加载校验。
+- `data/armor/mhw-armor-targets.<family>.v1.json` armor catalog 数据、schema/catalog version 与加载校验。
+  artifact 按 `path_family` 分片（`#356`：529 条的单文件超出仓库体积门禁），加载时合并成一份再走
+  同一条校验路径——跨分片的同槽位重复必须照样被拒，逐份校验会把这个保证降级成分片内唯一。
 - catalog 加载时的 Unicode 归一化：对 display name 至少做 `NFC` 归一化，并对"看起来都像中点"的码位 `U+2027`（间隔号）/ `U+00B7`（中点）/ `U+30FB`（全角中点）/ `U+FF65`（半角中点）建立显式归一化映射表。归一化规则只存在于 adapter 内，核心层不感知。
 - `pl/f_equip/<slot>` 和 `pl/m_equip/<slot>` 路径族识别（两者为不同 path_family）。
 - `plNNN_VVVV` 编号解析与校验。该格式校验**只在 adapter 内做**，核心层把 `internal_id` 当不透明字符串。
@@ -258,7 +260,7 @@ AR1；AR3 的 staging I/O 继续独立建模，core/app 不携带 staging root �
 
 MHW:I armor catalog 应使用 JSON 或 TOML 存储，并由 `hmm-games-mhw` 加载。建议先使用静态随包数据，后续再考虑社区补丁或版本化更新。
 
-AR1 的 `mhw-armor-targets.v1.json` 是最小 runtime seed，不是未审计数据的导入口。CAT-01 已在其上游
+AR1 的 armor catalog artifact 是最小 runtime seed，不是未审计数据的导入口。CAT-01 已在其上游
 定义独立 candidate schema、资源路径派生 stable ID、localization/alias、dummy/hidden 和
 provenance/licensing 门禁；候选通过结构校验不等于可以随应用再分发。完整契约和只读验证入口见
 [装备 Catalog 候选数据治理](EQUIPMENT_CATALOG_GOVERNANCE.md)。经审计的 catalog 扩容属于 AR6，

@@ -7,7 +7,8 @@
  *
  * 输出：
  *   armor-data/generated/mhw-equipment-candidates.armor.v1.json   候选文档，供 validator 审计
- *   src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json 运行时 artifact
+ *   src-tauri/crates/hmm-games-mhw/data/armor/mhw-armor-targets.<family>.v1.json
+ *                                                                 运行时 artifact，按 path_family 分片
  *
  * Stable ID 严格按 docs/EQUIPMENT_CATALOG_GOVERNANCE.md 的算法计算，
  * 与 Rust 侧 generate_mhw_equipment_stable_id 必须逐字节一致。
@@ -22,7 +23,7 @@
  * 政策依据见 EQUIPMENT_CATALOG_GOVERNANCE.md 的「关于 game_terminology 的政策决定」。
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const args = new Map();
@@ -55,7 +56,21 @@ const EQUIPMENT_PATH = "armor-data/equipment.json";
  */
 const VARIANTS_PATH = "armor-data/armor-model-variants.json";
 const CANDIDATE_OUT = "armor-data/generated/mhw-equipment-candidates.armor.v1.json";
-const ARTIFACT_OUT = "src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json";
+/**
+ * 运行时 artifact 按 `path_family` 分片（`#356`）。
+ *
+ * 529 条的单文件是 310KB / 12024 行，超出 policy 的体积硬限（256KB）——`#356` 只是把这一天
+ * 提前了，269 条时单文件就已经占掉上限的 63%。分片键取 `path_family` 而不是别的：它本来就是
+ * 领域边界（跨变体重定向由 `armor_retarget/retarget.rs` 拒绝），与武器侧按 family 分片同理。
+ *
+ * 文件名从 `path_family` 派生而不是查表：`pl/f_equip` → `mhw-armor-targets.f_equip.v1.json`。
+ * 新增一个 family 时这里不需要改，但 `armor_retarget/catalog.rs` 的 `ARMOR_CATALOG_SHARDS`
+ * 必须同步登记——**少一份分片等于那一套模型的重定向目标整体消失**。
+ */
+const ARTIFACT_DIR = "src-tauri/crates/hmm-games-mhw/data/armor";
+const artifactShardPath = (pathFamily) =>
+  `${ARTIFACT_DIR}/mhw-armor-targets.${pathFamily.split("/").pop()}.v1.json`;
+const POLICY_PATH = "policy/project-policy.json";
 const SOURCE_ID = "mhw-ingame-equipment-names";
 const VARIANT_SOURCE_ID = "mhw-game-assets";
 const CATALOG_VERSION = "mhw-armor-v4";
@@ -122,9 +137,39 @@ function variantOf(name) {
   return null;
 }
 
+/**
+ * 把上一版 artifact 的分片合并回一份基线。
+ *
+ * 必须读**全部**分片：旧 ID 与旧展示名都从这份基线取，只读其中一份会让另一套模型的旧绑定
+ * 静默解析不出目标。分片同属一份 catalog 是前提，不一致就说明目录里混进了别的版本，
+ * 与其合出一个拼接怪物，不如在这里停下。
+ */
+function readPreviousArtifact() {
+  const shardNames = readdirSync(ARTIFACT_DIR)
+    .filter((name) => name.endsWith(".v1.json"))
+    .sort();
+  if (!shardNames.length) {
+    throw new Error(`${ARTIFACT_DIR} 下没有 artifact 分片，取不到上一版基线`);
+  }
+
+  let catalogVersion = null;
+  const targets = [];
+  for (const name of shardNames) {
+    const shard = JSON.parse(readFileSync(`${ARTIFACT_DIR}/${name}`, "utf8"));
+    catalogVersion ??= shard.catalog_version;
+    if (shard.catalog_version !== catalogVersion) {
+      throw new Error(
+        `分片 catalog_version 不一致：${name} 是 ${shard.catalog_version}，先前分片是 ${catalogVersion}`,
+      );
+    }
+    targets.push(...shard.targets);
+  }
+  return { catalog_version: catalogVersion, targets, shard_count: shardNames.length };
+}
+
 const equipment = JSON.parse(readFileSync(EQUIPMENT_PATH, "utf8"));
 const localized = parseCsv(readFileSync(CSV_PATH, "utf8"));
-const previous = JSON.parse(readFileSync(ARTIFACT_OUT, "utf8"));
+const previous = readPreviousArtifact();
 const variants = JSON.parse(readFileSync(VARIANTS_PATH, "utf8"));
 
 /** internal_id -> 该装备实际存在的模型变体（按 path_family 升序，供输出稳定）。 */
@@ -139,8 +184,8 @@ for (const id of variants.male_only) familiesFor.set(id, ["pl/m_equip"]);
 if (previous.catalog_version === CATALOG_VERSION) {
   console.error(
     [
-      `拒绝执行：${ARTIFACT_OUT} 已经是 ${CATALOG_VERSION}，再跑会拿生成结果当基线。`,
-      `请先 git checkout -- ${ARTIFACT_OUT} 恢复上一版再重试。`,
+      `拒绝执行：${ARTIFACT_DIR} 下的分片已经是 ${CATALOG_VERSION}，再跑会拿生成结果当基线。`,
+      `请先 git checkout -- ${ARTIFACT_DIR} 恢复上一版（**全部**分片）再重试。`,
     ].join("\n"),
   );
   process.exit(2);
@@ -360,7 +405,66 @@ const artifact = {
 
 mkdirSync(dirname(CANDIDATE_OUT), { recursive: true });
 writeFileSync(CANDIDATE_OUT, `${JSON.stringify(candidateDoc, null, 2)}\n`, "utf8");
-writeFileSync(ARTIFACT_OUT, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+
+// 按 path_family 分片写盘。目标在各分片内保持 equipment.json 的相对顺序，
+// 换句话说分片就是聚合结果的一次纯分组——加载侧合并回来必须逐条等价（下面自校验）。
+const shardedTargets = new Map();
+for (const target of artifact.targets) {
+  const family = target.metadata.path_family;
+  if (!shardedTargets.has(family)) shardedTargets.set(family, []);
+  shardedTargets.get(family).push(target);
+}
+
+mkdirSync(ARTIFACT_DIR, { recursive: true });
+const writtenShards = [];
+for (const family of [...shardedTargets.keys()].sort()) {
+  const targets = shardedTargets.get(family);
+  const path = artifactShardPath(family);
+  const text = `${JSON.stringify({ schema_version: 1, catalog_version: CATALOG_VERSION, game_id: "mhw", targets }, null, 2)}\n`;
+  writeFileSync(path, text, "utf8");
+  writtenShards.push({ family, path, count: targets.length, text });
+}
+
+/*
+ * 分片自校验。
+ *
+ * 拆分的起因正是「单文件悄悄长过体积门禁，只有 verify.ps1 才发现」。所以按 policy 的同一份
+ * 硬限在生成这一刻自查：下次数据扩容再撑爆某个分片，报错发生在生成时而不是发版门禁。
+ * 限额从 policy 文件读，不在这里抄一份常量。
+ *
+ * 另外把写出去的分片读回来合并，断言与内存里的 targets 逐条等价、且每份分片只装自己那个
+ * family。分组或写盘出错时必须在这里红——静默产出一份「看起来正常」的错数据是这条管线
+ * 最贵的失效方式。
+ */
+const fileSizePolicy = JSON.parse(readFileSync(POLICY_PATH, "utf8")).fileSize;
+for (const shard of writtenShards) {
+  const bytes = Buffer.byteLength(shard.text, "utf8");
+  const lines = shard.text.split("\n").length - 1;
+  if (bytes > fileSizePolicy.blockBytes) {
+    throw new Error(
+      `${shard.path} 超出 policy 体积硬限：${bytes} / ${fileSizePolicy.blockBytes} 字节，需要更细的分片键`,
+    );
+  }
+  if (lines > fileSizePolicy.block.json) {
+    throw new Error(
+      `${shard.path} 超出 policy 行数硬限：${lines} / ${fileSizePolicy.block.json} 行，需要更细的分片键`,
+    );
+  }
+}
+
+const reloaded = writtenShards.flatMap((shard) => {
+  const parsed = JSON.parse(readFileSync(shard.path, "utf8"));
+  const strays = parsed.targets.filter((target) => target.metadata.path_family !== shard.family);
+  if (strays.length) {
+    throw new Error(`${shard.path} 混入了 ${strays.length} 条其他 path_family 的目标`);
+  }
+  return parsed.targets;
+});
+const sortedById = (targets) =>
+  JSON.stringify([...targets].sort((left, right) => left.id.localeCompare(right.id)));
+if (sortedById(reloaded) !== sortedById(artifact.targets)) {
+  throw new Error("分片合并回来与生成结果不等价，拒绝产出");
+}
 
 const withEn = candidates.filter((c) => c.names.en).length;
 const withJa = candidates.filter((c) => c.names.ja).length;
@@ -372,5 +476,11 @@ console.log(`  含 en         ${withEn}`);
 console.log(`  含 ja         ${withJa}`);
 console.log(`  仅 zh_cn      ${candidates.length - withEn}`);
 console.log(`  带 legacy_ids ${candidates.filter((c) => c.legacy_ids.length).length}`);
+console.log(`上一版基线      ${previous.catalog_version}（${previous.shard_count} 份分片，${previous.targets.length} 条）`);
 console.log(`候选文档        ${CANDIDATE_OUT}`);
-console.log(`运行时 artifact ${ARTIFACT_OUT}`);
+console.log(`运行时 artifact ${writtenShards.length} 份分片：`);
+for (const shard of writtenShards) {
+  const bytes = Buffer.byteLength(shard.text, "utf8");
+  const lines = shard.text.split("\n").length - 1;
+  console.log(`    ${shard.path}  ${shard.count} 条  ${bytes} 字节 / ${lines} 行`);
+}
