@@ -82,8 +82,14 @@ const LIB_SOURCES: &[&str] = &[
 ///
 /// 上游清单里还有 `rarpch.cpp`，那是给 MSVC 预编译头用的桩（内容只有
 /// `#include "rar.hpp"`）。我们不开 PCH，编它产不出任何符号，故不编。
+/// 非 Windows 上是空表，而不是把使用处 `#[cfg]` 掉：后者会让
+/// `let mut sources` 在 Linux 上永不被改写，`-D warnings` 下 `unused_mut` 直接报错。
+/// CI 跑的正是 Linux，本机 Windows 编译时那个 `mut` 又确实需要——
+/// 这类「一个平台绿、另一个平台红」的写法一律换成两个平台同形。
 #[cfg(target_os = "windows")]
-const WINDOWS_ONLY_SOURCES: &[&str] = &["isnt", "motw", "rs"];
+const PLATFORM_SOURCES: &[&str] = &["isnt", "motw", "rs"];
+#[cfg(not(target_os = "windows"))]
+const PLATFORM_SOURCES: &[&str] = &[];
 
 /// `UnRARDll.vcxproj` 没写 `AdditionalDependencies`——它吃的是 Visual Studio 对
 /// DLL 工程的默认库集合。从 Rust 链接时没有那份默认集合，所以必须显式列。
@@ -96,7 +102,10 @@ const WINDOWS_ONLY_SOURCES: &[&str] = &["isnt", "motw", "rs"];
 /// `Shlwapi` / `PowrProf` / `Psapi` 不在这里：`os.hpp` 用 `#pragma comment(lib, …)`
 /// 把它们写进了 obj，MSVC 链接器会自己认。
 #[cfg(target_os = "windows")]
-const WINDOWS_SYSTEM_LIBRARIES: &[&str] = &["advapi32", "shell32"];
+const PLATFORM_SYSTEM_LIBRARIES: &[&str] = &["advapi32", "shell32"];
+/// Linux 侧 `cc` 会自己带上 libstdc++，`-pthread` 由编译参数给，无需额外声明。
+#[cfg(not(target_os = "windows"))]
+const PLATFORM_SYSTEM_LIBRARIES: &[&str] = &[];
 
 fn main() {
     let vendor = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -140,11 +149,7 @@ fn main() {
         build.flag("-pthread");
     }
 
-    let mut sources: Vec<&str> = LIB_SOURCES.to_vec();
-    #[cfg(target_os = "windows")]
-    sources.extend_from_slice(WINDOWS_ONLY_SOURCES);
-
-    for stem in sources {
+    for stem in LIB_SOURCES.iter().chain(PLATFORM_SOURCES) {
         let source = vendor.join(format!("{stem}.cpp"));
         assert!(
             source.is_file(),
@@ -164,8 +169,7 @@ fn main() {
 
     build.compile("unrar");
 
-    #[cfg(target_os = "windows")]
-    for library in WINDOWS_SYSTEM_LIBRARIES {
+    for library in PLATFORM_SYSTEM_LIBRARIES {
         println!("cargo:rustc-link-lib=dylib={library}");
     }
 
