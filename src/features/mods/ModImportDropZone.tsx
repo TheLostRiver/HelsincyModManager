@@ -71,6 +71,9 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
   // 这个组件只负责订阅事件、渲染清单。
   const watcherRef = useRef(new ModImportTaskWatcher());
   const abortRef = useRef(false);
+  // 每次新拖拽 +1。预检是异步的，而玩家可以在它回来之前就关掉浮层或者再拖一次；
+  // 不认这个号的话，落地的旧结果会把已经关掉的清单重新弹出来。
+  const dropGenerationRef = useRef(0);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // 拖放回调要读最新值，但它不该因此重订阅。
@@ -134,12 +137,16 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
         return;
       }
 
+      dropGenerationRef.current += 1;
+      const generation = dropGenerationRef.current;
       setRun(null);
       setListState({ status: "checking", total: unique.length });
       try {
         const previews = await previewDroppedModArchives(unique);
+        if (generation !== dropGenerationRef.current) return;
         setListState({ status: "ready", rows: dropRowsFromPreviews(previews) });
       } catch {
+        if (generation !== dropGenerationRef.current) return;
         setListState({ status: "idle" });
         pushToast({
           eventKey: "mod-import.drop.preview-failed",
@@ -218,6 +225,8 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
 
   function closeList() {
     if (busy) return;
+    // 作废还在飞的那次预检：否则它落地时会把刚关掉的清单重新弹出来。
+    dropGenerationRef.current += 1;
     setListState({ status: "idle" });
     setRun(null);
   }
@@ -236,7 +245,7 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
     if (listState.status !== "ready" || !canStartDropImport(rows) || !listenerReady) return;
 
     abortRef.current = false;
-    setListState({ status: "importing", rows, startedPaths: [] });
+    setListState({ status: "importing", rows });
     await runDropImportBatch(rows, {
       watcher: watcherRef.current,
       startImport: (archivePath) => startImportModTask({ archivePath }),
