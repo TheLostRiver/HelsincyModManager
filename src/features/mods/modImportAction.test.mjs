@@ -15,6 +15,7 @@ test("mod import action opens an archive picker and starts the controlled task",
   // 只会因为「漏了新格式」转红，不会因为顺序或空格改动误报。
   assert.match(source, /extensions:\s*\[[^\]]*"zip"[^\]]*\]/);
   assert.match(source, /extensions:\s*\[[^\]]*"rar"[^\]]*\]/);
+  assert.match(source, /extensions:\s*\[[^\]]*"7z"[^\]]*\]/);
   assert.match(source, /startImportModTask\(\{\s*archivePath:\s*selected\s*\}\)/);
   assert.match(source, /event\.payload\.kind\s*!==\s*"mod_import"/);
   assert.match(source, /event\.payload\.taskId\s*!==\s*taskId/);

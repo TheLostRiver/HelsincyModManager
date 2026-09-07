@@ -320,7 +320,7 @@ export function ModImportAction({
         // rar 已是已支持格式（#348 切片 C），过滤器必须跟着长——否则玩家在对话框里
         // 根本看不见自己的 .rar 文件。这只是显示过滤器，不是硬校验：真正的判别在
         // 后端「先开后嗅」，自解压包那种扩展名对不上的形态照样能导入。
-        filters: [{ name: copy.dialog.archiveFilterName, extensions: ["zip", "rar"] }],
+        filters: [{ name: copy.dialog.archiveFilterName, extensions: ["zip", "rar", "7z"] }],
       });
     } catch {
       setTrackedTaskState({
