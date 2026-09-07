@@ -328,11 +328,20 @@ for (const [resourcePath, zhName] of equipment) {
       previousByVariant.get(variantKey(internalId, pathFamily)),
       ...(pathFamily === families[0] ? (orphanPrevious.get(internalId) ?? []) : []),
     ].filter(Boolean);
+    const stableIdOfVariant = stableId("armor", pathFamily, variantPath);
+    /*
+     * 与本条自己的 stable ID 相同的旧 ID 不写进 `legacy_ids`。
+     *
+     * 变体的身份只由 `(kind, path_family, resource_path)` 决定，所以一个槽位的 family 没变时，
+     * 新旧 stable ID 逐字节相同（v3→v4 的 264 条共享装备 f_equip 就是这种情况）。这种 ID 走
+     * `resolve_target_allowing_legacy_ids` 的**主 ID** 分支就能解析，重复写进 legacy 只是噪声，
+     * 治理 validator 会以 `legacy_id_matches_stable_id` 报出来。
+     */
     const legacyIds = [
       ...new Set(inherited.flatMap((prev) => [prev.id, ...(prev.metadata?.legacy_ids ?? [])])),
-    ];
+    ].filter((id) => id !== stableIdOfVariant);
     candidates.push({
-      stable_id: stableId("armor", pathFamily, variantPath),
+      stable_id: stableIdOfVariant,
       target_kind: "armor",
       path_family: pathFamily,
       resource_path: variantPath,
@@ -342,7 +351,15 @@ for (const [resourcePath, zhName] of equipment) {
       // （`list_compatible_targets` 按源包的 path_family 筛过）。
       names: structuredClone(names),
       _orphanAliases: [...orphanAliases],
-      source_ids: [SOURCE_ID],
+      /*
+       * 两条 source 都要引用。
+       *
+       * 名称文本来自 `mhw-ingame-equipment-names`；**这一条目存在、且属于这个 `path_family`**
+       * 则由 `mhw-game-assets`（游戏本体变体枚举）决定——两者对每一条目都成立，所以都得列。
+       * 只列前者会让治理 validator 报 `unused_source`：声明了一条来源却没有任何目标引用它，
+       * 等于 provenance 声明与实际数据脱节。
+       */
+      source_ids: [SOURCE_ID, VARIANT_SOURCE_ID],
       legacy_ids: legacyIds,
       _variant: variantOf(zhName),
       _parts: extra?.parts?.length ? extra.parts : null,
@@ -363,13 +380,22 @@ for (const [resourcePath, zhName] of equipment) {
 const previousIds = new Set(
   previous.targets.flatMap((target) => [target.id, ...(target.metadata?.legacy_ids ?? [])]),
 );
+/*
+ * 「落点」按 `resolve_target_allowing_legacy_ids` 的两条分支算：先按**主 ID** 精确命中，
+ * 命中不了才扫 `legacy_ids`。所以旧 ID 等于某条新目标的 stable ID 时，它本来就解析得到，
+ * 不需要（也不应该）再写进 legacy——这两条分支合起来才是玩家侧真实的解析能力。
+ */
 const landed = new Map();
 for (const candidate of candidates) {
-  for (const id of candidate.legacy_ids) landed.set(id, (landed.get(id) ?? 0) + 1);
+  for (const id of [candidate.stable_id, ...candidate.legacy_ids]) {
+    landed.set(id, (landed.get(id) ?? 0) + 1);
+  }
 }
 const lost = [...previousIds].filter((id) => !landed.has(id));
-const doubled = [...landed].filter(([, count]) => count > 1).map(([id]) => id);
-const invented = [...landed.keys()].filter((id) => !previousIds.has(id));
+const doubled = [...previousIds].filter((id) => (landed.get(id) ?? 0) > 1);
+const invented = [...new Set(candidates.flatMap((candidate) => candidate.legacy_ids))].filter(
+  (id) => !previousIds.has(id),
+);
 if (lost.length || doubled.length || invented.length) {
   const sample = (ids) => ids.slice(0, 5).join(", ");
   throw new Error(
@@ -565,7 +591,7 @@ console.log(`  含 en         ${withEn}`);
 console.log(`  含 ja         ${withJa}`);
 console.log(`  仅 zh_cn      ${candidates.length - withEn}`);
 console.log(`  带 legacy_ids ${candidates.filter((c) => c.legacy_ids.length).length}`);
-console.log(`旧 ID 落位      ${previousIds.size} 个旧 ID，逐条恰好落在 1 条目标上`);
+console.log(`旧 ID 落位      ${previousIds.size} 个旧 ID，逐条恰好有 1 个解析落点（主 ID 或 legacy）`);
 console.log(`游戏里有名称缺失 ${unnamedInGame.length} 条（不在册，按维护者决定挂起）`);
 for (const id of unnamedInGame) console.log(`    ${id}  游戏本体有此槽位，equipment.json 无名称`);
 console.log(`上一版基线      ${previous.catalog_version}（${previous.shard_count} 份分片，${previous.targets.length} 条）`);

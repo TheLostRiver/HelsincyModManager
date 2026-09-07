@@ -293,6 +293,135 @@ fn rejects_duplicate_display_name_after_unicode_search_normalization() {
     assert!(issue_codes(&candidate).contains("duplicate_display_name"));
 }
 
+/// 治理 validator 必须与治理规则同口径接受两套模型变体（`#356`）。
+///
+/// `4b07c88` 改了 governance 文档与 adapter，却漏了这里：validator 硬编码
+/// `path_family != "pl/f_equip"` 就报 `wrong_path_family`，于是治理层拒绝 adapter 已经接受的
+/// 全部 265 条 `m_equip` 数据——**签核跑不过，而数据是对的**。这条正向用例单列，钉住的是
+/// 「两层同口径」，不是「validator 别报错」。
+#[test]
+fn accepts_both_armor_model_variants_as_valid_identities() {
+    for (path_family, resource_path) in [
+        ("pl/f_equip", "nativePC/pl/f_equip/pl920_0000"),
+        ("pl/m_equip", "nativePC/pl/m_equip/pl920_0000"),
+    ] {
+        let candidate = catalog(
+            vec![source("game_terminology")],
+            vec![target(
+                EquipmentCandidateTargetKind::Armor,
+                path_family,
+                resource_path,
+                "Model Variant Armor",
+                "active",
+            )],
+        );
+
+        assert!(
+            issue_codes(&candidate).is_empty(),
+            "{path_family} 必须是合法身份，实际 issues: {:?}",
+            issue_codes(&candidate)
+        );
+    }
+}
+
+/// 同一件装备的两套模型**本来就同名**，唯一性按 `path_family` 分组（`#356` 的治理修订）。
+///
+/// 「皮甲·α」就是「皮甲·α」，不该因为数据结构被迫叫两个名字。同时纪律不能松：**同一个
+/// `path_family` 内**重名仍须拒绝——那才是「玩家看到两条无法区分的结果」的情形
+/// （`list_compatible_targets` 按源包的 `path_family` 筛过目标，玩家一次只看得到一个变体）。
+#[test]
+fn display_name_uniqueness_is_scoped_per_path_family() {
+    let same_name_across_variants = catalog(
+        vec![source("game_terminology")],
+        vec![
+            target(
+                EquipmentCandidateTargetKind::Armor,
+                "pl/f_equip",
+                "nativePC/pl/f_equip/pl921_0000",
+                "同名变体",
+                "active",
+            ),
+            target(
+                EquipmentCandidateTargetKind::Armor,
+                "pl/m_equip",
+                "nativePC/pl/m_equip/pl921_0000",
+                "同名变体",
+                "active",
+            ),
+        ],
+    );
+    assert!(
+        !issue_codes(&same_name_across_variants).contains("duplicate_display_name"),
+        "跨模型变体同名是治理规则允许的形态"
+    );
+
+    // 反向：同一个 path_family 内重名，两个变体各自都必须继续被拒。
+    for (path_family, first_path, second_path) in [
+        (
+            "pl/f_equip",
+            "nativePC/pl/f_equip/pl922_0000",
+            "nativePC/pl/f_equip/pl923_0000",
+        ),
+        (
+            "pl/m_equip",
+            "nativePC/pl/m_equip/pl922_0000",
+            "nativePC/pl/m_equip/pl923_0000",
+        ),
+    ] {
+        let clashing = catalog(
+            vec![source("game_terminology")],
+            vec![
+                target(
+                    EquipmentCandidateTargetKind::Armor,
+                    path_family,
+                    first_path,
+                    "同族重名",
+                    "active",
+                ),
+                target(
+                    EquipmentCandidateTargetKind::Armor,
+                    path_family,
+                    second_path,
+                    "同族重名",
+                    "active",
+                ),
+            ],
+        );
+        assert!(
+            issue_codes(&clashing).contains("duplicate_display_name"),
+            "{path_family} 内重名必须继续被拒"
+        );
+    }
+}
+
+/// 放行两套变体不等于放行任意 `pl/*`：不在册的变体仍须报 `wrong_path_family`。
+///
+/// 判断一张表安不安全看失效时倒向哪边——这里倒向「拒绝」，是准入门槛而不是放行名单。
+#[test]
+fn rejects_armor_path_families_outside_the_known_model_variants() {
+    for (path_family, resource_path) in [
+        ("pl/x_equip", "nativePC/pl/x_equip/pl924_0000"),
+        ("pl/equip", "nativePC/pl/equip/pl924_0000"),
+        ("f_equip", "nativePC/f_equip/pl924_0000"),
+    ] {
+        let mut invalid = target(
+            EquipmentCandidateTargetKind::Armor,
+            "pl/f_equip",
+            "nativePC/pl/f_equip/pl924_0000",
+            "Unknown Variant Armor",
+            "active",
+        );
+        invalid["path_family"] = json!(path_family);
+        invalid["resource_path"] = json!(resource_path);
+        let candidate = catalog(vec![source("game_terminology")], vec![invalid]);
+
+        assert!(
+            issue_codes(&candidate).contains("wrong_path_family"),
+            "{path_family} 不在册，必须报 wrong_path_family"
+        );
+    }
+}
+
 #[test]
 fn rejects_target_kind_and_path_family_mismatch() {
     let mut invalid = target(
