@@ -65,17 +65,80 @@ pub struct ModImportPackagePrepareReaderRequest<'a> {
     pub cancellation_token: &'a dyn crate::CancellationToken,
 }
 
+/// 判别出的归档容器类型。
+///
+/// **只用于解释失败，绝不用于拦截输入**：归档不保证从文件首字节开始（自解压包就是这样），
+/// 所以判别永远发生在「所有已支持格式的打开尝试都失败之后」。详见
+/// `docs/ARCHIVE_FORMAT_SUPPORT_DESIGN.md` 的「容器判别契约」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedArchiveFormat {
+    Rar,
+    SevenZip,
+    Tar,
+    Gzip,
+    Xz,
+    Bzip2,
+    Zstd,
+}
+
+/// 认得出根本不是归档文件的形态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NonArchiveFile {
+    /// PE 可执行文件（`.exe` / `.dll`）。
+    WindowsExecutable,
+    /// OLE 复合文档。`.msi` 是最常见的形态，但旧版 Office 文档是同一个签名，
+    /// 所以对玩家只说「不是压缩包」，不宣称具体是什么。
+    CompoundDocument,
+}
+
+/// 解包失败的原因。语义进契约，**不靠 downcast 反推**——一旦有人换个包装方式，
+/// downcast 会静默失败并悄悄退回最泛的档位，那是查不出来的假绿。
+#[derive(Debug, thiserror::Error)]
+pub enum ModImportPrepareError {
+    /// 认得出是哪种归档容器，但当前不支持。
+    #[error("unsupported archive format: {0:?}")]
+    UnsupportedArchiveFormat(UnsupportedArchiveFormat),
+    /// 认得出根本不是归档文件。
+    #[error("not an archive: {0:?}")]
+    NotAnArchive(NonArchiveFile),
+    /// 其余一切：损坏、截断、认不出、沙箱创建失败、IO、取消……
+    /// 语义等同于既有行为，投影出去仍是原来的那个码。
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+/// 既有的解包失败码。`Other` 继续投影它，所以老行为一个字节不变。
+pub const MOD_IMPORT_PREPARE_FAILED_CODE: &str = "mod_import_prepare_failed";
+pub const MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE: &str =
+    "mod_import_unsupported_archive_format";
+pub const MOD_IMPORT_NOT_AN_ARCHIVE_CODE: &str = "mod_import_not_an_archive";
+
+impl ModImportPrepareError {
+    /// 投影给上层的**语义码**。
+    ///
+    /// 只投影语义，**绝不携带底层错误文本**——`Could not find EOCD` 这类容器内部术语
+    /// 不该漏给玩家（脱敏口径与语言无关）。具体是哪种格式留在枚举里供诊断使用，
+    /// 本切片不投影到 UI。
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedArchiveFormat(_) => MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE,
+            Self::NotAnArchive(_) => MOD_IMPORT_NOT_AN_ARCHIVE_CODE,
+            Self::Other(_) => MOD_IMPORT_PREPARE_FAILED_CODE,
+        }
+    }
+}
+
 pub trait ModImportPackagePreparer: Send + Sync {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
-    ) -> Result<PreparedModPackage>;
+    ) -> std::result::Result<PreparedModPackage, ModImportPrepareError>;
 
     fn prepare_package_from_reader(
         &self,
         _request: ModImportPackagePrepareReaderRequest<'_>,
-    ) -> Result<PreparedModPackage> {
-        anyhow::bail!("preparing an already-open Mod import archive is not supported")
+    ) -> std::result::Result<PreparedModPackage, ModImportPrepareError> {
+        Err(anyhow::anyhow!("preparing an already-open Mod import archive is not supported").into())
     }
 }
 

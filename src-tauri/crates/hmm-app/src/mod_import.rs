@@ -7,12 +7,13 @@ use hmm_core::{
 };
 use hmm_ports::{
     AppSettingsRepository, CancellationToken, CategoryRepository, ModImportPackagePrepareRequest,
-    ModImportPackagePreparer, ModImportResultRepository, ModImportSandboxLocator,
-    ModLibraryProjectionLabel, ModLibraryProjectionRecord, ModMetadataRepository,
-    ModPackageMetadataAnalyzer, NeverCancelled, PreviewImageProcessingResult,
-    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
-    StoredModPackageMetadata, StoredModRevision, ThumbnailCacheMaintenance,
-    ThumbnailCacheMaintenanceRequest, ThumbnailRef, ThumbnailStore,
+    ModImportPackagePreparer, ModImportPrepareError, ModImportResultRepository,
+    ModImportSandboxLocator, ModLibraryProjectionLabel, ModLibraryProjectionRecord,
+    ModMetadataRepository, ModPackageMetadataAnalyzer, NeverCancelled,
+    PreviewImageProcessingResult, StoredImportPreviewImage, StoredLogicalMod,
+    StoredModImportAnalysis, StoredModOriginProvenance, StoredModPackageMetadata,
+    StoredModRevision, ThumbnailCacheMaintenance, ThumbnailCacheMaintenanceRequest, ThumbnailRef,
+    ThumbnailStore,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -25,7 +26,8 @@ const MOD_IMPORT_UNPACK_FAILED_PHASE: &str = "mod_import.unpack.failed";
 const MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE: &str = "mod_import.preview_image.processing";
 const MOD_IMPORT_PREVIEW_IMAGE_FALLBACK_PHASE: &str = "mod_import.preview_image.fallback";
 const MOD_IMPORT_PREPARE_COMPLETED_PHASE: &str = "mod_import.prepare.completed";
-const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = "mod_import_prepare_failed";
+// 指向端口常量，避免两处各写一份字面量后悄悄漂移。
+const MOD_IMPORT_PREPARE_FAILED_ERROR: &str = hmm_ports::MOD_IMPORT_PREPARE_FAILED_CODE;
 pub const DEFAULT_THUMBNAIL_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 pub const DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
@@ -442,7 +444,7 @@ impl ModImportTaskRunner {
 
                 result.events
             }
-            Err(_) => {
+            Err(error) => {
                 if self.is_task_cancelled(task_id) {
                     self.maintain_thumbnail_cache();
                     return Err(ModImportTaskRunError {
@@ -453,7 +455,7 @@ impl ModImportTaskRunner {
 
                 let _ = self.task_manager.fail_task(task_id);
                 return Err(ModImportTaskRunError {
-                    events: vec![failed_event(task_id)],
+                    events: vec![failed_event_with_code(task_id, error.code())],
                     cause: None,
                 });
             }
@@ -1041,15 +1043,18 @@ impl ModImportPrepareService {
     pub fn prepare_import(
         &self,
         request: ModImportPrepareRequest,
-    ) -> anyhow::Result<ModImportPrepareResult> {
+    ) -> std::result::Result<ModImportPrepareResult, ModImportPrepareError> {
         self.prepare_import_with_cancellation(request, &NeverCancelled)
     }
 
+    /// 错误类型带语义（#348）：解包失败的原因必须能一路传到失败事件，
+    /// 中途退化成 `anyhow` 就等于把原因丢了。其余失败经 `From<anyhow::Error>`
+    /// 落到 `Other`，投影出去仍是既有的那个码。
     pub fn prepare_import_with_cancellation(
         &self,
         request: ModImportPrepareRequest,
         cancellation_token: &dyn CancellationToken,
-    ) -> anyhow::Result<ModImportPrepareResult> {
+    ) -> std::result::Result<ModImportPrepareResult, ModImportPrepareError> {
         let mut events = Vec::new();
         events.push(running_event(
             &request.task_id,
@@ -1148,13 +1153,24 @@ fn running_event(task_id: &str, phase: &str) -> crate::TaskProgressEvent {
 }
 
 fn failed_event(task_id: &str) -> crate::TaskProgressEvent {
+    failed_event_with_code(task_id, MOD_IMPORT_PREPARE_FAILED_ERROR)
+}
+
+/// 失败事件带上**语义码**（#348）。
+///
+/// 此前这里写死一个常量，于是「解包失败」的原因在链路上根本没有传递通道——前端也就只能
+/// 一律显示最泛的「请检查压缩包后重试」。现在由 `ModImportPrepareError::code()` 投影，
+/// 其余失败（任务注册、仓储读写……）继续走 `failed_event`，码不变、行为不变。
+///
+/// 只投影语义码，**绝不把底层错误文本塞进 `event.error`**（脱敏口径与语言无关）。
+fn failed_event_with_code(task_id: &str, code: &str) -> crate::TaskProgressEvent {
     let mut event = crate::TaskProgressEvent::new(
         task_id.to_owned(),
         crate::TaskKind::ModImport,
         crate::TaskStatus::Failed,
         MOD_IMPORT_UNPACK_FAILED_PHASE,
     );
-    event.error = Some(MOD_IMPORT_PREPARE_FAILED_ERROR.to_owned());
+    event.error = Some(code.to_owned());
     event
 }
 
