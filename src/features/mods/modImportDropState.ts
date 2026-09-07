@@ -40,7 +40,7 @@ export type DropListState =
   /** 文件已拖进来、后端还在逐个预检。清单必须能表达这个中间态。 */
   | { status: "checking"; total: number }
   | { status: "ready"; rows: DropRow[] }
-  | { status: "importing"; rows: DropRow[]; startedPaths: string[] };
+  | { status: "importing"; rows: DropRow[] };
 
 /**
  * 后端预检结果 → 清单行。

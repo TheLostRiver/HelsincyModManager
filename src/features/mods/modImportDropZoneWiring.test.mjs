@@ -118,3 +118,17 @@ test("超上限的拖拽整批拒绝并报出数量，不截断", () => {
   // 截断会长成 slice/splice/take。出现即视为静默丢弃。
   assert.doesNotMatch(source, /unique\.(slice|splice)\(/);
 });
+
+test("预检还没回来就关掉浮层，结果落地时不会把清单重新弹出来", () => {
+  // 预检是异步的，而玩家可以在它回来之前关掉浮层或者再拖一次。
+  const source = readSource("src/features/mods/ModImportDropZone.tsx");
+  assert.match(source, /const generation = dropGenerationRef\.current;/);
+  // 成功与失败两条路径都要认这个号，只认一条等于漏了一半。
+  assert.equal(
+    (source.match(/if \(generation !== dropGenerationRef\.current\) return;/g) ?? []).length,
+    2,
+    "预检的成功与失败分支都必须作废过期结果",
+  );
+  // 关闭时也要 +1，否则已经在飞的那次照样会落地。
+  assert.match(source, /if \(busy\) return;[\s\S]{0,160}dropGenerationRef\.current \+= 1;/);
+});
