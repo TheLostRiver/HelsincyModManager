@@ -675,7 +675,7 @@ impl ModImportPackagePreparer for SuccessfulPreparer {
     fn prepare_package(
         &self,
         _request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         Ok(PreparedModPackage {
             package_id: self.package_id.clone(),
             sandbox_root: PathBuf::from("sandbox"),
@@ -691,7 +691,7 @@ impl ModImportPackagePreparer for CountingPreparer {
     fn prepare_package(
         &self,
         _request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(PreparedModPackage {
             package_id: "unexpected-package".to_owned(),
@@ -709,7 +709,7 @@ impl ModImportPackagePreparer for CancellingPreparer {
     fn prepare_package(
         &self,
         _request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         self.task_manager
             .cancel_task(&self.task_id)
             .expect("cancel running task");
@@ -726,8 +726,8 @@ impl ModImportPackagePreparer for FailingPreparer {
     fn prepare_package(
         &self,
         _request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
-        anyhow::bail!("fixture prepare failure")
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
+        Err(anyhow::anyhow!("fixture prepare failure").into())
     }
 }
 

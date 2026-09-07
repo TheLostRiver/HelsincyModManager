@@ -1393,7 +1393,7 @@ impl ModImportPackagePreparer for FakePackagePreparer {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         assert_eq!(request.task_id, self.expected_task_id);
         assert_eq!(request.archive_path, self.expected_archive_path);
 
@@ -1410,8 +1410,8 @@ impl ModImportPackagePreparer for FailingPackagePreparer {
     fn prepare_package(
         &self,
         _request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
-        anyhow::bail!("failed to prepare C:/Users/Alice/Mods/bad.zip")
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
+        Err(anyhow::anyhow!("failed to prepare C:/Users/Alice/Mods/bad.zip").into())
     }
 }
 
@@ -1424,7 +1424,7 @@ impl ModImportPackagePreparer for CancellingPackagePreparer {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         assert_eq!(request.task_id, self.task_id);
         self.task_manager
             .cancel_task(&self.task_id)
@@ -1447,7 +1447,7 @@ impl ModImportPackagePreparer for CancellationObservingPackagePreparer {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
-    ) -> anyhow::Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         assert_eq!(request.task_id, self.task_id);
         self.observed
             .lock()

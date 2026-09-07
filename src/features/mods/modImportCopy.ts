@@ -12,6 +12,8 @@ export type ModImportCopy = {
     invalidStartState: string;
     storageFrozenMigration: string;
     storageFrozenRestart: string;
+    unsupportedArchiveFormat: string;
+    notAnArchive: string;
   };
   dialog: {
     revisionTitle: string;
@@ -80,6 +82,8 @@ export const modImportCopy = {
       invalidStartState: "导入任务返回了无效状态",
       storageFrozenMigration: "存储目录正在迁移，完成后再导入",
       storageFrozenRestart: "存储目录已更改，请先重启 HMM",
+      unsupportedArchiveFormat: "HMM 目前只支持 ZIP 压缩包，请先转成 ZIP 再导入",
+      notAnArchive: "这个文件不是压缩包，请选择 Mod 的 ZIP 压缩包",
     },
     dialog: {
       revisionTitle: "选择新版本 ZIP 压缩包",
@@ -151,6 +155,9 @@ export const modImportCopy = {
       invalidStartState: "The import task returned an invalid state",
       storageFrozenMigration: "The storage directory is being migrated; import after it finishes",
       storageFrozenRestart: "The storage directory changed; restart HMM first",
+      unsupportedArchiveFormat:
+        "HMM currently supports ZIP archives only. Convert the file to ZIP and import it again.",
+      notAnArchive: "This file is not an archive. Choose the mod's ZIP archive instead.",
     },
     dialog: {
       revisionTitle: "Choose the new version's ZIP archive",
@@ -223,6 +230,9 @@ export const modImportCopy = {
       invalidStartState: "インポートタスクが無効な状態を返しました",
       storageFrozenMigration: "保存フォルダーの移行中です。完了後にインポートしてください",
       storageFrozenRestart: "保存フォルダーが変更されました。先に HMM を再起動してください",
+      unsupportedArchiveFormat:
+        "HMM は現在 ZIP アーカイブのみ対応しています。ZIP に変換してからインポートしてください",
+      notAnArchive: "このファイルはアーカイブではありません。Mod の ZIP アーカイブを選択してください",
     },
     dialog: {
       revisionTitle: "新バージョンの ZIP アーカイブを選択",
