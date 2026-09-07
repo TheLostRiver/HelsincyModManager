@@ -287,6 +287,53 @@ fn queued_event_for_started_task(task: &TaskStarted) -> TaskProgressEvent {
     )
 }
 
+/// 一次拖拽里单个文件的预检结果（T22，#366）。
+///
+/// `errorCode` 为 `null` 表示可导入；否则是**与导入失败同一套**的语义码
+/// （`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
+/// `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` /
+/// `mod_import_prepare_failed`）。前端因此不必维护第二张映射表。
+///
+/// **只投影语义码，不带任何底层错误文本**——脱敏口径与既有失败事件一致。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DroppedArchivePreviewDto {
+    /// 原样回传，供前端与自己那份列表对齐。
+    pub archive_path: String,
+    /// 展示用的文件名。后端算好，免得前端各写一份跨平台的路径切分。
+    pub file_name: String,
+    pub error_code: Option<String>,
+}
+
+/// 拖拽进来的文件逐个预检。**只读归档头，不解包、不写任何东西。**
+///
+/// 逐个独立判定：一个文件坏了不影响其余的结论——这正是「清单」要表达的东西。
+#[tauri::command]
+pub fn preview_dropped_mod_archives(
+    archive_paths: Vec<String>,
+) -> Result<Vec<DroppedArchivePreviewDto>, CommandErrorDto> {
+    archive_paths
+        .into_iter()
+        .map(|raw| {
+            // 路径本身不合法（空、非绝对）是**调用方的错**，不是某个文件的档位，
+            // 所以整条命令失败，而不是悄悄给出一个假的「不可导入」。
+            let archive_path = parse_archive_path(raw)?;
+            let file_name = archive_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let error_code = hmm_infra::probe_mod_archive(&archive_path)
+                .err()
+                .map(|error| error.code().to_owned());
+            Ok(DroppedArchivePreviewDto {
+                archive_path: archive_path.to_string_lossy().into_owned(),
+                file_name,
+                error_code,
+            })
+        })
+        .collect()
+}
+
 fn parse_archive_path(value: String) -> Result<PathBuf, CommandErrorDto> {
     let trimmed = value.trim();
 
