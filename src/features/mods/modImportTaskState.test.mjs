@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   archiveKeptCodeFrom,
   consumeReconnectImportRequest,
+  failedMessageKindFrom,
+  getModImportFailedMessage,
   getModImportTaskPhaseLabel,
   isModImportTaskPhase,
   nextModImportTaskStateFromProgress,
@@ -180,4 +182,68 @@ test("a completed event carries the archive-kept degradation code only when it i
   assert.equal(leaked.archiveKept, null, "unknown strings are never treated as codes");
   assert.equal(archiveKeptCodeFrom("mod_import_archive_kept_changed"), "mod_import_archive_kept_changed");
   assert.equal(archiveKeptCodeFrom(null), null);
+});
+
+test("unpack failures carry their reason instead of collapsing into the retry hint", () => {
+  const current = { status: "running", taskId: "task-a", phase: "mod_import.unpack.started" };
+
+  const unsupported = nextModImportTaskStateFromProgress(
+    current,
+    progress({
+      status: "failed",
+      phase: "mod_import.unpack.failed",
+      error: "mod_import_unsupported_archive_format",
+    }),
+  );
+  assert.equal(unsupported.status, "failed");
+  assert.equal(unsupported.messageKind, "unsupported-archive-format");
+
+  const notAnArchive = nextModImportTaskStateFromProgress(
+    current,
+    progress({
+      status: "failed",
+      phase: "mod_import.unpack.failed",
+      error: "mod_import_not_an_archive",
+    }),
+  );
+  assert.equal(notAnArchive.messageKind, "not-an-archive");
+});
+
+test("a damaged archive stays in the retry hint tier and unknown codes fall back to it", () => {
+  const current = { status: "running", taskId: "task-a", phase: "mod_import.unpack.started" };
+  const failed = (error) =>
+    nextModImportTaskStateFromProgress(
+      current,
+      progress({ status: "failed", phase: "mod_import.unpack.failed", error }),
+    ).messageKind;
+
+  // 硬边界：损坏的 zip 不能被新档位吃掉，否则只是把误导换了个方向。
+  assert.equal(failed("mod_import_prepare_failed"), "retry-hint");
+  // 前向兼容：后端将来新增码时，前端最差退回今天的行为，不显示空文案。
+  assert.equal(failed("mod_import_some_future_code"), "retry-hint");
+  assert.equal(failed(null), "retry-hint");
+  assert.equal(failedMessageKindFrom("mod_import_unsupported_archive_format"), "unsupported-archive-format");
+  assert.equal(failedMessageKindFrom(null), "retry-hint");
+});
+
+test("both new failure tiers have distinct, non-empty copy in all three languages", async () => {
+  const { modImportCopy } = await import("./modImportCopy.ts");
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const copy = modImportCopy[locale];
+    const unsupported = getModImportFailedMessage("unsupported-archive-format", copy);
+    const notAnArchive = getModImportFailedMessage("not-an-archive", copy);
+    const retryHint = getModImportFailedMessage("retry-hint", copy);
+
+    for (const [kind, message] of [
+      ["unsupported-archive-format", unsupported],
+      ["not-an-archive", notAnArchive],
+    ]) {
+      assert.equal(typeof message, "string");
+      assert.ok(message.trim().length > 0, `${locale}/${kind} must not be empty`);
+    }
+    // 三档必须互不相同——否则「说清楚」这件事等于没做。
+    assert.notEqual(unsupported, retryHint, `${locale}: unsupported must differ from the retry hint`);
+    assert.notEqual(notAnArchive, retryHint, `${locale}: not-an-archive must differ from the retry hint`);
+    assert.notEqual(unsupported, notAnArchive, `${locale}: the two new tiers must differ`);
+  }
 });
