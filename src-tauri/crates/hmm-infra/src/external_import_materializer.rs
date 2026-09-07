@@ -168,13 +168,15 @@ impl ExternalImportMaterializer for HuntingBoxDirectoryMaterializer {
                 &archive_name,
                 "external import materialized archive",
             )?;
-            self.package_preparer.prepare_package_from_reader(
+            // 外部导入不消费「格式不支持」这一档:它的输入是本适配器自己写出来的 zip,
+            // 不是玩家挑的任意文件。语义码在这里退回 anyhow 即可(#348)。
+            Ok(self.package_preparer.prepare_package_from_reader(
                 ModImportPackagePrepareReaderRequest {
                     task_id: &package_id,
                     archive: &mut archive,
                     cancellation_token: request.cancellation_token,
                 },
-            )
+            )?)
         })();
         cleanup_materialized_archive(&artifact_root, scope_directory, &scope_name, &archive_name);
         let prepared = prepared.context("failed to prepare external import internal package")?;
