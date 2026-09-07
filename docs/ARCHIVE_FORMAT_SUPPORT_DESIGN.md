@@ -166,30 +166,42 @@ if (event.status === "failed") {
 
 ### 先开后嗅，绝不预检
 
-zip 允许整个归档**追加在别的文件之后**（自解压 exe 即是此形态），归档定位靠从尾部倒着找
-EOCD，而不是靠首字节。因此：
+**多种归档格式都允许整个归档不从文件首字节开始**，自解压形态就是这样：
 
-> **「首字节不是 `PK` 」推不出「不是 zip」。**
+- **zip**：归档定位靠从尾部倒着找 EOCD，不看首字节。
+- **rar**：`archive.cpp:141-159` 的 `Archive::IsArchive` 在首字节没有签名时，
+  **会往后扫最多 `MAXSFXSIZE`（4 MB，`rardefs.hpp:24`）寻找签名**。
+
+> **「首字节不是某个 magic」推不出「不是那个格式」。**
 
 判别顺序因此固定为：
 
 ```
-1. 照旧尝试按 zip 打开
-     成功  → 走原路径，一个字节不改
-     失败  ↓
+1. 依次尝试每一种「当前已支持格式」的打开
+     任一成功 → 用它，走既有路径
+     全部失败 ↓
 2. 嗅探容器 magic —— 用来「解释失败」，不是「拦截输入」
-3. 命中已知的非 zip 容器 → UnsupportedFormat(kind)
-4. 命中已知的非归档文件 → NotAnArchive(kind)
-5. 首字节是 PK，或认不出 → Damaged（退回既有的 retry-hint）
+3. 命中已知但尚未支持的归档容器 → UnsupportedFormat(kind)
+4. 命中已知的非归档文件         → NotAnArchive(kind)
+5. 认不出，或看着像已支持格式却打不开 → Damaged（退回既有的 retry-hint）
 ```
 
-这个顺序有三个性质：
+**第 1 步是「每一种已支持格式」，不是「zip」。** 这不是措辞讲究——自解压 RAR 是个 `MZ` 开头的
+`.exe`，若第 1 步写死成 zip，它在 T21-C 之后仍会被嗅探判成 `NotAnArchive`，
+而 unrar 其实打得开。**支持集合是会增长的，判别必须跟着长。**
+
+这个顺序有四个性质：
 
 - **纯增量**：当前能导入的包，判别逻辑一次都不会执行到，零回归风险。
-- **不需要先证明自解压 zip 当前可用**：若可用，预检会破坏它；若不可用，预检也不会让它变可用。
-  两种情况下先开后嗅都是正确选择，**因此这条设计不依赖任何未验证的假设**。
-  （自解压 zip 当前是否可导入，仍应作为回归守卫测一次，见「安全测试矩阵」。）
-- **守住硬边界**：损坏的 zip 首字节是 `PK`，落到第 5 步，不会被误报成「格式不支持」。
+- **不依赖任何未验证的假设**：自解压 zip 若当前可用，预检会破坏它；若不可用，预检也不会让它
+  变可用。两种情况下先开后嗅都正确。（它当前是否可导入，仍应作为回归守卫测一次。）
+- **守住硬边界**：损坏的 zip 打不开又认不出，落到第 5 步，不会被误报成「格式不支持」。
+- **支持集合增长时自动收敛**：某格式从「不支持」转为「支持」，它就从第 3 步移到第 1 步，
+  嗅探表里对应的那一行自然失效，不需要额外维护档位。
+
+**成本提示**：第 1 步的每次「尝试打开」都有真实开销。unrar 那 4 MB 的前缀扫描意味着
+一个 4 MB 的随机文件会被完整扫一遍才判定不是 RAR。尝试顺序应把最常见的格式排在前面，
+并且**不要为了「更准」去无限扩大尝试集合**。
 
 ### magic 常量必须由测试语料钉住
 
@@ -199,16 +211,32 @@ EOCD，而不是靠首字节。因此：
 | 容器 | 判别依据 | 归类 |
 | --- | --- | --- |
 | ZIP | `PK` 开头 | Damaged（能开就不会走到这里） |
-| RAR4 / RAR5 | 首部 signature（两者不同） | UnsupportedFormat（T21-C 后转为支持） |
-| 7z | 首部 signature | UnsupportedFormat（T21-D 后转为支持） |
+| RAR4 / RAR5 | 首部 signature（两者不同） | UnsupportedFormat；**T21-C 后移入第 1 步** |
+| 7z | 首部 signature | UnsupportedFormat；**T21-D 后移入第 1 步** |
 | gzip / xz / bzip2 / zstd | 首部 signature | UnsupportedFormat |
 | tar | **首字节无 magic**，`ustar` 在偏移 257 | UnsupportedFormat |
-| PE 可执行文件 | `MZ` 开头 | NotAnArchive |
+| PE 可执行文件 | `MZ` 开头 | NotAnArchive——**但只在所有 open 都失败之后**，见下 |
 | MSI（OLE 复合文档） | 复合文档 signature | NotAnArchive |
 | 其他 / 空文件 / 过短 | —— | Damaged |
 
-`tar` 的判别需要读到偏移 257，这与其他格式不同，**实现时不要写成「统一读前 N 字节比对」**，
-否则 tar 会被静默归到 Damaged。
+两条实现陷阱：
+
+- **`tar` 的判别要读到偏移 257**，与其他格式不同。**不要写成「统一读前 N 字节比对」**，
+  否则 tar 会被静默归到 Damaged。
+- **`MZ` 不等于「不是归档」。** 自解压 zip 与自解压 RAR 都是 `MZ` 开头。这一行之所以成立，
+  完全依赖它位于**所有 open 尝试失败之后**；一旦有人把它提前成预检，两种自解压包立刻全废。
+
+### unrar 只解 RAR（已核实）
+
+查过 `D:\DEV\unrar` 的 7.23 源码：**目录里没有任何 zip / 7z / tar / cab 的处理文件**，
+源码中对这些格式的提及全部是注释，或 `cmddata.hpp:11` 的 `DefaultStoreList`
+——那是压缩时「哪些扩展名直接存储、不再尝试压缩」的设置，属压缩侧，与解压无关。
+
+**因此 T21-D（7z）不能靠 unrar 顺带解决，必须单独做。**
+
+反过来，RAR 的各代它全支持：`unpack15/20/30/50.cpp` ＋
+`enum RARFORMAT { RARFMT_NONE, RARFMT14, RARFMT15, RARFMT50, RARFMT_FUTURE }`
+（`archive.hpp:13`）覆盖 RAR 1.4 到 5.0。测试语料按 **RAR4 与 RAR5 各一份**即可覆盖两大分支。
 
 ## 失败档位映射
 
@@ -340,22 +368,30 @@ RAROpenArchiveEx(RAR_OM_EXTRACT)
 
 ### 判别层（纯字节，无需 fixture、不碰文件系统）
 
-| 用例 | 期望 |
-| --- | --- |
-| 真实 zip | 正常导入（控制组） |
-| 截断的 zip | `retry-hint`——**不得**被新档位吃掉 |
-| **`MZ` 前缀 ＋ 追加真 zip（自解压形态）** | 与不加前缀时**行为一致**（回归守卫） |
-| RAR4 / RAR5 / 7z / gzip / xz / bzip2 / zstd | `unsupported-archive-format`，格式码各自正确 |
-| tar（`ustar` 在偏移 257） | `unsupported-archive-format`，**不得**落到 Damaged |
-| PE / MSI | `not-an-archive` |
-| 空文件 / 1 字节 / 全零 | `retry-hint`，不 panic |
+| 用例 | 期望（T21-A 时） | T21-C 之后 |
+| --- | --- | --- |
+| 真实 zip | 正常导入（控制组） | 不变 |
+| 截断的 zip | `retry-hint`——**不得**被新档位吃掉 | 不变 |
+| **`MZ` 前缀 ＋ 追加真 zip（自解压形态）** | 与不加前缀时**行为一致**（回归守卫） | 不变 |
+| RAR4 / RAR5 | `unsupported-archive-format`，格式码正确 | **正常导入** |
+| **自解压 RAR（`MZ` 开头，签名在 4 MB 内）** | `not-an-archive` | **正常导入**——见下 |
+| 7z | `unsupported-archive-format` | T21-D 后正常导入 |
+| gzip / xz / bzip2 / zstd | `unsupported-archive-format`，格式码各自正确 | 不变 |
+| tar（`ustar` 在偏移 257） | `unsupported-archive-format`，**不得**落到 Damaged | 不变（本轮延后） |
+| PE（非自解压）/ MSI | `not-an-archive` | 不变 |
+| 空文件 / 1 字节 / 全零 | `retry-hint`，不 panic | 不变 |
+
+**自解压 RAR 那一行是这张表里唯一「期望值随切片改变」的用例，因此它是判别顺序是否真的
+按「支持集合」推进的活体断言。** 若 T21-C 之后它仍报 `not-an-archive`，说明第 1 步被写死成了
+固定格式列表——这正是本设计要防的那个实现陷阱。**T21-C 必须包含把这一行从
+`not-an-archive` 翻转为「正常导入」的测试改动**，翻不过来就是没做对。
 
 ### 各格式共用的负测
 
 **同一组负测，每种格式都要过，且不得为任何格式重写一份：**
 解压炸弹、路径逃逸、symlink 条目、条目数超限。
 
-rar 另加：hardlink 条目、分卷、加密包各自落到明确档位。
+rar 另加：hardlink 条目、分卷、加密包各自落到明确档位。RAR 世代覆盖按 RAR4 ＋ RAR5 两份。
 
 > **「要重写就说明外壳没抽干净」——这是 T21-B 的验收判据本身，不是附加要求。**
 
@@ -402,8 +438,10 @@ rar 另加：hardlink 条目、分卷、加密包各自落到明确档位。
 
 - vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明
 - 按「使用模式」接入外壳
+- **把 rar 加进判别第 1 步的「已支持格式」集合**，并把自解压 RAR 的测试期望从
+  `not-an-archive` 翻转为「正常导入」——翻不过来就说明第 1 步被写死了
 - `NOTICE.md` 许可义务落地
-- RAR5、solid 包、分卷、加密包各自落到明确档位
+- RAR4 / RAR5、solid 包、分卷、加密包各自落到明确档位
 
 ### T21-D：7z
 
