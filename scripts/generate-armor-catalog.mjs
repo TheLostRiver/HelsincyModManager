@@ -191,8 +191,37 @@ if (previous.catalog_version === CATALOG_VERSION) {
   process.exit(2);
 }
 
-// 旧 slug ID 必须继续可解析：玩家已安装的 manifest 里存的是它们。
-const legacyBySlot = new Map(previous.targets.map((t) => [t.internal_id, t]));
+/*
+ * 上一版条目按 `(internal_id, path_family)` 索引——**不能只按 `internal_id`**。
+ *
+ * 旧 slug / 旧 stable ID 必须继续可解析：玩家已安装的 manifest 里存的是它们。而 `#356` 起
+ * 同一件装备的两套模型各占一条，只按 `internal_id` 建表会让后读到的那份分片覆盖先读到的：
+ * 下一代生成时 `f_equip` 目标会挂上 `m_equip` 的旧 ID，而 `f_equip` 自己的旧 ID 彻底消失。
+ * 玩家绝大多数已有绑定指向的正是 `f_equip`（v4 之前 catalog 里只有它），那等于让他们的安装
+ * 解析不出目标，而且静默发生。下面的「旧 ID 逐条落位」自校验就是这条的兜底。
+ */
+const variantKey = (internalId, pathFamily) => `${internalId}|${pathFamily}`;
+const previousByVariant = new Map(
+  previous.targets.map((target) => [
+    variantKey(target.internal_id, target.metadata?.path_family),
+    target,
+  ]),
+);
+
+/*
+ * 上一版有、这一代却没有对应 family 的条目。
+ *
+ * v3 把 5 件只有男性模型的联动装错标成 `f_equip`，它们的旧 ID 在 v4 里没有同 family 的
+ * 落点——但绑定过的玩家仍然存在，所以旧 ID 要挂到该槽位的第一个变体上，不能丢。
+ * 同理，将来某个槽位的变体归属收窄（两套变一套）时也走这条路。
+ */
+const orphanPrevious = new Map();
+for (const target of previous.targets) {
+  const families = familiesFor.get(target.internal_id) ?? [];
+  if (families.includes(target.metadata?.path_family)) continue;
+  if (!orphanPrevious.has(target.internal_id)) orphanPrevious.set(target.internal_id, []);
+  orphanPrevious.get(target.internal_id).push(target);
+}
 
 const dropped = [];
 const candidates = [];
@@ -207,8 +236,32 @@ for (const [resourcePath, zhName] of equipment) {
     continue;
   }
 
+  /*
+   * `#356`：一件装备按它实际存在的模型变体产出 1 或 2 条目标。
+   *
+   * 变体归属来自游戏本体枚举，不再是硬编码的 `pl/f_equip`。那个常量假设「所有装备都有
+   * 女性模型」，结果给 5 件只有男性模型的联动装（隆／杰洛特／巴耶克／里昂／燕尾蝶男）
+   * 产出了指向不存在路径的目标——玩家选中、安装成功、游戏不生效。
+   *
+   * `equipment.json` 里的 `resourcePath` 一律是 `f_equip`，所以按 family 重新构造。
+   */
+  const families = familiesFor.get(internalId);
+  if (!families) {
+    dropped.push([resourcePath, zhName, "游戏本体里不存在这个槽位"]);
+    continue;
+  }
+
   const extra = localized.get(joinKey(zhName)) ?? null;
-  const carriedOver = legacyBySlot.get(internalId);
+  /*
+   * 名称与元数据的继承源取**槽位级**一条，取法必须确定。
+   *
+   * 两个变体是同一件装备，上一版两条的名称逐字相同，取哪条结果都一样——但如果按「分片读取
+   * 顺序里最后那条」来取，结果就依赖文件名排序，属于隐式耦合。这里固定按 `families[0]` 的
+   * 精确条目，取不到再退到 orphan（v3→v4 的 5 件单男模型装备走的正是这条）。
+   */
+  const carriedOver =
+    previousByVariant.get(variantKey(internalId, families[0])) ??
+    (orphanPrevious.get(internalId) ?? [])[0];
 
   const names = { zh_cn: { display_name: zhName, aliases: [] } };
   if (extra?.en) names.en = { display_name: extra.en, aliases: [] };
@@ -256,23 +309,28 @@ for (const [resourcePath, zhName] of equipment) {
     );
   }
 
-  /*
-   * `#356`：一件装备按它实际存在的模型变体产出 1 或 2 条目标。
-   *
-   * 变体归属来自游戏本体枚举，不再是硬编码的 `pl/f_equip`。那个常量假设「所有装备都有
-   * 女性模型」，结果给 5 件只有男性模型的联动装（隆／杰洛特／巴耶克／里昂／燕尾蝶男）
-   * 产出了指向不存在路径的目标——玩家选中、安装成功、游戏不生效。
-   *
-   * `equipment.json` 里的 `resourcePath` 一律是 `f_equip`，所以按 family 重新构造。
-   */
-  const families = familiesFor.get(internalId);
-  if (!families) {
-    dropped.push([resourcePath, zhName, "游戏本体里不存在这个槽位"]);
-    continue;
-  }
-
   for (const pathFamily of families) {
     const variantPath = `nativePC/${pathFamily}/${internalId}`;
+    /*
+     * 旧 ID 逐个变体各自继承，再把该槽位的 orphan 挂到第一个变体上。
+     *
+     * 精确同 family 的上一版条目归它自己——v4 起两套模型各有独立 stable ID，串位就等于把
+     * 玩家的 `f_equip` 绑定解析到 `m_equip` 目标上（然后在 family 匹配那步报错）。
+     * orphan 只挂一次，保证任何一个旧 ID 在新 catalog 里**恰好出现一次**：出现两次会让
+     * `resolve_target_allowing_legacy_ids` 的 `.find()` 依赖 target 顺序，解析到哪条不确定。
+     *
+     * **必须累积而不是只取上一代的 `id`。** 上一版自己的 `legacy_ids` 里存着更早的 slug
+     * （AR1 的四条手工种子条目，如 `mhw:armor:fatalis-alpha`），只取 `id` 会让它们在这一代
+     * 静默消失——玩家用那些 slug 绑定过的安装会解析不出目标。v2→v3 没暴露这个缺陷，
+     * 纯粹因为当时的 `id` 本身就是 slug。
+     */
+    const inherited = [
+      previousByVariant.get(variantKey(internalId, pathFamily)),
+      ...(pathFamily === families[0] ? (orphanPrevious.get(internalId) ?? []) : []),
+    ].filter(Boolean);
+    const legacyIds = [
+      ...new Set(inherited.flatMap((prev) => [prev.id, ...(prev.metadata?.legacy_ids ?? [])])),
+    ];
     candidates.push({
       stable_id: stableId("armor", pathFamily, variantPath),
       target_kind: "armor",
@@ -285,28 +343,59 @@ for (const [resourcePath, zhName] of equipment) {
       names: structuredClone(names),
       _orphanAliases: [...orphanAliases],
       source_ids: [SOURCE_ID],
-      /*
-       * 旧 ID 只挂在**继承了旧条目的那一条**上。
-       *
-       * 旧 catalog 全按 `f_equip` 算 ID，所以：共享装备的 f 变体继承（玩家已安装的
-       * manifest 存的就是它），m 变体是全新的；而那 5 件单男模型装备，旧条目虽然算错了
-       * family，ID 仍要挂到唯一的 m 变体上，否则旧绑定会解析不了。
-       *
-       * **必须累积而不是只取上一代的 `id`。** 上一版自己的 `legacy_ids` 里存着更早的
-       * slug（AR1 的四条手工种子条目，如 `mhw:armor:fatalis-alpha`），只取 `id` 会让它们
-       * 在这一代静默消失——玩家用那些 slug 绑定过的安装会解析不出目标。
-       * v2→v3 没暴露这个缺陷，纯粹因为当时的 `id` 本身就是 slug。
-       */
-      legacy_ids:
-        carriedOver && pathFamily === families[0]
-          ? [...new Set([carriedOver.id, ...(carriedOver.metadata?.legacy_ids ?? [])])]
-          : [],
+      legacy_ids: legacyIds,
       _variant: variantOf(zhName),
       _parts: extra?.parts?.length ? extra.parts : null,
       _carried: carriedOver ?? null,
     });
   }
 }
+
+/*
+ * 旧 ID 逐条落位自校验。
+ *
+ * 玩家已安装的 manifest / binding snapshot 里存的是上一版的 stable ID（以及更早的 slug）。
+ * 任何一个在新 catalog 里找不到落点，那些安装就解析不出目标；落到两条上，
+ * `resolve_target_allowing_legacy_ids` 的 `.find()` 取哪条又取决于 target 顺序。两种都是
+ * 静默失效——玩家看到的是「我装好的 Mod 突然认不出目标了」，没有任何报错指向这里。
+ * 所以断言「恰好一次」，而不是「大概都还在」。
+ */
+const previousIds = new Set(
+  previous.targets.flatMap((target) => [target.id, ...(target.metadata?.legacy_ids ?? [])]),
+);
+const landed = new Map();
+for (const candidate of candidates) {
+  for (const id of candidate.legacy_ids) landed.set(id, (landed.get(id) ?? 0) + 1);
+}
+const lost = [...previousIds].filter((id) => !landed.has(id));
+const doubled = [...landed].filter(([, count]) => count > 1).map(([id]) => id);
+const invented = [...landed.keys()].filter((id) => !previousIds.has(id));
+if (lost.length || doubled.length || invented.length) {
+  const sample = (ids) => ids.slice(0, 5).join(", ");
+  throw new Error(
+    [
+      "旧 ID 落位自校验失败，拒绝产出：",
+      lost.length && `  新 catalog 里没有落点（玩家已有绑定会解析不出目标）：${lost.length} 条 ${sample(lost)}`,
+      doubled.length && `  落到多条目标上（解析到哪条依赖顺序）：${doubled.length} 条 ${sample(doubled)}`,
+      invented.length && `  凭空多出来的 legacy_id：${invented.length} 条 ${sample(invented)}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+/*
+ * 游戏里有这个槽位、候选数据却没有名称的条目。
+ *
+ * **必须显式报出来。** 本脚本只遍历 `equipment.json`，这类槽位不会进入任何 `dropped` 列表，
+ * 不报的话「有几条没在册」就只存在于口头知识里，下一个接手的人无从知晓，而它们在玩家侧的
+ * 表现是「游戏里有这件装备，管理器却搜不到」。
+ *
+ * 当前 3 条（`pl056_0010` `pl104_0010` `pl132_0000`）按维护者决定挂起：`plXXX_VVVV` → 装备名的
+ * 映射在二进制装备表里、不在文本资源，没有可靠来源前不猜（编号后缀与 α/β 无固定对应）。
+ */
+const namedSlots = new Set(candidates.map((candidate) => candidate.resource_path.split("/").pop()));
+const unnamedInGame = [...familiesFor.keys()].filter((id) => !namedSlots.has(id)).sort();
 
 const candidateDoc = {
   schema_version: 1,
@@ -476,6 +565,9 @@ console.log(`  含 en         ${withEn}`);
 console.log(`  含 ja         ${withJa}`);
 console.log(`  仅 zh_cn      ${candidates.length - withEn}`);
 console.log(`  带 legacy_ids ${candidates.filter((c) => c.legacy_ids.length).length}`);
+console.log(`旧 ID 落位      ${previousIds.size} 个旧 ID，逐条恰好落在 1 条目标上`);
+console.log(`游戏里有名称缺失 ${unnamedInGame.length} 条（不在册，按维护者决定挂起）`);
+for (const id of unnamedInGame) console.log(`    ${id}  游戏本体有此槽位，equipment.json 无名称`);
 console.log(`上一版基线      ${previous.catalog_version}（${previous.shard_count} 份分片，${previous.targets.length} 条）`);
 console.log(`候选文档        ${CANDIDATE_OUT}`);
 console.log(`运行时 artifact ${writtenShards.length} 份分片：`);
