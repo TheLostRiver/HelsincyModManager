@@ -44,6 +44,7 @@ mod save_directory_pending_store;
 mod save_directory_scanner;
 mod save_path;
 mod save_restore;
+mod sevenz_archive_source;
 pub mod sqlite;
 mod staging;
 pub mod steam_discovery;

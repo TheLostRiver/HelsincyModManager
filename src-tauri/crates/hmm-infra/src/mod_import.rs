@@ -1,6 +1,6 @@
 use crate::archive_extraction::{
     extract_archive, pump_reader_into_sink, ArchiveChunkSink, ArchiveEntryHeader, ArchiveEntryKind,
-    ArchiveExtractionLimits, ArchiveSource,
+    ArchiveExtractionLimits, ArchiveGate, ArchiveSource,
 };
 use crate::controlled_fs::{
     create_new_regular_file, open_child_directory_nofollow, open_existing_directory_chain,
@@ -9,6 +9,7 @@ use crate::controlled_fs::{
     remove_child_tree_nofollow,
 };
 use crate::rar_archive_source;
+use crate::sevenz_archive_source;
 use anyhow::{Context, Result};
 use cap_std::fs::Dir;
 use hmm_core::sanitize_mod_metadata_text;
@@ -703,8 +704,12 @@ impl ArchiveScratch {
 /// 开头的 `.exe`，若第 1 步写死成 zip，它会被嗅探判成「不是压缩包」，
 /// 而 unrar 其实打得开。**支持集合会增长，判别必须跟着长。**
 ///
-/// 顺序按常见程度排：zip 在前，rar 在后。每一次「尝试打开」都有真实开销
-/// ——rar 那一步还要先把 reader 落一份盘（unrar 只接受路径）。
+/// **顺序：zip → 7z → rar**，两条依据叠在一起：
+///
+/// 1. 常见程度：zip 最多。
+/// 2. **要落盘的排最后。** zip 与 7z 都直接吃 reader，尝试失败零代价；
+///    rar 那一步必须先把 reader 完整落一份盘（unrar 的 DLL API 只认路径）。
+///    若 rar 排在 7z 前面，导入一个 7z 就会白拷一遍整包。
 fn extract_archive_with_limits<R>(
     archive_file: &mut R,
     root: &Dir,
@@ -732,7 +737,24 @@ where
         Err(error) => anyhow::Error::new(error).context("failed to read zip archive"),
     };
 
-    // ── 格式 2：rar ──
+    // ── 格式 2：7z ──
+    // 直接吃 reader，不需要落盘暂存。它是**推驱动**的（只有 for_each_entries
+    // 这一种接口），所以不实现 ArchiveSource，而是在它的回调里调 ArchiveGate
+    // ——门禁仍是同一份。
+    archive_file
+        .seek(io::SeekFrom::Start(0))
+        .context("failed to rewind the mod import archive")?;
+    match sevenz_archive_source::SevenZipArchive::open(&mut *archive_file) {
+        Ok(mut archive) => {
+            let mut gate = ArchiveGate::new(sandbox_root, cancellation_token, limits);
+            return archive.extract_into(&mut gate);
+        }
+        // 打得开但用了不支持的特性（加密）——直接报，不要退回嗅探。
+        Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
+        Err(_) => {}
+    }
+
+    // ── 格式 3：rar ──
     // unrar 只能按路径打开，所以先落一份到包沙箱之外的暂存目录。
     // 这样它读到的**只是我们刚创建的文件**：玩家给的路径不进它的视野，
     // symlink 跟随与 TOCTOU 一并消失。代价是一次完整拷贝，见设计文档。
@@ -817,9 +839,11 @@ const TAR_MAGIC: &[u8] = b"ustar";
 /// 正是本设计三条不可让步判据里的第一条禁止的事。
 ///
 /// 这条移动是「支持集合增长时判别自动收敛」的实例：某格式从第 3 步升到第 1 步，
-/// 这张表里对应的行就该失效，不需要额外维护档位。
+/// 这张表里对应的行就该失效，不需要额外维护档位。**7z 同理已移走**（T21-D）。
+///
+/// 表里现在只剩「认得出、但确实不打算支持」的那些：压缩流（gzip/xz/bzip2/zstd）
+/// 与 tar 家族。它们不是归档容器就是本轮延后的目标。
 const ARCHIVE_SIGNATURES: &[(&[u8], UnsupportedArchiveFormat)] = &[
-    (b"7z\xbc\xaf\x27\x1c", UnsupportedArchiveFormat::SevenZip),
     (b"\xfd7zXZ\x00", UnsupportedArchiveFormat::Xz),
     (b"\x1f\x8b", UnsupportedArchiveFormat::Gzip),
     (b"BZh", UnsupportedArchiveFormat::Bzip2),
@@ -1481,15 +1505,13 @@ mod tests {
     #[test]
     fn known_archive_containers_are_reported_as_unsupported_formats() {
         let temp = tempfile::tempdir().expect("temp dir");
-        // **rar 不在这张表里了**（T21-C）：它已是「已支持格式」，
-        // 带 rar 签名却打不开的文件是**损坏的 rar**，必须留在 retry-hint 档
-        // ——见下面 `a_truncated_rar_stays_in_the_retry_hint_tier`。
+        // **rar（T21-C）与 7z（T21-D）都不在这张表里了**：它们已是「已支持格式」，
+        // 带其签名却打不开的文件是**损坏的包**，必须留在 retry-hint 档
+        // ——见 `a_truncated_rar_stays_in_the_retry_hint_tier`
+        // 与 `a_truncated_sevenz_stays_in_the_retry_hint_tier`。
+        //
+        // 剩下的都是「认得出、但确实不打算支持」：压缩流与 tar 家族。
         let cases: &[(&str, &[u8], UnsupportedArchiveFormat)] = &[
-            (
-                "sevenzip",
-                b"7z\xbc\xaf\x27\x1cpayload",
-                UnsupportedArchiveFormat::SevenZip,
-            ),
             ("gzip", b"\x1f\x8bpayload", UnsupportedArchiveFormat::Gzip),
             ("xz", b"\xfd7zXZ\x00payload", UnsupportedArchiveFormat::Xz),
             ("bzip2", b"BZh9payload", UnsupportedArchiveFormat::Bzip2),
@@ -2080,6 +2102,323 @@ mod tests {
             "包沙箱里只该有归档里的内容，实际是 {entries:?}"
         );
         assert_eq!(entries[0], std::ffi::OsStr::new("only.txt"));
+    }
+
+    // ---- #348 切片 D：7z ----
+    //
+    // 与 rar 不同，7z 的语料可以用同一个 crate 的 writer 造（`compress` 特性只在
+    // dev-dependencies 里开）——写 7z 没有许可障碍，不必手搓容器格式。
+
+    /// 造一个 7z。`entries` 是 (名字, 内容)；内容为 `None` 表示目录条目。
+    fn write_sevenz(
+        temp: &tempfile::TempDir,
+        name: &str,
+        entries: &[(&str, Option<&[u8]>)],
+    ) -> PathBuf {
+        write_sevenz_with_attributes(
+            temp,
+            name,
+            &entries
+                .iter()
+                .map(|(name, data)| (*name, *data, 0_u32))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// 同上，但能指定 Windows 属性位——用来造 symlink 条目。
+    fn write_sevenz_with_attributes(
+        temp: &tempfile::TempDir,
+        name: &str,
+        entries: &[(&str, Option<&[u8]>, u32)],
+    ) -> PathBuf {
+        let path = temp.path().join(name);
+        let file = File::create(&path).expect("create 7z");
+        let mut writer = sevenz_rust2::ArchiveWriter::new(file).expect("7z writer");
+        for (entry_name, data, attributes) in entries {
+            let mut entry = sevenz_rust2::ArchiveEntry::new_file(entry_name);
+            // 属性字段有一个**单独的存在标志**：不置 `has_windows_attributes`，
+            // 写出来的包里根本不带属性，于是 symlink 用例会静默变成普通文件而通过
+            // ——那是最难发现的一类假绿。第一版就漏了这一行。
+            entry.has_windows_attributes = *attributes != 0;
+            entry.windows_attributes = *attributes;
+            match data {
+                Some(bytes) => {
+                    writer
+                        .push_archive_entry(entry, Some(std::io::Cursor::new(bytes.to_vec())))
+                        .expect("push entry");
+                }
+                None => {
+                    entry.is_directory = true;
+                    entry.has_stream = false;
+                    writer
+                        .push_archive_entry::<std::io::Cursor<Vec<u8>>>(entry, None)
+                        .expect("push dir");
+                }
+            }
+        }
+        writer.finish().expect("finish 7z");
+        path
+    }
+
+    /// 正向：真实（自造的）7z 能导入，内容逐字节一致。
+    #[test]
+    fn a_sevenz_archive_now_imports_with_byte_identical_content() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let big = vec![0x3c_u8; 9000];
+        let path = write_sevenz(
+            &temp,
+            "mod.7z",
+            &[
+                ("readme.txt", Some(b"hello from 7z".as_slice())),
+                ("nativePC/data.bin", Some(big.as_slice())),
+            ],
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "sz-1", &path).expect("a good 7z must import");
+
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("readme.txt")).expect("read"),
+            b"hello from 7z"
+        );
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("nativePC/data.bin")).expect("read"),
+            big
+        );
+    }
+
+    /// 损坏的 7z 必须留在 `retry-hint`，**不能**被说成「格式不支持」。
+    #[test]
+    fn a_truncated_sevenz_stays_in_the_retry_hint_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let full_path = write_sevenz(&temp, "full.7z", &[("a.txt", Some(b"x".as_slice()))]);
+        let full = fs::read(&full_path).expect("read");
+        for (label, bytes) in [
+            ("signature-only", b"7z\xbc\xaf\x27\x1c".to_vec()),
+            ("halved", full[..full.len() / 2].to_vec()),
+        ] {
+            let error = prepare_bytes(&temp, label, &bytes);
+            assert!(
+                matches!(error, ModImportPrepareError::Other(_)),
+                "{label}: 损坏的 7z 必须留在 retry-hint，得到 {error:?}"
+            );
+        }
+    }
+
+    /// **共享负测整组跑在 7z 上，断言与期望文本一条都不为它重写。**
+    ///
+    /// 7z 是**推驱动**的（只有 `for_each_entries`），不实现 `ArchiveSource`
+    /// 而是在别人的回调里调 `ArchiveGate`。这条用例证明「换了驱动方向，
+    /// 门禁仍是同一份」——那正是外壳存在的理由。
+    #[test]
+    fn the_shared_negative_suite_holds_for_sevenz_without_rewriting_a_single_assertion() {
+        use crate::archive_extraction::shared_negative_suite::{
+            expected_message, NegativeCase, ALL_CASES,
+        };
+
+        let generous = ArchiveExtractionLimits {
+            max_entries: 16,
+            max_single_file_bytes: 1024,
+            max_total_uncompressed_bytes: 4096,
+        };
+        // 0x8000 = 属性高 16 位是 Unix mode；0xA000 = S_IFLNK。
+        let symlink_attributes = 0x8000_u32 | (0xA000_u32 << 16);
+        let big = vec![0_u8; 500];
+        let forty = vec![0_u8; 40];
+
+        for case in ALL_CASES {
+            let temp = tempfile::tempdir().expect("temp dir");
+            let (path, limits) = match case {
+                NegativeCase::PathEscape => (
+                    write_sevenz(
+                        &temp,
+                        "case.7z",
+                        &[("../escape.txt", Some(b"bad".as_slice()))],
+                    ),
+                    generous,
+                ),
+                NegativeCase::AbsolutePath => (
+                    write_sevenz(&temp, "case.7z", &[("/abs.txt", Some(b"bad".as_slice()))]),
+                    generous,
+                ),
+                NegativeCase::SymlinkEntry => (
+                    write_sevenz_with_attributes(
+                        &temp,
+                        "case.7z",
+                        &[("link", Some(b"../outside".as_slice()), symlink_attributes)],
+                    ),
+                    generous,
+                ),
+                NegativeCase::CaseCollision => (
+                    write_sevenz(
+                        &temp,
+                        "case.7z",
+                        &[
+                            ("Same.txt", Some(b"a".as_slice())),
+                            ("same.txt", Some(b"b".as_slice())),
+                        ],
+                    ),
+                    generous,
+                ),
+                NegativeCase::TooManyEntries => {
+                    let names: Vec<String> = (0..5).map(|i| format!("f{i}.txt")).collect();
+                    let entries: Vec<(&str, Option<&[u8]>)> = names
+                        .iter()
+                        .map(|name| (name.as_str(), Some(b"x".as_slice())))
+                        .collect();
+                    (
+                        write_sevenz(&temp, "case.7z", &entries),
+                        ArchiveExtractionLimits {
+                            max_entries: 3,
+                            ..generous
+                        },
+                    )
+                }
+                NegativeCase::OversizedSingleFile => (
+                    write_sevenz(&temp, "case.7z", &[("big.bin", Some(big.as_slice()))]),
+                    ArchiveExtractionLimits {
+                        max_single_file_bytes: 64,
+                        ..generous
+                    },
+                ),
+                NegativeCase::OversizedTotal => (
+                    write_sevenz(
+                        &temp,
+                        "case.7z",
+                        &[
+                            ("a.bin", Some(forty.as_slice())),
+                            ("b.bin", Some(forty.as_slice())),
+                        ],
+                    ),
+                    ArchiveExtractionLimits {
+                        max_total_uncompressed_bytes: 64,
+                        ..generous
+                    },
+                ),
+                // 7z 的头里带真实解压大小，声明不了假的；与 rar 一样，
+                // 该用例的意图（配额不能依赖声明值）由「实际字节超限」来检验。
+                NegativeCase::LyingDeclaredSize => (
+                    write_sevenz(&temp, "case.7z", &[("liar.bin", Some(big.as_slice()))]),
+                    ArchiveExtractionLimits {
+                        max_single_file_bytes: 64,
+                        ..generous
+                    },
+                ),
+            };
+
+            let preparer = rar_preparer(&temp, limits);
+            let Err(error) = prepare_package(&preparer, "case-1", &path) else {
+                panic!("{case:?} 必须被拒，却导入成功了");
+            };
+            let text = format!("{error:#}");
+            assert!(
+                text.contains(expected_message(*case)),
+                "{case:?}: 期望包含 {:?}，实际 {text}",
+                expected_message(*case)
+            );
+        }
+    }
+
+    /// 加密的 7z 落到自己的档位，而不是一句「请检查压缩包后重试」。
+    ///
+    /// 内容加密（不加密头）：包能打开、条目名读得出来，解内容时才发现要密码。
+    #[test]
+    fn an_encrypted_sevenz_lands_in_its_own_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("secret.7z");
+        let file = File::create(&path).expect("create");
+        let mut writer = sevenz_rust2::ArchiveWriter::new(file).expect("writer");
+        writer.set_content_methods(vec![
+            sevenz_rust2::encoder_options::AesEncoderOptions::new(sevenz_rust2::Password::from(
+                "hunter2",
+            ))
+            .into(),
+            sevenz_rust2::EncoderMethod::LZMA2.into(),
+        ]);
+        writer
+            .push_archive_entry(
+                sevenz_rust2::ArchiveEntry::new_file("secret.txt"),
+                Some(std::io::Cursor::new(b"cipher".to_vec())),
+            )
+            .expect("push");
+        writer.finish().expect("finish");
+
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "szenc-1", &path).expect_err("加密包必须被拒");
+        assert!(
+            matches!(
+                error,
+                ModImportPrepareError::UnsupportedArchiveFeature(
+                    hmm_ports::UnsupportedArchiveFeature::Encrypted
+                )
+            ),
+            "得到 {error:?}"
+        );
+        assert_eq!(error.code(), "mod_import_archive_encrypted");
+    }
+
+    /// 头加密的 7z：连条目名都读不出来，`open` 阶段就该报「要密码」。
+    #[test]
+    fn a_header_encrypted_sevenz_lands_in_its_own_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("header-secret.7z");
+        let file = File::create(&path).expect("create");
+        let mut writer = sevenz_rust2::ArchiveWriter::new(file).expect("writer");
+        writer.set_content_methods(vec![
+            sevenz_rust2::encoder_options::AesEncoderOptions::new(sevenz_rust2::Password::from(
+                "hunter2",
+            ))
+            .into(),
+            sevenz_rust2::EncoderMethod::LZMA2.into(),
+        ]);
+        writer.set_encrypt_header(true);
+        writer
+            .push_archive_entry(
+                sevenz_rust2::ArchiveEntry::new_file("secret.txt"),
+                Some(std::io::Cursor::new(b"cipher".to_vec())),
+            )
+            .expect("push");
+        writer.finish().expect("finish");
+
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "szhdr-1", &path).expect_err("头加密包必须被拒");
+        assert_eq!(
+            error.code(),
+            "mod_import_archive_encrypted",
+            "得到 {error:?}"
+        );
+    }
+
+    /// Windows 重解析点位也要被认成 symlink——只认 Unix mode 那一条等于对
+    /// Windows 侧打的包不设防。
+    #[test]
+    fn sevenz_reparse_point_entries_are_rejected_as_symlinks() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_sevenz_with_attributes(
+            &temp,
+            "reparse.7z",
+            &[("link", Some(b"..\\outside".as_slice()), 0x0400)],
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "rp-1", &path).expect_err("重解析点必须被拒");
+        assert!(
+            format!("{error:#}").contains("symlink entries are not allowed"),
+            "得到 {error:#}"
+        );
+    }
+
+    /// 7z **不需要落盘暂存**——它直接吃 reader。所以导入 7z 之后
+    /// 沙箱根下不该出现任何 `.staging` 目录。
+    #[test]
+    fn importing_a_sevenz_never_creates_a_staging_directory() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("sandboxes");
+        let path = write_sevenz(&temp, "mod.7z", &[("a.txt", Some(b"ok".as_slice()))]);
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        prepare_package(&preparer, "nostage-1", &path).expect("import");
+        assert!(
+            !sandbox_root.join("nostage-1.staging").exists(),
+            "7z 走 reader，不该有暂存目录"
+        );
     }
 
     #[test]
