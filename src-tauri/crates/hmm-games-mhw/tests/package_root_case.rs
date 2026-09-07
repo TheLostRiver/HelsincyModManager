@@ -170,7 +170,7 @@ fn target_id(internal_id: &str, path_family: Option<&str>) -> hmm_core::Replacem
         .iter()
         .find(|target| {
             target.internal_id() == internal_id
-                && path_family.map_or(true, |family| {
+                && path_family.is_none_or(|family| {
                     target
                         .metadata()
                         .get("path_family")

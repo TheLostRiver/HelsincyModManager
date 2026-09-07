@@ -689,7 +689,7 @@ const TWO_ARMOR_SETS: &[&str] = &[
 ];
 
 const SLOT_B_SOURCE_ID: &str = "mhw:armor:f_equip:pl123_0000";
-/// catalog 里 `pl001_0000` 的目标 id（`mhw-armor-targets.v1.json` 实测）。
+/// catalog 里 `pl001_0000` 的 `pl/f_equip` 目标 id（`data/armor/` 分片实测）。
 const LEATHER_TARGET_ID: &str =
     "mhw:armor:67663de427bb57b42d289ea193d8e865bb949ffaeee8a9e9caecdc1ee54662eb";
 
