@@ -44,10 +44,16 @@ impl ArmorEquipFamily {
         }
     }
 
-    /// 只有女性装备有 catalog 目标。这是 **catalog 覆盖范围**的限制，不是路径语法限制——
-    /// 分类器照常识别 `m_equip`，由上层按「没有可选目标」处理。
+    /// 这个模型变体有没有 catalog 目标。
+    ///
+    /// `#356` 起两套都有。此前只有 `f_equip`——那不是路径语法限制，是 catalog 只转录了
+    /// 一半，后果是**男角玩家改任何防具外观都装不对**：`single_source()` 要求
+    /// `is_supported()`，男装包因此连目标列表都拿不到。
+    ///
+    /// 仍然保留这个闸门而不是删掉：它是「识别得出但没有可选目标」的唯一出口
+    /// （`SourceHasNoAvailableTargets`），将来任何 family 的 catalog 缺位都走这里。
     pub(super) fn is_supported(self) -> bool {
-        self == Self::Female
+        matches!(self, Self::Female | Self::Male)
     }
 }
 

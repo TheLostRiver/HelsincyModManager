@@ -45,11 +45,20 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(REVIEWED_AT)) {
 }
 
 const EQUIPMENT_PATH = "armor-data/equipment.json";
+/**
+ * 每件装备有哪几套模型（`#356`）。由 `tmp/build_variants.py` 从解包的游戏本体枚举，
+ * 见该文件的 `source` 字段。
+ *
+ * **`f_equip` / `m_equip` 不是「女装／男装」，是同一件装备的两套模型。** 实测 272 个槽位
+ * 里 262 个两套都有，10 个是单模型的联动装。玩家的角色性别决定游戏加载哪一套——女角穿
+ * 只有男模型的「隆」，加载的仍是 `m_equip` 那套。
+ */
+const VARIANTS_PATH = "armor-data/armor-model-variants.json";
 const CANDIDATE_OUT = "armor-data/generated/mhw-equipment-candidates.armor.v1.json";
 const ARTIFACT_OUT = "src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json";
-const PATH_FAMILY = "pl/f_equip";
 const SOURCE_ID = "mhw-ingame-equipment-names";
-const CATALOG_VERSION = "mhw-armor-v3";
+const VARIANT_SOURCE_ID = "mhw-game-assets";
+const CATALOG_VERSION = "mhw-armor-v4";
 
 /** 占位条目：治理要求生成 artifact 前显式移除，不能静默变成可选择目标。 */
 const DUMMY_NAME = "HARDUMMY";
@@ -116,6 +125,13 @@ function variantOf(name) {
 const equipment = JSON.parse(readFileSync(EQUIPMENT_PATH, "utf8"));
 const localized = parseCsv(readFileSync(CSV_PATH, "utf8"));
 const previous = JSON.parse(readFileSync(ARTIFACT_OUT, "utf8"));
+const variants = JSON.parse(readFileSync(VARIANTS_PATH, "utf8"));
+
+/** internal_id -> 该装备实际存在的模型变体（按 path_family 升序，供输出稳定）。 */
+const familiesFor = new Map();
+for (const id of variants.shared) familiesFor.set(id, ["pl/f_equip", "pl/m_equip"]);
+for (const id of variants.female_only) familiesFor.set(id, ["pl/f_equip"]);
+for (const id of variants.male_only) familiesFor.set(id, ["pl/m_equip"]);
 
 // 自指防护：本脚本要从"上一版 artifact"取旧 ID 与旧展示名。
 // 若对着自己刚生成的结果再跑一次，每条会把自己的新 hash ID 当成旧 ID，
@@ -155,10 +171,25 @@ for (const [resourcePath, zhName] of equipment) {
   // 扩容不得让已有的检索能力退化。人工 seed 的旧别名要保留；
   // 旧展示名也必须降级成别名——候选数据把「α」写成「阿尔法」，
   // 不保留的话玩家搜「【精英·龙α】服装」会一无所获。
+  /*
+   * 没有对应 display_name 的别名。
+   *
+   * `pl057_0010` 的官方英文名与另一件装备逐字重名，按治理规则只能记成 alias，因此它
+   * **没有** en display_name。旧写法在 `names[locale]` 缺位时直接 return，别名就被静默
+   * 丢掉——v3 是靠在产物上手工补回去的（脚本头部那段警告说的就是这件事）。
+   *
+   * artifact 里的 aliases 本来就是扁平数组、不带 locale，所以单独收着再合并即可，
+   * 不必为了挂别名伪造一个空的 display_name。
+   */
+  const orphanAliases = [];
   if (carriedOver) {
     const add = (locale, values) => {
-      if (!names[locale]) return;
-      const merged = new Set([...names[locale].aliases, ...values.filter(Boolean)]);
+      const incoming = values.filter(Boolean);
+      if (!names[locale]) {
+        orphanAliases.push(...incoming);
+        return;
+      }
+      const merged = new Set([...names[locale].aliases, ...incoming]);
       merged.delete(names[locale].display_name);
       names[locale].aliases = [...merged];
     };
@@ -180,19 +211,56 @@ for (const [resourcePath, zhName] of equipment) {
     );
   }
 
-  candidates.push({
-    stable_id: stableId("armor", PATH_FAMILY, resourcePath),
-    target_kind: "armor",
-    path_family: PATH_FAMILY,
-    resource_path: resourcePath,
-    status: "active",
-    names,
-    source_ids: [SOURCE_ID],
-    legacy_ids: carriedOver ? [carriedOver.id] : [],
-    _variant: variantOf(zhName),
-    _parts: extra?.parts?.length ? extra.parts : null,
-    _carried: carriedOver ?? null,
-  });
+  /*
+   * `#356`：一件装备按它实际存在的模型变体产出 1 或 2 条目标。
+   *
+   * 变体归属来自游戏本体枚举，不再是硬编码的 `pl/f_equip`。那个常量假设「所有装备都有
+   * 女性模型」，结果给 5 件只有男性模型的联动装（隆／杰洛特／巴耶克／里昂／燕尾蝶男）
+   * 产出了指向不存在路径的目标——玩家选中、安装成功、游戏不生效。
+   *
+   * `equipment.json` 里的 `resourcePath` 一律是 `f_equip`，所以按 family 重新构造。
+   */
+  const families = familiesFor.get(internalId);
+  if (!families) {
+    dropped.push([resourcePath, zhName, "游戏本体里不存在这个槽位"]);
+    continue;
+  }
+
+  for (const pathFamily of families) {
+    const variantPath = `nativePC/${pathFamily}/${internalId}`;
+    candidates.push({
+      stable_id: stableId("armor", pathFamily, variantPath),
+      target_kind: "armor",
+      path_family: pathFamily,
+      resource_path: variantPath,
+      status: "active",
+      // 两个变体是同一件装备，名称与别名逐字相同。治理规则的 display_name 唯一性
+      // 因此收敛到「同一 path_family 内唯一」——玩家一次只看得到一个变体
+      // （`list_compatible_targets` 按源包的 path_family 筛过）。
+      names: structuredClone(names),
+      _orphanAliases: [...orphanAliases],
+      source_ids: [SOURCE_ID],
+      /*
+       * 旧 ID 只挂在**继承了旧条目的那一条**上。
+       *
+       * 旧 catalog 全按 `f_equip` 算 ID，所以：共享装备的 f 变体继承（玩家已安装的
+       * manifest 存的就是它），m 变体是全新的；而那 5 件单男模型装备，旧条目虽然算错了
+       * family，ID 仍要挂到唯一的 m 变体上，否则旧绑定会解析不了。
+       *
+       * **必须累积而不是只取上一代的 `id`。** 上一版自己的 `legacy_ids` 里存着更早的
+       * slug（AR1 的四条手工种子条目，如 `mhw:armor:fatalis-alpha`），只取 `id` 会让它们
+       * 在这一代静默消失——玩家用那些 slug 绑定过的安装会解析不出目标。
+       * v2→v3 没暴露这个缺陷，纯粹因为当时的 `id` 本身就是 slug。
+       */
+      legacy_ids:
+        carriedOver && pathFamily === families[0]
+          ? [...new Set([carriedOver.id, ...(carriedOver.metadata?.legacy_ids ?? [])])]
+          : [],
+      _variant: variantOf(zhName),
+      _parts: extra?.parts?.length ? extra.parts : null,
+      _carried: carriedOver ?? null,
+    });
+  }
 }
 
 const candidateDoc = {
@@ -211,6 +279,27 @@ const candidateDoc = {
         usage: "nominative",
         attribution:
           "Equipment names are trademarks and content of Capcom Co., Ltd. This project claims no rights in them and is not affiliated with or endorsed by Capcom.",
+        reviewed_by: REVIEWED_BY,
+        reviewed_at: REVIEWED_AT,
+      },
+    },
+    {
+      /*
+       * `#356`：模型变体归属的来源与名称来源是**两件事**，分开声明。
+       *
+       * 名称是 Capcom 的游戏术语；变体归属是结构事实（哪个目录存在），从本机安装的游戏
+       * 资源枚举得到，不涉及任何第三方转录。
+       */
+      source_id: VARIANT_SOURCE_ID,
+      source_name: "MHW:I game assets (model variant enumeration)",
+      source_url: "https://www.monsterhunter.com/world-iceborne/",
+      retrieved_at: REVIEWED_AT,
+      license: {
+        status: "game_terminology",
+        rights_holder: "Capcom Co., Ltd.",
+        usage: "nominative",
+        attribution:
+          "Model variant availability is enumerated from a local game installation. This project claims no rights in the game assets and is not affiliated with or endorsed by Capcom.",
         reviewed_by: REVIEWED_BY,
         reviewed_at: REVIEWED_AT,
       },
@@ -238,11 +327,16 @@ const artifact = {
     for (const [locale, value] of Object.entries(candidate.names)) {
       displayName[locale] = value.display_name;
     }
-    const aliases = Object.values(candidate.names).flatMap((value) => value.aliases);
+    const aliases = [
+      ...new Set([
+        ...Object.values(candidate.names).flatMap((value) => value.aliases),
+        ...candidate._orphanAliases,
+      ]),
+    ];
 
     // 只写能诚实得到的元数据。monster / rank / is_full_body 推不出来就不写，
     // adapter 已把它们改成可选（见 validate_armor_metadata）。
-    const metadata = { path_family: PATH_FAMILY };
+    const metadata = { path_family: candidate.path_family };
     const carried = candidate._carried?.metadata ?? {};
     for (const field of ["monster", "rank", "is_full_body"]) {
       if (carried[field] !== undefined) metadata[field] = carried[field];

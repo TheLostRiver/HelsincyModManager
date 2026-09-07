@@ -60,8 +60,14 @@ Schema/validator 与经过审计的生成 artifact 必须保持两个独立提�
 
 CAT-01 固定以下 adapter 规则：
 
-- Armor：`target_kind=armor`、`path_family=pl/f_equip`，目标根必须严格为
-  `nativePC/pl/f_equip/plNNN_VVVV`。
+- Armor：`target_kind=armor`、`path_family` 取 `pl/f_equip` 或 `pl/m_equip`，目标根必须严格为
+  `nativePC/<path_family>/plNNN_VVVV`。
+
+  **这两个值不是「女装／男装」，是同一件装备的两套模型。** 玩家的角色性别决定游戏加载哪一套：
+  女角穿只有男性模型的联动装（如「隆」），加载的仍是 `m_equip` 那套，看到的就是男性外观。
+  因此一件装备该出几条目标，由它**实际存在哪些模型**决定，不能假设——实测游戏本体
+  272 个槽位里 262 个两套都有，5 个只有女性模型、5 个只有男性模型。
+  变体归属属于结构事实（哪个目录存在），provenance 与名称来源分开声明。
 - Weapon：`target_kind=weapon`、`path_family=wp/<family>`，路径必须位于
   `nativePC/wp/<family>/...` 且 family 一致。
 - 路径段只允许 ASCII 字母、数字、`.`、`_`、`-`；大小写折叠后的路径必须全局唯一。
@@ -95,9 +101,15 @@ validator 必须重算并拒绝不匹配、重复 stable ID、重复路径和大
 ## 名称与条目状态
 
 `names` 按 locale 保存：每个 locale 有一个 `display_name` 和零个或多个 `aliases`。名称使用现有 adapter
-的 NFKC、大小写、空白和中点归一化规则比较。同一 locale 的规范化 display name 不得跨目标重复；
-alias 只用于显示/检索，不参与 stable ID。同一 alias 可以合理地指向多个目标，例如同一怪物的
-Alpha/Beta 条目。
+的 NFKC、大小写、空白和中点归一化规则比较。同一 locale 的规范化 display name **在同一 `path_family`
+内**不得跨目标重复；alias 只用于显示/检索，不参与 stable ID。同一 alias 可以合理地指向多个目标，
+例如同一怪物的 Alpha/Beta 条目。
+
+唯一性按 `path_family` 分组而不是全局，是因为**同一件装备的多个模型变体本来就同名**
+（见下节 Armor 的两个 `path_family`）。「皮甲·α」就是「皮甲·α」，不该因为数据结构而被迫叫两个
+名字。这不放松纪律：唯一性要防的是「玩家看到两条无法区分的结果」，而
+`list_compatible_targets` 按源包的 `path_family` 筛过目标，玩家一次只看得到一个变体。
+`internal_id` 的唯一性同样是 `(path_family, internal_id)` 复合键，两者口径一致。
 
 条目状态：
 

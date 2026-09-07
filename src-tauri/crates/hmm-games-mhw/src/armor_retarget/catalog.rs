@@ -11,6 +11,17 @@ use unicode_normalization::UnicodeNormalization;
 const MHW_ARMOR_CATALOG_SCHEMA_VERSION: u32 = 1;
 const BUNDLED_ARMOR_CATALOG: &str = include_str!("../../data/mhw-armor-targets.v1.json");
 
+/// 防具目标允许的 `path_family`（`#356`）。
+///
+/// **这两个值不是「男装／女装」，是同一件装备的两套模型。** 实测游戏本体（枚举
+/// `chunkG0`–`G9` 的 `pl/f_equip` 与 `pl/m_equip` 目录）：272 个槽位里 262 个两套都有，
+/// 只有 10 个是单模型的联动装。玩家的角色性别决定游戏加载哪一套——女角穿只有男模型的
+/// 「隆」，加载的仍是 `m_equip` 那套，看到的就是男性外观。
+///
+/// 所以两个 family 都必须是合法目标：此前只放行 `pl/f_equip`，导致男角玩家改任何防具
+/// 外观都会被装到游戏不读的路径去，而且装完不报错。
+const ARMOR_PATH_FAMILIES: [&str; 2] = ["pl/f_equip", "pl/m_equip"];
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MhwArmorCatalog;
 
@@ -245,7 +256,7 @@ fn metadata_text<'a>(
 /// 否则错误数据会静默混进 catalog——这正是留着必填想防的事。
 fn validate_armor_metadata(metadata: &BTreeMap<String, Value>) -> ReplacementCatalogResult<&str> {
     let path_family = metadata_text(metadata, "path_family")?;
-    if path_family != "pl/f_equip" {
+    if !ARMOR_PATH_FAMILIES.contains(&path_family) {
         return Err(ReplacementCatalogError::CatalogInvalid);
     }
     for optional_text in ["monster", "rank", "variant"] {
