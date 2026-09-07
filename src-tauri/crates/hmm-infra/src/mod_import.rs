@@ -3,10 +3,12 @@ use crate::archive_extraction::{
     ArchiveExtractionLimits, ArchiveSource,
 };
 use crate::controlled_fs::{
-    open_child_directory_nofollow, open_existing_directory_chain, open_existing_directory_nofollow,
+    create_new_regular_file, open_child_directory_nofollow, open_existing_directory_chain,
+    open_existing_directory_nofollow, open_or_create_child_directory,
     open_or_create_directory_chain, open_or_create_directory_nofollow, open_regular_file_nofollow,
     remove_child_tree_nofollow,
 };
+use crate::rar_archive_source;
 use anyhow::{Context, Result};
 use cap_std::fs::Dir;
 use hmm_core::sanitize_mod_metadata_text;
@@ -208,12 +210,22 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
             }
         };
 
-        if let Err(error) = extract_zip_archive_with_limits(
+        // rar 需要一个真实路径（unrar 的 DLL API 只接受路径），所以要有地方落一份。
+        // 暂存目录开在**包沙箱之外**——沙箱里的内容会被原样提交成 Mod 版本，
+        // 把原始压缩包丢进去就是往玩家的包里塞垃圾。
+        let scratch = ArchiveScratch::new(&self.sandbox_root, request.task_id);
+        let extraction = extract_archive_with_limits(
             request.archive,
+            &root,
+            &scratch,
             &sandbox,
             request.cancellation_token,
             self.limits,
-        ) {
+        );
+        // 无论成败都要清掉暂存——它不该活过这次调用。
+        scratch.cleanup(&root);
+
+        if let Err(error) = extraction {
             drop(sandbox);
             let _ = remove_child_tree_nofollow(
                 &root,
@@ -620,8 +632,83 @@ fn validate_diagnostic_name_segment(value: &str, label: &str) -> Result<()> {
     Ok(())
 }
 
-fn extract_zip_archive_with_limits<R>(
+/// 包沙箱**之外**的一次性暂存目录，专供「只接受路径的解压器」用。
+///
+/// 名字是 `<task_id>.staging`。任务 id 只允许 `[A-Za-z0-9_-]`（见
+/// `validate_task_id_segment`），所以带 `.` 的这个名字**永远不可能与真实任务沙箱撞名**
+/// ——这不是巧合，是挑出来的。
+struct ArchiveScratch {
+    directory_name: String,
+    /// 真实路径。unrar 的 DLL API 只接受路径，cap-std 的 `Dir` 给不出来。
+    archive_path: PathBuf,
+}
+
+/// 暂存目录里那份压缩包的固定文件名。它是我们自己创建的，不取玩家的原名
+/// ——原名可能带任何字符，而这里不需要它有任何意义。
+const SCRATCH_ARCHIVE_FILE_NAME: &str = "archive.bin";
+
+impl ArchiveScratch {
+    fn new(sandbox_root: &Path, task_id: &str) -> Self {
+        let directory_name = format!("{task_id}.staging");
+        let archive_path = sandbox_root
+            .join(&directory_name)
+            .join(SCRATCH_ARCHIVE_FILE_NAME);
+        Self {
+            directory_name,
+            archive_path,
+        }
+    }
+
+    /// 把 reader 原样落一份到暂存目录，返回给解压器用的路径。
+    ///
+    /// 目录与文件都经 cap-std 在沙箱根的能力下创建，不走操作系统全路径。
+    fn spill<R>(&self, root: &Dir, archive_file: &mut R) -> Result<&Path>
+    where
+        R: Read + Seek + ?Sized,
+    {
+        let directory = open_or_create_child_directory(
+            root,
+            std::ffi::OsStr::new(&self.directory_name),
+            "mod import archive staging",
+        )?;
+        let mut target = create_new_regular_file(
+            &directory,
+            std::ffi::OsStr::new(SCRATCH_ARCHIVE_FILE_NAME),
+            "staged mod import archive",
+        )?;
+        archive_file
+            .seek(io::SeekFrom::Start(0))
+            .context("failed to rewind the mod import archive")?;
+        io::copy(archive_file, &mut target).context("failed to stage the mod import archive")?;
+        target
+            .sync_all()
+            .context("failed to flush the staged mod import archive")?;
+        Ok(&self.archive_path)
+    }
+
+    /// 无条件清掉。**不返回错误**：清不掉不该把一次成功的导入变成失败，
+    /// 而残留物落在沙箱根下、与任务沙箱同一套清理规则。
+    fn cleanup(&self, root: &Dir) {
+        let _ = remove_child_tree_nofollow(
+            root,
+            std::ffi::OsStr::new(&self.directory_name),
+            "mod import archive staging",
+        );
+    }
+}
+
+/// 依次尝试每一种**已支持格式**的打开；全部失败才嗅探，且嗅探只用来解释失败。
+///
+/// 「第 1 步是每一种已支持格式，不是 zip」这句不是措辞讲究：自解压 RAR 是个 `MZ`
+/// 开头的 `.exe`，若第 1 步写死成 zip，它会被嗅探判成「不是压缩包」，
+/// 而 unrar 其实打得开。**支持集合会增长，判别必须跟着长。**
+///
+/// 顺序按常见程度排：zip 在前，rar 在后。每一次「尝试打开」都有真实开销
+/// ——rar 那一步还要先把 reader 落一份盘（unrar 只接受路径）。
+fn extract_archive_with_limits<R>(
     archive_file: &mut R,
+    root: &Dir,
+    scratch: &ArchiveScratch,
     sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
     limits: ArchiveExtractionLimits,
@@ -629,25 +716,47 @@ fn extract_zip_archive_with_limits<R>(
 where
     R: Read + Seek + ?Sized,
 {
-    // 先开后嗅（#348）：**照旧尝试打开**，成功就走原路径,一个字节不改。
-    // 只有打开失败之后才去嗅探容器 magic——而且那只是为了「解释失败」,不是「拦截输入」。
-    // 归档不保证从文件首字节开始(自解压包即是),所以按首字节预检会误杀本来能导入的包。
+    // ── 格式 1：zip ──
     // 显式重借：泛型参数会把 `&mut R` 直接 move 进去，失败分支就再也拿不到 reader 了。
-    let mut archive = match zip::ZipArchive::new(&mut *archive_file) {
-        Ok(archive) => archive,
-        Err(error) => {
-            let zip_error = anyhow::Error::new(error).context("failed to read zip archive");
-            return Err(explain_unopenable_archive(archive_file, zip_error));
+    let zip_error = match zip::ZipArchive::new(&mut *archive_file) {
+        Ok(mut archive) => {
+            // 七条门禁全部由与格式无关的外壳施加（T21-B）。zip 这里只当一个
+            // 「按顺序产出条目」的适配器——新增格式时不得再复制一份门禁。
+            let mut source = ZipArchiveSource {
+                archive: &mut archive,
+                index: 0,
+            };
+            extract_archive(&mut source, sandbox_root, cancellation_token, limits)?;
+            return Ok(());
         }
+        Err(error) => anyhow::Error::new(error).context("failed to read zip archive"),
     };
-    // 七条门禁全部由与格式无关的外壳施加（T21-B）。zip 这里只当一个「按顺序产出条目」
-    // 的适配器——新增格式时不得再复制一份门禁。
-    let mut source = ZipArchiveSource {
-        archive: &mut archive,
-        index: 0,
-    };
-    extract_archive(&mut source, sandbox_root, cancellation_token, limits)?;
-    Ok(())
+
+    // ── 格式 2：rar ──
+    // unrar 只能按路径打开，所以先落一份到包沙箱之外的暂存目录。
+    // 这样它读到的**只是我们刚创建的文件**：玩家给的路径不进它的视野，
+    // symlink 跟随与 TOCTOU 一并消失。代价是一次完整拷贝，见设计文档。
+    let staged = scratch.spill(root, archive_file)?;
+    match rar_archive_source::RarArchiveSource::open(staged) {
+        Ok(mut source) => {
+            let outcome = extract_archive(&mut source, sandbox_root, cancellation_token, limits);
+            return match outcome {
+                Ok(()) => Ok(()),
+                // 适配器把「加密」「分卷」这类语义单独存着，不靠 downcast 反推
+                // ——外壳的接口是 anyhow，语义没法从里面还原。
+                Err(error) => Err(source
+                    .take_structured_failure()
+                    .unwrap_or(ModImportPrepareError::Other(error))),
+            };
+        }
+        // 打不开，但认得出是什么问题（加密包等）——直接报，不要退回嗅探。
+        Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
+        // 就是打不开。继续往下走嗅探。
+        Err(_) => {}
+    }
+
+    // ── 都打不开：嗅探，只为解释失败 ──
+    Err(explain_unopenable_archive(archive_file, zip_error))
 }
 
 /// zip 的格式适配器。**只做三件事**：报条目总数、产出条目头、把字节推给 sink。
@@ -703,9 +812,13 @@ impl<R: Read + Seek + ?Sized> ArchiveSource for ZipArchiveSource<'_, R> {
 const TAR_MAGIC_OFFSET: u64 = 257;
 const TAR_MAGIC: &[u8] = b"ustar";
 /// 首字节签名表。判别只在所有「已支持格式」的打开尝试都失败之后执行。
+/// **rar 已从这张表里移走**（T21-C）：它现在是「已支持格式」，判别第 1 步就会尝试打开。
+/// 留在这里的话，一个**损坏的** rar 会被报成「格式不支持」——那只是把误导换个方向，
+/// 正是本设计三条不可让步判据里的第一条禁止的事。
+///
+/// 这条移动是「支持集合增长时判别自动收敛」的实例：某格式从第 3 步升到第 1 步，
+/// 这张表里对应的行就该失效，不需要额外维护档位。
 const ARCHIVE_SIGNATURES: &[(&[u8], UnsupportedArchiveFormat)] = &[
-    (b"Rar!\x1a\x07\x01\x00", UnsupportedArchiveFormat::Rar), // RAR5，比 RAR4 长，必须先匹配
-    (b"Rar!\x1a\x07\x00", UnsupportedArchiveFormat::Rar),     // RAR4
     (b"7z\xbc\xaf\x27\x1c", UnsupportedArchiveFormat::SevenZip),
     (b"\xfd7zXZ\x00", UnsupportedArchiveFormat::Xz),
     (b"\x1f\x8b", UnsupportedArchiveFormat::Gzip),
@@ -1368,17 +1481,10 @@ mod tests {
     #[test]
     fn known_archive_containers_are_reported_as_unsupported_formats() {
         let temp = tempfile::tempdir().expect("temp dir");
+        // **rar 不在这张表里了**（T21-C）：它已是「已支持格式」，
+        // 带 rar 签名却打不开的文件是**损坏的 rar**，必须留在 retry-hint 档
+        // ——见下面 `a_truncated_rar_stays_in_the_retry_hint_tier`。
         let cases: &[(&str, &[u8], UnsupportedArchiveFormat)] = &[
-            (
-                "rar4",
-                b"Rar!\x1a\x07\x00payload",
-                UnsupportedArchiveFormat::Rar,
-            ),
-            (
-                "rar5",
-                b"Rar!\x1a\x07\x01\x00payload",
-                UnsupportedArchiveFormat::Rar,
-            ),
             (
                 "sevenzip",
                 b"7z\xbc\xaf\x27\x1cpayload",
@@ -1539,6 +1645,441 @@ mod tests {
                 prefixed.is_ok()
             ),
         }
+    }
+
+    // ---- #348 切片 C：rar ----
+    //
+    // 语料由 `hmm-unrar-sys::fixture` 现场合成——`.rar` 提交不进仓库，开发机上也没有
+    // 任何 RAR 压缩器。合成不会造成假绿：拼错的话 unrar 直接打不开、用例硬失败，
+    // 而读取器不是我们写的。
+
+    use hmm_unrar_sys::fixture::{Rar5Archive, Rar5Entry};
+    use hmm_unrar_sys::{FSREDIR_HARDLINK, FSREDIR_UNIXSYMLINK};
+
+    fn rar_preparer(
+        temp: &tempfile::TempDir,
+        limits: ArchiveExtractionLimits,
+    ) -> ZipModImportPackagePreparer {
+        ZipModImportPackagePreparer {
+            sandbox_root: temp.path().join("sandboxes"),
+            storage_root: None,
+            limits,
+        }
+    }
+
+    fn write_rar(temp: &tempfile::TempDir, name: &str, archive: &Rar5Archive) -> PathBuf {
+        let path = temp.path().join(name);
+        fs::write(&path, archive.build()).expect("write rar fixture");
+        path
+    }
+
+    /// 正向：一个真实（合成的）RAR5 现在能导入，内容逐字节一致。
+    ///
+    /// 断言的是**等价性**而不是「没报错」——只断言不报错的话，
+    /// 一个把内容丢光的实现也能过。
+    #[test]
+    fn a_rar_archive_now_imports_with_byte_identical_content() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "mod.rar",
+            &Rar5Archive::new(vec![
+                Rar5Entry::file("readme.txt", b"hello from rar".to_vec()),
+                Rar5Entry::directory("nativePC"),
+                Rar5Entry::file("nativePC/data.bin", vec![0x5a; 9000]),
+            ]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "rar-1", &path).expect("a good rar must import");
+
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("readme.txt")).expect("read"),
+            b"hello from rar"
+        );
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("nativePC/data.bin")).expect("read"),
+            vec![0x5a; 9000]
+        );
+    }
+
+    /// **判别顺序的活体断言。**
+    ///
+    /// 自解压 RAR 是个 `MZ` 开头的 `.exe`。T21-A 时它落在 `not-an-archive`；
+    /// C 之后必须**正常导入**。翻不过来就说明判别第 1 步被写死成了固定格式列表，
+    /// 而不是「当前已支持的格式集合」——这正是设计要防的那个实现陷阱。
+    #[test]
+    fn a_self_extracting_rar_now_imports_instead_of_being_called_not_an_archive() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "sfx.exe",
+            &Rar5Archive::new(vec![Rar5Entry::file("a.txt", b"sfx payload".to_vec())])
+                .with_sfx_prefix(b"MZ\x90\x00\x03\x00\x00\x00stub".to_vec()),
+        );
+        assert_eq!(
+            &fs::read(&path).expect("read")[..2],
+            b"MZ",
+            "语料本身必须是 MZ 开头，否则这条用例证明不了任何事"
+        );
+
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "sfx-1", &path)
+            .expect("自解压 RAR 必须能导入——报 not-an-archive 就是判别被写死了");
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("a.txt")).expect("read"),
+            b"sfx payload"
+        );
+    }
+
+    /// 损坏的 rar 必须留在 `retry-hint`，**不能**被说成「格式不支持」。
+    ///
+    /// rar 已是已支持格式，所以「带 rar 签名但打不开」只有一个含义：包坏了。
+    /// 这是三条不可让步判据里的第一条在 rar 侧的对应用例。
+    #[test]
+    fn a_truncated_rar_stays_in_the_retry_hint_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let full = Rar5Archive::new(vec![Rar5Entry::file("a.txt", vec![1_u8; 4096])]).build();
+        for (label, bytes) in [
+            // 数据区被砍掉一半：头读得出来，解到一半断流。
+            ("halved", full[..full.len() / 2].to_vec()),
+            // 签名之后全是垃圾：连主头都解析不了。
+            ("garbage-after-signature", {
+                let mut bytes = b"Rar!\x1a\x07\x01\x00".to_vec();
+                bytes.extend_from_slice(&[0xff_u8; 64]);
+                bytes
+            }),
+        ] {
+            let error = prepare_bytes(&temp, label, &bytes);
+            assert!(
+                matches!(error, ModImportPrepareError::Other(_)),
+                "{label}: 损坏的 rar 必须留在 retry-hint，得到 {error:?}"
+            );
+        }
+    }
+
+    /// **空归档：rar 与 zip 必须行为一致。**
+    ///
+    /// 一个只有签名的 RAR5 在 unrar 眼里不是「损坏」，而是**合法的空归档**
+    /// （首次 `read_header` 直接返回 `END_ARCHIVE`）——落地时实测才发现，
+    /// 我原先想当然把它当成截断包了。
+    ///
+    /// 所以这里断言的是**等价性**，不是某个具体结果：「空包该不该拒」是导入链路的
+    /// 既有语义，不该因为换了个容器格式就变。真要改，那是另一件事、另一个 issue。
+    #[test]
+    fn an_empty_rar_behaves_the_same_as_an_empty_zip() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let zip_path = temp.path().join("empty.zip");
+        create_zip(&zip_path, &[]);
+        let rar_path = write_rar(&temp, "empty.rar", &Rar5Archive::new(vec![]));
+
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let zip_outcome = prepare_package(&preparer, "empty-zip", &zip_path);
+        let rar_outcome = prepare_package(&preparer, "empty-rar", &rar_path);
+
+        assert_eq!(
+            zip_outcome.is_ok(),
+            rar_outcome.is_ok(),
+            "空 zip 与空 rar 的结果必须一致：zip={:?} rar={:?}",
+            zip_outcome
+                .as_ref()
+                .map(|_| ())
+                .map_err(|e| format!("{e:?}")),
+            rar_outcome
+                .as_ref()
+                .map(|_| ())
+                .map_err(|e| format!("{e:?}")),
+        );
+    }
+
+    /// 加密包落到自己的档位，而不是一句「请检查压缩包后重试」。
+    #[test]
+    fn an_encrypted_rar_lands_in_its_own_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "secret.rar",
+            &Rar5Archive::new(vec![
+                Rar5Entry::file("secret.txt", b"cipher".to_vec()).with_encrypted_flag()
+            ]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "enc-1", &path).expect_err("加密包必须被拒");
+        assert!(
+            matches!(
+                error,
+                ModImportPrepareError::UnsupportedArchiveFeature(
+                    hmm_ports::UnsupportedArchiveFeature::Encrypted
+                )
+            ),
+            "得到 {error:?}"
+        );
+        assert_eq!(error.code(), "mod_import_archive_encrypted");
+    }
+
+    /// 分卷包落到自己的档位。**打开时就报得出来**，不必解到一半才发现。
+    #[test]
+    fn a_multi_volume_rar_lands_in_its_own_tier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "part1.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("a.txt", b"vol".to_vec())]).as_volume(),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "vol-1", &path).expect_err("分卷包必须被拒");
+        assert!(
+            matches!(
+                error,
+                ModImportPrepareError::UnsupportedArchiveFeature(
+                    hmm_ports::UnsupportedArchiveFeature::MultiVolume
+                )
+            ),
+            "得到 {error:?}"
+        );
+        assert_eq!(error.code(), "mod_import_archive_multi_volume");
+    }
+
+    /// **T21-B 完成定义在 rar 上的兑现**：整组共享负测跑在 rar 上，
+    /// 断言与期望文本**一条都不为 rar 重写**。要重写就说明外壳没抽干净。
+    ///
+    /// `LyingDeclaredSize` 一例 rar 按「声明未知」来造：store 结构上没法声明得比实际小
+    /// （`extract.cpp:902` 的 `UnstoreFile` 以 `UnpSize` 为界）。该用例的意图是
+    /// 「配额不能依赖声明值」，「未知」对这条意图的检验不比「说谎」弱。
+    #[test]
+    fn the_shared_negative_suite_holds_for_rar_without_rewriting_a_single_assertion() {
+        use crate::archive_extraction::shared_negative_suite::{
+            expected_message, NegativeCase, ALL_CASES,
+        };
+
+        let generous = ArchiveExtractionLimits {
+            max_entries: 16,
+            max_single_file_bytes: 1024,
+            max_total_uncompressed_bytes: 4096,
+        };
+
+        for case in ALL_CASES {
+            let temp = tempfile::tempdir().expect("temp dir");
+            let (archive, limits) = match case {
+                NegativeCase::PathEscape => (
+                    Rar5Archive::new(vec![Rar5Entry::file("../escape.txt", b"bad".to_vec())]),
+                    generous,
+                ),
+                NegativeCase::AbsolutePath => (
+                    Rar5Archive::new(vec![Rar5Entry::file("/abs.txt", b"bad".to_vec())]),
+                    generous,
+                ),
+                NegativeCase::SymlinkEntry => (
+                    Rar5Archive::new(vec![Rar5Entry::redirect(
+                        "link",
+                        FSREDIR_UNIXSYMLINK,
+                        "../outside",
+                    )]),
+                    generous,
+                ),
+                NegativeCase::CaseCollision => (
+                    Rar5Archive::new(vec![
+                        Rar5Entry::file("Same.txt", b"a".to_vec()),
+                        Rar5Entry::file("same.txt", b"b".to_vec()),
+                    ]),
+                    generous,
+                ),
+                NegativeCase::TooManyEntries => (
+                    Rar5Archive::new(
+                        (0..5)
+                            .map(|i| Rar5Entry::file(&format!("f{i}.txt"), b"x".to_vec()))
+                            .collect(),
+                    ),
+                    ArchiveExtractionLimits {
+                        max_entries: 3,
+                        ..generous
+                    },
+                ),
+                NegativeCase::OversizedSingleFile => (
+                    Rar5Archive::new(vec![Rar5Entry::file("big.bin", vec![0; 500])]),
+                    ArchiveExtractionLimits {
+                        max_single_file_bytes: 64,
+                        ..generous
+                    },
+                ),
+                NegativeCase::OversizedTotal => (
+                    Rar5Archive::new(vec![
+                        Rar5Entry::file("a.bin", vec![0; 40]),
+                        Rar5Entry::file("b.bin", vec![0; 40]),
+                    ]),
+                    ArchiveExtractionLimits {
+                        max_total_uncompressed_bytes: 64,
+                        ..generous
+                    },
+                ),
+                NegativeCase::LyingDeclaredSize => (
+                    // rar 的对应形态：声明「未知」，实际 500 字节。
+                    // 预检拿不到可比的声明值，只能由字节流配额兜住。
+                    Rar5Archive::new(vec![
+                        Rar5Entry::file("liar.bin", vec![0; 500]).with_unknown_unpacked_size()
+                    ]),
+                    ArchiveExtractionLimits {
+                        max_single_file_bytes: 64,
+                        ..generous
+                    },
+                ),
+            };
+
+            let path = write_rar(&temp, "case.rar", &archive);
+            let preparer = rar_preparer(&temp, limits);
+            let Err(error) = prepare_package(&preparer, "case-1", &path) else {
+                panic!("{case:?} 必须被拒，却导入成功了");
+            };
+            let text = format!("{error:#}");
+            assert!(
+                text.contains(expected_message(*case)),
+                "{case:?}: 期望包含 {:?}，实际 {text}",
+                expected_message(*case)
+            );
+        }
+    }
+
+    /// **声明「解压大小未知」的条目必须能正常导入。**
+    ///
+    /// unrar 对 `FHFL_UNPUNKNOWN` 报的是哨兵 `0x7fffffff_7fffffff`。适配器若不把它
+    /// 翻译成「未知」，外壳的声明值预检会拿 9.2e18 去比 4 GiB 上限，
+    /// **把一个内容只有几十字节的好包直接拒掉**。
+    ///
+    /// 这条是反向验证逼出来的：原先只有负测覆盖这个哨兵，而负测在「翻译」与
+    /// 「不翻译」两种实现下**报的是同一句话**（都命中「超出单文件上限」），
+    /// 根本区分不了。能区分的只有正向用例——包是好的，就必须进得来。
+    #[test]
+    fn an_entry_with_an_unknown_declared_size_still_imports_when_it_fits() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "streamed.rar",
+            &Rar5Archive::new(vec![
+                Rar5Entry::file("streamed.bin", vec![7_u8; 64]).with_unknown_unpacked_size()
+            ]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "unk-1", &path)
+            .expect("声明未知但实际很小的包必须能导入——拒掉说明哨兵没被翻译成「未知」");
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("streamed.bin")).expect("read"),
+            vec![7_u8; 64]
+        );
+    }
+
+    /// 归档里存**字面反斜杠**的条目名不会被当成目录分隔——它是一个文件。
+    ///
+    /// 这条钉住的是「为什么不做分隔符归一」。unrar 报出的已经是宿主原生形态：
+    /// Windows 上字面反斜杠是非法文件名字符、被消毒成下划线；Linux 上原样保留、
+    /// `Path` 也把它当普通字符。**两个平台都只产出一个文件**，与归一后的
+    /// 「解成两层目录」正相反。
+    ///
+    /// 断言写成「只有一个条目、且不是目录」而不是写死文件名，
+    /// 是因为文件名本身随平台不同（下划线 vs 反斜杠），而**结构**是一致的
+    /// ——一致的那个才是该断言的东西。
+    #[test]
+    fn a_literal_backslash_in_an_entry_name_is_not_a_directory_separator() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "backslash.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file(r"dir\file.txt", b"flat".to_vec())]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "sep-1", &path).expect("import");
+
+        let entries: Vec<_> = fs::read_dir(&prepared.sandbox_root)
+            .expect("read sandbox")
+            .map(|entry| entry.expect("entry"))
+            .collect();
+        assert_eq!(entries.len(), 1, "只该有一个条目");
+        assert!(
+            entries[0].file_type().expect("file type").is_file(),
+            "字面反斜杠不该被解成目录：{:?}",
+            entries[0].file_name()
+        );
+        assert_eq!(fs::read(entries[0].path()).expect("read"), b"flat");
+    }
+
+    /// hardlink 条目也要被拒——rar 里它是一等条目类型，不是 zip 那种边缘特性。
+    #[test]
+    fn rar_hard_link_entries_are_rejected() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "hardlink.rar",
+            &Rar5Archive::new(vec![Rar5Entry::redirect(
+                "link",
+                FSREDIR_HARDLINK,
+                "../outside",
+            )]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let error = prepare_package(&preparer, "hl-1", &path).expect_err("hardlink 必须被拒");
+        assert!(
+            format!("{error:#}").contains("hard link entries are not allowed"),
+            "得到 {error:#}"
+        );
+    }
+
+    /// 暂存目录用完即删——**成功与失败两条路都要清干净**。
+    ///
+    /// 它开在包沙箱之外，所以清不掉不会污染 Mod 版本；但留着就是每导入一个 rar
+    /// 就多一份原始压缩包的副本，磁盘会被慢慢吃掉。
+    #[test]
+    fn the_rar_staging_directory_is_removed_on_both_success_and_failure() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sandbox_root = temp.path().join("sandboxes");
+
+        let good = write_rar(
+            &temp,
+            "good.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("a.txt", b"ok".to_vec())]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        prepare_package(&preparer, "ok-1", &good).expect("import");
+        assert!(
+            !sandbox_root.join("ok-1.staging").exists(),
+            "成功后暂存目录必须已删除"
+        );
+
+        let bad = write_rar(
+            &temp,
+            "bad.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("../escape.txt", b"bad".to_vec())]),
+        );
+        prepare_package(&preparer, "bad-1", &bad).expect_err("逃逸必须被拒");
+        assert!(
+            !sandbox_root.join("bad-1.staging").exists(),
+            "失败后暂存目录同样必须已删除"
+        );
+        assert!(
+            !sandbox_root.join("bad-1").exists(),
+            "失败后包沙箱也必须被清掉"
+        );
+    }
+
+    /// 暂存的原始压缩包**绝不能**混进包沙箱——那会被原样提交成 Mod 版本的内容。
+    #[test]
+    fn the_staged_archive_never_lands_inside_the_package_sandbox() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = write_rar(
+            &temp,
+            "mod.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("only.txt", b"content".to_vec())]),
+        );
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        let prepared = prepare_package(&preparer, "clean-1", &path).expect("import");
+
+        let entries: Vec<_> = fs::read_dir(&prepared.sandbox_root)
+            .expect("read sandbox")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        assert_eq!(
+            entries.len(),
+            1,
+            "包沙箱里只该有归档里的内容，实际是 {entries:?}"
+        );
+        assert_eq!(entries[0], std::ffi::OsStr::new("only.txt"));
     }
 
     #[test]

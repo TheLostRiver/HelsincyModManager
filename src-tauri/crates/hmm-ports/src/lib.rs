@@ -97,10 +97,11 @@ pub use mod_import::{
     ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer,
     NoStoredContentRoot, NoStoredFileSelection, NonArchiveFile, PreparedModPackage,
     StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
-    StoredModPackageMetadata, StoredModRevision, UnsupportedArchiveFormat,
-    MOD_IMPORT_NOT_AN_ARCHIVE_CODE, MOD_IMPORT_PREPARE_FAILED_CODE,
-    MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE, MOD_IMPORT_UPSERT_CHUNK_SIZE,
-    MOD_IMPORT_UPSERT_MAX_ENTRIES,
+    StoredModPackageMetadata, StoredModRevision, UnsupportedArchiveFeature,
+    UnsupportedArchiveFormat, MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE,
+    MOD_IMPORT_ARCHIVE_MULTI_VOLUME_CODE, MOD_IMPORT_NOT_AN_ARCHIVE_CODE,
+    MOD_IMPORT_PREPARE_FAILED_CODE, MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE,
+    MOD_IMPORT_UPSERT_CHUNK_SIZE, MOD_IMPORT_UPSERT_MAX_ENTRIES,
 };
 pub use mod_import_archive::{
     ModImportArchiveConsumeError, ModImportArchiveConsumer, ModImportArchiveFingerprint,
