@@ -801,3 +801,201 @@ fn package_level_companions_ride_only_with_the_designated_carrier() {
         "非承载者一个包级随行文件都不该带，否则两个绑定撞同一个 target_path"
     );
 }
+
+/// `#363` 的真实包夹具：一个 `pl/m_equip` 外观包，**作者自建贴图目录放在 family 旁边**
+/// （`nativePC/pl/<作者目录>/`）而不是 family 之内。37 个文件：槽位内 14（五个部位）
+/// ＋ 包级随行 23（22 个 `.tex` ＋ 1 个 `.efx`）。
+///
+/// 这 23 个此前被静默丢弃：分类器只把 `nativePC/pl/<family>/<作者目录>/` 认作随行，
+/// 放在 family 旁边就归「无关」。而那 22 个贴图**被槽位里的 MRL3 按路径引用**（按 MRL3
+/// 贴图表逐条解开该包的 5 个 `.mrl3`，指向该目录的引用恰好 22 条，与文件一一对应，
+/// 且引用里不含槽位编号——所以它们不需要改名，只需要原样安装）。丢掉的后果是
+/// 模型装上了、贴图没有：安装成功、外观是坏的、无诊断线索。
+const GUTS_MALE_SET: &[&str] = &[
+    "nativePC/pl/Guts/BerserkEyes.efx",
+    "nativePC/pl/Guts/arm/Gauntlet_BML.tex",
+    "nativePC/pl/Guts/arm/Gauntlet_NM.tex",
+    "nativePC/pl/Guts/arm/Gauntlet_RMT.tex",
+    "nativePC/pl/Guts/body/Shoulder_BML.tex",
+    "nativePC/pl/Guts/body/Shoulder_NM.tex",
+    "nativePC/pl/Guts/body/Shoulder_RMT.tex",
+    "nativePC/pl/Guts/body/Ub_BML.tex",
+    "nativePC/pl/Guts/body/Ub_NM.tex",
+    "nativePC/pl/Guts/body/Ub_RMT.tex",
+    "nativePC/pl/Guts/helm/Helm_BML.tex",
+    "nativePC/pl/Guts/helm/Helm_EM.tex",
+    "nativePC/pl/Guts/helm/Helm_NM.tex",
+    "nativePC/pl/Guts/helm/Helm_RMT.tex",
+    "nativePC/pl/Guts/leg/Foot_BML.tex",
+    "nativePC/pl/Guts/leg/Foot_NM.tex",
+    "nativePC/pl/Guts/leg/Foot_RMT.tex",
+    "nativePC/pl/Guts/leg/Skin_BML.tex",
+    "nativePC/pl/Guts/leg/Skin_NM.tex",
+    "nativePC/pl/Guts/leg/Skin_RMT.tex",
+    "nativePC/pl/Guts/wst/Cloak_BML.tex",
+    "nativePC/pl/Guts/wst/Cloak_NM.tex",
+    "nativePC/pl/Guts/wst/Cloak_RMT.tex",
+    "nativePC/pl/m_equip/pl071_0000/arm/mod/m_arm071_0000.mod3",
+    "nativePC/pl/m_equip/pl071_0000/arm/mod/m_arm071_0000.mrl3",
+    "nativePC/pl/m_equip/pl071_0000/body/epv/m_body071.epv3",
+    "nativePC/pl/m_equip/pl071_0000/body/mod/m_body071_0000.mod3",
+    "nativePC/pl/m_equip/pl071_0000/body/mod/m_body071_0000.mrl3",
+    "nativePC/pl/m_equip/pl071_0000/helm/mod/m_helm071_0000.evhl",
+    "nativePC/pl/m_equip/pl071_0000/helm/mod/m_helm071_0000.mod3",
+    "nativePC/pl/m_equip/pl071_0000/helm/mod/m_helm071_0000.mrl3",
+    "nativePC/pl/m_equip/pl071_0000/leg/mod/m_leg071_0000.mod3",
+    "nativePC/pl/m_equip/pl071_0000/leg/mod/m_leg071_0000.mrl3",
+    "nativePC/pl/m_equip/pl071_0000/wst/mod/m_wst071_0000.ctc",
+    "nativePC/pl/m_equip/pl071_0000/wst/mod/m_wst071_0000.evbd",
+    "nativePC/pl/m_equip/pl071_0000/wst/mod/m_wst071_0000.mod3",
+    "nativePC/pl/m_equip/pl071_0000/wst/mod/m_wst071_0000.mrl3",
+];
+
+const GUTS_MALE_SOURCE_ID: &str = "mhw:armor:m_equip:pl071_0000";
+/// 包级随行那 23 个的包内路径前缀。
+const GUTS_COMPANION_PREFIX: &str = "nativePC/pl/Guts/";
+
+fn male_plan_for(
+    paths: &[&str],
+    target_slot: &str,
+    carries_package_companions: bool,
+) -> Result<RetargetPlan, ReplacementAdapterError> {
+    MhwArmorReplacementAdapter.build_retarget_plan(RetargetPlanRequest {
+        game_id: GameId::mhw(),
+        binding: binding(GUTS_MALE_SOURCE_ID, &male_target_id(target_slot)),
+        assets: assets(paths),
+        carries_package_companions,
+    })
+}
+
+fn analysis_of(paths: &[&str]) -> hmm_core::ReplacementAnalysis {
+    MhwArmorReplacementAdapter
+        .analyze_replacement_assets(ReplacementAnalysisRequest {
+            game_id: GameId::mhw(),
+            assets: assets(paths),
+        })
+        .expect("分析必须成功")
+}
+
+/// `#363`：包内每一个可安装文件都必须进计划，认不出来的原样安装。
+///
+/// 判据是**与普通安装同一口径**：普通安装的过滤只有「在不在游戏根之下」
+/// （`hmm-app` 的 `is_installable_target_path`），零内容知识。重定向没有理由更严——
+/// 否则「用了重定向反而少装文件」。修复前这个包普通安装写 37 个、重定向只写 14 个。
+#[test]
+fn every_installable_file_reaches_the_plan_even_when_the_adapter_cannot_classify_it() {
+    let analysis = analysis_of(GUTS_MALE_SET);
+    assert_eq!(
+        analysis.matched_asset_count(),
+        GUTS_MALE_SET.len(),
+        "包内 {} 个文件必须全部有归属，实际只认了 {}",
+        GUTS_MALE_SET.len(),
+        analysis.matched_asset_count()
+    );
+
+    let plan = male_plan_for(GUTS_MALE_SET, "pl069_0000", true).expect("计划必须生成");
+    assert_eq!(
+        plan.actions().len(),
+        GUTS_MALE_SET.len(),
+        "计划动作数必须覆盖包内全部文件"
+    );
+
+    // 槽位内的 14 个按编号段改名，`m_` 前缀与扩展名逐字保留。
+    assert_eq!(
+        target_of(
+            &plan,
+            "nativePC/pl/m_equip/pl071_0000/arm/mod/m_arm071_0000.mod3"
+        ),
+        "nativePC/pl/m_equip/pl069_0000/arm/mod/m_arm069_0000.mod3"
+    );
+
+    // 包级随行那 23 个**原样安装**：目标路径与来源逐字相同，一个都不能少。
+    let verbatim = plan
+        .actions()
+        .iter()
+        .filter(|action| {
+            action
+                .source_relative_path()
+                .as_str()
+                .starts_with(GUTS_COMPANION_PREFIX)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(verbatim.len(), 23, "包级随行必须全部进计划");
+    for action in verbatim {
+        assert_eq!(
+            action.source_relative_path().as_str(),
+            action.target_relative_path().as_str(),
+            "{} 是按路径被引用的随行文件，不得改路径",
+            action.source_relative_path().as_str()
+        );
+    }
+
+    // family 之外的随行同样受承载者开关约束（「恰好一个承载者」的双槽位用例另见
+    // `package_level_companions_ride_only_with_the_designated_carrier`）。
+    let passenger = male_plan_for(GUTS_MALE_SET, "pl069_0000", false).expect("非承载者计划");
+    assert_eq!(
+        passenger.actions().len(),
+        14,
+        "非承载者只带自己槽位的文件，不带包级随行"
+    );
+}
+
+/// 作者把随行目录放在 family **之内**还是**旁边**，处置必须等价（`#363`）。
+///
+/// 两种都是真实作者习惯：库里的女装包放在 `pl/f_equip/<作者目录>/`，这个男装包放在
+/// `pl/<作者目录>/`。此前前者会安装、后者被丢弃——那个区分本身就是缺陷，没有任何
+/// 结构理由。断言的是**等价性**而不是「都不报错」。
+#[test]
+fn companion_directories_are_equivalent_inside_and_beside_the_family_dir() {
+    let beside = ["nativePC/pl/Guts/arm/Gauntlet_BML.tex"];
+    let inside = ["nativePC/pl/m_equip/Guts/arm/Gauntlet_BML.tex"];
+
+    for paths in [beside.as_slice(), inside.as_slice()] {
+        let mut with_slot = vec!["nativePC/pl/m_equip/pl071_0000/arm/mod/m_arm071_0000.mod3"];
+        with_slot.extend_from_slice(paths);
+
+        let analysis = analysis_of(&with_slot);
+        assert_eq!(
+            analysis.matched_asset_count(),
+            with_slot.len(),
+            "{paths:?} 必须与槽位文件一起被完整计入"
+        );
+
+        let plan = male_plan_for(&with_slot, "pl069_0000", true).expect("计划必须生成");
+        assert_eq!(plan.actions().len(), with_slot.len());
+        assert_eq!(
+            target_of(&plan, paths[0]),
+            paths[0],
+            "随行文件原样安装，路径不变"
+        );
+    }
+}
+
+/// 游戏根之外的文件不安装，但**必须有归属**（`#363`）。
+///
+/// 与「不认识就丢」的区别在于判据：这里是「有没有游戏根」这个结构事实，
+/// 普通安装同样按它过滤（`allowed_install_roots`），两条路径口径一致。
+/// 分档对账因此仍然成立——它们没有丢，是被明确判为不可安装。
+#[test]
+fn files_outside_the_game_root_are_not_installed_and_do_not_break_accounting() {
+    let paths = [
+        "nativePC/pl/m_equip/pl071_0000/arm/mod/m_arm071_0000.mod3",
+        "nativePC/pl/Guts/arm/Gauntlet_BML.tex",
+        "readme.txt",
+        "preview/screenshot.png",
+    ];
+
+    let analysis = analysis_of(&paths);
+    assert_eq!(
+        analysis.matched_asset_count(),
+        2,
+        "只有游戏根之下的两个文件可安装"
+    );
+
+    let plan = male_plan_for(&paths, "pl069_0000", true).expect("计划必须生成");
+    assert_eq!(plan.actions().len(), 2);
+    assert!(plan.actions().iter().all(|action| action
+        .source_relative_path()
+        .as_str()
+        .starts_with("nativePC/")));
+}
