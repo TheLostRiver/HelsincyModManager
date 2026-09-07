@@ -22,6 +22,26 @@ const preview = (fileName, errorCode = null) => ({
   errorCode,
 });
 
+/**
+ * 等一个终态，但**不无限等**。
+ *
+ * 丢事件的回归必须转红，而不是把测试挂住：node --test 默认没有超时，
+ * 一个永不 resolve 的 await 会让整个套件（连同 CI）卡死，比失败还难查。
+ * 反向验证正是这么撞上的——突变施加成功了，测试却不是转红而是挂住。
+ */
+function settleWithin(promise, ms = 500) {
+  let timer;
+  return Promise.race([
+    promise.then((value) => {
+      clearTimeout(timer);
+      return value;
+    }),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve("<never-settled>"), ms);
+    }),
+  ]);
+}
+
 /** 起任务的假实现：按调用顺序发 taskId，并把每次调用记下来。 */
 function fakeStarter(taskIds) {
   const calls = [];
@@ -36,7 +56,7 @@ function fakeStarter(taskIds) {
   };
 }
 
-test("a completed task resolves as succeeded, a failed one as failed", async () => {
+test("a completed task resolves as succeeded, a failed one as failed", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
   const good = watcher.watch("t1");
@@ -46,19 +66,19 @@ test("a completed task resolves as succeeded, a failed one as failed", async () 
   watcher.handleProgress(progress("t1", "completed"));
   watcher.handleProgress(progress("t2", "failed"));
 
-  assert.equal(await good, "succeeded");
-  assert.equal(await bad, "failed");
+  assert.equal(await settleWithin(good), "succeeded");
+  assert.equal(await settleWithin(bad), "failed");
 });
 
-test("a cancelled task counts as failed, not as success", async () => {
+test("a cancelled task counts as failed, not as success", { timeout: 5_000 }, async () => {
   // 取消之后库里确实没多出这个 Mod，报成功就是骗人。
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");
   watcher.handleProgress(progress("t1", "cancelled", "mod_import.cancelled"));
-  assert.equal(await outcome, "failed");
+  assert.equal(await settleWithin(outcome), "failed");
 });
 
-test("progress that arrives before the task id is known is not lost", async () => {
+test("progress that arrives before the task id is known is not lost", { timeout: 5_000 }, async () => {
   // 这是真实存在的竞态：一个瞬间跑完的导入，终态事件会早于 start 的返回值到达。
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
@@ -67,10 +87,10 @@ test("progress that arrives before the task id is known is not lost", async () =
 
   const outcome = watcher.watch("t1");
   watcher.endStart();
-  assert.equal(await outcome, "succeeded", "缓存下来的终态必须在认领时补放");
+  assert.equal(await settleWithin(outcome), "succeeded", "缓存下来的终态必须在认领时补放");
 });
 
-test("events for tasks nobody is watching are dropped once the start settles", async () => {
+test("events for tasks nobody is watching are dropped once the start settles", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
   watcher.endStart();
@@ -86,7 +106,7 @@ test("events for tasks nobody is watching are dropped once the start settles", a
   assert.equal(settled, false, "endStart 之后不再缓存，陈旧事件不能污染下一次");
 });
 
-test("progress from other task kinds never settles a mod import", async () => {
+test("progress from other task kinds never settles a mod import", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");
   watcher.handleProgress(progress("t1", "completed", "mod_import.prepare.completed", {
@@ -101,10 +121,10 @@ test("progress from other task kinds never settles a mod import", async () => {
   assert.equal(settled, false);
 
   watcher.handleProgress(progress("t1", "completed"));
-  assert.equal(await outcome, "succeeded");
+  assert.equal(await settleWithin(outcome), "succeeded");
 });
 
-test("the batch imports one at a time, in list order", async () => {
+test("the batch imports one at a time, in list order", { timeout: 5_000 }, async () => {
   const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.rar"), preview("c.7z")]);
   const watcher = new ModImportTaskWatcher();
   const starter = fakeStarter(["t1", "t2", "t3"]);
@@ -137,7 +157,7 @@ test("the batch imports one at a time, in list order", async () => {
   assert.deepEqual(Object.values(run.results), ["succeeded", "succeeded", "succeeded"]);
 });
 
-test("blocked rows are never started", async () => {
+test("blocked rows are never started", { timeout: 5_000 }, async () => {
   const rows = dropRowsFromPreviews([
     preview("good.zip"),
     preview("secret.rar", "mod_import_archive_encrypted"),
@@ -159,7 +179,7 @@ test("blocked rows are never started", async () => {
   assert.deepEqual(starter.calls, [rows[0].archivePath], "读不了的包不该被起任务");
 });
 
-test("one failure does not abort the rest of the batch", async () => {
+test("one failure does not abort the rest of the batch", { timeout: 5_000 }, async () => {
   // 批量导入里一个坏包让后面的都不跑，是最容易犯也最难解释的错。
   const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip"), preview("c.zip")]);
   const watcher = new ModImportTaskWatcher();
@@ -185,7 +205,7 @@ test("one failure does not abort the rest of the batch", async () => {
   });
 });
 
-test("a task that cannot be started counts as failed and the batch continues", async () => {
+test("a task that cannot be started counts as failed and the batch continues", { timeout: 5_000 }, async () => {
   const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip")]);
   const watcher = new ModImportTaskWatcher();
   const calls = [];
@@ -208,7 +228,7 @@ test("a task that cannot be started counts as failed and the batch continues", a
   assert.equal(run.results[rows[1].archivePath], "succeeded");
 });
 
-test("a start that answers with an unexpected state counts as failed, not as a hang", async () => {
+test("a start that answers with an unexpected state counts as failed, not as a hang", { timeout: 5_000 }, async () => {
   // 后端若返回非 queued 的状态，就没有任务会发进度事件；不当场判失败的话，
   // 整批会永远停在「正在导入」。
   const rows = dropRowsFromPreviews([preview("a.zip")]);
@@ -222,7 +242,7 @@ test("a start that answers with an unexpected state counts as failed, not as a h
   assert.equal(run.currentPath, null);
 });
 
-test("stopping mid-batch does not start anything further", async () => {
+test("stopping mid-batch does not start anything further", { timeout: 5_000 }, async () => {
   const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip"), preview("c.zip")]);
   const watcher = new ModImportTaskWatcher();
   const starter = fakeStarter(["t1", "t2", "t3"]);
