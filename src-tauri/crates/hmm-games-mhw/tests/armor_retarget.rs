@@ -12,10 +12,12 @@ use hmm_core::{
     GameId, ModId, PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId,
     ReplacementSourceId, ReplacementTargetId, ReplacementWarning, RetargetPlan,
 };
-use hmm_games_mhw::{ArmorPathError, ArmorResourcePath, MhwArmorReplacementAdapter};
+use hmm_games_mhw::{
+    ArmorPathError, ArmorResourcePath, MhwArmorCatalog, MhwArmorReplacementAdapter,
+};
 use hmm_ports::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAnalysisRequest, ReplacementAsset,
-    RetargetPlanRequest,
+    ReplacementCatalogProvider, RetargetPlanRequest,
 };
 
 /// 玫瑰礼服，源槽位 `pl078_0000`。28 个文件：槽位内 18（五个部位）+ 作者自建目录 10。
@@ -63,6 +65,38 @@ fn asset(id: &str, relative_path: &str) -> ReplacementAsset {
 /// 包内路径同时用作 `package_file_id`——真实链路里两者一一对应。
 fn assets(paths: &[&str]) -> Vec<ReplacementAsset> {
     paths.iter().map(|path| asset(path, path)).collect()
+}
+
+/// 按 `(internal_id, path_family)` 取目标 ID。
+///
+/// `#356` 起 `internal_id` **不再唯一**——同一件装备的两套模型各占一条，而 aggregate
+/// catalog 按 stable_id 排序，只按 `internal_id` 查会拿到不确定的那一条。
+fn target_id_in(internal_id: &str, path_family: &str) -> String {
+    MhwArmorCatalog
+        .replacement_catalog()
+        .expect("armor catalog")
+        .targets()
+        .iter()
+        .find(|target| {
+            target.internal_id() == internal_id
+                && target
+                    .metadata()
+                    .get("path_family")
+                    .and_then(|value| value.as_str())
+                    == Some(path_family)
+        })
+        .unwrap_or_else(|| panic!("catalog 里没有 {internal_id} 的 {path_family} 变体"))
+        .id()
+        .as_str()
+        .to_owned()
+}
+
+fn male_target_id(internal_id: &str) -> String {
+    target_id_in(internal_id, "pl/m_equip")
+}
+
+fn female_target_id(internal_id: &str) -> String {
+    target_id_in(internal_id, "pl/f_equip")
 }
 
 fn binding(source_id: &str, target_id: &str) -> ReplacementBinding {
@@ -345,14 +379,27 @@ fn armor_paths_normalize_separators_and_carry_the_slot_identity() {
     );
 }
 
+/*
+ * `#356`：男性模型变体现在也有 catalog 目标。
+ *
+ * 此前 `is_supported()` 硬编码只认 `f_equip`，那不是路径判定，是 catalog 只转录了一半。
+ * 后果比「男装包不能重定向」严重得多：`single_source()` 要求 `is_supported()`，所以
+ * **男角玩家改任何防具外观都拿不到目标列表**——`f_equip`/`m_equip` 不是「女装／男装」，
+ * 是同一件装备的两套模型，玩家的角色性别决定游戏加载哪一套。
+ */
 #[test]
-fn male_equipment_is_recognized_but_has_no_catalog_target() {
-    // `m_equip` 的路径语法照常识别；不可选是 **catalog 覆盖范围**的限制，不是路径判定。
+fn both_model_variants_are_recognized_and_have_catalog_targets() {
+    let female =
+        ArmorResourcePath::parse("nativePC/pl/f_equip/pl078_0000/body/mod/f_body078_0000.mod3")
+            .expect("female path is recognized");
     let male =
         ArmorResourcePath::parse("nativePC/pl/m_equip/pl078_0000/body/mod/m_body078_0000.mod3")
-            .expect("male path is recognized for analysis");
+            .expect("male path is recognized");
+
+    assert_eq!(female.path_family(), "pl/f_equip");
     assert_eq!(male.path_family(), "pl/m_equip");
-    assert!(!male.is_supported());
+    assert!(female.is_supported());
+    assert!(male.is_supported(), "男性模型变体必须能拿到目标列表");
 }
 
 #[test]
@@ -442,9 +489,19 @@ fn armor_analysis_blocks_multiple_slots_and_male_or_mixed_sources() {
     assert!(mixed
         .warnings()
         .contains(&ReplacementWarning::MultipleSources));
-    assert!(mixed
-        .warnings()
-        .contains(&ReplacementWarning::UnsupportedSource));
+    /*
+     * `#356`：不再有 `UnsupportedSource`。
+     *
+     * 这个包同时带 `f_equip` 与 `m_equip` 的同一槽位，两个变体现在都有 catalog 目标，
+     * 所以「不受支持」不再成立。挡住它的仍然是 `MultipleSources`——包里有两个源，
+     * 得逐槽位绑定（`#349` ②），而不是因为某个变体没目标。
+     */
+    assert!(
+        !mixed
+            .warnings()
+            .contains(&ReplacementWarning::UnsupportedSource),
+        "两套模型都有目标了，不该再报「源不受支持」"
+    );
 }
 
 /*
@@ -492,21 +549,54 @@ fn a_female_slot_is_still_retargetable_when_the_package_also_carries_a_male_slot
  * 覆盖女装（实测 269 条目标全是 `pl/f_equip`），包本身没有任何问题。
  */
 #[test]
-fn a_male_armor_package_reports_that_it_has_no_targets_rather_than_being_ambiguous() {
-    let error = MhwArmorReplacementAdapter
+fn a_male_model_package_retargets_within_its_own_variant() {
+    /*
+     * `#356` 的核心验收：男性模型的包能重定向，且**留在自己的变体里**。
+     *
+     * 此前这条测试断言的是「男装报没有可选目标」——那是 catalog 只转录了一半时的行为。
+     * 现在两套模型都有目标，男角玩家改防具外观不再装到游戏不读的路径去。
+     *
+     * 断言逐字的目标路径而不是 `is_ok()`：只断言成功会漏掉「重定向到了 f_equip」，
+     * 而那正是修复前的失败形态——安装成功、游戏不生效、没有任何诊断线索。
+     */
+    let target = male_target_id("pl129_0000");
+    let plan = MhwArmorReplacementAdapter
         .build_retarget_plan(RetargetPlanRequest {
             game_id: GameId::mhw(),
-            binding: binding("mhw:armor:m_equip:pl078_0000", "mhw:armor:fatalis-alpha"),
+            binding: binding("mhw:armor:m_equip:pl078_0000", target.as_str()),
             assets: assets(&["nativePC/pl/m_equip/pl078_0000/body/mod/m_body078_0000.mod3"]),
             carries_package_companions: true,
         })
-        .expect_err("男装暂时没有可选目标");
+        .expect("男性模型包必须能重定向");
 
+    let targets: Vec<_> = plan
+        .actions()
+        .iter()
+        .map(|action| action.target_relative_path().as_str())
+        .collect();
     assert_eq!(
-        error,
-        ReplacementAdapterError::SourceHasNoAvailableTargets,
-        "单槽位包不得报「源槽位有歧义」——包里明明只有一个槽位"
+        targets,
+        vec!["nativePC/pl/m_equip/pl129_0000/body/mod/m_body129_0000.mod3"],
+        "必须落在 m_equip，不能跨模型变体"
     );
+}
+
+/// 跨模型变体的绑定必须被拒绝：两套模型的骨骼不同，换过去本来就不成立。
+#[test]
+fn a_binding_across_model_variants_is_rejected() {
+    let error = MhwArmorReplacementAdapter
+        .build_retarget_plan(RetargetPlanRequest {
+            game_id: GameId::mhw(),
+            binding: binding(
+                "mhw:armor:m_equip:pl078_0000",
+                female_target_id("pl129_0000").as_str(),
+            ),
+            assets: assets(&["nativePC/pl/m_equip/pl078_0000/body/mod/m_body078_0000.mod3"]),
+            carries_package_companions: true,
+        })
+        .expect_err("男性模型的源不得绑到女性模型的目标");
+
+    assert_eq!(error, ReplacementAdapterError::UnsupportedReplacementTarget);
 }
 
 #[test]
@@ -599,7 +689,7 @@ const TWO_ARMOR_SETS: &[&str] = &[
 ];
 
 const SLOT_B_SOURCE_ID: &str = "mhw:armor:f_equip:pl123_0000";
-/// catalog 里 `pl001_0000` 的目标 id（`mhw-armor-targets.v1.json` 实测）。
+/// catalog 里 `pl001_0000` 的 `pl/f_equip` 目标 id（`data/armor/` 分片实测）。
 const LEATHER_TARGET_ID: &str =
     "mhw:armor:67663de427bb57b42d289ea193d8e865bb949ffaeee8a9e9caecdc1ee54662eb";
 

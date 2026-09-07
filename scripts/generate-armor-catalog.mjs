@@ -7,7 +7,8 @@
  *
  * 输出：
  *   armor-data/generated/mhw-equipment-candidates.armor.v1.json   候选文档，供 validator 审计
- *   src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json 运行时 artifact
+ *   src-tauri/crates/hmm-games-mhw/data/armor/mhw-armor-targets.<family>.v1.json
+ *                                                                 运行时 artifact，按 path_family 分片
  *
  * Stable ID 严格按 docs/EQUIPMENT_CATALOG_GOVERNANCE.md 的算法计算，
  * 与 Rust 侧 generate_mhw_equipment_stable_id 必须逐字节一致。
@@ -22,7 +23,7 @@
  * 政策依据见 EQUIPMENT_CATALOG_GOVERNANCE.md 的「关于 game_terminology 的政策决定」。
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const args = new Map();
@@ -45,11 +46,34 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(REVIEWED_AT)) {
 }
 
 const EQUIPMENT_PATH = "armor-data/equipment.json";
+/**
+ * 每件装备有哪几套模型（`#356`）。由 `tmp/build_variants.py` 从解包的游戏本体枚举，
+ * 见该文件的 `source` 字段。
+ *
+ * **`f_equip` / `m_equip` 不是「女装／男装」，是同一件装备的两套模型。** 实测 272 个槽位
+ * 里 262 个两套都有，10 个是单模型的联动装。玩家的角色性别决定游戏加载哪一套——女角穿
+ * 只有男模型的「隆」，加载的仍是 `m_equip` 那套。
+ */
+const VARIANTS_PATH = "armor-data/armor-model-variants.json";
 const CANDIDATE_OUT = "armor-data/generated/mhw-equipment-candidates.armor.v1.json";
-const ARTIFACT_OUT = "src-tauri/crates/hmm-games-mhw/data/mhw-armor-targets.v1.json";
-const PATH_FAMILY = "pl/f_equip";
+/**
+ * 运行时 artifact 按 `path_family` 分片（`#356`）。
+ *
+ * 529 条的单文件是 310KB / 12024 行，超出 policy 的体积硬限（256KB）——`#356` 只是把这一天
+ * 提前了，269 条时单文件就已经占掉上限的 63%。分片键取 `path_family` 而不是别的：它本来就是
+ * 领域边界（跨变体重定向由 `armor_retarget/retarget.rs` 拒绝），与武器侧按 family 分片同理。
+ *
+ * 文件名从 `path_family` 派生而不是查表：`pl/f_equip` → `mhw-armor-targets.f_equip.v1.json`。
+ * 新增一个 family 时这里不需要改，但 `armor_retarget/catalog.rs` 的 `ARMOR_CATALOG_SHARDS`
+ * 必须同步登记——**少一份分片等于那一套模型的重定向目标整体消失**。
+ */
+const ARTIFACT_DIR = "src-tauri/crates/hmm-games-mhw/data/armor";
+const artifactShardPath = (pathFamily) =>
+  `${ARTIFACT_DIR}/mhw-armor-targets.${pathFamily.split("/").pop()}.v1.json`;
+const POLICY_PATH = "policy/project-policy.json";
 const SOURCE_ID = "mhw-ingame-equipment-names";
-const CATALOG_VERSION = "mhw-armor-v3";
+const VARIANT_SOURCE_ID = "mhw-game-assets";
+const CATALOG_VERSION = "mhw-armor-v4";
 
 /** 占位条目：治理要求生成 artifact 前显式移除，不能静默变成可选择目标。 */
 const DUMMY_NAME = "HARDUMMY";
@@ -113,9 +137,46 @@ function variantOf(name) {
   return null;
 }
 
+/**
+ * 把上一版 artifact 的分片合并回一份基线。
+ *
+ * 必须读**全部**分片：旧 ID 与旧展示名都从这份基线取，只读其中一份会让另一套模型的旧绑定
+ * 静默解析不出目标。分片同属一份 catalog 是前提，不一致就说明目录里混进了别的版本，
+ * 与其合出一个拼接怪物，不如在这里停下。
+ */
+function readPreviousArtifact() {
+  const shardNames = readdirSync(ARTIFACT_DIR)
+    .filter((name) => name.endsWith(".v1.json"))
+    .sort();
+  if (!shardNames.length) {
+    throw new Error(`${ARTIFACT_DIR} 下没有 artifact 分片，取不到上一版基线`);
+  }
+
+  let catalogVersion = null;
+  const targets = [];
+  for (const name of shardNames) {
+    const shard = JSON.parse(readFileSync(`${ARTIFACT_DIR}/${name}`, "utf8"));
+    catalogVersion ??= shard.catalog_version;
+    if (shard.catalog_version !== catalogVersion) {
+      throw new Error(
+        `分片 catalog_version 不一致：${name} 是 ${shard.catalog_version}，先前分片是 ${catalogVersion}`,
+      );
+    }
+    targets.push(...shard.targets);
+  }
+  return { catalog_version: catalogVersion, targets, shard_count: shardNames.length };
+}
+
 const equipment = JSON.parse(readFileSync(EQUIPMENT_PATH, "utf8"));
 const localized = parseCsv(readFileSync(CSV_PATH, "utf8"));
-const previous = JSON.parse(readFileSync(ARTIFACT_OUT, "utf8"));
+const previous = readPreviousArtifact();
+const variants = JSON.parse(readFileSync(VARIANTS_PATH, "utf8"));
+
+/** internal_id -> 该装备实际存在的模型变体（按 path_family 升序，供输出稳定）。 */
+const familiesFor = new Map();
+for (const id of variants.shared) familiesFor.set(id, ["pl/f_equip", "pl/m_equip"]);
+for (const id of variants.female_only) familiesFor.set(id, ["pl/f_equip"]);
+for (const id of variants.male_only) familiesFor.set(id, ["pl/m_equip"]);
 
 // 自指防护：本脚本要从"上一版 artifact"取旧 ID 与旧展示名。
 // 若对着自己刚生成的结果再跑一次，每条会把自己的新 hash ID 当成旧 ID，
@@ -123,15 +184,44 @@ const previous = JSON.parse(readFileSync(ARTIFACT_OUT, "utf8"));
 if (previous.catalog_version === CATALOG_VERSION) {
   console.error(
     [
-      `拒绝执行：${ARTIFACT_OUT} 已经是 ${CATALOG_VERSION}，再跑会拿生成结果当基线。`,
-      `请先 git checkout -- ${ARTIFACT_OUT} 恢复上一版再重试。`,
+      `拒绝执行：${ARTIFACT_DIR} 下的分片已经是 ${CATALOG_VERSION}，再跑会拿生成结果当基线。`,
+      `请先 git checkout -- ${ARTIFACT_DIR} 恢复上一版（**全部**分片）再重试。`,
     ].join("\n"),
   );
   process.exit(2);
 }
 
-// 旧 slug ID 必须继续可解析：玩家已安装的 manifest 里存的是它们。
-const legacyBySlot = new Map(previous.targets.map((t) => [t.internal_id, t]));
+/*
+ * 上一版条目按 `(internal_id, path_family)` 索引——**不能只按 `internal_id`**。
+ *
+ * 旧 slug / 旧 stable ID 必须继续可解析：玩家已安装的 manifest 里存的是它们。而 `#356` 起
+ * 同一件装备的两套模型各占一条，只按 `internal_id` 建表会让后读到的那份分片覆盖先读到的：
+ * 下一代生成时 `f_equip` 目标会挂上 `m_equip` 的旧 ID，而 `f_equip` 自己的旧 ID 彻底消失。
+ * 玩家绝大多数已有绑定指向的正是 `f_equip`（v4 之前 catalog 里只有它），那等于让他们的安装
+ * 解析不出目标，而且静默发生。下面的「旧 ID 逐条落位」自校验就是这条的兜底。
+ */
+const variantKey = (internalId, pathFamily) => `${internalId}|${pathFamily}`;
+const previousByVariant = new Map(
+  previous.targets.map((target) => [
+    variantKey(target.internal_id, target.metadata?.path_family),
+    target,
+  ]),
+);
+
+/*
+ * 上一版有、这一代却没有对应 family 的条目。
+ *
+ * v3 把 5 件只有男性模型的联动装错标成 `f_equip`，它们的旧 ID 在 v4 里没有同 family 的
+ * 落点——但绑定过的玩家仍然存在，所以旧 ID 要挂到该槽位的第一个变体上，不能丢。
+ * 同理，将来某个槽位的变体归属收窄（两套变一套）时也走这条路。
+ */
+const orphanPrevious = new Map();
+for (const target of previous.targets) {
+  const families = familiesFor.get(target.internal_id) ?? [];
+  if (families.includes(target.metadata?.path_family)) continue;
+  if (!orphanPrevious.has(target.internal_id)) orphanPrevious.set(target.internal_id, []);
+  orphanPrevious.get(target.internal_id).push(target);
+}
 
 const dropped = [];
 const candidates = [];
@@ -146,8 +236,32 @@ for (const [resourcePath, zhName] of equipment) {
     continue;
   }
 
+  /*
+   * `#356`：一件装备按它实际存在的模型变体产出 1 或 2 条目标。
+   *
+   * 变体归属来自游戏本体枚举，不再是硬编码的 `pl/f_equip`。那个常量假设「所有装备都有
+   * 女性模型」，结果给 5 件只有男性模型的联动装（隆／杰洛特／巴耶克／里昂／燕尾蝶男）
+   * 产出了指向不存在路径的目标——玩家选中、安装成功、游戏不生效。
+   *
+   * `equipment.json` 里的 `resourcePath` 一律是 `f_equip`，所以按 family 重新构造。
+   */
+  const families = familiesFor.get(internalId);
+  if (!families) {
+    dropped.push([resourcePath, zhName, "游戏本体里不存在这个槽位"]);
+    continue;
+  }
+
   const extra = localized.get(joinKey(zhName)) ?? null;
-  const carriedOver = legacyBySlot.get(internalId);
+  /*
+   * 名称与元数据的继承源取**槽位级**一条，取法必须确定。
+   *
+   * 两个变体是同一件装备，上一版两条的名称逐字相同，取哪条结果都一样——但如果按「分片读取
+   * 顺序里最后那条」来取，结果就依赖文件名排序，属于隐式耦合。这里固定按 `families[0]` 的
+   * 精确条目，取不到再退到 orphan（v3→v4 的 5 件单男模型装备走的正是这条）。
+   */
+  const carriedOver =
+    previousByVariant.get(variantKey(internalId, families[0])) ??
+    (orphanPrevious.get(internalId) ?? [])[0];
 
   const names = { zh_cn: { display_name: zhName, aliases: [] } };
   if (extra?.en) names.en = { display_name: extra.en, aliases: [] };
@@ -155,10 +269,25 @@ for (const [resourcePath, zhName] of equipment) {
   // 扩容不得让已有的检索能力退化。人工 seed 的旧别名要保留；
   // 旧展示名也必须降级成别名——候选数据把「α」写成「阿尔法」，
   // 不保留的话玩家搜「【精英·龙α】服装」会一无所获。
+  /*
+   * 没有对应 display_name 的别名。
+   *
+   * `pl057_0010` 的官方英文名与另一件装备逐字重名，按治理规则只能记成 alias，因此它
+   * **没有** en display_name。旧写法在 `names[locale]` 缺位时直接 return，别名就被静默
+   * 丢掉——v3 是靠在产物上手工补回去的（脚本头部那段警告说的就是这件事）。
+   *
+   * artifact 里的 aliases 本来就是扁平数组、不带 locale，所以单独收着再合并即可，
+   * 不必为了挂别名伪造一个空的 display_name。
+   */
+  const orphanAliases = [];
   if (carriedOver) {
     const add = (locale, values) => {
-      if (!names[locale]) return;
-      const merged = new Set([...names[locale].aliases, ...values.filter(Boolean)]);
+      const incoming = values.filter(Boolean);
+      if (!names[locale]) {
+        orphanAliases.push(...incoming);
+        return;
+      }
+      const merged = new Set([...names[locale].aliases, ...incoming]);
       merged.delete(names[locale].display_name);
       names[locale].aliases = [...merged];
     };
@@ -180,20 +309,119 @@ for (const [resourcePath, zhName] of equipment) {
     );
   }
 
-  candidates.push({
-    stable_id: stableId("armor", PATH_FAMILY, resourcePath),
-    target_kind: "armor",
-    path_family: PATH_FAMILY,
-    resource_path: resourcePath,
-    status: "active",
-    names,
-    source_ids: [SOURCE_ID],
-    legacy_ids: carriedOver ? [carriedOver.id] : [],
-    _variant: variantOf(zhName),
-    _parts: extra?.parts?.length ? extra.parts : null,
-    _carried: carriedOver ?? null,
-  });
+  for (const pathFamily of families) {
+    const variantPath = `nativePC/${pathFamily}/${internalId}`;
+    /*
+     * 旧 ID 逐个变体各自继承，再把该槽位的 orphan 挂到第一个变体上。
+     *
+     * 精确同 family 的上一版条目归它自己——v4 起两套模型各有独立 stable ID，串位就等于把
+     * 玩家的 `f_equip` 绑定解析到 `m_equip` 目标上（然后在 family 匹配那步报错）。
+     * orphan 只挂一次，保证任何一个旧 ID 在新 catalog 里**恰好出现一次**：出现两次会让
+     * `resolve_target_allowing_legacy_ids` 的 `.find()` 依赖 target 顺序，解析到哪条不确定。
+     *
+     * **必须累积而不是只取上一代的 `id`。** 上一版自己的 `legacy_ids` 里存着更早的 slug
+     * （AR1 的四条手工种子条目，如 `mhw:armor:fatalis-alpha`），只取 `id` 会让它们在这一代
+     * 静默消失——玩家用那些 slug 绑定过的安装会解析不出目标。v2→v3 没暴露这个缺陷，
+     * 纯粹因为当时的 `id` 本身就是 slug。
+     */
+    const inherited = [
+      previousByVariant.get(variantKey(internalId, pathFamily)),
+      ...(pathFamily === families[0] ? (orphanPrevious.get(internalId) ?? []) : []),
+    ].filter(Boolean);
+    const stableIdOfVariant = stableId("armor", pathFamily, variantPath);
+    /*
+     * 与本条自己的 stable ID 相同的旧 ID 不写进 `legacy_ids`。
+     *
+     * 变体的身份只由 `(kind, path_family, resource_path)` 决定，所以一个槽位的 family 没变时，
+     * 新旧 stable ID 逐字节相同（v3→v4 的 264 条共享装备 f_equip 就是这种情况）。这种 ID 走
+     * `resolve_target_allowing_legacy_ids` 的**主 ID** 分支就能解析，重复写进 legacy 只是噪声，
+     * 治理 validator 会以 `legacy_id_matches_stable_id` 报出来。
+     */
+    const legacyIds = [
+      ...new Set(inherited.flatMap((prev) => [prev.id, ...(prev.metadata?.legacy_ids ?? [])])),
+    ].filter((id) => id !== stableIdOfVariant);
+    candidates.push({
+      stable_id: stableIdOfVariant,
+      target_kind: "armor",
+      path_family: pathFamily,
+      resource_path: variantPath,
+      status: "active",
+      // 两个变体是同一件装备，名称与别名逐字相同。治理规则的 display_name 唯一性
+      // 因此收敛到「同一 path_family 内唯一」——玩家一次只看得到一个变体
+      // （`list_compatible_targets` 按源包的 path_family 筛过）。
+      names: structuredClone(names),
+      _orphanAliases: [...orphanAliases],
+      /*
+       * 两条 source 都要引用。
+       *
+       * 名称文本来自 `mhw-ingame-equipment-names`；**这一条目存在、且属于这个 `path_family`**
+       * 则由 `mhw-game-assets`（游戏本体变体枚举）决定——两者对每一条目都成立，所以都得列。
+       * 只列前者会让治理 validator 报 `unused_source`：声明了一条来源却没有任何目标引用它，
+       * 等于 provenance 声明与实际数据脱节。
+       */
+      source_ids: [SOURCE_ID, VARIANT_SOURCE_ID],
+      legacy_ids: legacyIds,
+      _variant: variantOf(zhName),
+      _parts: extra?.parts?.length ? extra.parts : null,
+      _carried: carriedOver ?? null,
+    });
+  }
 }
+
+/*
+ * 旧 ID 逐条落位自校验。
+ *
+ * 玩家已安装的 manifest / binding snapshot 里存的是上一版的 stable ID（以及更早的 slug）。
+ * 任何一个在新 catalog 里找不到落点，那些安装就解析不出目标；落到两条上，
+ * `resolve_target_allowing_legacy_ids` 的 `.find()` 取哪条又取决于 target 顺序。两种都是
+ * 静默失效——玩家看到的是「我装好的 Mod 突然认不出目标了」，没有任何报错指向这里。
+ * 所以断言「恰好一次」，而不是「大概都还在」。
+ */
+const previousIds = new Set(
+  previous.targets.flatMap((target) => [target.id, ...(target.metadata?.legacy_ids ?? [])]),
+);
+/*
+ * 「落点」按 `resolve_target_allowing_legacy_ids` 的两条分支算：先按**主 ID** 精确命中，
+ * 命中不了才扫 `legacy_ids`。所以旧 ID 等于某条新目标的 stable ID 时，它本来就解析得到，
+ * 不需要（也不应该）再写进 legacy——这两条分支合起来才是玩家侧真实的解析能力。
+ */
+const landed = new Map();
+for (const candidate of candidates) {
+  for (const id of [candidate.stable_id, ...candidate.legacy_ids]) {
+    landed.set(id, (landed.get(id) ?? 0) + 1);
+  }
+}
+const lost = [...previousIds].filter((id) => !landed.has(id));
+const doubled = [...previousIds].filter((id) => (landed.get(id) ?? 0) > 1);
+const invented = [...new Set(candidates.flatMap((candidate) => candidate.legacy_ids))].filter(
+  (id) => !previousIds.has(id),
+);
+if (lost.length || doubled.length || invented.length) {
+  const sample = (ids) => ids.slice(0, 5).join(", ");
+  throw new Error(
+    [
+      "旧 ID 落位自校验失败，拒绝产出：",
+      lost.length && `  新 catalog 里没有落点（玩家已有绑定会解析不出目标）：${lost.length} 条 ${sample(lost)}`,
+      doubled.length && `  落到多条目标上（解析到哪条依赖顺序）：${doubled.length} 条 ${sample(doubled)}`,
+      invented.length && `  凭空多出来的 legacy_id：${invented.length} 条 ${sample(invented)}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
+/*
+ * 游戏里有这个槽位、候选数据却没有名称的条目。
+ *
+ * **必须显式报出来。** 本脚本只遍历 `equipment.json`，这类槽位不会进入任何 `dropped` 列表，
+ * 不报的话「有几条没在册」就只存在于口头知识里，下一个接手的人无从知晓，而它们在玩家侧的
+ * 表现是「游戏里有这件装备，管理器却搜不到」。
+ *
+ * 当前 3 条（`pl056_0010` `pl104_0010` `pl132_0000`）按维护者决定挂起：`plXXX_VVVV` → 装备名的
+ * 映射在二进制装备表里、不在文本资源，没有可靠来源前不猜（编号后缀与 α/β 无固定对应）。
+ */
+const namedSlots = new Set(candidates.map((candidate) => candidate.resource_path.split("/").pop()));
+const unnamedInGame = [...familiesFor.keys()].filter((id) => !namedSlots.has(id)).sort();
 
 const candidateDoc = {
   schema_version: 1,
@@ -211,6 +439,27 @@ const candidateDoc = {
         usage: "nominative",
         attribution:
           "Equipment names are trademarks and content of Capcom Co., Ltd. This project claims no rights in them and is not affiliated with or endorsed by Capcom.",
+        reviewed_by: REVIEWED_BY,
+        reviewed_at: REVIEWED_AT,
+      },
+    },
+    {
+      /*
+       * `#356`：模型变体归属的来源与名称来源是**两件事**，分开声明。
+       *
+       * 名称是 Capcom 的游戏术语；变体归属是结构事实（哪个目录存在），从本机安装的游戏
+       * 资源枚举得到，不涉及任何第三方转录。
+       */
+      source_id: VARIANT_SOURCE_ID,
+      source_name: "MHW:I game assets (model variant enumeration)",
+      source_url: "https://www.monsterhunter.com/world-iceborne/",
+      retrieved_at: REVIEWED_AT,
+      license: {
+        status: "game_terminology",
+        rights_holder: "Capcom Co., Ltd.",
+        usage: "nominative",
+        attribution:
+          "Model variant availability is enumerated from a local game installation. This project claims no rights in the game assets and is not affiliated with or endorsed by Capcom.",
         reviewed_by: REVIEWED_BY,
         reviewed_at: REVIEWED_AT,
       },
@@ -238,11 +487,16 @@ const artifact = {
     for (const [locale, value] of Object.entries(candidate.names)) {
       displayName[locale] = value.display_name;
     }
-    const aliases = Object.values(candidate.names).flatMap((value) => value.aliases);
+    const aliases = [
+      ...new Set([
+        ...Object.values(candidate.names).flatMap((value) => value.aliases),
+        ...candidate._orphanAliases,
+      ]),
+    ];
 
     // 只写能诚实得到的元数据。monster / rank / is_full_body 推不出来就不写，
     // adapter 已把它们改成可选（见 validate_armor_metadata）。
-    const metadata = { path_family: PATH_FAMILY };
+    const metadata = { path_family: candidate.path_family };
     const carried = candidate._carried?.metadata ?? {};
     for (const field of ["monster", "rank", "is_full_body"]) {
       if (carried[field] !== undefined) metadata[field] = carried[field];
@@ -266,7 +520,81 @@ const artifact = {
 
 mkdirSync(dirname(CANDIDATE_OUT), { recursive: true });
 writeFileSync(CANDIDATE_OUT, `${JSON.stringify(candidateDoc, null, 2)}\n`, "utf8");
-writeFileSync(ARTIFACT_OUT, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+
+// 按 path_family 分片写盘。目标在各分片内保持 equipment.json 的相对顺序，
+// 换句话说分片就是聚合结果的一次纯分组——加载侧合并回来必须逐条等价（下面自校验）。
+const shardedTargets = new Map();
+for (const target of artifact.targets) {
+  const family = target.metadata.path_family;
+  if (!shardedTargets.has(family)) shardedTargets.set(family, []);
+  shardedTargets.get(family).push(target);
+}
+
+mkdirSync(ARTIFACT_DIR, { recursive: true });
+const writtenShards = [];
+for (const family of [...shardedTargets.keys()].sort()) {
+  const targets = shardedTargets.get(family);
+  const path = artifactShardPath(family);
+  const text = `${JSON.stringify({ schema_version: 1, catalog_version: CATALOG_VERSION, game_id: "mhw", targets }, null, 2)}\n`;
+  writeFileSync(path, text, "utf8");
+  writtenShards.push({ family, path, count: targets.length, text });
+}
+
+/*
+ * 分片自校验。
+ *
+ * 拆分的起因正是「单文件悄悄长过体积门禁，只有 verify.ps1 才发现」。所以按 policy 的同一份
+ * 硬限在生成这一刻自查：下次数据扩容再撑爆某个分片，报错发生在生成时而不是发版门禁。
+ * 限额从 policy 文件读，不在这里抄一份常量。
+ *
+ * 另外把写出去的分片读回来合并，断言与内存里的 targets 逐条等价、且每份分片只装自己那个
+ * family。分组或写盘出错时必须在这里红——静默产出一份「看起来正常」的错数据是这条管线
+ * 最贵的失效方式。
+ */
+const fileSizePolicy = JSON.parse(readFileSync(POLICY_PATH, "utf8")).fileSize;
+/*
+ * 限额读不到时必须**报错**，不能当成「没有限制」。
+ *
+ * policy 里的键一旦改名或缺失，`bytes > undefined` 与 `lines > undefined` 都恒为 `false`——
+ * 下面那两道门禁会静默全部放行，而它看起来仍然在把关。这正是本次拆分的成因（单文件悄悄
+ * 长过体积门禁、只有发版时才发现）的翻版：**一个失效时倒向「放行」的检查等于不存在。**
+ */
+const byteLimit = fileSizePolicy?.blockBytes;
+const lineLimit = fileSizePolicy?.block?.json;
+if (!Number.isFinite(byteLimit) || !Number.isFinite(lineLimit)) {
+  throw new Error(
+    `${POLICY_PATH} 读不到 fileSize.blockBytes / fileSize.block.json，分片体积门禁拿不到限额，拒绝产出`,
+  );
+}
+
+for (const shard of writtenShards) {
+  const bytes = Buffer.byteLength(shard.text, "utf8");
+  const lines = shard.text.split("\n").length - 1;
+  if (bytes > byteLimit) {
+    throw new Error(
+      `${shard.path} 超出 policy 体积硬限：${bytes} / ${byteLimit} 字节，需要更细的分片键`,
+    );
+  }
+  if (lines > lineLimit) {
+    throw new Error(
+      `${shard.path} 超出 policy 行数硬限：${lines} / ${lineLimit} 行，需要更细的分片键`,
+    );
+  }
+}
+
+const reloaded = writtenShards.flatMap((shard) => {
+  const parsed = JSON.parse(readFileSync(shard.path, "utf8"));
+  const strays = parsed.targets.filter((target) => target.metadata.path_family !== shard.family);
+  if (strays.length) {
+    throw new Error(`${shard.path} 混入了 ${strays.length} 条其他 path_family 的目标`);
+  }
+  return parsed.targets;
+});
+const sortedById = (targets) =>
+  JSON.stringify([...targets].sort((left, right) => left.id.localeCompare(right.id)));
+if (sortedById(reloaded) !== sortedById(artifact.targets)) {
+  throw new Error("分片合并回来与生成结果不等价，拒绝产出");
+}
 
 const withEn = candidates.filter((c) => c.names.en).length;
 const withJa = candidates.filter((c) => c.names.ja).length;
@@ -278,5 +606,14 @@ console.log(`  含 en         ${withEn}`);
 console.log(`  含 ja         ${withJa}`);
 console.log(`  仅 zh_cn      ${candidates.length - withEn}`);
 console.log(`  带 legacy_ids ${candidates.filter((c) => c.legacy_ids.length).length}`);
+console.log(`旧 ID 落位      ${previousIds.size} 个旧 ID，逐条恰好有 1 个解析落点（主 ID 或 legacy）`);
+console.log(`游戏里有名称缺失 ${unnamedInGame.length} 条（不在册，按维护者决定挂起）`);
+for (const id of unnamedInGame) console.log(`    ${id}  游戏本体有此槽位，equipment.json 无名称`);
+console.log(`上一版基线      ${previous.catalog_version}（${previous.shard_count} 份分片，${previous.targets.length} 条）`);
 console.log(`候选文档        ${CANDIDATE_OUT}`);
-console.log(`运行时 artifact ${ARTIFACT_OUT}`);
+console.log(`运行时 artifact ${writtenShards.length} 份分片：`);
+for (const shard of writtenShards) {
+  const bytes = Buffer.byteLength(shard.text, "utf8");
+  const lines = shard.text.split("\n").length - 1;
+  console.log(`    ${shard.path}  ${shard.count} 条  ${bytes} 字节 / ${lines} 行`);
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "mhw-armor-v3",
+  "catalog_version": "mhw-armor-v4",
   "game_id": "mhw",
   "targets": [
     {
@@ -1718,28 +1718,6 @@
       }
     },
     {
-      "id": "mhw:armor:edd5b270497cdc45b7f533c03f7ae2766e6a346a7b750d228ef530f20cb4935c",
-      "target_type": "armor",
-      "display_name": {
-        "zh_cn": "隆阿尔法",
-        "en": "Ryu α",
-        "ja": "リュウα"
-      },
-      "aliases": [],
-      "internal_id": "pl069_0000",
-      "metadata": {
-        "path_family": "pl/f_equip",
-        "variant": "alpha",
-        "parts": [
-          "head",
-          "body",
-          "arms",
-          "waist",
-          "legs"
-        ]
-      }
-    },
-    {
       "id": "mhw:armor:7ef4d5167d9f9a40b9035c79252f515cf8af4d4dfce5157e92227ba01466aeda",
       "target_type": "armor",
       "display_name": {
@@ -1752,27 +1730,6 @@
       "metadata": {
         "path_family": "pl/f_equip",
         "variant": "alpha",
-        "parts": [
-          "head",
-          "body",
-          "arms",
-          "waist",
-          "legs"
-        ]
-      }
-    },
-    {
-      "id": "mhw:armor:edd3229937b00c06235996be0bc75c758ea51f180477ce2a8bfb36d747d6de61",
-      "target_type": "armor",
-      "display_name": {
-        "zh_cn": "【巴耶克】服装",
-        "en": "Bayek",
-        "ja": "【バエク】衣装"
-      },
-      "aliases": [],
-      "internal_id": "pl120_0000",
-      "metadata": {
-        "path_family": "pl/f_equip",
         "parts": [
           "head",
           "body",
@@ -2049,22 +2006,6 @@
       },
       "aliases": [],
       "internal_id": "pl057_0000",
-      "metadata": {
-        "path_family": "pl/f_equip",
-        "variant": "beta"
-      }
-    },
-    {
-      "id": "mhw:armor:29346edaee99dc9a60396ea8231bae8d79432b736862a2671919989d8b5f00b0",
-      "target_type": "armor",
-      "display_name": {
-        "zh_cn": "燕尾蝶男贝塔",
-        "ja": "パピオムβ"
-      },
-      "aliases": [
-        "Butterfly β"
-      ],
-      "internal_id": "pl057_0010",
       "metadata": {
         "path_family": "pl/f_equip",
         "variant": "beta"
@@ -2433,27 +2374,6 @@
       "metadata": {
         "path_family": "pl/f_equip",
         "variant": "gamma",
-        "parts": [
-          "head",
-          "body",
-          "arms",
-          "waist",
-          "legs"
-        ]
-      }
-    },
-    {
-      "id": "mhw:armor:ea9aa59ddba2ba533cc0236257e5bd835f7e1db079ee524dfa992e4c3eae9b9f",
-      "target_type": "armor",
-      "display_name": {
-        "zh_cn": "【杰洛特】服装",
-        "en": "Geralt of Rivia",
-        "ja": "【ゲラルト】衣装"
-      },
-      "aliases": [],
-      "internal_id": "pl118_0000",
-      "metadata": {
-        "path_family": "pl/f_equip",
         "parts": [
           "head",
           "body",
@@ -5532,27 +5452,6 @@
         ],
         "legacy_ids": [
           "mhw:armor:fatalis-beta"
-        ]
-      }
-    },
-    {
-      "id": "mhw:armor:5d60a4f9ff20866758e8e4c259322f1aaebae38310ae198c02b15aedf72150ee",
-      "target_type": "armor",
-      "display_name": {
-        "zh_cn": "【里昂】服装",
-        "en": "Leon+",
-        "ja": "【レオン】衣装"
-      },
-      "aliases": [],
-      "internal_id": "pl130_0000",
-      "metadata": {
-        "path_family": "pl/f_equip",
-        "parts": [
-          "head",
-          "body",
-          "arms",
-          "waist",
-          "legs"
         ]
       }
     },

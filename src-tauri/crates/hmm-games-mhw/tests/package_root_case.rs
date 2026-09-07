@@ -157,14 +157,28 @@ fn assets(paths: &[String]) -> Vec<ReplacementAsset> {
         .collect()
 }
 
-fn target_id(internal_id: &str) -> hmm_core::ReplacementTargetId {
+/// 按 `(internal_id, path_family)` 取目标 ID。
+///
+/// `#356` 起防具的 `internal_id` **不再唯一**——同一件装备的两套模型各占一条，而
+/// aggregate catalog 按 stable_id 排序，只按 `internal_id` 查会随机拿到其中一条，
+/// 然后在 `path_family` 匹配那一步报 `UnsupportedReplacementTarget`。
+fn target_id(internal_id: &str, path_family: Option<&str>) -> hmm_core::ReplacementTargetId {
     MhwReplacementCatalog
         .replacement_catalog()
         .expect("aggregate catalog")
         .targets()
         .iter()
-        .find(|target| target.internal_id() == internal_id)
-        .unwrap_or_else(|| panic!("catalog must carry {internal_id}"))
+        .find(|target| {
+            target.internal_id() == internal_id
+                && path_family.is_none_or(|family| {
+                    target
+                        .metadata()
+                        .get("path_family")
+                        .and_then(|value| value.as_str())
+                        == Some(family)
+                })
+        })
+        .unwrap_or_else(|| panic!("catalog must carry {internal_id} ({path_family:?})"))
         .id()
         .clone()
 }
@@ -200,7 +214,8 @@ fn plan_for(paths: &[String], target_internal_id: &str) -> RetargetPlan {
         ModId::new("case-mod"),
         ProfileId::new("default"),
         source.id().clone(),
-        target_id(target_internal_id),
+        // 武器的 internal_id 唯一，没有模型变体的歧义（`#356` 只影响防具）。
+        target_id(target_internal_id, None),
         1,
     )
     .expect("binding");
@@ -266,7 +281,8 @@ fn an_armor_package_plans_identically_under_every_root_spelling() {
             ModId::new("case-armor-mod"),
             ProfileId::new("default"),
             source.id().clone(),
-            target_id("pl123_0000"),
+            // 夹具包是 f_equip 的，目标必须取同一个模型变体。
+            target_id("pl123_0000", Some("pl/f_equip")),
             1,
         )
         .expect("binding");
