@@ -10,8 +10,9 @@ use hmm_core::sanitize_mod_metadata_text;
 use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
     DiagnosticPackageExporter, ModImportPackagePrepareReaderRequest,
-    ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportSandboxLocator,
-    ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer, PreparedModPackage,
+    ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportPrepareError,
+    ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalysis,
+    ModPackageMetadataAnalyzer, NonArchiveFile, PreparedModPackage, UnsupportedArchiveFormat,
 };
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -174,7 +175,7 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
     fn prepare_package(
         &self,
         request: ModImportPackagePrepareRequest<'_>,
-    ) -> Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, ModImportPrepareError> {
         let mut archive = open_archive_file_nofollow(request.archive_path)?;
         self.prepare_package_from_reader(ModImportPackagePrepareReaderRequest {
             task_id: request.task_id,
@@ -186,13 +187,15 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
     fn prepare_package_from_reader(
         &self,
         request: ModImportPackagePrepareReaderRequest<'_>,
-    ) -> Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, ModImportPrepareError> {
         validate_task_id_segment(request.task_id)?;
         let root = self.open_sandbox_root()?;
         match root.create_dir(request.task_id) {
             Ok(()) => {}
             Err(error) => {
-                return Err(error).context("failed to create task-scoped mod import sandbox");
+                return Err(anyhow::Error::new(error)
+                    .context("failed to create task-scoped mod import sandbox")
+                    .into());
             }
         }
         let sandbox = match open_child_directory_nofollow(
@@ -207,7 +210,7 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
                     std::ffi::OsStr::new(request.task_id),
                     "task-scoped mod import sandbox",
                 );
-                return Err(error);
+                return Err(error.into());
             }
         };
 
@@ -628,11 +631,21 @@ fn extract_zip_archive_with_limits<R>(
     sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
     limits: ZipExtractionLimits,
-) -> Result<()>
+) -> std::result::Result<(), ModImportPrepareError>
 where
     R: Read + Seek + ?Sized,
 {
-    let mut archive = zip::ZipArchive::new(archive_file).context("failed to read zip archive")?;
+    // 先开后嗅（#348）：**照旧尝试打开**，成功就走原路径,一个字节不改。
+    // 只有打开失败之后才去嗅探容器 magic——而且那只是为了「解释失败」,不是「拦截输入」。
+    // 归档不保证从文件首字节开始(自解压包即是),所以按首字节预检会误杀本来能导入的包。
+    // 显式重借：泛型参数会把 `&mut R` 直接 move 进去，失败分支就再也拿不到 reader 了。
+    let mut archive = match zip::ZipArchive::new(&mut *archive_file) {
+        Ok(archive) => archive,
+        Err(error) => {
+            let zip_error = anyhow::Error::new(error).context("failed to read zip archive");
+            return Err(explain_unopenable_archive(archive_file, zip_error));
+        }
+    };
     reject_too_many_archive_entries(archive.len(), limits.max_entries)?;
     let mut seen_paths = HashSet::new();
     // 两个计数器各管一头:声明值用于写盘前的快速失败,实际写入量才是承重的判据(#367)。
@@ -684,6 +697,93 @@ where
     }
 
     Ok(())
+}
+
+/// tar 的 magic 不在首字节，而在偏移 257 —— 所以判别**不能**写成「统一读前 N 字节比对」。
+const TAR_MAGIC_OFFSET: u64 = 257;
+const TAR_MAGIC: &[u8] = b"ustar";
+/// 首字节签名表。判别只在所有「已支持格式」的打开尝试都失败之后执行。
+const ARCHIVE_SIGNATURES: &[(&[u8], UnsupportedArchiveFormat)] = &[
+    (b"Rar!\x1a\x07\x01\x00", UnsupportedArchiveFormat::Rar), // RAR5，比 RAR4 长，必须先匹配
+    (b"Rar!\x1a\x07\x00", UnsupportedArchiveFormat::Rar),     // RAR4
+    (b"7z\xbc\xaf\x27\x1c", UnsupportedArchiveFormat::SevenZip),
+    (b"\xfd7zXZ\x00", UnsupportedArchiveFormat::Xz),
+    (b"\x1f\x8b", UnsupportedArchiveFormat::Gzip),
+    (b"BZh", UnsupportedArchiveFormat::Bzip2),
+    (b"\x28\xb5\x2f\xfd", UnsupportedArchiveFormat::Zstd),
+];
+const NON_ARCHIVE_SIGNATURES: &[(&[u8], NonArchiveFile)] = &[
+    (b"MZ", NonArchiveFile::WindowsExecutable),
+    (
+        b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+        NonArchiveFile::CompoundDocument,
+    ),
+];
+
+/// 解释「打不开」，而不是拦截「不该开」。
+///
+/// 认不出就原样退回打开失败的错误——也就是既有的 `retry-hint` 行为。**这一点是硬要求**：
+/// 损坏的 zip 必须留在原档位，不能被新档位吃掉，否则只是把误导换了个方向。
+fn explain_unopenable_archive<R>(reader: &mut R, zip_error: anyhow::Error) -> ModImportPrepareError
+where
+    R: Read + Seek + ?Sized,
+{
+    match sniff_container(reader) {
+        Some(Ok(format)) => ModImportPrepareError::UnsupportedArchiveFormat(format),
+        Some(Err(non_archive)) => ModImportPrepareError::NotAnArchive(non_archive),
+        None => ModImportPrepareError::Other(zip_error),
+    }
+}
+
+/// `Some(Ok(_))` = 认得出的归档容器；`Some(Err(_))` = 认得出的非归档文件；`None` = 认不出。
+fn sniff_container<R>(
+    reader: &mut R,
+) -> Option<std::result::Result<UnsupportedArchiveFormat, NonArchiveFile>>
+where
+    R: Read + Seek + ?Sized,
+{
+    let mut head = [0_u8; 8];
+    reader.seek(io::SeekFrom::Start(0)).ok()?;
+    let head_len = read_up_to(reader, &mut head).ok()?;
+    let head = &head[..head_len];
+
+    for (signature, format) in ARCHIVE_SIGNATURES {
+        if head.starts_with(signature) {
+            return Some(Ok(*format));
+        }
+    }
+    for (signature, kind) in NON_ARCHIVE_SIGNATURES {
+        if head.starts_with(signature) {
+            return Some(Err(*kind));
+        }
+    }
+
+    let mut tar_magic = [0_u8; 5];
+    if reader.seek(io::SeekFrom::Start(TAR_MAGIC_OFFSET)).is_ok()
+        && read_up_to(reader, &mut tar_magic).ok()? == tar_magic.len()
+        && tar_magic == TAR_MAGIC
+    {
+        return Some(Ok(UnsupportedArchiveFormat::Tar));
+    }
+
+    None
+}
+
+/// 读到缓冲区满或流结束为止，返回实际读到的长度。短文件不算错误——它只是认不出。
+fn read_up_to<R>(reader: &mut R, buffer: &mut [u8]) -> io::Result<usize>
+where
+    R: Read + ?Sized,
+{
+    let mut filled = 0;
+    while filled < buffer.len() {
+        match reader.read(&mut buffer[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(filled)
 }
 
 fn open_or_create_archive_directory(root: &Dir, relative_path: &Path) -> Result<Dir> {
@@ -1385,6 +1485,207 @@ mod tests {
         );
     }
 
+    // ---- #348 容器判别 ----
+    //
+    // 这些用例把**我们的映射**钉住：某个字节前缀 -> 某个档位。
+    //
+    // 除 zip（由 `zip` crate 真实产出）与 Windows 下的真实 PE 之外，其余签名是按公开格式
+    // 文档构造的字节，不是从真实样本文件捕获的。这个取舍是有意的，因为**判别写错会
+    // fail closed**：认不出就退回既有的 `retry-hint`，也就是今天的行为，不会造出新的失败
+    // 模式，更不会放行本来该拒的东西。真实样本的覆盖留给 T21-C/D 接入各自格式时补。
+
+    fn prepare_bytes(temp: &tempfile::TempDir, name: &str, bytes: &[u8]) -> ModImportPrepareError {
+        let archive_path = temp.path().join(name);
+        fs::write(&archive_path, bytes).expect("write fixture");
+        let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
+        prepare_package(&preparer, name, &archive_path).expect_err("fixture must not import")
+    }
+
+    fn assert_unsupported(error: &ModImportPrepareError, expected: UnsupportedArchiveFormat) {
+        match error {
+            ModImportPrepareError::UnsupportedArchiveFormat(format) => {
+                assert_eq!(*format, expected)
+            }
+            other => panic!("expected UnsupportedArchiveFormat({expected:?}), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn known_archive_containers_are_reported_as_unsupported_formats() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let cases: &[(&str, &[u8], UnsupportedArchiveFormat)] = &[
+            (
+                "rar4",
+                b"Rar!\x1a\x07\x00payload",
+                UnsupportedArchiveFormat::Rar,
+            ),
+            (
+                "rar5",
+                b"Rar!\x1a\x07\x01\x00payload",
+                UnsupportedArchiveFormat::Rar,
+            ),
+            (
+                "sevenzip",
+                b"7z\xbc\xaf\x27\x1cpayload",
+                UnsupportedArchiveFormat::SevenZip,
+            ),
+            ("gzip", b"\x1f\x8bpayload", UnsupportedArchiveFormat::Gzip),
+            ("xz", b"\xfd7zXZ\x00payload", UnsupportedArchiveFormat::Xz),
+            ("bzip2", b"BZh9payload", UnsupportedArchiveFormat::Bzip2),
+            (
+                "zstd",
+                b"\x28\xb5\x2f\xfdpayload",
+                UnsupportedArchiveFormat::Zstd,
+            ),
+        ];
+
+        for (name, bytes, expected) in cases {
+            let error = prepare_bytes(&temp, name, bytes);
+            assert_unsupported(&error, *expected);
+            assert_eq!(error.code(), "mod_import_unsupported_archive_format");
+        }
+    }
+
+    /// tar 的 magic 在偏移 257，不在首字节——写成「统一读前 N 字节比对」它就会被静默
+    /// 归到「认不出」。这条用例专门守这个实现陷阱。
+    #[test]
+    fn a_tar_archive_is_recognised_by_its_magic_at_offset_257() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut bytes = vec![0_u8; 512];
+        bytes[..8].copy_from_slice(b"name.txt");
+        bytes[257..262].copy_from_slice(b"ustar");
+
+        let error = prepare_bytes(&temp, "tar", &bytes);
+        assert_unsupported(&error, UnsupportedArchiveFormat::Tar);
+    }
+
+    #[test]
+    fn known_non_archive_files_are_reported_as_such() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let cases: &[(&str, &[u8], NonArchiveFile)] = &[
+            (
+                "pe",
+                b"MZ\x90\x00\x03\x00\x00\x00",
+                NonArchiveFile::WindowsExecutable,
+            ),
+            (
+                "ole",
+                b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1padding",
+                NonArchiveFile::CompoundDocument,
+            ),
+        ];
+
+        for (name, bytes, expected) in cases {
+            let error = prepare_bytes(&temp, name, bytes);
+            match &error {
+                ModImportPrepareError::NotAnArchive(kind) => assert_eq!(kind, expected),
+                other => panic!("expected NotAnArchive({expected:?}), got {other:?}"),
+            }
+            assert_eq!(error.code(), "mod_import_not_an_archive");
+        }
+    }
+
+    /// 唯一一条用真实样本的判别用例：测试二进制自己就是一个真的 PE。
+    /// CI 跑在 ubuntu，所以只在 Windows 下有意义。
+    #[cfg(windows)]
+    #[test]
+    fn a_real_windows_executable_is_reported_as_not_an_archive() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let real_pe = std::env::current_exe().expect("current exe");
+        let bytes = fs::read(&real_pe).expect("read the test binary itself");
+        assert_eq!(&bytes[..2], b"MZ", "the test binary should be a PE");
+
+        let error = prepare_bytes(&temp, "real-pe", &bytes);
+        assert!(
+            matches!(
+                error,
+                ModImportPrepareError::NotAnArchive(NonArchiveFile::WindowsExecutable)
+            ),
+            "got {error:?}"
+        );
+    }
+
+    /// **硬边界**：损坏的 zip 必须留在既有档位，不能被新档位吃掉——
+    /// 否则只是把误导换了个方向。
+    #[test]
+    fn a_truncated_zip_still_falls_back_to_the_generic_failure() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let honest = temp.path().join("honest.zip");
+        create_zip(&honest, &[("a.txt", b"hello".as_slice())]);
+        let mut bytes = fs::read(&honest).expect("read honest zip");
+        bytes.truncate(bytes.len() / 2);
+
+        let error = prepare_bytes(&temp, "truncated", &bytes);
+        assert!(
+            matches!(error, ModImportPrepareError::Other(_)),
+            "a damaged zip must stay in the generic tier, got {error:?}"
+        );
+        assert_eq!(error.code(), "mod_import_prepare_failed");
+    }
+
+    #[test]
+    fn unrecognised_and_tiny_inputs_fall_back_to_the_generic_failure() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        for (name, bytes) in [
+            ("empty", b"".as_slice()),
+            ("one-byte", b"x".as_slice()),
+            ("noise", b"not a container at all".as_slice()),
+        ] {
+            let error = prepare_bytes(&temp, name, bytes);
+            assert!(
+                matches!(error, ModImportPrepareError::Other(_)),
+                "{name} should stay in the generic tier, got {error:?}"
+            );
+        }
+    }
+
+    /// 回归守卫：归档不保证从首字节开始。判别若被写成预检，这条会立刻转红。
+    ///
+    /// 断言的是**等价性**——加不加前缀，结果必须一致。这样不论 `zip` 当前是否支持
+    /// 自解压形态，这条用例都成立，不依赖任何未验证的假设。
+    ///
+    /// 2026-09-08 实测：`zip` 2.4.2 **能**打开带前缀的归档（本用例走的是 `(Ok, Ok)` 分支，
+    /// 若只有 `plain` 成功会 panic）。也就是说按 `MZ` 首字节预检会**当场弄坏本来能导入的
+    /// 自解压 zip**——这正是「先开后嗅」不可让步的原因。
+    #[test]
+    fn prepending_a_payload_to_a_zip_does_not_change_the_outcome() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let plain_path = temp.path().join("plain.zip");
+        create_zip(&plain_path, &[("a.txt", b"hello".as_slice())]);
+        let plain_bytes = fs::read(&plain_path).expect("read zip");
+
+        let mut prefixed_bytes = b"MZ\x90\x00self-extracting stub".to_vec();
+        prefixed_bytes.extend_from_slice(&plain_bytes);
+        let prefixed_path = temp.path().join("prefixed.zip");
+        fs::write(&prefixed_path, &prefixed_bytes).expect("write prefixed zip");
+
+        let preparer = ZipModImportPackagePreparer::new(temp.path().join("sandboxes"));
+        let plain = prepare_package(&preparer, "plain", &plain_path);
+        let prefixed = prepare_package(&preparer, "prefixed", &prefixed_path);
+
+        match (&plain, &prefixed) {
+            (Ok(_), Ok(prepared)) => {
+                assert_eq!(
+                    fs::read(prepared.sandbox_root.join("a.txt")).expect("read extracted"),
+                    b"hello",
+                    "a prefixed zip that opens must extract the same content"
+                );
+            }
+            (Err(_), Err(error)) => {
+                // 打不开也可以，但**绝不能**被判成「根本不是压缩包」——那是判别越权。
+                assert!(
+                    !matches!(error, ModImportPrepareError::NotAnArchive(_)),
+                    "a prefixed but valid zip must not be labelled NotAnArchive, got {error:?}"
+                );
+            }
+            (plain, prefixed) => panic!(
+                "prefixing changed the outcome: plain={:?} prefixed={:?}",
+                plain.is_ok(),
+                prefixed.is_ok()
+            ),
+        }
+    }
+
     #[test]
     fn metadata_analyzer_reads_display_name_from_manifest_json() {
         let temp = tempfile::tempdir().expect("temp dir");
@@ -1639,7 +1940,7 @@ mod tests {
         preparer: &ZipModImportPackagePreparer,
         task_id: &str,
         archive_path: &Path,
-    ) -> Result<PreparedModPackage> {
+    ) -> std::result::Result<PreparedModPackage, ModImportPrepareError> {
         let cancellation_token = NeverCancelled;
         preparer.prepare_package(ModImportPackagePrepareRequest {
             task_id,
