@@ -34,6 +34,7 @@ mod package_content_root;
 mod package_file_selection;
 mod prerequisite_rules_repository;
 mod preview_image;
+mod rar_archive_source;
 mod reinstall;
 mod release_update;
 mod replacement_selection;

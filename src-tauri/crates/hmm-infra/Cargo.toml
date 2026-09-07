@@ -16,6 +16,7 @@ rusqlite.workspace = true
 rusqlite_migration.workspace = true
 hmm-core = { path = "../hmm-core" }
 hmm-ports = { path = "../hmm-ports" }
+hmm-unrar-sys = { path = "../hmm-unrar-sys" }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 quick-xml.workspace = true
 reqwest.workspace = true
@@ -53,3 +54,6 @@ winreg = "0.56"
 libc.workspace = true
 
 [dev-dependencies]
+# 打开语料生成器：rar 的负测语料只能现场合成（.rar 提交不进仓库，
+# 且开发机上没有 RAR 压缩器）。理由见 hmm-unrar-sys/src/fixture.rs。
+hmm-unrar-sys = { path = "../hmm-unrar-sys", features = ["test-fixtures"] }
