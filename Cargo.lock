@@ -1925,6 +1925,7 @@ name = "hmm-unrar-sys"
 version = "0.1.0-alpha.0"
 dependencies = [
  "cc",
+ "tempfile",
 ]
 
 [[package]]
