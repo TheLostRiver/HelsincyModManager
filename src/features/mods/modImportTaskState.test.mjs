@@ -226,24 +226,45 @@ test("a damaged archive stays in the retry hint tier and unknown codes fall back
   assert.equal(failedMessageKindFrom(null), "retry-hint");
 });
 
-test("both new failure tiers have distinct, non-empty copy in all three languages", async () => {
+test("archive feature tiers map to their own kinds", () => {
+  // #348 切片 C：容器打得开、但用了不支持的特性。与「格式不支持」分开，
+  // 是因为玩家的下一步动作不同——那边要转档，这边要去掉密码 / 拿到完整分卷。
+  assert.equal(failedMessageKindFrom("mod_import_archive_encrypted"), "archive-encrypted");
+  assert.equal(failedMessageKindFrom("mod_import_archive_multi_volume"), "archive-multi-volume");
+});
+
+test("every archive failure tier has distinct, non-empty copy in all three languages", async () => {
   const { modImportCopy } = await import("./modImportCopy.ts");
+  // 逐条列出而不是只测两档：新增一档时只要往这里加一行，
+  // 「非空」与「两两互不相同」的矩阵就自动覆盖到它。
+  const tiers = [
+    "unsupported-archive-format",
+    "not-an-archive",
+    "archive-encrypted",
+    "archive-multi-volume",
+  ];
+
   for (const locale of ["zh_cn", "en", "ja"]) {
     const copy = modImportCopy[locale];
-    const unsupported = getModImportFailedMessage("unsupported-archive-format", copy);
-    const notAnArchive = getModImportFailedMessage("not-an-archive", copy);
     const retryHint = getModImportFailedMessage("retry-hint", copy);
+    const messages = tiers.map((tier) => [tier, getModImportFailedMessage(tier, copy)]);
 
-    for (const [kind, message] of [
-      ["unsupported-archive-format", unsupported],
-      ["not-an-archive", notAnArchive],
-    ]) {
-      assert.equal(typeof message, "string");
-      assert.ok(message.trim().length > 0, `${locale}/${kind} must not be empty`);
+    for (const [tier, message] of messages) {
+      assert.equal(typeof message, "string", `${locale}/${tier}`);
+      assert.ok(message.trim().length > 0, `${locale}/${tier} must not be empty`);
+      // 每一档都必须与兜底档不同——否则「说清楚」这件事等于没做。
+      assert.notEqual(message, retryHint, `${locale}/${tier} must differ from the retry hint`);
     }
-    // 三档必须互不相同——否则「说清楚」这件事等于没做。
-    assert.notEqual(unsupported, retryHint, `${locale}: unsupported must differ from the retry hint`);
-    assert.notEqual(notAnArchive, retryHint, `${locale}: not-an-archive must differ from the retry hint`);
-    assert.notEqual(unsupported, notAnArchive, `${locale}: the two new tiers must differ`);
+
+    // 两两互不相同：两档说同一句话，等于少了一档。
+    for (let i = 0; i < messages.length; i += 1) {
+      for (let j = i + 1; j < messages.length; j += 1) {
+        assert.notEqual(
+          messages[i][1],
+          messages[j][1],
+          `${locale}: ${messages[i][0]} and ${messages[j][0]} must differ`,
+        );
+      }
+    }
   }
 });
