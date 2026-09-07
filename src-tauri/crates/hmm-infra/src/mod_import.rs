@@ -635,7 +635,9 @@ where
     let mut archive = zip::ZipArchive::new(archive_file).context("failed to read zip archive")?;
     reject_too_many_archive_entries(archive.len(), limits.max_entries)?;
     let mut seen_paths = HashSet::new();
+    // 两个计数器各管一头:声明值用于写盘前的快速失败,实际写入量才是承重的判据(#367)。
     let mut total_uncompressed_bytes = 0_u64;
+    let mut total_written_bytes = 0_u64;
 
     for index in 0..archive.len() {
         ensure_not_cancelled(cancellation_token)?;
@@ -665,8 +667,20 @@ where
             .context("unsafe archive path: missing file name")?;
         let mut target_file =
             create_new_regular_file(&parent, file_name, "extracted archive file")?;
-        copy_with_cancellation(&mut entry, &mut target_file, cancellation_token)
-            .context("failed to extract archive file")?;
+        // #367: 上面两道判据读的是 zip 头里的**声明**大小,而声明可以说谎——实测一个声明
+        // 100 字节的条目会照吐 8 MiB 且不报任何错。所以真正承重的是这里:按**实际写入的
+        // 字节**再判一次。声明值预检不删,它负责让诚实的超大包在写第一个字节前就被拒。
+        let written = copy_entry_with_byte_budget(
+            &mut entry,
+            &mut target_file,
+            cancellation_token,
+            limits.max_single_file_bytes,
+            limits
+                .max_total_uncompressed_bytes
+                .saturating_sub(total_written_bytes),
+        )
+        .context("failed to extract archive file")?;
+        total_written_bytes = total_written_bytes.saturating_add(written);
     }
 
     Ok(())
@@ -715,16 +729,26 @@ fn reject_oversized_archive_total(
     Ok(())
 }
 
-fn copy_with_cancellation<R, W>(
+/// 按**实际读出的字节**施加上限，返回写入量（#367）。
+///
+/// 声明大小不可信：`zip` 2.4.2 的读侧不按声明的解压大小截断，一个声明 100 字节的条目
+/// 会照吐出全部真实数据，而且不报错（CRC 仍然对得上，说谎的只有 size 字段）。
+///
+/// 判定放在**写之前**：一旦这一块会让累计量越线就直接中止，因此一个字节都不会越界，
+/// 而不是「先写超再发现」。失败时沙箱整棵树由调用方清掉。
+fn copy_entry_with_byte_budget<R, W>(
     reader: &mut R,
     writer: &mut W,
     cancellation_token: &dyn CancellationToken,
-) -> Result<()>
+    max_single_file_bytes: u64,
+    remaining_total_bytes: u64,
+) -> Result<u64>
 where
     R: Read,
     W: Write,
 {
     let mut buffer = [0_u8; 64 * 1024];
+    let mut written = 0_u64;
 
     loop {
         ensure_not_cancelled(cancellation_token)?;
@@ -732,10 +756,18 @@ where
         if read == 0 {
             break;
         }
+        let next_total = written.saturating_add(read as u64);
+        if next_total > max_single_file_bytes {
+            anyhow::bail!("unsafe archive: archive file size limit exceeded");
+        }
+        if next_total > remaining_total_bytes {
+            anyhow::bail!("unsafe archive: archive total size limit exceeded");
+        }
         writer.write_all(&buffer[..read])?;
+        written = next_total;
     }
 
-    Ok(())
+    Ok(written)
 }
 
 fn ensure_not_cancelled(cancellation_token: &dyn CancellationToken) -> Result<()> {
@@ -1217,6 +1249,142 @@ mod tests {
         assert!(!sandbox_root.join("task-1").exists());
     }
 
+    /// #367：声明值可以说谎，所以承重的必须是实际写入的字节。
+    ///
+    /// 这个包声明每条 4 字节（过得了预检），实际每条 4096 字节。修复前它会**导入成功**，
+    /// 把 8 KiB 写进沙箱。
+    #[test]
+    fn a_zip_that_lies_about_its_declared_size_cannot_exceed_the_single_file_limit() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("lying-single.zip");
+        create_zip_lying_about_declared_size(&archive_path, "payload.bin", &[0_u8; 4096], 4);
+        let sandbox_root = temp.path().join("sandboxes");
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            storage_root: None,
+            limits: ZipExtractionLimits {
+                max_entries: 10,
+                max_single_file_bytes: 64,
+                max_total_uncompressed_bytes: 1024 * 1024,
+            },
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("a lying declared size must not buy a bigger file");
+
+        assert!(
+            error
+                .to_string()
+                .contains("archive file size limit exceeded")
+                || format!("{error:#}").contains("archive file size limit exceeded"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            !sandbox_root.join("task-1").exists(),
+            "sandbox must be cleaned"
+        );
+    }
+
+    /// 同一条谎言用来撑爆总量：单文件限额放得很宽，总量卡在 64 字节。
+    #[test]
+    fn a_zip_that_lies_about_its_declared_size_cannot_exceed_the_total_limit() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("lying-total.zip");
+        create_zip_lying_about_declared_size(&archive_path, "payload.bin", &[0_u8; 4096], 4);
+        let sandbox_root = temp.path().join("sandboxes");
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            storage_root: None,
+            limits: ZipExtractionLimits {
+                max_entries: 10,
+                max_single_file_bytes: 1024 * 1024,
+                max_total_uncompressed_bytes: 64,
+            },
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("a lying declared size must not buy a bigger total");
+
+        assert!(
+            format!("{error:#}").contains("archive total size limit exceeded"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            !sandbox_root.join("task-1").exists(),
+            "sandbox must be cleaned"
+        );
+    }
+
+    /// 控制组：断言的是**等价性**（内容逐字节不变），不是「没报错」——
+    /// 只断言不报错的话，一个把所有内容截断成 0 字节的实现也能过。
+    #[test]
+    fn an_honest_archive_still_extracts_byte_for_byte() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("honest.zip");
+        let first = vec![7_u8; 5000];
+        let second = b"second entry contents".to_vec();
+        create_zip(
+            &archive_path,
+            &[
+                ("a/first.bin", first.as_slice()),
+                ("second.txt", second.as_slice()),
+            ],
+        );
+        let sandbox_root = temp.path().join("sandboxes");
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            storage_root: None,
+            limits: ZipExtractionLimits {
+                max_entries: 10,
+                max_single_file_bytes: 8192,
+                max_total_uncompressed_bytes: 8192,
+            },
+        };
+
+        let prepared = prepare_package(&preparer, "task-1", &archive_path)
+            .expect("an honest archive within the limits must still import");
+
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("a/first.bin")).expect("read first"),
+            first
+        );
+        assert_eq!(
+            fs::read(prepared.sandbox_root.join("second.txt")).expect("read second"),
+            second
+        );
+    }
+
+    /// 快速失败没有退化：诚实声明超限的包仍然在**写第一个字节之前**被拒。
+    /// 判据是沙箱里连目标文件都不存在（沙箱整棵树也会被清掉）。
+    #[test]
+    fn an_honest_oversized_declaration_is_still_rejected_before_writing() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let archive_path = temp.path().join("honest-oversized.zip");
+        create_zip(&archive_path, &[("payload.bin", [0_u8; 4096].as_slice())]);
+        let sandbox_root = temp.path().join("sandboxes");
+        let preparer = ZipModImportPackagePreparer {
+            sandbox_root: sandbox_root.clone(),
+            storage_root: None,
+            limits: ZipExtractionLimits {
+                max_entries: 10,
+                max_single_file_bytes: 64,
+                max_total_uncompressed_bytes: 1024 * 1024,
+            },
+        };
+
+        let error = prepare_package(&preparer, "task-1", &archive_path)
+            .expect_err("an honest oversized declaration must still fail fast");
+
+        assert!(
+            format!("{error:#}").contains("archive file size limit exceeded"),
+            "unexpected error: {error:#}"
+        );
+        assert!(
+            !sandbox_root.join("task-1").exists(),
+            "sandbox must be cleaned"
+        );
+    }
+
     #[test]
     fn metadata_analyzer_reads_display_name_from_manifest_json() {
         let temp = tempfile::tempdir().expect("temp dir");
@@ -1417,6 +1585,40 @@ mod tests {
         }
 
         zip.finish().expect("finish zip");
+    }
+
+    /// 造一个「声明大小说谎」的 zip：内容是真的，但本地文件头与中央目录里的解压后大小
+    /// 被改小。**CRC 不动**，所以除了那两个字段之外归档完全自洽，读侧不会报错（#367）。
+    fn create_zip_lying_about_declared_size(
+        path: &Path,
+        name: &str,
+        contents: &[u8],
+        declared: u32,
+    ) {
+        let mut writer = zip::ZipWriter::new(io::Cursor::new(Vec::new()));
+        writer
+            .start_file(name, zip::write::SimpleFileOptions::default())
+            .expect("start zip file");
+        writer.write_all(contents).expect("write zip contents");
+        let mut bytes = writer.finish().expect("finish zip").into_inner();
+
+        assert_eq!(&bytes[0..4], b"PK\x03\x04", "expected a local file header");
+        let flags = u16::from_le_bytes([bytes[6], bytes[7]]);
+        assert_eq!(
+            flags & 0x08,
+            0,
+            "data descriptor flag set: the size fields are not in the local header, \
+             this fixture would not be testing what it claims"
+        );
+        bytes[22..26].copy_from_slice(&declared.to_le_bytes());
+
+        let central = bytes
+            .windows(4)
+            .position(|window| window == b"PK\x01\x02")
+            .expect("expected a central directory header");
+        bytes[central + 24..central + 28].copy_from_slice(&declared.to_le_bytes());
+
+        fs::write(path, bytes).expect("write crafted zip");
     }
 
     fn create_numbered_zip_entries(path: &Path, count: usize) {
