@@ -47,7 +47,26 @@ export type ModImportFailedMessageKind =
   | "invalid-archive"
   | "start-failed"
   | "storage-frozen-migration"
-  | "storage-frozen-restart";
+  | "storage-frozen-restart"
+  | "unsupported-archive-format"
+  | "not-an-archive";
+
+// 后端投影的解包失败语义码 -> 档位（#348）。
+//
+// 此前失败分支写死 retry-hint，`event.error` 根本没被读过，于是 `.rar` 只能显示
+// 「请检查压缩包后重试」——包是好的，提示把玩家指向了错误的方向。
+//
+// 认不出的码一律落回 retry-hint：后端将来新增码时，前端最差也只是退回今天的行为，
+// 不会白屏也不会显示空文案。
+const failedMessageKindByErrorCode: ReadonlyMap<string, ModImportFailedMessageKind> = new Map([
+  ["mod_import_unsupported_archive_format", "unsupported-archive-format"],
+  ["mod_import_not_an_archive", "not-an-archive"],
+]);
+
+export function failedMessageKindFrom(error: string | null): ModImportFailedMessageKind {
+  if (error === null) return "retry-hint";
+  return failedMessageKindByErrorCode.get(error) ?? "retry-hint";
+}
 
 const modImportPhaseCopyKeys: Readonly<Record<string, keyof ModImportCopy["phases"]>> = {
   "mod_import.queued": "queued",
@@ -92,6 +111,10 @@ export function getModImportFailedMessage(
       return copy.errors.storageFrozenMigration;
     case "storage-frozen-restart":
       return copy.errors.storageFrozenRestart;
+    case "unsupported-archive-format":
+      return copy.errors.unsupportedArchiveFormat;
+    case "not-an-archive":
+      return copy.errors.notAnArchive;
   }
 }
 
@@ -144,7 +167,7 @@ export function nextModImportTaskStateFromProgress(
       status: "failed",
       taskId: event.taskId,
       phase: event.phase,
-      messageKind: "retry-hint",
+      messageKind: failedMessageKindFrom(event.error),
     };
   }
 
