@@ -246,12 +246,10 @@ fn analyze_assets(
         warnings.push(ReplacementWarning::UnsupportedSource);
     }
 
-    // 随行·原样的文件同样会被安装，计入「本次影响的文件数」；被拒绝的不计——它们不落盘。
-    // 这是**包级**分析，两档随行都要计入：`#349` 切片② 把它们拆成槽位级/包级只影响
-    // 单个计划带哪些文件，不改变「这个包一共会影响多少文件」。
-    let matched = classified.in_slot.len()
-        + classified.slot_kept_in_place.len()
-        + classified.package_kept_in_place.len();
+    // 随行·原样的文件同样会被安装，计入「本次影响的文件数」；被拒绝的与游戏根之外的
+    // 不计——它们不落盘。这是**包级**分析，两档随行都要计入：`#349` 切片② 把它们拆成
+    // 槽位级/包级只影响单个计划带哪些文件，不改变「这个包一共会影响多少文件」。
+    let matched = classified.installable_total();
     let analysis = ReplacementAnalysis::new(GameId::mhw(), sources, matched, warnings)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
     Ok((analysis, classified))
@@ -264,19 +262,25 @@ fn analyze_assets(
 /// 套装的 `body` `helm` `leg` `wst` 四个部位、以及一切作者自建子目录全部撞上——库里的
 /// 防具包 100% 不可重定向。
 ///
-/// 现在只有一档失败：`UnsafePath`（路径穿越等真实安全信号）。其余分四档：
+/// 现在只有一档失败：`UnsafePath`（路径穿越等真实安全信号）。其余分四档，
+/// **每一档都有归属，没有「其余 → 忽略」这一档**（`#363`：那一档静默吃掉了真实包里
+/// 23/37 个文件）：
 ///
 /// - 槽位目录内、且不是 `.tex` → 随行·需重定位，按编号段改名
 /// - 槽位目录内的 `.tex` → **原路径保留**，理由见 [`is_path_referenced_texture`]
-/// - `pl/<equip>/` 下但与槽位无关（作者自建目录）→ 原路径保留（实验 A 实证）
+/// - 游戏根之下、不在任何槽位子树 → **原样安装**，与普通安装同一口径（见
+///   [`ArmorAsset::PackageCompanion`]）
 /// - 命中可执行 / 脚本拒绝清单 → 排除并计数（#336 切片③）
-/// - 其余 → 忽略
+/// - 游戏根之外 → 不安装并计数（普通安装同样不装）
+///
+/// 末尾用 [`ClassifiedAssets::accounted_total`] 对账，漏一档就硬失败。
 fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<ClassifiedAssets> {
     let mut classified = ClassifiedAssets::default();
     for asset in assets {
         let kind = classify_armor_asset(asset.relative_path())
             .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)?;
-        if matches!(kind, ArmorAsset::Unrelated) {
+        if matches!(kind, ArmorAsset::OutsideGameRoot) {
+            classified.outside_game_root_count += 1;
             continue;
         }
         let file_name = asset
@@ -299,13 +303,13 @@ fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<Clas
         // 一律用分类器归一化后的路径，不要拿原始字符串重新解析——小写根与外层目录
         // 会在第二次解析时被打回原形（#345）。
         match kind {
-            ArmorAsset::Unrelated => unreachable!("filtered above"),
-            ArmorAsset::SlotIndependent {
-                normalized_path, ..
-            } => classified.package_kept_in_place.push(KeptInPlaceAsset {
-                package_file_id: asset.package_file_id().clone(),
-                relative_path: normalized_path,
-            }),
+            ArmorAsset::OutsideGameRoot => unreachable!("counted above"),
+            ArmorAsset::PackageCompanion { normalized_path } => {
+                classified.package_kept_in_place.push(KeptInPlaceAsset {
+                    package_file_id: asset.package_file_id().clone(),
+                    relative_path: normalized_path,
+                })
+            }
             ArmorAsset::InSlot(path) if is_path_referenced_texture(&file_name) => {
                 classified.slot_kept_in_place.push(SlotKeptInPlaceAsset {
                     package_file_id: asset.package_file_id().clone(),
@@ -319,6 +323,19 @@ fn classify_assets(assets: &[ReplacementAsset]) -> ReplacementAdapterResult<Clas
                 path,
             }),
         }
+    }
+
+    /*
+     * 结构兜底：分档后的总数必须等于包内文件数（#363）。
+     *
+     * 这条缺失时的后果就是 `#363` 本身——`Unrelated` 那个 `continue` 静默吃掉了 23/37 个
+     * 文件，玩家拿到「安装成功」而外观是坏的，而且**没有任何测试会发现**。所以宁可在这里
+     * 硬失败：分档漏了文件是代码缺陷，报错能被立刻看到，静默少装不能。
+     *
+     * 这不是数据校验——包内容再奇怪也不会触发它，只有上面的 match 漏了一档才会。
+     */
+    if classified.accounted_total() != assets.len() {
+        return Err(ReplacementAdapterError::InvalidRetargetPlan);
     }
     Ok(classified)
 }
@@ -344,8 +361,8 @@ fn is_path_referenced_texture(file_name: &str) -> bool {
         .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("tex"))
 }
 
-/// 原路径安装的**包级**随行文件：`pl/<equip>/` 下与任何槽位无关（作者自建目录）。
-/// 一个包只装一次，由组装方指定承载者。
+/// 原路径安装的**包级**随行文件：游戏根之下、不属于任何槽位子树的一切（`#363`）。
+/// 一个包只装一次，由组装方指定承载者（`carries_package_companions`）。
 #[derive(Debug, Clone)]
 struct KeptInPlaceAsset {
     package_file_id: PackageFileId,
@@ -367,6 +384,23 @@ struct ClassifiedAssets {
     slot_kept_in_place: Vec<SlotKeptInPlaceAsset>,
     package_kept_in_place: Vec<KeptInPlaceAsset>,
     excluded_count: u32,
+    /// 游戏根之外的文件数（`readme.txt` 之类）。**不安装**——普通安装的过滤条件同样是
+    /// 「在不在游戏根之下」，两条路径口径一致。计数只为让分档可对账（`#363`）。
+    outside_game_root_count: u32,
+}
+
+impl ClassifiedAssets {
+    /// 会被安装的文件数：三档随行处置之和。被拒绝的与游戏根之外的都不落盘。
+    fn installable_total(&self) -> usize {
+        self.in_slot.len() + self.slot_kept_in_place.len() + self.package_kept_in_place.len()
+    }
+
+    /// 分档后有归属的文件总数。**必须等于包内文件数**——一个文件都不能在分档中消失。
+    fn accounted_total(&self) -> usize {
+        self.installable_total()
+            + self.excluded_count as usize
+            + self.outside_game_root_count as usize
+    }
 }
 
 fn find_target(
