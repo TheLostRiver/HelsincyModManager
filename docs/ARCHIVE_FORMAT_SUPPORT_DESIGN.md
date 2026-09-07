@@ -570,14 +570,29 @@ tar 当验收载体时不存在这个问题（tar 便宜，与 B 同一个 PR �
 6 个 FFI 声明、布局探针与断言、`NOTICE.md` 许可义务、policy 排除、
 `.gitattributes` 保住上游字节。**不接导入链路**，`hmm-infra` 尚未依赖它。
 
-**C2 / C3**：语料生成器与接入外壳。以下是 C 整体的完成定义：
+**C2（已实现）**：store-only RAR5 语料生成器 ＋ unrar 往返验证 ＋ `Archive` RAII
+（把「必须持锁」做成类型约束）。
 
-- vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明
-- 按「使用模式」接入外壳
-- **把 rar 加进判别第 1 步的「已支持格式」集合**，并把自解压 RAR 的测试期望从
-  `not-an-archive` 翻转为「正常导入」——翻不过来就说明第 1 步被写死了
-- `NOTICE.md` 许可义务落地
-- RAR4 / RAR5、solid 包、分卷、加密包各自落到明确档位
+**C3（已实现）**：`RarArchiveSource` 接入外壳、判别第 1 步扩容、暂存目录、
+加密 / 分卷两档 ＋ 三语文案、文件对话框过滤器。
+
+C 整体的完成定义与兑现情况：
+
+| 完成定义 | 状态 |
+| --- | --- |
+| vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明 | ✅ C1 |
+| 按「使用模式」（`RAR_OM_EXTRACT` ＋ `RAR_TEST` ＋ 回调）接入外壳 | ✅ C3 |
+| 把 rar 加进判别第 1 步，自解压 RAR 期望从 `not-an-archive` 翻成「正常导入」 | ✅ C3，用例 `a_self_extracting_rar_now_imports_instead_of_being_called_not_an_archive` |
+| `NOTICE.md` 许可义务落地 | ✅ C1 |
+| **外壳接口零改动**（T21-B 的硬约束） | ✅ 三个 trait 与七条门禁一行未动 |
+| 共享负测整组跑在 rar 上、一条不重写 | ✅ C3 |
+| 加密包落明确档位 | ✅ `mod_import_archive_encrypted` |
+| 分卷包落明确档位 | ✅ `mod_import_archive_multi_volume`，且在 open 阶段就报得出来 |
+| RAR4 老世代 | ⬜ **未覆盖**：语料生成器只写 RAR5。unrar 本身支持 RAR 1.4–5.0（`archive.hpp:13`），但我们造不出 RAR4 语料 |
+| solid 包 | ⬜ **未覆盖**：store-only 语料构不成真实的固实链，`MHFL_SOLID` 标志位测得到、实际行为测不到 |
+
+**⬜ 两项留给维护者用真机素材验收，不在自动化网内谎称已覆盖。**
+理由见「语料只能在代码里合成」一节：开发机上没有任何 RAR 压缩器。
 
 ### T21-D：7z
 
