@@ -259,9 +259,12 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
   }, [handleDroppedPaths]);
 
   const summary = dropQueueSummary(list.rows);
+  const openDropList = useCallback(() => setVisible(true), []);
 
   // 浮层关掉之后，进度走既有的任务通知（与单个导入同一套，不另造一份）。
-  // 通知可点开重看清单——否则关掉就再也找不回来了。
+  //
+  // 通知上必须带一个「查看清单」按钮：关掉之后没有别的入口能把清单叫回来
+  // （再拖一个包是**开新的**，不是重开），玩家就再也看不到还剩几个、哪个失败了。
   const NOTICE_ID = "mod-import.drop.batch";
   useEffect(() => {
     if (summary.active && !visible) {
@@ -273,12 +276,14 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
           summary.submitted,
         ),
         tone: "progress",
+        action: { label: copyRef.current.drop.reopenList, onClick: openDropList },
       });
       return;
     }
     dismissTaskNotice(NOTICE_ID);
   }, [
     dismissTaskNotice,
+    openDropList,
     showTaskNotice,
     summary.active,
     summary.failed,
@@ -286,8 +291,6 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
     summary.succeeded,
     visible,
   ]);
-
-  const openDropList = useCallback(() => setVisible(true), []);
 
   const value = useMemo<ModImportDropContextValue>(
     () => ({ openDropList, libraryRevision }),
