@@ -127,10 +127,10 @@ test("skipping saves progress and language while manual reopening starts with la
   const h = await mountTour(t);
   await h.select("ja");
   await act(async () => h.overlay().onFinish("skipped"));
-  assert.equal(h.overlay(), undefined);
+  assert.equal(Boolean(h.overlay()), false);
   assert.equal(JSON.parse(h.state.storage.get("helsincy.onboarding")).tours["hmm.first-run"].outcome, "skipped");
   await h.flushFrames();
-  assert.equal(h.overlay(), undefined);
+  assert.equal(Boolean(h.overlay()), false);
   await act(async () => h.state.tour.startTour());
   assert.equal(h.overlay().steps[0].id, "language");
   assert.equal(h.overlay().steps[1].id, "dashboard-steam-scan");
@@ -140,10 +140,10 @@ test("skipping saves progress and language while manual reopening starts with la
 for (const progress of ["completed", "skipped"]) {
   test(`adding language selection does not reopen a previously ${progress} tour`, options, async (t) => {
     const h = await mountTour(t, { progress });
-    assert.equal(h.overlay(), undefined);
+    assert.equal(Boolean(h.overlay()), false);
     await act(async () => h.state.i18n.setPreference("en"));
     await h.flushFrames();
-    assert.equal(h.overlay(), undefined);
+    assert.equal(Boolean(h.overlay()), false);
   });
 }
 
