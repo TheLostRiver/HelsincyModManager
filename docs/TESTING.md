@@ -91,6 +91,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 前端改动
 
+开发服务器的监视边界由 `vite.config.ts` 管理。修改它时运行：
+
+```powershell
+node --test src/devServerWatch.test.mjs
+```
+
+这些用例也由 `pnpm test` 执行：逐项验证根级非前端目录被排除、`src` / `public` 内同名目录及
+环境文件仍可监视，并在临时目录启动真实 Vite，检查源文件变化能使转换后的模块更新。
+不启动 Tauri，不读取玩家数据；自动通过不替代原工作目录中的 Windows 启动对照。
+`pnpm typecheck` 同时检查前端和 Node 侧配置；后者使用 Node 类型与 ES2022，并禁用本次检查的
+composite / incremental 输出，避免类型检查生成配置构建产物。
+
 适用范围：
 
 - `src/`
