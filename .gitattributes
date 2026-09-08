@@ -8,3 +8,9 @@
 *.zip binary
 *.7z binary
 *.rar binary
+
+# 第三方原样引入的源码树：关掉行尾归一化，逐字节保留上游发布的内容。
+# 上游是 CRLF，`* text=auto eol=lf` 会把它改写成 LF——那样 vendor 目录就不再是
+# 「原样」的了，而且每次升级上游版本都会混进一整片与内容无关的行尾差异。
+# license.txt 也在这棵树里，许可原文更不该被我们改动一个字节。
+src-tauri/crates/hmm-unrar-sys/vendor/** -text

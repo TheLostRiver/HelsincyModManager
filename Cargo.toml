@@ -7,6 +7,7 @@ members = [
     "src-tauri/crates/hmm-infra",
     "src-tauri/crates/hmm-games-mhw",
     "src-tauri/crates/hmm-runtime",
+    "src-tauri/crates/hmm-unrar-sys",
     "src-tauri/crates/hmm-cli",
     "src-tauri/crates/hmm-save-backup-sidecars",
 ]
@@ -19,6 +20,7 @@ repository = "https://github.com/TheLostRiver/HelsincyModManager"
 
 [workspace.dependencies]
 anyhow = "1.0.100"
+cc = "1.2.42"
 getrandom = "0.3.4"
 cap-fs-ext = "4.0.2"
 cap-std = "4.0.2"

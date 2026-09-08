@@ -1,7 +1,11 @@
 # 导入压缩格式支持设计
 
-> 状态（2026-09-08）：T21 全链 `design-complete`，尚无实现。切片顺序
+> 状态（2026-09-08）：**A、B 已合并**（PR #370 / #371），C 进行中。切片顺序
 > **A 失败档位 → B 安全外壳与格式解耦 → C rar → D 7z**；`.tar` 家族（T21-E）本轮延后。
+> C 再分三步：**C1 `hmm-unrar-sys`（vendor ＋ build.rs ＋ FFI，不接链路）→
+> C2 测试语料生成器 → C3 接入外壳与判别**。这么分是因为 C1 的风险
+> （48 个 C++ 文件双平台能不能编、结构体布局对不对）与 C3 的风险（安全语义）
+> 性质完全不同，混在一个 diff 里没法连贯 review。
 > 缺陷面由 #348 立案。维护者已于 2026-09-08 拍板：rar 做，且自行 vendor 官方 UnRAR 源码
 > 而非使用现成 crate。任务状态与切片清单见 [任务总纲](../TODO.md) 的 T21，本文件是其权威设计。
 
@@ -99,7 +103,7 @@ if (event.status === "failed") {
 | 安全更新 | 受制于上游 fork 的发布节奏 | 自己控 |
 | 落盘控制 | 整条目入内存后由我们写 | 回调流式收字节，**unrar 全程不碰文件系统** |
 | 配额语义 | 锁死在「整条目入内存」 | 流式 ＋ 可中止，与其他格式统一 |
-| 成本 | 低 | `build.rs`（`cc` 编译 85 个 `.cpp`）＋ 6 个 `extern "C"` ＋ 2 个 struct ＋ 1 个回调 |
+| 成本 | 低 | `build.rs`（`cc` 编译 48 个 `.cpp`，Windows 另加 3 个）＋ 6 个 `extern "C"` ＋ 2 个 struct ＋ 1 个回调 |
 | 仓库影响 | 无 | ＋1.3 MB / 150 个文件；单文件最大 58 KB，远低于 256 KB 门禁 |
 
 决定性理由是「落盘控制」那一行：用 crate 只能做到「整条目入内存再由我们写」，
@@ -202,6 +206,25 @@ if (event.status === "failed") {
 **成本提示**：第 1 步的每次「尝试打开」都有真实开销。unrar 那 4 MB 的前缀扫描意味着
 一个 4 MB 的随机文件会被完整扫一遍才判定不是 RAR。尝试顺序应把最常见的格式排在前面，
 并且**不要为了「更准」去无限扩大尝试集合**。
+
+### 语料只能在代码里合成——不能提交，也没有压缩器可用（2026-09-08 核实）
+
+两条硬约束叠在一起，决定了语料的形态：
+
+1. `policy/project-policy.json` 的 `forbiddenFiles.extensions` 含 **`.rar` / `.7z` / `.zip`**
+   ——二进制语料**提交不进仓库**。
+2. 开发机上**没有任何 RAR 压缩器**（WinRAR / `rar.exe` 都没有），7-Zip 也不能写 RAR。
+   所以「先造一个再嵌进去」这条路也走不通。
+
+结论：**RAR 语料由测试代码按格式规格现场合成**（store-only，不实现任何压缩算法
+——这同时避开 UnRAR 许可对「重建 RAR 压缩算法」的禁止）。
+
+**这不会造成假绿**：语料若拼错，unrar 直接打不开，测试硬失败。断言的形态是
+「unrar 成功解出预期字节」，语料生成器的正确性被 unrar 自己反向校验，
+不存在「生成器和读取器一起错」的可能——因为读取器不是我们写的。
+
+真实 RAR 素材（solid、分卷、加密、RAR4 老世代）无法合成到位的部分，
+留给维护者用真机素材验收，不在自动化网内谎称已覆盖。
 
 ### magic 常量必须由测试语料钉住
 
@@ -371,11 +394,55 @@ UnRAR 许可第 2 条的关键句：
 
 官方 `dll.def` 共导出 12 个函数，本项目只需 6 个：
 
-`RAROpenArchiveEx` / `RARCloseArchive` / `RARReadHeaderEx` / `RARProcessFile` /
-`RARSetCallback` / `RARSetPassword`
+`RAROpenArchiveEx` / `RARCloseArchive` / `RARReadHeaderEx` / `RARProcessFileW` /
+`RARSetCallback` / `RARGetDllVersion`
 
 另需 `RAROpenArchiveDataEx`、`RARHeaderDataEx` 两个 struct 与一个回调。
-`build.rs` 用 `cc` 编译，定义 `RARDLL`；Windows / MSVC 是当前唯一目标平台。
+
+#### 2026-09-08 落地 T21-C1 时核实到的偏差
+
+本节原先几处说法在动手时被证伪，逐条改正并留下理由——它们都是「照规格书想当然」
+会踩到的坑。
+
+| 原文 | 实测 | 影响 |
+| --- | --- | --- |
+| 「Windows / MSVC 是当前唯一目标平台」 | **必须两个平台都编。** CI 跑 `ubuntu-latest`，发版才跑 `windows-latest`。限成 `cfg(windows)` 的话 CI 永远编不到、rar 的测试一条都不跑 | 双平台编译，CI 多花约 40 秒 |
+| 「`cc` 编译 85 个 `.cpp`」 | **48 个。** 上游 `makefile` 的 `lib:` 目标是 `OBJECTS`＋`LIB_OBJ`；85 是目录里的总数，多编会把 CLI／SFX／恢复卷拖进来。Windows 另需 `isnt` / `motw` / `rs`（`UnRARDll.vcxproj` 独有），少了会链接期报 `MarkOfTheWeb::` 与 `WinNT` 未解析 | 文件清单**逐平台取自上游自己的配方** |
+| 用 `RARProcessFile` | 改用 **`RARProcessFileW`**。`RAR_TEST` 下 `DestPath`/`DestName` 都被忽略，两者等价，W 变体不经 ANSI 代码页 | 攻击面更小 |
+| 需要 `RARSetPassword` | **不声明。** 加密包不做密码交互（非目标）；不设密码时 unrar 自己返回 `ERAR_MISSING_PASSWORD`，正是要的明确档位 | 少一个永不调用的导出 |
+
+另外两条不是偏差，是原文没提而必须写死的：
+
+- **`dll.hpp` 顶部是 `#pragma pack(push, 1)`。** x64 上 `RARHeaderDataEx::CmtBuf`
+  落在偏移 6188，不是 8 对齐位置；Rust 侧少写 `packed`，编译器会把它挪到 6192，
+  此后每个字段错位且**无任何报错**。叠加 `wchar_t` 在 Windows 2 字节 / Linux 4 字节，
+  手算布局是碰运气。因此 `hmm-unrar-sys/src/layout_probe.cpp` 让 C++ 自报
+  `sizeof`／`offsetof`，Rust 测试逐字段核对。已反向验证：去掉任一 `packed`
+  对应断言转红（`CmtBuf 6192≠6188`、`CmtBufW 72≠68`），而**功能性冒烟测试照旧通过**
+  ——它对这类错位是瞎的。
+- **MSVC 需要 `/utf-8`。** 中文 Windows 上它按 GBK 读源文件，UTF-8 注释里的三字节
+  序列会把行尾换行吃掉，把下一行 `#include` 吞进注释——症状是「结构体未声明」，
+  与编码毫无相似之处。
+
+### unrar 只能按路径打开归档，而本仓库的解包链路是 reader 形态
+
+`dll.cpp:72` 是 `Data->Arc.Open(ArcName, …)`：**DLL API 只接受路径，没有任何
+句柄／回调式的读入口**。而 `ModImportPackagePreparer` 的两个入口里，
+`prepare_package_from_reader` 拿到的是 `&mut dyn Read + Seek`，
+其存在理由恰恰是「让适配器保住 no-follow 能力链」。
+
+这条冲突必须在 T21-C3 显式解决，不能糊过去。**已定的方向：把 reader 落盘到一个
+由外壳创建、用完即删的暂存目录，再把那个路径交给 unrar。** 理由：
+
+- unrar 从头到尾只读**我们自己刚创建的文件**，玩家给的路径不进它的视野
+  ——symlink／junction 跟随与 TOCTOU 一并消失，比传真实路径更强，
+  而不是更弱
+- 两个入口共用一条实现，不产生「只有一边被测到」的分支
+- 暂存放在**包沙箱之外**：包沙箱的内容会被原样提交成 Mod 版本，
+  把原始压缩包丢进去会污染包体
+
+代价是一次完整拷贝。对本设计的动机素材（55 MB）可忽略；即使 1 GB 级，
+拷贝耗时相对解压也是小头。**若日后判定不可接受，属独立优化，不是安全折衷。**
 
 ### 使用模式（不可协商）
 
@@ -485,6 +552,12 @@ tar 当验收载体时不存在这个问题（tar 便宜，与 B 同一个 PR �
 
 ### T21-C：rar
 
+**C1（已实现）**：`hmm-unrar-sys` —— vendor UnRAR 7.23、双平台 `build.rs`、
+6 个 FFI 声明、布局探针与断言、`NOTICE.md` 许可义务、policy 排除、
+`.gitattributes` 保住上游字节。**不接导入链路**，`hmm-infra` 尚未依赖它。
+
+**C2 / C3**：语料生成器与接入外壳。以下是 C 整体的完成定义：
+
 - vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明
 - 按「使用模式」接入外壳
 - **把 rar 加进判别第 1 步的「已支持格式」集合**，并把自解压 RAR 的测试期望从
@@ -505,11 +578,14 @@ tar 当验收载体时不存在这个问题（tar 便宜，与 B 同一个 PR �
 
 ## 停止条件与开放问题
 
-- ~~vendor 目录的 policy 排除方式未定~~ **已定（2026-09-08）**：走
-  `policy/project-policy.json` 的 `excludePathPatterns`，加一条 vendor 路径。
-  取的是成本最低且够用那条；不为此新造 `vendorPaths` 概念（那要改 `check-policy.mjs`，
-  属治理改动）。**实现放在 T21-C 真正引入文件的那个 PR 里**——现在加一条指向不存在路径的
-  规则是死配置。副作用要接受：vendor 文件在体积门禁上也不设防（它们最大 58 KB，无所谓）。
+- ~~vendor 目录的 policy 排除方式未定~~ **已落地（T21-C1）**：
+  `policy/project-policy.json` 的 `checkScopes.{preCommit,verify}.excludePathPatterns`
+  与 `fileSize.excludePathPatterns` 各加一条 vendor 路径（是两处，不是一处）。
+  **如实说明：这三条当前不改变任何检查结果**——vendor 全是 `.cpp`/`.hpp`，不在
+  `fileSize.extensions` 映射里，也不含违禁扩展名，secret scan 亦通过。加它是为了
+  日后有人调门禁或往映射里加 `.cpp` 时，第三方树不会被当成我们的代码来评判。
+  另外 `.gitattributes` 给 vendor 树加了 `-text`：仓库默认 `eol=lf` 会改写上游的 CRLF，
+  那样 vendor 就不再是「原样」的了，`license.txt` 更不该被动一个字节。
 - **进程级隔离未做**：内存安全类残余风险靠「跟踪上游 ＋ 及时升版」承担。
   若日后判定不可接受，属独立切片，不在本设计内。
 - **`unrar` 升级流程未定**：谁盯上游公告、多久一次、怎么验证升级后行为不变。
