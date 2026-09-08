@@ -81,8 +81,18 @@ export function useModLibraryQuery({
 }: UseModLibraryQueryInput) {
   // 经 ref 取用：调用方若传了个每次渲染都新建的对象，直接进 effect 依赖会变成
   // 「每渲染一次重发一次请求」。缓存是可选优化，不该有能力把主查询拖成请求风暴。
+  //
+  // 同步走 layout effect 而不是 render 期间直接赋值：render 期间写 ref 违反 React 的
+  // 约定（唯一被许可的例外是惰性初始化），因为 render 可能被丢弃或重跑。今天本仓库
+  // 没有并发特性、且这里写的是 Provider 里 `useMemo(..., [])` 的恒定对象，所以还看不出
+  // 差别——但那是**碰巧**无害，不是设计上无害。
+  //
+  // 声明顺序有意义：本 effect 必须排在下面读缓存的那个 layout effect 之前，同一次提交里
+  // 才会先同步后读取。挂载那一次由 `useRef(cache)` 的初值兜住。
   const cacheRef = useRef(cache);
-  cacheRef.current = cache;
+  useLayoutEffect(() => {
+    cacheRef.current = cache;
+  }, [cache]);
   const [submittedSearch, setSubmittedSearch] = useState(rawSearch);
   const [requestedPage, setRequestedPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<ModLibraryPageSize>(() =>

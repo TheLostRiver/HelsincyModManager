@@ -100,19 +100,40 @@ test("分类也从缓存起步，并在拉到之后写回", () => {
   assert.match(pageSource, /librarySessionCache\.writeCategories\(loadedCategories\)/);
 });
 
-test("缓存经 ref 取用，且不出现在任何依赖数组里", () => {
-  // 调用方若传了个每渲染都新建的对象，而它又进了 effect 依赖，就会变成
+test("缓存经 ref 取用；只有同步 ref 那个 effect 可以依赖 cache", () => {
+  // 调用方若传了个每渲染都新建的对象，而它又进了**驱动请求**的依赖里，就会变成
   // 「每渲染一次重发一次请求」——缓存这个可选优化不该有能力把主查询拖垮。
+  // 同步 ref 那个 effect 依赖 cache 是它的本职，不在此列。
   assert.match(hookSource, /const cacheRef = useRef\(cache\)/);
-  assert.match(hookSource, /cacheRef\.current = cache/);
 
-  for (const dependencyArray of hookSource.match(/\}, \[[^\]]*\]\)/g) ?? []) {
-    assert.doesNotMatch(
-      dependencyArray,
-      /\bcache\b/,
-      `依赖数组里不该出现 cache：${dependencyArray}`,
-    );
-  }
+  const arraysMentioningCache = (hookSource.match(/\}, \[[^\]]*\]\)/g) ?? []).filter(
+    (dependencyArray) => /\bcache\b/.test(dependencyArray),
+  );
+  assert.deepEqual(
+    arraysMentioningCache,
+    ["}, [cache])"],
+    "除了同步 ref 的那个 effect，任何依赖数组都不该出现 cache",
+  );
+
+  // 驱动请求的两个依赖数组逐字钉住：掺进任何额外依赖都会改变发请求的时机。
+  assert.match(hookSource, /\}, \[profileKey, queryInput, queryKey\]\);/);
+  assert.match(hookSource, /\}, \[executeQuery, queryKey\]\);/);
+  assert.match(hookSource, /\n {4}\[loadPage\],\n {2}\);/);
+});
+
+test("缓存 ref 在 layout effect 里同步，不在 render 期间赋值", () => {
+  // render 期间写 ref 违反 React 约定（唯一例外是惰性初始化）：render 可能被丢弃或重跑。
+  // 今天没有并发特性、写的又是恒定对象，所以看不出差别——但那是碰巧无害。
+  assert.match(
+    hookSource,
+    /useLayoutEffect\(\(\) => \{\s*\n\s*cacheRef\.current = cache;\s*\n\s*\}, \[cache\]\);/,
+  );
+  // 组件体里的直接赋值是两格缩进；effect 里的是四格。用缩进区分这两种形态。
+  assert.doesNotMatch(
+    hookSource,
+    /\n {2}cacheRef\.current = cache;/,
+    "不得在 render 期间直接赋值",
+  );
 });
 
 test("命中缓存不取消请求——发请求那段完全不知道缓存的存在", () => {
