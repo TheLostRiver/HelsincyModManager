@@ -7,6 +7,7 @@ use hmm_ports::{ReplacementCatalogError, ReplacementCatalogProvider, Replacement
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
 
 const MHW_ARMOR_CATALOG_SCHEMA_VERSION: u32 = 1;
@@ -60,20 +61,38 @@ struct RawArmorTarget {
     metadata: BTreeMap<String, Value>,
 }
 
+/// 解析一次就缓存住的防具 catalog。
+///
+/// 分片是 `include_str!` 进来的**编译期静态数据，运行时不可能变**，所以重复解析是纯浪费：
+/// 每次要把约 1MB JSON 过两遍（envelope 一遍、完整结构一遍）再全量校验，debug 构建下
+/// 实测 29ms／次。
+fn cached_armor_catalog() -> &'static ReplacementCatalogResult<ReplacementCatalog> {
+    static CACHED: OnceLock<ReplacementCatalogResult<ReplacementCatalog>> = OnceLock::new();
+    CACHED.get_or_init(|| parse_armor_catalog_shards(&ARMOR_CATALOG_SHARDS))
+}
+
+/// 只读地借出缓存。查目标、搜目标都走这里——**它们不需要 owned catalog**，
+/// 而 `replacement_catalog()` 每次都会克隆全部 1000+ 个三语目标。
+fn borrow_armor_catalog() -> ReplacementCatalogResult<&'static ReplacementCatalog> {
+    cached_armor_catalog().as_ref().map_err(Clone::clone)
+}
+
 impl ReplacementCatalogProvider for MhwArmorCatalog {
     fn game_id(&self) -> GameId {
         GameId::mhw()
     }
 
     fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
-        parse_armor_catalog_shards(&ARMOR_CATALOG_SHARDS)
+        cached_armor_catalog().clone()
     }
 
     fn find_replacement_target(
         &self,
         target_id: &ReplacementTargetId,
     ) -> ReplacementCatalogResult<ReplacementTarget> {
-        resolve_target_allowing_legacy_ids(&self.replacement_catalog()?, target_id)
+        // **走引用，不要 `replacement_catalog()`**：那个返回 owned，为查一个目标克隆整份
+        // catalog，而本函数就在「逐槽位」的循环里。
+        resolve_target_allowing_legacy_ids(borrow_armor_catalog()?, target_id)
     }
 
     fn search_replacement_targets(
@@ -85,8 +104,7 @@ impl ReplacementCatalogProvider for MhwArmorCatalog {
             return Ok(Vec::new());
         }
 
-        Ok(self
-            .replacement_catalog()?
+        Ok(borrow_armor_catalog()?
             .targets()
             .iter()
             .filter(|target| target_matches_query(target, &query))
