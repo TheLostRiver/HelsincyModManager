@@ -99,7 +99,7 @@ pub use log_storage_budget::{
     DEFAULT_LOG_STORAGE_MAX_BYTES, LOG_STORAGE_AUDIT_RESERVE_BYTES, MIN_AUDIT_LOG_RETENTION_DAYS,
 };
 pub use mod_import::{
-    default_mod_storage_root, FileSystemDiagnosticPackageExporter,
+    default_mod_storage_root, probe_mod_archive, FileSystemDiagnosticPackageExporter,
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
     ZipModImportPackagePreparer,
 };

@@ -41,6 +41,7 @@ import {
 import { deleteModFromLibrary, previewModDeletion } from "./modDeleteApi";
 import { modDeleteCopy, type ModDeleteCopy } from "./modDeleteCopy";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
+import { ModImportDropZone } from "./ModImportDropZone";
 import { ModLibraryPagination } from "./ModLibraryPagination";
 import {
   ModLibraryEmptyState,
@@ -1953,6 +1954,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           onAction={handleContextMenuAction}
         />
       )}
+
+      {/* 拖拽导入（T22 / #366）。挂在 Mod 库页而不是 App 根：拖进来的落点是「库里多一个
+          Mod」，在别的页面弹出待导入清单会把玩家从当前任务里拽走。**只能挂一处**
+          ——Tauri 的拖放事件是窗口级的，挂两处会把同一次拖拽处理两遍。 */}
+      <ModImportDropZone
+        disabledReason={storageWriteFreezeReason ?? null}
+        onImported={refreshModLibraryAfterWrite}
+      />
 
       {previewMod !== null && (
         <PreviewImageDialog

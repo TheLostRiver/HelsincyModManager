@@ -75,6 +75,31 @@ impl<R: Read + Seek> SevenZipArchive<R> {
         }
     }
 
+    /// 归档里有没有用到 AES——即**内容加密**。
+    ///
+    /// 只看编解码链，**不解码任何数据**。之所以需要它：`ArchiveReader::new` 对
+    /// 内容加密的包是**能打开的**（只有头加密才在 open 阶段失败），
+    /// 要密码这件事要等真去解内容时才暴露。拖拽清单的预检不解内容，
+    /// 光靠 open 就会把加密包显示成「可导入」，玩家确认之后才发现被骗
+    /// ——这是 `probe_and_import_agree_on_every_fixture` 逼出来的。
+    pub(crate) fn is_content_encrypted(&self) -> bool {
+        self.reader.archive().blocks.iter().any(|block| {
+            block.coders.iter().any(|coder| {
+                coder.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256
+            })
+        })
+    }
+
+    /// 内容层旁证：条目名里有没有本游戏的内容目录。
+    ///
+    /// 只读头部条目表，**不解码任何数据**——与 `is_content_encrypted` 同一个理由：
+    /// 拖拽清单的预检不解内容。
+    pub(crate) fn declares_game_content_root(&self) -> bool {
+        self.reader.archive().files.iter().any(|entry| {
+            crate::mod_import::entry_declares_game_content_root(entry.name(), entry.is_directory())
+        })
+    }
+
     /// 逐条目过门禁并落盘。
     pub(crate) fn extract_into(
         &mut self,

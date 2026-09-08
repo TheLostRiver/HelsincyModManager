@@ -130,6 +130,24 @@ pub const MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE: &str =
 pub const MOD_IMPORT_NOT_AN_ARCHIVE_CODE: &str = "mod_import_not_an_archive";
 pub const MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE: &str = "mod_import_archive_encrypted";
 pub const MOD_IMPORT_ARCHIVE_MULTI_VOLUME_CODE: &str = "mod_import_archive_multi_volume";
+/// 归档里找不到本游戏的内容目录（T22 / #366 的 L2 档）。
+///
+/// **这是警示，不是拒绝。** 它与上面那些码不是一类：那些码代表链路物理上读不了，
+/// 这一档代表「读得了，但看起来装不出东西」。判定会错，而错的代价是玩家眼睁睁
+/// 看着一个好包装不进来——所以它只能默认不勾选，必须允许玩家勾回来。
+pub const MOD_IMPORT_ARCHIVE_NO_GAME_CONTENT_CODE: &str = "mod_import_archive_no_game_content";
+
+/// 拖拽清单预检的结论。
+///
+/// **能不能导入只由 `Err` 决定**；这个结构体里的东西全是警示级旁证。
+/// 两者混同就会变成「我们的判定替玩家否决了一个好包」，那正是 #350 / #354 的教训。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModArchiveProbe {
+    /// 归档条目名里有没有本游戏的内容目录。
+    ///
+    /// `false` 只说明**按目录结构看**装不出东西，不说明这个包坏了。
+    pub declares_game_content_root: bool,
+}
 
 impl ModImportPrepareError {
     /// 投影给上层的**语义码**。

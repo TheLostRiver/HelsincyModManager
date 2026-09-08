@@ -78,8 +78,8 @@ use mod_import_commands::{
     get_diagnostics_page_snapshot, get_mod_dependency_graph, get_mod_detail,
     get_mod_detail_preview_image, get_mod_library, get_preview_image_candidates,
     get_preview_image_diagnostics, get_thumbnail_cache_settings, maintain_thumbnail_cache,
-    select_preview_image_candidate, set_thumbnail_cache_settings, start_import_mod_revision_task,
-    start_import_mod_task,
+    preview_dropped_mod_archives, select_preview_image_candidate, set_thumbnail_cache_settings,
+    start_import_mod_revision_task, start_import_mod_task,
 };
 use mod_import_settings_commands::{get_mod_import_settings, set_mod_import_settings};
 use mod_library_commands::query_mod_library;
@@ -209,6 +209,7 @@ pub fn run() {
             scan_install_recovery,
             preview_recovery_action,
             start_recovery_action_task,
+            preview_dropped_mod_archives,
             start_import_mod_task,
             start_import_mod_revision_task,
             get_mod_revisions,

@@ -287,6 +287,72 @@ fn queued_event_for_started_task(task: &TaskStarted) -> TaskProgressEvent {
     )
 }
 
+/// 一次拖拽里单个文件的预检结果（T22，#366）。
+///
+/// `errorCode` 为 `null` 表示可导入；否则是**与导入失败同一套**的语义码
+/// （`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
+/// `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` /
+/// `mod_import_prepare_failed`）。前端因此不必维护第二张映射表。
+///
+/// **只投影语义码，不带任何底层错误文本**——脱敏口径与既有失败事件一致。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DroppedArchivePreviewDto {
+    /// 原样回传，供前端与自己那份列表对齐。
+    pub archive_path: String,
+    /// 展示用的文件名。后端算好，免得前端各写一份跨平台的路径切分。
+    pub file_name: String,
+    /// 文件字节数。`None` = 读不到（文件已被移走、权限不足等）。
+    ///
+    /// 读不到**不构成不可导入**：真正的判据是能不能打开归档，那由 `error_code` 说了算。
+    /// 这里只是给玩家一个「我拖的是不是那个包」的旁证，所以缺了就不显示。
+    pub size_bytes: Option<u64>,
+    pub error_code: Option<String>,
+    /// 内容层警示码。**与 `errorCode` 不是一类**：这条只警示，玩家可以覆盖。
+    ///
+    /// `errorCode` 非空时恒为 `None`——读都读不了的包，谈不上「里面有没有内容目录」。
+    pub warning_code: Option<String>,
+}
+
+/// 拖拽进来的文件逐个预检。**只读归档头，不解包、不写任何东西。**
+///
+/// 逐个独立判定：一个文件坏了不影响其余的结论——这正是「清单」要表达的东西。
+#[tauri::command]
+pub fn preview_dropped_mod_archives(
+    archive_paths: Vec<String>,
+) -> Result<Vec<DroppedArchivePreviewDto>, CommandErrorDto> {
+    archive_paths
+        .into_iter()
+        .map(|raw| {
+            // 路径本身不合法（空、非绝对）是**调用方的错**，不是某个文件的档位，
+            // 所以整条命令失败，而不是悄悄给出一个假的「不可导入」。
+            let archive_path = parse_archive_path(raw)?;
+            let file_name = archive_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            // 大小失败不升级成命令失败，也不改判可导入性：见 `size_bytes` 的说明。
+            let size_bytes = std::fs::metadata(&archive_path).ok().map(|meta| meta.len());
+            let (error_code, warning_code) = match hmm_infra::probe_mod_archive(&archive_path) {
+                // 读得了，但按目录结构看装不出东西：只警示，不否决。
+                Ok(probe) if !probe.declares_game_content_root => (
+                    None,
+                    Some(hmm_ports::MOD_IMPORT_ARCHIVE_NO_GAME_CONTENT_CODE.to_owned()),
+                ),
+                Ok(_) => (None, None),
+                Err(error) => (Some(error.code().to_owned()), None),
+            };
+            Ok(DroppedArchivePreviewDto {
+                archive_path: archive_path.to_string_lossy().into_owned(),
+                file_name,
+                size_bytes,
+                error_code,
+                warning_code,
+            })
+        })
+        .collect()
+}
+
 fn parse_archive_path(value: String) -> Result<PathBuf, CommandErrorDto> {
     let trimmed = value.trim();
 
