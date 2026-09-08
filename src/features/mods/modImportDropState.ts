@@ -12,6 +12,15 @@ import type { ModImportCopy } from "./modImportCopy";
 // **落点是确认清单，不是导入动作。** 拖进来只产生一份可逐条勾选的清单；
 // 玩家确认之后才真的导入。这一层只有纯函数与状态，不碰 Tauri、不碰 DOM，
 // 所以能逐条行为断言，而不是靠正则读源码。
+//
+// ## 清单是长活的，不是一次性的
+//
+// 首版把清单做成了「一批跑完为止」的模态：导入期间关不掉、也不能再拖新的。玩家拖 30 个包
+// 就得干等，整个 HMM 不可用。改成**行有生命周期、队列可追加**之后：浮层随时可关（任务在
+// 后台继续）、随时可重开查看、导入中还能继续拖新的进来追加。
+//
+// 于是「一次运行」不再是独立对象——**行本身就是唯一事实来源**。原先的 `DropImportRun`
+// 快照被删掉了：它假定队列在开跑那一刻就定死，而这与「随时可追加」直接冲突。
 
 /** 后端 `preview_dropped_mod_archives` 的逐条结果。 */
 export type DroppedArchivePreview = {
@@ -36,7 +45,7 @@ const warningKindByCode: Readonly<Record<string, DropRowWarningKind>> = {
 };
 
 /**
- * 三档，不是两档。
+ * 预检结论，三档不是两档。
  *
  * - `importable`：能导，默认勾选
  * - `warned`：能导，但看起来装不出东西。默认**不**勾选，**但必须能勾回来**
@@ -47,6 +56,14 @@ const warningKindByCode: Readonly<Record<string, DropRowWarningKind>> = {
  */
 export type DropRowStatus = "importable" | "warned" | "blocked";
 
+/**
+ * 行在**执行**这条轴上的位置，与 `status`（预检结论）正交。
+ *
+ * 两条轴不能合并：`warned` 说的是「我们对这个包的判断」，`phase` 说的是「它跑到哪了」，
+ * 一个 `warned` 的行被玩家勾上之后照样会走完 queued → running → succeeded。
+ */
+export type DropRowPhase = "pending" | "queued" | "running" | "succeeded" | "failed";
+
 export type DropRow = {
   archivePath: string;
   fileName: string;
@@ -56,58 +73,103 @@ export type DropRow = {
   messageKind: ModImportFailedMessageKind | null;
   /** 只有 `warned` 行才有。 */
   warningKind: DropRowWarningKind | null;
+  /** 只对 `pending` 行有意义。 */
   selected: boolean;
+  phase: DropRowPhase;
 };
 
-/** 能不能勾。**只有 `blocked` 不能**——警示档必须允许玩家覆盖。 */
+/**
+ * 清单状态。
+ *
+ * `checking` 与既有行**共存**：导入进行中再拖一批进来，旧行照常显示进度，新一批在后端
+ * 预检。做成互斥的联合类型会逼出「预检期间清单消失」这种更差的表现。
+ */
+export type DropListState = {
+  rows: DropRow[];
+  /** 正在后端预检的文件数。 */
+  checking: number;
+};
+
+export const emptyDropListState: DropListState = { rows: [], checking: 0 };
+
+/** 能不能勾。`blocked` 不能——硬事实；已提交的行也不能——它已经不归玩家管了。 */
 export function isDropRowSelectable(row: DropRow): boolean {
-  return row.status !== "blocked";
+  return row.status !== "blocked" && row.phase === "pending";
 }
 
-export type DropListState =
-  | { status: "idle" }
-  /** 文件已拖进来、后端还在逐个预检。清单必须能表达这个中间态。 */
-  | { status: "checking"; total: number }
-  | { status: "ready"; rows: DropRow[] }
-  | { status: "importing"; rows: DropRow[] };
+/** 还等着玩家决定的行。 */
+export function pendingDropRows(rows: readonly DropRow[]): DropRow[] {
+  return rows.filter((row) => row.phase === "pending");
+}
 
-/**
- * 后端预检结果 → 清单行。
- *
- * **不可导入的行默认不勾选，而且不允许勾上**：容器层那几档是硬事实
- * ——链路物理上读不了，给个能点的勾选框只是骗人。
- */
-export function dropRowsFromPreviews(previews: readonly DroppedArchivePreview[]): DropRow[] {
-  return previews.map((preview) => {
-    if (preview.errorCode !== null) {
-      return {
-        archivePath: preview.archivePath,
-        fileName: preview.fileName,
-        sizeBytes: preview.sizeBytes,
-        status: "blocked",
-        messageKind: failedMessageKindFrom(preview.errorCode),
-        warningKind: null,
-        selected: false,
-      };
-    }
-    // 认不出的警示码**不当成警示**：宁可什么都不说，也不要摆一个空提示语，
-    // 更不能因为后端多发了一个我们还不认识的码就把行默认取消勾选。
-    const warningKind =
-      preview.warningCode === null ? null : warningKindByCode[preview.warningCode] ?? null;
+function rowFromPreview(preview: DroppedArchivePreview): DropRow {
+  if (preview.errorCode !== null) {
     return {
       archivePath: preview.archivePath,
       fileName: preview.fileName,
       sizeBytes: preview.sizeBytes,
-      status: warningKind === null ? "importable" : "warned",
-      messageKind: null,
-      warningKind,
-      // 警示档默认不勾选——但 toggle 与全选都允许把它勾回来。
-      selected: warningKind === null,
+      status: "blocked",
+      messageKind: failedMessageKindFrom(preview.errorCode),
+      warningKind: null,
+      selected: false,
+      phase: "pending",
     };
-  });
+  }
+  // 认不出的警示码**不当成警示**：宁可什么都不说，也不要摆一个空提示语，
+  // 更不能因为后端多发了一个我们还不认识的码就把行默认取消勾选。
+  const warningKind =
+    preview.warningCode === null ? null : warningKindByCode[preview.warningCode] ?? null;
+  return {
+    archivePath: preview.archivePath,
+    fileName: preview.fileName,
+    sizeBytes: preview.sizeBytes,
+    status: warningKind === null ? "importable" : "warned",
+    messageKind: null,
+    warningKind,
+    // 警示档默认不勾选——但 toggle 与全选都允许把它勾回来。
+    selected: warningKind === null,
+    phase: "pending",
+  };
 }
 
-/** 逐行切换勾选。`blocked` 行**不响应**——它不是「默认不选」，是「不能选」。 */
+/** 后端预检结果 → 清单行。 */
+export function dropRowsFromPreviews(previews: readonly DroppedArchivePreview[]): DropRow[] {
+  return previews.map(rowFromPreview);
+}
+
+/**
+ * 把新一批预检结果并入既有清单。
+ *
+ * 同路径的处理分两种，因为它们是两回事：
+ * - 还没跑完（`pending` / `queued` / `running`）→ **跳过**。重复入队会对同一个文件起两个
+ *   导入任务，第二个必然失败，玩家看到一条莫名其妙的失败。
+ * - 已经跑完（`succeeded` / `failed`）→ **重置成 pending**，让玩家能重试。清单现在是长活的，
+ *   不重置的话一个失败过的包在关掉浮层之前永远没法再试。
+ */
+export function mergeDropRows(
+  existing: readonly DropRow[],
+  previews: readonly DroppedArchivePreview[],
+): DropRow[] {
+  const merged = [...existing];
+  const indexByPath = new Map(merged.map((row, index) => [row.archivePath, index]));
+
+  for (const preview of previews) {
+    const index = indexByPath.get(preview.archivePath);
+    if (index === undefined) {
+      indexByPath.set(preview.archivePath, merged.length);
+      merged.push(rowFromPreview(preview));
+      continue;
+    }
+    const current = merged[index];
+    if (current.phase === "succeeded" || current.phase === "failed") {
+      merged[index] = rowFromPreview(preview);
+    }
+  }
+
+  return merged;
+}
+
+/** 逐行切换勾选。不可勾的行**不响应**——它不是「默认不选」，是「不能选」。 */
 export function toggleDropRow(rows: readonly DropRow[], archivePath: string): DropRow[] {
   return rows.map((row) =>
     row.archivePath === archivePath && isDropRowSelectable(row)
@@ -116,7 +178,7 @@ export function toggleDropRow(rows: readonly DropRow[], archivePath: string): Dr
   );
 }
 
-/** 全选 / 全不选，只作用于可导入的行。 */
+/** 全选 / 全不选。只作用于还能勾的行。 */
 export function setAllDropRowsSelected(rows: readonly DropRow[], selected: boolean): DropRow[] {
   // 「全选」把警示档也勾上：玩家明确要求了全部，而警示档本来就允许覆盖。
   return rows.map((row) => (isDropRowSelectable(row) ? { ...row, selected } : row));
@@ -126,27 +188,102 @@ export function selectedDropRows(rows: readonly DropRow[]): DropRow[] {
   return rows.filter((row) => isDropRowSelectable(row) && row.selected);
 }
 
-export function importableDropRowCount(rows: readonly DropRow[]): number {
+/** 还能勾的行数（「已选 x / y」里的 y）。 */
+export function selectableDropRowCount(rows: readonly DropRow[]): number {
   return rows.filter(isDropRowSelectable).length;
 }
 
 /**
  * 「全选」复选框的三态。
  *
- * 没有任何可导入行时是 `none`（而不是 `all`）——否则一个整批都读不了的拖拽会显示成
+ * 没有任何可勾行时是 `none`（而不是 `all`）——否则一个整批都读不了的拖拽会显示成
  * 「已全选」，然后确认按钮却是灰的，自相矛盾。
  */
 export function dropSelectAllState(rows: readonly DropRow[]): "none" | "some" | "all" {
-  const importable = rows.filter(isDropRowSelectable);
-  if (importable.length === 0) return "none";
-  const selected = importable.filter((row) => row.selected).length;
+  const selectable = rows.filter(isDropRowSelectable);
+  if (selectable.length === 0) return "none";
+  const selected = selectable.filter((row) => row.selected).length;
   if (selected === 0) return "none";
-  return selected === importable.length ? "all" : "some";
+  return selected === selectable.length ? "all" : "some";
 }
 
 /** 确认按钮可用性：**至少选中一个**才可导入。 */
 export function canStartDropImport(rows: readonly DropRow[]): boolean {
   return selectedDropRows(rows).length > 0;
+}
+
+/**
+ * 玩家按下确认：选中的行转成 `queued`，并给出要入队的路径。
+ *
+ * 返回新的行数组与待入队路径，而不是直接改队列——入队是副作用，留给调用方，
+ * 这一层保持纯函数，才能逐条断言。
+ */
+export function confirmDropSelection(rows: readonly DropRow[]): {
+  rows: DropRow[];
+  queued: string[];
+} {
+  const queued: string[] = [];
+  const next = rows.map((row) => {
+    if (!isDropRowSelectable(row) || !row.selected) return row;
+    queued.push(row.archivePath);
+    return { ...row, phase: "queued" as const, selected: false };
+  });
+  return { rows: next, queued };
+}
+
+export function markDropRowPhase(
+  rows: readonly DropRow[],
+  archivePath: string,
+  phase: DropRowPhase,
+): DropRow[] {
+  return rows.map((row) => (row.archivePath === archivePath ? { ...row, phase } : row));
+}
+
+/**
+ * 停止后续：把还没起步的 `queued` 行退回 `pending`。
+ *
+ * **不碰 `running` 那个**——导入任务一旦起步就由后端的任务机制管，这里能保证的只有
+ * 「不再往下起」。退回 `pending` 而不是记成失败：它根本没跑过，记成失败是撒谎，
+ * 而且退回之后玩家还能再确认一次。
+ */
+export function cancelQueuedDropRows(rows: readonly DropRow[]): DropRow[] {
+  return rows.map((row) =>
+    row.phase === "queued" ? { ...row, phase: "pending" as const, selected: true } : row,
+  );
+}
+
+/** 清掉已经跑完的行，让长活的清单不至于无限变长。 */
+export function clearFinishedDropRows(rows: readonly DropRow[]): DropRow[] {
+  return rows.filter((row) => row.phase !== "succeeded" && row.phase !== "failed");
+}
+
+export type DropQueueSummary = {
+  pending: number;
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  /** 本轮已经提交过的总数（不含还没确认的 pending）。 */
+  submitted: number;
+  /** 还有东西在跑或在排队。 */
+  active: boolean;
+};
+
+export function dropQueueSummary(rows: readonly DropRow[]): DropQueueSummary {
+  const count = (phase: DropRowPhase) => rows.filter((row) => row.phase === phase).length;
+  const queued = count("queued");
+  const running = count("running");
+  const succeeded = count("succeeded");
+  const failed = count("failed");
+  return {
+    pending: count("pending"),
+    queued,
+    running,
+    succeeded,
+    failed,
+    submitted: queued + running + succeeded + failed,
+    active: queued + running > 0,
+  };
 }
 
 /**
@@ -162,13 +299,6 @@ export function getDropRowNote(row: DropRow, copy: ModImportCopy): string | null
 }
 
 /**
- * 只保留能被导入链路处理的路径。
- *
- * Tauri 的拖放事件会把**目录**也一起给过来，而导入要的是压缩包文件。
- * 目录在后端预检里会落到 `retry-hint`，所以不必在这里预先剔除
- * ——**判定只有一处**，前端不重复实现一份「什么算压缩包」。
- */
-/**
  * 一次拖拽能接收的文件数上限。
  *
  * 超了就**整批拒绝并说清楚数量**，不截断——截断等于悄悄丢掉玩家拖进来的东西，
@@ -177,6 +307,13 @@ export function getDropRowNote(row: DropRow, copy: ModImportCopy): string | null
  */
 export const MAX_DROPPED_ARCHIVES = 100;
 
+/**
+ * 只保留能被导入链路处理的路径。
+ *
+ * Tauri 的拖放事件会把**目录**也一起给过来，而导入要的是压缩包文件。
+ * 目录在后端预检里会落到 `retry-hint`，所以不必在这里预先剔除
+ * ——**判定只有一处**，前端不重复实现一份「什么算压缩包」。
+ */
 export function dedupeDroppedPaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -189,72 +326,4 @@ export function dedupeDroppedPaths(paths: readonly string[]): string[] {
     }
   }
   return result;
-}
-
-// ---- 确认之后的批量执行 ----
-//
-// 逐个**串行**跑：并发导入会同时抢沙箱与 unrar 的进程级锁（rar 不能并发调用），
-// 收益不明而失败模式很难解释。串行还让「第几个 / 共几个」这件事对玩家是准确的。
-
-export type DropImportOutcome = "succeeded" | "failed";
-
-export type DropImportRun = {
-  /** 还没开始的路径，按玩家看到的顺序。 */
-  queue: string[];
-  /** 正在跑的那个；`null` = 跑完了。 */
-  currentPath: string | null;
-  results: Record<string, DropImportOutcome>;
-  total: number;
-};
-
-export function startDropImportRun(rows: readonly DropRow[]): DropImportRun {
-  const paths = selectedDropRows(rows).map((row) => row.archivePath);
-  const [first, ...rest] = paths;
-  return {
-    queue: rest,
-    currentPath: first ?? null,
-    results: {},
-    total: paths.length,
-  };
-}
-
-/** 当前这个跑完了（成功或失败），推进到下一个。 */
-export function advanceDropImportRun(run: DropImportRun, outcome: DropImportOutcome): DropImportRun {
-  if (run.currentPath === null) return run;
-  const [next, ...rest] = run.queue;
-  return {
-    queue: rest,
-    currentPath: next ?? null,
-    results: { ...run.results, [run.currentPath]: outcome },
-    total: run.total,
-  };
-}
-
-/**
- * 停止后续排队项。**不中断正在跑的那个**——导入任务一旦起步就由后端的任务机制管，
- * 这里能保证的只有「不再往下起」。
- *
- * `currentPath` **也要清掉**，不能只清队列：调用点的顺序是「跑完 → advance → 停止」，
- * 而 advance 已经把下一个提升成了 `currentPath`。只清 `queue` 会让那个刚被提升、
- * 还没起步的又跑掉——恰好多跑一个，正是玩家按停止想避免的。
- *
- * `total` 保持原样：摘要里 `finished < total` 正是「后面那些没跑」的如实体现，
- * 而不是把它们记成失败。
- */
-export function stopDropImportRun(run: DropImportRun): DropImportRun {
-  return { ...run, queue: [], currentPath: null };
-}
-
-export function dropImportRunSummary(run: DropImportRun) {
-  const outcomes = Object.values(run.results);
-  const succeeded = outcomes.filter((outcome) => outcome === "succeeded").length;
-  return {
-    succeeded,
-    failed: outcomes.length - succeeded,
-    finished: outcomes.length,
-    total: run.total,
-    // 跑完 = 没有正在跑的了。**不看 finished === total**：那样一个都没选时会
-    // 立刻算成「跑完」，而实际上根本没开始。
-    done: run.currentPath === null,
-  };
 }

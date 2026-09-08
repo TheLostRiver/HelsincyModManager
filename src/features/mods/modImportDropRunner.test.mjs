@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ModImportTaskWatcher, runDropImportBatch } from "./modImportDropRunner.ts";
-import { dropRowsFromPreviews } from "./modImportDropState.ts";
+import { ModImportTaskWatcher, runDropImportPump } from "./modImportDropRunner.ts";
 
 const progress = (taskId, status, phase = "mod_import.prepare.completed", extra = {}) => ({
   taskId,
@@ -14,14 +13,6 @@ const progress = (taskId, status, phase = "mod_import.prepare.completed", extra 
   message: null,
   error: null,
   ...extra,
-});
-
-const preview = (fileName, errorCode = null) => ({
-  archivePath: `C:\\downloads\\${fileName}`,
-  fileName,
-  sizeBytes: 1024,
-  warningCode: null,
-  errorCode,
 });
 
 /**
@@ -44,21 +35,77 @@ function settleWithin(promise, ms = 500) {
   ]);
 }
 
-/** 起任务的假实现：按调用顺序发 taskId，并把每次调用记下来。 */
-function fakeStarter(taskIds) {
-  const calls = [];
-  let index = 0;
-  return {
-    calls,
-    start: async (archivePath) => {
-      calls.push(archivePath);
-      const taskId = taskIds[index++];
+/**
+ * 一个可追加的假队列 + 记账，形状与 Provider 里那份一致。
+ *
+ * `takeNext` **同步**，且「取到 null」与「清标志」在同一 tick——这正是被测的不变量。
+ */
+function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
+  const queue = [];
+  const watcher = new ModImportTaskWatcher();
+  const started = [];
+  const settled = [];
+  let inFlight = 0;
+  let overlapped = false;
+  let taskSeq = 0;
+  let pumpRunning = false;
+
+  const deps = {
+    watcher,
+    takeNext: () => {
+      const next = queue.shift() ?? null;
+      if (next === null) pumpRunning = false;
+      return next;
+    },
+    startImport: async (archivePath) => {
+      if (inFlight > 0) overlapped = true;
+      inFlight += 1;
+      if (startBehavior) {
+        const forced = await startBehavior(archivePath);
+        if (forced) {
+          inFlight -= 1;
+          return forced;
+        }
+      }
+      taskSeq += 1;
+      const taskId = `t${taskSeq}`;
+      queueMicrotask(() => {
+        inFlight -= 1;
+        watcher.handleProgress(progress(taskId, outcomeFor(archivePath)));
+      });
       return { kind: "mod_import", status: "queued", taskId };
+    },
+    onStarted: (archivePath) => started.push(archivePath),
+    onSettled: (archivePath, outcome) => settled.push([archivePath, outcome]),
+  };
+
+  let pumpPromise = Promise.resolve();
+  function enqueue(...paths) {
+    queue.push(...paths);
+    if (pumpRunning) return;
+    pumpRunning = true;
+    pumpPromise = pumpPromise.then(() =>
+      runDropImportPump(deps).finally(() => {
+        pumpRunning = false;
+      }),
+    );
+  }
+
+  return {
+    watcher,
+    started,
+    settled,
+    enqueue,
+    drain: () => pumpPromise,
+    get overlapped() {
+      return overlapped;
     },
   };
 }
 
-test("a completed task resolves as succeeded, a failed one as failed", { timeout: 5_000 }, async () => {
+// ---- 终态识别 ----
+
+test("完成算成功，失败算失败", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
   const good = watcher.watch("t1");
@@ -72,7 +119,7 @@ test("a completed task resolves as succeeded, a failed one as failed", { timeout
   assert.equal(await settleWithin(bad), "failed");
 });
 
-test("a cancelled task counts as failed, not as success", { timeout: 5_000 }, async () => {
+test("取消算失败，不算成功", { timeout: 5_000 }, async () => {
   // 取消之后库里确实没多出这个 Mod，报成功就是骗人。
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");
@@ -80,8 +127,8 @@ test("a cancelled task counts as failed, not as success", { timeout: 5_000 }, as
   assert.equal(await settleWithin(outcome), "failed");
 });
 
-test("progress that arrives before the task id is known is not lost", { timeout: 5_000 }, async () => {
-  // 这是真实存在的竞态：一个瞬间跑完的导入，终态事件会早于 start 的返回值到达。
+test("taskId 已知之前到达的进度事件不会丢", { timeout: 5_000 }, async () => {
+  // 真实存在的竞态：一个瞬间跑完的导入，终态事件会早于 start 的返回值到达。
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
   watcher.handleProgress(progress("t1", "running", "mod_import.unpack.started"));
@@ -92,179 +139,135 @@ test("progress that arrives before the task id is known is not lost", { timeout:
   assert.equal(await settleWithin(outcome), "succeeded", "缓存下来的终态必须在认领时补放");
 });
 
-test("events for tasks nobody is watching are dropped once the start settles", { timeout: 5_000 }, async () => {
+test("start 结束之后不再缓存，陈旧事件不污染下一次", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   watcher.beginStart();
   watcher.endStart();
   watcher.handleProgress(progress("stray", "completed"));
 
-  // 认领一个同名 task 不该拿到刚才那条陈旧事件的结果。
   const outcome = watcher.watch("stray");
-  let settled = false;
+  let done = false;
   void outcome.then(() => {
-    settled = true;
+    done = true;
   });
   await Promise.resolve();
-  assert.equal(settled, false, "endStart 之后不再缓存，陈旧事件不能污染下一次");
+  assert.equal(done, false);
 });
 
-test("progress from other task kinds never settles a mod import", { timeout: 5_000 }, async () => {
+test("别的任务种类永远不会结掉一个导入", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");
-  watcher.handleProgress(progress("t1", "completed", "mod_import.prepare.completed", {
-    kind: "mod_install",
-  }));
+  watcher.handleProgress(
+    progress("t1", "completed", "mod_import.prepare.completed", { kind: "mod_install" }),
+  );
 
-  let settled = false;
+  let done = false;
   void outcome.then(() => {
-    settled = true;
+    done = true;
   });
   await Promise.resolve();
-  assert.equal(settled, false);
+  assert.equal(done, false);
 
   watcher.handleProgress(progress("t1", "completed"));
   assert.equal(await settleWithin(outcome), "succeeded");
 });
 
-test("the batch imports one at a time, in list order", { timeout: 5_000 }, async () => {
-  const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.rar"), preview("c.7z")]);
-  const watcher = new ModImportTaskWatcher();
-  const starter = fakeStarter(["t1", "t2", "t3"]);
-  const seen = [];
+// ---- 泵：串行、可追加 ----
 
-  // 「串行」的可证伪判据：任一时刻只允许有一个导入在飞。
-  // **不在回调里直接 assert**——runOne 用 try/catch 兜住了起任务的失败，
-  // 抛在里面的断言会被吞成「这一条失败」，绿灯就不承重了。记违例、最后断。
-  let inFlight = 0;
-  let overlapped = false;
-  const run = await runDropImportBatch(rows, {
-    watcher,
-    startImport: async (path) => {
-      if (inFlight > 0) overlapped = true;
-      inFlight += 1;
-      const task = await starter.start(path);
-      queueMicrotask(() => {
-        inFlight -= 1;
-        watcher.handleProgress(progress(task.taskId, "completed"));
-      });
-      return task;
-    },
-    onRunChange: (next) => seen.push(next.currentPath),
-    shouldStop: () => false,
-  });
+test("按入队顺序逐个跑，任一时刻只有一个在飞", { timeout: 5_000 }, async () => {
+  const h = harness();
+  h.enqueue("a", "b", "c");
+  await h.drain();
 
-  assert.equal(overlapped, false, "上一个还没出终态就起了下一个");
-  assert.deepEqual(starter.calls, rows.map((row) => row.archivePath));
-  assert.equal(run.currentPath, null);
-  assert.deepEqual(Object.values(run.results), ["succeeded", "succeeded", "succeeded"]);
-});
-
-test("blocked rows are never started", { timeout: 5_000 }, async () => {
-  const rows = dropRowsFromPreviews([
-    preview("good.zip"),
-    preview("secret.rar", "mod_import_archive_encrypted"),
+  assert.equal(h.overlapped, false, "上一个还没出终态就起了下一个");
+  assert.deepEqual(h.started, ["a", "b", "c"]);
+  assert.deepEqual(h.settled, [
+    ["a", "succeeded"],
+    ["b", "succeeded"],
+    ["c", "succeeded"],
   ]);
-  const watcher = new ModImportTaskWatcher();
-  const starter = fakeStarter(["t1"]);
-
-  await runDropImportBatch(rows, {
-    watcher,
-    startImport: async (path) => {
-      const task = await starter.start(path);
-      queueMicrotask(() => watcher.handleProgress(progress(task.taskId, "completed")));
-      return task;
-    },
-    onRunChange: () => {},
-    shouldStop: () => false,
-  });
-
-  assert.deepEqual(starter.calls, [rows[0].archivePath], "读不了的包不该被起任务");
 });
 
-test("one failure does not abort the rest of the batch", { timeout: 5_000 }, async () => {
+test("跑着的时候追加，新项会被同一个泵接着跑完", { timeout: 5_000 }, async () => {
+  // 这是「导入中还能继续拖」的核心：队列不是开跑那一刻的快照。
+  const h = harness();
+  h.enqueue("a");
+  // 不等 drain，立刻追加——模拟玩家在导入过程中又拖了两个进来。
+  h.enqueue("b");
+  h.enqueue("c");
+  await h.drain();
+
+  assert.deepEqual(h.started, ["a", "b", "c"], "追加的项必须被跑到");
+  assert.equal(h.settled.length, 3);
+});
+
+test("泵跑空之后再入队，会被重新唤醒", { timeout: 5_000 }, async () => {
+  // 上一轮结束与下一次入队之间不能有空窗，否则新项永远躺在队列里没人管。
+  const h = harness();
+  h.enqueue("a");
+  await h.drain();
+  assert.deepEqual(h.started, ["a"]);
+
+  h.enqueue("b");
+  await h.drain();
+  assert.deepEqual(h.started, ["a", "b"], "跑空之后入队必须能重新起来");
+});
+
+test("一个失败不打断后面的", { timeout: 5_000 }, async () => {
   // 批量导入里一个坏包让后面的都不跑，是最容易犯也最难解释的错。
-  const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip"), preview("c.zip")]);
-  const watcher = new ModImportTaskWatcher();
-  const starter = fakeStarter(["t1", "t2", "t3"]);
+  const h = harness({ outcomeFor: (path) => (path === "b" ? "failed" : "completed") });
+  h.enqueue("a", "b", "c");
+  await h.drain();
 
-  const run = await runDropImportBatch(rows, {
-    watcher,
-    startImport: async (path) => {
-      const task = await starter.start(path);
-      const status = task.taskId === "t2" ? "failed" : "completed";
-      queueMicrotask(() => watcher.handleProgress(progress(task.taskId, status)));
-      return task;
-    },
-    onRunChange: () => {},
-    shouldStop: () => false,
-  });
-
-  assert.equal(starter.calls.length, 3, "中间那个失败之后，后面的仍要跑");
-  assert.deepEqual(run.results, {
-    [rows[0].archivePath]: "succeeded",
-    [rows[1].archivePath]: "failed",
-    [rows[2].archivePath]: "succeeded",
-  });
+  assert.deepEqual(h.started, ["a", "b", "c"]);
+  assert.deepEqual(h.settled, [
+    ["a", "succeeded"],
+    ["b", "failed"],
+    ["c", "succeeded"],
+  ]);
 });
 
-test("a task that cannot be started counts as failed and the batch continues", { timeout: 5_000 }, async () => {
-  const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip")]);
-  const watcher = new ModImportTaskWatcher();
-  const calls = [];
-
-  const run = await runDropImportBatch(rows, {
-    watcher,
-    startImport: async (path) => {
-      calls.push(path);
-      if (calls.length === 1) throw new Error("storage frozen");
-      const task = { kind: "mod_import", status: "queued", taskId: "t2" };
-      queueMicrotask(() => watcher.handleProgress(progress(task.taskId, "completed")));
-      return task;
+test("起不来的任务算失败，队列继续", { timeout: 5_000 }, async () => {
+  const h = harness({
+    startBehavior: async (path) => {
+      if (path === "a") throw new Error("storage frozen");
+      return null;
     },
-    onRunChange: () => {},
-    shouldStop: () => false,
   });
+  h.enqueue("a", "b");
+  await h.drain();
 
-  assert.equal(calls.length, 2);
-  assert.equal(run.results[rows[0].archivePath], "failed");
-  assert.equal(run.results[rows[1].archivePath], "succeeded");
+  assert.deepEqual(h.settled, [
+    ["a", "failed"],
+    ["b", "succeeded"],
+  ]);
 });
 
-test("a start that answers with an unexpected state counts as failed, not as a hang", { timeout: 5_000 }, async () => {
+test("start 返回异常状态时当场判失败，而不是挂住", { timeout: 5_000 }, async () => {
   // 后端若返回非 queued 的状态，就没有任务会发进度事件；不当场判失败的话，
-  // 整批会永远停在「正在导入」。
-  const rows = dropRowsFromPreviews([preview("a.zip")]);
-  const run = await runDropImportBatch(rows, {
-    watcher: new ModImportTaskWatcher(),
-    startImport: async () => ({ kind: "mod_import", status: "rejected", taskId: "t1" }),
-    onRunChange: () => {},
-    shouldStop: () => false,
+  // 整个队列会永远停在「正在导入」。
+  const h = harness({
+    startBehavior: async () => ({ kind: "mod_import", status: "rejected", taskId: "x" }),
   });
-  assert.equal(run.results[rows[0].archivePath], "failed");
-  assert.equal(run.currentPath, null);
+  h.enqueue("a");
+  await h.drain();
+
+  assert.deepEqual(h.settled, [["a", "failed"]]);
 });
 
-test("stopping mid-batch does not start anything further", { timeout: 5_000 }, async () => {
-  const rows = dropRowsFromPreviews([preview("a.zip"), preview("b.zip"), preview("c.zip")]);
-  const watcher = new ModImportTaskWatcher();
-  const starter = fakeStarter(["t1", "t2", "t3"]);
-  let stop = false;
-
-  const run = await runDropImportBatch(rows, {
-    watcher,
-    startImport: async (path) => {
-      const task = await starter.start(path);
-      queueMicrotask(() => watcher.handleProgress(progress(task.taskId, "completed")));
-      return task;
+test("队列空时泵立刻退出，不空转", { timeout: 5_000 }, async () => {
+  let taken = 0;
+  await runDropImportPump({
+    watcher: new ModImportTaskWatcher(),
+    takeNext: () => {
+      taken += 1;
+      return null;
     },
-    onRunChange: () => {
-      stop = true;
+    startImport: async () => {
+      throw new Error("不该被调用");
     },
-    shouldStop: () => stop,
+    onStarted: () => assert.fail("空队列不该起任务"),
+    onSettled: () => assert.fail("空队列不该有结果"),
   });
-
-  assert.deepEqual(starter.calls, [rows[0].archivePath], "按下停止之后不再起新的");
-  assert.equal(run.currentPath, null, "停止之后循环必须结束，不能挂住");
-  assert.equal(run.total, 3, "没跑的那两个不记成失败，总数照实保留");
-  assert.equal(Object.keys(run.results).length, 1);
+  assert.equal(taken, 1);
 });
