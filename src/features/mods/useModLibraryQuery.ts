@@ -4,13 +4,14 @@ import {
   consumeOneShotQueryKey,
   createLatestRequestSequenceGate,
   normalizeModLibraryQueryErrorCode,
-  type NormalizedModLibraryQueryErrorCode,
   isCommittedModLibraryQueryResponse,
   mapModLibraryFilterToQueryFilter,
   readModLibraryPageSize,
   resolveProfileQueryPage,
+  resolveQueryStartExecutionState,
   writeModLibraryPageSize,
   type ModLibraryPageSize,
+  type ModLibraryQueryExecutionState,
   type ModLibraryQueryFilterBlockReason,
 } from "./modLibraryQueryState";
 import type {
@@ -22,24 +23,23 @@ import type {
 
 const MOD_LIBRARY_SEARCH_DEBOUNCE_MS = 250;
 
-type ModLibraryQueryPhase = "idle" | "initial-loading" | "refreshing" | "error";
-
-type ModLibraryQueryRecord = {
-  profileKey: string;
-  page: ModLibraryPage;
-};
-
-type ModLibraryQueryExecutionState = {
-  record: ModLibraryQueryRecord | null;
-  phase: ModLibraryQueryPhase;
-  phaseProfileKey: string;
-  errorCode: NormalizedModLibraryQueryErrorCode | null;
-};
-
 type ModLibraryQueryRequest = {
   input: QueryModLibraryInput;
   profileKey: string;
   queryKey: string;
+};
+
+/**
+ * 会话级缓存的最小接口。传进来就启用 stale-while-revalidate：切回本页时先摆出上次的
+ * 结果，请求照发，回来再无声替换。不传就是原来的行为（每次挂载先出骨架屏）。
+ *
+ * 实现挂在 RouterOutlet 之上（`ModLibrarySessionCacheProvider`），因为页面本身
+ * 活不过一次路由切换。
+ */
+export type ModLibraryQueryCache = {
+  readPage: (profileKey: string, queryKey: string) => ModLibraryPage | null;
+  writePage: (profileKey: string, queryKey: string, page: ModLibraryPage) => void;
+  invalidatePage: (profileKey: string, queryKey: string) => void;
 };
 
 type UseModLibraryQueryInput = {
@@ -47,6 +47,7 @@ type UseModLibraryQueryInput = {
   filter: ModLibraryFilter;
   profileContext: ModLibraryProfileContext | null;
   loadPage: (input: QueryModLibraryInput) => Promise<ModLibraryPage>;
+  cache?: ModLibraryQueryCache | null;
 };
 
 function getProfileKey(profileContext: ModLibraryProfileContext | null) {
@@ -76,7 +77,12 @@ export function useModLibraryQuery({
   filter,
   profileContext,
   loadPage,
+  cache = null,
 }: UseModLibraryQueryInput) {
+  // 经 ref 取用：调用方若传了个每次渲染都新建的对象，直接进 effect 依赖会变成
+  // 「每渲染一次重发一次请求」。缓存是可选优化，不该有能力把主查询拖成请求风暴。
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
   const [submittedSearch, setSubmittedSearch] = useState(rawSearch);
   const [requestedPage, setRequestedPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<ModLibraryPageSize>(() =>
@@ -157,15 +163,11 @@ export function useModLibraryQuery({
       return;
     }
 
-    setExecutionState((current) => {
-      const hasCurrentProfilePage = current.record?.profileKey === profileKey;
-      return {
-        ...current,
-        phase: hasCurrentProfilePage ? "refreshing" : "initial-loading",
-        phaseProfileKey: profileKey,
-        errorCode: null,
-      };
-    });
+    // 命中就先摆出上次的结果。注意这里**不** return——下面的请求照发，
+    // 缓存只负责填住「请求在路上」这段空窗，不负责代替事实。
+    const cachedPage = cacheRef.current?.readPage(profileKey, queryKey) ?? null;
+
+    setExecutionState((current) => resolveQueryStartExecutionState(current, profileKey, cachedPage));
   }, [profileKey, queryInput, queryKey]);
 
   const executeQuery = useCallback(
@@ -178,15 +180,10 @@ export function useModLibraryQuery({
         request.queryKey,
       );
 
-      setExecutionState((current) => {
-        const hasCurrentProfilePage = current.record?.profileKey === request.profileKey;
-        return {
-          ...current,
-          phase: hasCurrentProfilePage ? "refreshing" : "initial-loading",
-          phaseProfileKey: request.profileKey,
-          errorCode: null,
-        };
-      });
+      // 这里不再查缓存：空窗期显示什么已经在 useLayoutEffect 里定过了，
+      // 再查一遍只会把可能更新的在途结果按回到同一份旧快照。
+      setExecutionState((current) =>
+        resolveQueryStartExecutionState(current, request.profileKey, null));
 
       try {
         const page = await loadPage(request.input);
@@ -202,9 +199,14 @@ export function useModLibraryQuery({
         });
 
         if (page.page !== request.input.page) {
+          // 后端把页码夹紧了，这份结果对应的其实是夹紧后的查询。按请求时的 key 存会让
+          // 下次请求越界页码时先闪一下别的页，所以按**结果实际对应**的 key 存。
           const clampedInput = { ...request.input, page: page.page };
           skippedClampQueryKeyRef.current = getQueryKey(clampedInput);
+          cacheRef.current?.writePage(request.profileKey, skippedClampQueryKeyRef.current, page);
           setRequestedPage(page.page);
+        } else {
+          cacheRef.current?.writePage(request.profileKey, request.queryKey, page);
         }
 
         return page;
@@ -307,6 +309,17 @@ export function useModLibraryQuery({
 
   const updateCurrentPageItems = useCallback(
     (update: (items: ModLibraryItem[]) => ModLibraryItem[]) => {
+      // 这条路径只在页面已经判定手里这份不可信时走（安装终态校验失败的 fail-closed 标记）。
+      // 缓存里那份是标记**之前**的快照，留着复用等于下次进页面把已知有问题的状态又摆回来，
+      // 所以直接丢掉槽位，让下次重新查——缓存失效必须倒向重新取数。
+      //
+      // 故意不看下面那个「记录属不属于当前配置档」的判据：判据不成立时多丢一个槽位的代价
+      // 只是下次多查一遍，而漏丢一个槽位的代价是留下一份已知不可信的快照。
+      const committedQueryKey = latestCommittedQueryKeyRef.current;
+      if (committedQueryKey !== null) {
+        cacheRef.current?.invalidatePage(profileKey, committedQueryKey);
+      }
+
       setExecutionState((current) => {
         if (current.record?.profileKey !== profileKey) {
           return current;

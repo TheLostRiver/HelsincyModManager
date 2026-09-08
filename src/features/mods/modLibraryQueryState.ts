@@ -230,6 +230,55 @@ export function resolveProfileQueryPage(
   return previousProfileKey === profileKey ? requestedPage : 1;
 }
 
+export type ModLibraryQueryPhase = "idle" | "initial-loading" | "refreshing" | "error";
+
+export type ModLibraryQueryRecord = {
+  profileKey: string;
+  page: ModLibraryPage;
+};
+
+export type ModLibraryQueryExecutionState = {
+  record: ModLibraryQueryRecord | null;
+  phase: ModLibraryQueryPhase;
+  phaseProfileKey: string;
+  errorCode: NormalizedModLibraryQueryErrorCode | null;
+};
+
+/**
+ * 一次查询开始时，界面该从什么状态起步。取舍全在「玩家这一刻能看见什么」：
+ *
+ *   - 会话缓存命中     → 直接摆出上次的结果，标记为重新校验中；
+ *   - 手里已有本档数据 → 留着它，标记为重新校验中（翻页、改搜索词走这里）；
+ *   - 什么都没有       → 只能出骨架屏。
+ *
+ * 命中缓存**不代表可以跳过请求**——调用方照发不误，这里只决定空窗期显示什么。
+ *
+ * 缓存那一支把 record 整个换掉而不是并进去：留着的旧 record 可能属于另一个配置档，
+ * 那会让「现在看的是谁的库」变得不可判定。
+ */
+export function resolveQueryStartExecutionState(
+  current: ModLibraryQueryExecutionState,
+  profileKey: string,
+  cachedPage: ModLibraryPage | null,
+): ModLibraryQueryExecutionState {
+  if (cachedPage !== null) {
+    return {
+      record: { profileKey, page: cachedPage },
+      phase: "refreshing",
+      phaseProfileKey: profileKey,
+      errorCode: null,
+    };
+  }
+
+  const hasCurrentProfilePage = current.record?.profileKey === profileKey;
+  return {
+    ...current,
+    phase: hasCurrentProfilePage ? "refreshing" : "initial-loading",
+    phaseProfileKey: profileKey,
+    errorCode: null,
+  };
+}
+
 export type PlainBrowserDevRuntimeFlags = {
   isDev: boolean;
   hasWindow: boolean;

@@ -8,6 +8,7 @@ import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
 import { InstallConfigTargetProvider } from "./features/install-config/InstallConfigTargetProvider";
 import { ExternalStateSessionProvider } from "./features/mods/ExternalStateSessionProvider";
 import { ModImportDropProvider } from "./features/mods/ModImportDropProvider";
+import { ModLibrarySessionCacheProvider } from "./features/mods/ModLibrarySessionCacheProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
 import { ModStorageSettingsProvider } from "./features/settings/ModStorageSettingsProvider";
@@ -42,9 +43,14 @@ export function App() {
                                 而队列必须比页面活得久——RouterOutlet 会卸载页面，挂在页面里
                                 的话切个页就把批量循环打断，剩下的包**永远不会起且不报错**。 */}
                             <ModImportDropProvider>
-                              <AppShell>
-                                <RouterOutlet />
-                              </AppShell>
+                              {/* 库页查询结果的会话缓存也要活过路由切换：RouterOutlet 卸载页面，
+                                  页级 state 全丢，于是每次进 Mod 库都从零重查一遍、先出一屏
+                                  骨架屏。命中缓存不取消请求，只是先摆出上次的结果。 */}
+                              <ModLibrarySessionCacheProvider>
+                                <AppShell>
+                                  <RouterOutlet />
+                                </AppShell>
+                              </ModLibrarySessionCacheProvider>
                             </ModImportDropProvider>
                           </InstallConfigTargetProvider>
                         </ModStorageSettingsProvider>

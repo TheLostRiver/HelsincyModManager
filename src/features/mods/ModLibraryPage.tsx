@@ -42,6 +42,7 @@ import { deleteModFromLibrary, previewModDeletion } from "./modDeleteApi";
 import { modDeleteCopy, type ModDeleteCopy } from "./modDeleteCopy";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { useModImportDrop } from "./ModImportDropProvider";
+import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { ModLibraryPagination } from "./ModLibraryPagination";
 import {
   ModLibraryEmptyState,
@@ -343,9 +344,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const lifecycleCopyRef = useRef(lifecycleCopy);
   lifecycleCopyRef.current = lifecycleCopy;
   const { activeProfile, activeProfileId } = useActiveProfile();
+  /*
+   * 会话级缓存挂在 RouterOutlet 之上。RouterOutlet 会卸载页面，本页所有查询 state
+   * 都活不过一次切页，于是每回进 Mod 库都从零重查一遍、先出一屏骨架屏。缓存让切回来
+   * 时先摆出上次的结果，同时照常重新校验——见 ModLibrarySessionCacheProvider。
+   */
+  const librarySessionCache = useModLibrarySessionCache();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  // 分类同样从缓存起步：否则每次切回来筛选药丸都要先空一下再蹦出来。
+  const [categories, setCategories] = useState<CategoryItem[]>(
+    () => [...(librarySessionCache.readCategories() ?? [])],
+  );
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
   const [selectionState, dispatchSelection] = useReducer(
@@ -358,7 +368,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     notice: selectionNotice,
   } = selectionState;
   const libraryItemsRef = useRef<ModLibraryItem[]>([]);
-  const categoriesRef = useRef<CategoryItem[]>([]);
+  // 与 categories 同一份起点（ref 只认第一次渲染的初值），否则浏览器预览的模拟查询
+  // 会拿着空分类去筛。
+  const categoriesRef = useRef<CategoryItem[]>(categories);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const renderedPageRef = useRef<number | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
@@ -468,6 +480,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     filter: activeFilter,
     profileContext,
     loadPage: loadModLibraryPage,
+    cache: librarySessionCache,
   });
   const loadBatchReplacementTargetFacts = useCallback(
     async (modIds: string[]): Promise<BatchModLifecycleReplacementTargetFacts[]> => {
@@ -615,11 +628,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       if (categoriesRequestGenerationRef.current === generation) {
         categoriesRef.current = loadedCategories;
         setCategories(loadedCategories);
+        librarySessionCache.writeCategories(loadedCategories);
       }
     } catch {
       // Category chips remain on their last successful snapshot.
     }
-  }, []);
+  }, [librarySessionCache]);
 
   const refreshModLibrary = useCallback(async () => {
     dispatchSelection({ type: "reset-context", reason: "library-refreshed" });

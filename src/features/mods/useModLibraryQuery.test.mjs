@@ -28,7 +28,10 @@ test("committed query changes invalidate stale responses before paint", () => {
   assert.match(source, /latestCommittedQueryKeyRef\.current === queryKey/);
   assert.match(source, /latestCommittedQueryKeyRef\.current = queryKey/);
   assert.match(source, /requestGateRef\.current\.invalidate\(\)/);
-  assert.match(source, /phase: hasCurrentProfilePage \? "refreshing" : "initial-loading"/);
+  // 起步状态的取舍已经抽成 resolveQueryStartExecutionState（纯函数，行为判据在
+  // modLibraryQueryState.test.mjs）；这里只钉「两个起点都走同一份取舍」。
+  assert.equal(source.match(/resolveQueryStartExecutionState\(/g)?.length, 2);
+  assert.match(source, /resolveQueryStartExecutionState\(current, profileKey, cachedPage\)/);
   assert.match(source, /skippedCommittedQueryEffectKeyRef\.current = clampConsumption\.matches \? queryKey : null/);
 });
 
