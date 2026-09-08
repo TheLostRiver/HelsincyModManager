@@ -105,31 +105,80 @@ pub(crate) trait ArchiveSource {
     fn write_current_to(&mut self, sink: &mut dyn ArchiveChunkSink) -> Result<()>;
 }
 
-/// 施加全部七条门禁并落盘。
-pub(crate) fn extract_archive(
-    source: &mut dyn ArchiveSource,
-    sandbox_root: &Dir,
-    cancellation_token: &dyn CancellationToken,
+/// 七条门禁的**唯一**实现，按条目施加。
+///
+/// ## 为什么门禁要能被「从外面按条目调用」
+///
+/// B 落地时只有一种驱动形态：外壳拿着 `ArchiveSource` 自己跑循环。
+/// **7z 打破了这个假设**——`sevenz-rust2` 只提供
+/// `for_each_entries(|entry, reader| …)`，没有任何 pull 接口（`ArchiveReader` 与
+/// `BlockDecoder` 都只有回调版，已逐个查过）。也就是说**它要当驱动方**，
+/// 而 `ArchiveSource` 假定驱动方是外壳。两个驱动撞在一起。
+///
+/// 解法是把门禁从循环里再抽一层出来：`ArchiveGate` 持有跨条目的状态
+/// （已见路径、计数、两个字节累计），对外只暴露 [`Self::accept_entry`]。
+/// 于是：
+///
+/// - pull 型（zip / rar）：[`extract_archive`] 跑循环，逐条调 `accept_entry`
+/// - push 型（7z）：适配器在**别人的**回调里调 `accept_entry`
+///
+/// **门禁仍然只有这一份。** 这是 B 的目的本身——加格式不新增安全代码路径。
+/// 但如实说明：**这是外壳接口的一次扩充，B 当初没有预见到「格式自己要当驱动方」
+/// 这种形态**。`ArchiveSource` 那条路径一个字节没改，C3 的 rar 与既有 zip 测试
+/// 全部原样通过。
+pub(crate) struct ArchiveGate<'a> {
+    sandbox_root: &'a Dir,
+    cancellation_token: &'a dyn CancellationToken,
     limits: ArchiveExtractionLimits,
-) -> Result<()> {
-    // ① 条目数：已知就先拒（写盘前快速失败），未知则由循环里的计数兜底。
-    if let Some(declared) = source.declared_entry_count() {
-        reject_too_many_entries(declared, limits.max_entries)?;
+    seen_paths: HashSet<String>,
+    entry_count: usize,
+    // 两个计数器各管一头：声明值用于写盘前的快速失败，实际写入量才是承重判据（#367）。
+    total_declared_bytes: u64,
+    total_written_bytes: u64,
+}
+
+impl<'a> ArchiveGate<'a> {
+    pub(crate) fn new(
+        sandbox_root: &'a Dir,
+        cancellation_token: &'a dyn CancellationToken,
+        limits: ArchiveExtractionLimits,
+    ) -> Self {
+        Self {
+            sandbox_root,
+            cancellation_token,
+            limits,
+            seen_paths: HashSet::new(),
+            entry_count: 0,
+            total_declared_bytes: 0,
+            total_written_bytes: 0,
+        }
     }
 
-    let mut seen_paths = HashSet::new();
-    let mut entry_count = 0_usize;
-    // 两个计数器各管一头：声明值用于写盘前的快速失败，实际写入量才是承重判据（#367）。
-    let mut total_declared_bytes = 0_u64;
-    let mut total_written_bytes = 0_u64;
+    /// ① 条目数的**预检**分支：格式若能预先报出总数，就在写第一个字节之前拒。
+    /// 报不出来（rar / 7z 的顺序读）也没关系——`accept_entry` 里边读边数会兜住。
+    pub(crate) fn declare_entry_count(&mut self, declared: Option<usize>) -> Result<()> {
+        match declared {
+            Some(declared) => reject_too_many_entries(declared, self.limits.max_entries),
+            None => Ok(()),
+        }
+    }
 
-    while let Some(header) = source.next_entry()? {
-        ensure_not_cancelled(cancellation_token)?;
+    /// 对一个条目施加全部门禁并落盘。
+    ///
+    /// `produce` 负责把该条目的字节推给 sink；它只会在条目通过全部门禁、
+    /// 目标文件已创建之后才被调用，**且 sink 在每次写之前扣配额**。
+    /// 目录条目不会调用它。
+    pub(crate) fn accept_entry(
+        &mut self,
+        header: &ArchiveEntryHeader,
+        produce: &mut dyn FnMut(&mut dyn ArchiveChunkSink) -> Result<()>,
+    ) -> Result<()> {
+        ensure_not_cancelled(self.cancellation_token)?;
 
         // ① 续：总数未知时，边读边数。语义从「预检拒绝」降级为「中途中止」——
-        // 这个降级是显式接受的，rar 与 tar 都拿不到可信的预取总数。
-        entry_count += 1;
-        reject_too_many_entries(entry_count, limits.max_entries)?;
+        // 这个降级是显式接受的，rar 与 7z 都拿不到可信的预取总数。
+        self.entry_count += 1;
+        reject_too_many_entries(self.entry_count, self.limits.max_entries)?;
 
         // ② 条目类型：只有普通文件与目录能过。
         if let Some(message) = header.kind.rejection_message() {
@@ -139,27 +188,27 @@ pub(crate) fn extract_archive(
         // ③ 路径安全：`..` 逃逸、绝对路径、盘符、非法组件。
         let relative_path = safe_archive_entry_path(&header.name)?;
         // ④ 大小写重名冲突。
-        reject_case_insensitive_collision(&mut seen_paths, &relative_path)?;
+        reject_case_insensitive_collision(&mut self.seen_paths, &relative_path)?;
 
         if header.kind == ArchiveEntryKind::Directory {
             // ⑤ sandbox 约束：目录逐级在 cap-std 能力下创建，不走操作系统全路径。
-            let _ = open_or_create_archive_directory(sandbox_root, &relative_path)?;
-            continue;
+            let _ = open_or_create_archive_directory(self.sandbox_root, &relative_path)?;
+            return Ok(());
         }
 
         // ⑥ 单文件与总量的**声明值**预检：诚实声明超大的包在写第一个字节前就被拒。
         if let Some(declared) = header.declared_size {
-            if declared > limits.max_single_file_bytes {
+            if declared > self.limits.max_single_file_bytes {
                 anyhow::bail!("unsafe archive: archive file size limit exceeded");
             }
-            total_declared_bytes = total_declared_bytes.saturating_add(declared);
-            if total_declared_bytes > limits.max_total_uncompressed_bytes {
+            self.total_declared_bytes = self.total_declared_bytes.saturating_add(declared);
+            if self.total_declared_bytes > self.limits.max_total_uncompressed_bytes {
                 anyhow::bail!("unsafe archive: archive total size limit exceeded");
             }
         }
 
         let parent = relative_path.parent().unwrap_or_else(|| Path::new(""));
-        let parent = open_or_create_archive_directory(sandbox_root, parent)?;
+        let parent = open_or_create_archive_directory(self.sandbox_root, parent)?;
         let file_name = relative_path
             .file_name()
             .context("unsafe archive path: missing file name")?;
@@ -170,17 +219,32 @@ pub(crate) fn extract_archive(
         // 判定放在**写之前**，会越线的那一块直接中止，一个字节都不越界。
         let mut sink = BudgetedSink {
             writer: &mut target_file,
-            cancellation_token,
+            cancellation_token: self.cancellation_token,
             written: 0,
-            max_single_file_bytes: limits.max_single_file_bytes,
-            remaining_total_bytes: limits
+            max_single_file_bytes: self.limits.max_single_file_bytes,
+            remaining_total_bytes: self
+                .limits
                 .max_total_uncompressed_bytes
-                .saturating_sub(total_written_bytes),
+                .saturating_sub(self.total_written_bytes),
         };
-        source
-            .write_current_to(&mut sink)
-            .context("failed to extract archive file")?;
-        total_written_bytes = total_written_bytes.saturating_add(sink.written);
+        produce(&mut sink).context("failed to extract archive file")?;
+        self.total_written_bytes = self.total_written_bytes.saturating_add(sink.written);
+        Ok(())
+    }
+}
+
+/// pull 型格式的驱动：外壳跑循环，门禁全部委托给 [`ArchiveGate`]。
+pub(crate) fn extract_archive(
+    source: &mut dyn ArchiveSource,
+    sandbox_root: &Dir,
+    cancellation_token: &dyn CancellationToken,
+    limits: ArchiveExtractionLimits,
+) -> Result<()> {
+    let mut gate = ArchiveGate::new(sandbox_root, cancellation_token, limits);
+    gate.declare_entry_count(source.declared_entry_count())?;
+
+    while let Some(header) = source.next_entry()? {
+        gate.accept_entry(&header, &mut |sink| source.write_current_to(sink))?;
     }
 
     Ok(())

@@ -84,7 +84,7 @@ export const modImportCopy = {
       invalidStartState: "导入任务返回了无效状态",
       storageFrozenMigration: "存储目录正在迁移，完成后再导入",
       storageFrozenRestart: "存储目录已更改，请先重启 HMM",
-      unsupportedArchiveFormat: "HMM 目前只支持 ZIP 与 RAR 压缩包，请先转成其中一种再导入",
+      unsupportedArchiveFormat: "HMM 目前支持 ZIP、RAR、7Z 压缩包，请先转成其中一种再导入",
       notAnArchive: "这个文件不是压缩包，请选择 Mod 的压缩包",
       archiveEncrypted: "这个压缩包有密码，HMM 无法解开。请先解压去掉密码，再重新打包导入",
       archiveMultiVolume: "这是分卷压缩包，HMM 只拿到了其中一卷。请先在本地解压合并，再重新打包导入",
@@ -92,7 +92,7 @@ export const modImportCopy = {
     dialog: {
       revisionTitle: "选择新版本压缩包",
       newTitle: "选择 Mod 压缩包",
-      archiveFilterName: "压缩包（ZIP / RAR）",
+      archiveFilterName: "压缩包（ZIP / RAR / 7Z）",
     },
     action: {
       pickArchive: "选择压缩包...",
@@ -160,7 +160,7 @@ export const modImportCopy = {
       storageFrozenMigration: "The storage directory is being migrated; import after it finishes",
       storageFrozenRestart: "The storage directory changed; restart HMM first",
       unsupportedArchiveFormat:
-        "HMM currently supports ZIP and RAR archives. Convert the file to one of them and import it again.",
+        "HMM supports ZIP, RAR and 7Z archives. Convert the file to one of them and import it again.",
       notAnArchive: "This file is not an archive. Choose the mod's archive instead.",
       archiveEncrypted:
         "This archive is password protected and HMM cannot open it. Extract it, remove the password, repack and import again.",
@@ -170,7 +170,7 @@ export const modImportCopy = {
     dialog: {
       revisionTitle: "Choose the new version's archive",
       newTitle: "Choose the mod's archive",
-      archiveFilterName: "Archive (ZIP / RAR)",
+      archiveFilterName: "Archive (ZIP / RAR / 7Z)",
     },
     action: {
       pickArchive: "Choose archive…",
@@ -239,7 +239,7 @@ export const modImportCopy = {
       storageFrozenMigration: "保存フォルダーの移行中です。完了後にインポートしてください",
       storageFrozenRestart: "保存フォルダーが変更されました。先に HMM を再起動してください",
       unsupportedArchiveFormat:
-        "HMM は現在 ZIP と RAR アーカイブに対応しています。どちらかに変換してからインポートしてください",
+        "HMM は ZIP・RAR・7Z アーカイブに対応しています。いずれかに変換してからインポートしてください",
       notAnArchive: "このファイルはアーカイブではありません。Mod のアーカイブを選択してください",
       archiveEncrypted:
         "このアーカイブにはパスワードが設定されており、HMM では開けません。展開してパスワードを解除し、再圧縮してからインポートしてください",
@@ -249,7 +249,7 @@ export const modImportCopy = {
     dialog: {
       revisionTitle: "新バージョンのアーカイブを選択",
       newTitle: "Mod のアーカイブを選択",
-      archiveFilterName: "アーカイブ（ZIP / RAR）",
+      archiveFilterName: "アーカイブ（ZIP / RAR / 7Z）",
     },
     action: {
       pickArchive: "アーカイブを選択…",
