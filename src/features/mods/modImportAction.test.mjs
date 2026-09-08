@@ -6,11 +6,15 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
-test("mod import action opens a ZIP picker and starts the controlled task", () => {
+test("mod import action opens an archive picker and starts the controlled task", () => {
   const source = readSource("src/features/mods/ModImportAction.tsx");
 
   assert.match(source, /open\(\{/);
-  assert.match(source, /extensions:\s*\["zip"\]/);
+  // rar 已是已支持格式（#348 切片 C）。过滤器必须跟着长，否则玩家在对话框里
+  // 看不见自己的 .rar 文件。断言逐个格式而不是整串，这样将来加 7z 时
+  // 只会因为「漏了新格式」转红，不会因为顺序或空格改动误报。
+  assert.match(source, /extensions:\s*\[[^\]]*"zip"[^\]]*\]/);
+  assert.match(source, /extensions:\s*\[[^\]]*"rar"[^\]]*\]/);
   assert.match(source, /startImportModTask\(\{\s*archivePath:\s*selected\s*\}\)/);
   assert.match(source, /event\.payload\.kind\s*!==\s*"mod_import"/);
   assert.match(source, /event\.payload\.taskId\s*!==\s*taskId/);

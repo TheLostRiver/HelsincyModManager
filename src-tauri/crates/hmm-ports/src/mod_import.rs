@@ -81,6 +81,19 @@ pub enum UnsupportedArchiveFormat {
     Zstd,
 }
 
+/// 容器**认得出、也打得开**，但里面用了我们不支持的特性。
+///
+/// 与 [`UnsupportedArchiveFormat`] 的区别是玩家的下一步动作完全不同：
+/// 格式不支持要转档，这里要的是「去掉密码」或「拿到完整的分卷」。
+/// 混成一档等于把两句不同的指引压成一句没用的。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedArchiveFeature {
+    /// 内容或头部被加密。**本项目不做密码交互**（设计的非目标）。
+    Encrypted,
+    /// 分卷归档。我们只拿到玩家选中的那一个文件，续卷不在视野内。
+    MultiVolume,
+}
+
 /// 认得出根本不是归档文件的形态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NonArchiveFile {
@@ -101,6 +114,9 @@ pub enum ModImportPrepareError {
     /// 认得出根本不是归档文件。
     #[error("not an archive: {0:?}")]
     NotAnArchive(NonArchiveFile),
+    /// 容器打得开，但用了不支持的特性（加密、分卷）。
+    #[error("unsupported archive feature: {0:?}")]
+    UnsupportedArchiveFeature(UnsupportedArchiveFeature),
     /// 其余一切：损坏、截断、认不出、沙箱创建失败、IO、取消……
     /// 语义等同于既有行为，投影出去仍是原来的那个码。
     #[error(transparent)]
@@ -112,6 +128,8 @@ pub const MOD_IMPORT_PREPARE_FAILED_CODE: &str = "mod_import_prepare_failed";
 pub const MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE: &str =
     "mod_import_unsupported_archive_format";
 pub const MOD_IMPORT_NOT_AN_ARCHIVE_CODE: &str = "mod_import_not_an_archive";
+pub const MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE: &str = "mod_import_archive_encrypted";
+pub const MOD_IMPORT_ARCHIVE_MULTI_VOLUME_CODE: &str = "mod_import_archive_multi_volume";
 
 impl ModImportPrepareError {
     /// 投影给上层的**语义码**。
@@ -123,6 +141,12 @@ impl ModImportPrepareError {
         match self {
             Self::UnsupportedArchiveFormat(_) => MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE,
             Self::NotAnArchive(_) => MOD_IMPORT_NOT_AN_ARCHIVE_CODE,
+            Self::UnsupportedArchiveFeature(UnsupportedArchiveFeature::Encrypted) => {
+                MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE
+            }
+            Self::UnsupportedArchiveFeature(UnsupportedArchiveFeature::MultiVolume) => {
+                MOD_IMPORT_ARCHIVE_MULTI_VOLUME_CODE
+            }
             Self::Other(_) => MOD_IMPORT_PREPARE_FAILED_CODE,
         }
     }

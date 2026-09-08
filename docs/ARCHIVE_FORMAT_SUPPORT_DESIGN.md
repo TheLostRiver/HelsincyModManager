@@ -432,7 +432,7 @@ UnRAR 许可第 2 条的关键句：
 | # | 事实 | 对 C3 的约束 |
 | --- | --- | --- |
 | 1 | **unrar 不能并发调用。** 8 条往返用例并行跑只过 2 条、其余报 `ERAR_UNKNOWN`；`--test-threads=1` 立刻变 6 条。机制对得上源码：`global.hpp:10` 是 `EXTVAR ErrorHandler ErrHandler;`，**整个进程共用一个错误处理器** | 整条「打开→读头→处理→关闭」序列必须持进程级锁。已做成 `Archive` 这个 RAII 值，**拿不到它就调不到 unrar**——漏取锁从「要记得」变成「不可能」 |
-| 2 | **条目名分隔符随平台不同**：Windows 报 `\`、Linux 报 `/` | 适配器必须归一成 `/`。**这是安全问题不是整洁问题**：`..\..\evil` 在 Windows 上会被 `Path::components()` 判成上级目录并拒绝，在 Linux 上却只是个含反斜杠的普通文件名——同一个恶意归档两个平台判定不同，而 CI 跑的正是 Linux |
+| 2 | **条目名分隔符随平台不同**：Windows 报 `\`、Linux 报 `/` | 适配器必须归一成 `/`，否则**同一份素材在两个平台上解出不同的目录结构**：`dir\file.txt` 在 Windows 上是两层，在 Linux 上是一个名字带反斜杠的单文件，后面的内容根识别与安装全跟着错。**不是包含性问题**——落盘全程在 `cap_std` 能力内，不归一也逃不出沙箱，只是名字古怪。这条测试**只在 Linux 上才承重**（Windows 侧 `Path` 本来就认反斜杠），而 CI 恰好跑 Linux |
 | 3 | **回调返回 `-1` 中止后，`RARProcessFileW` 返回 `ERAR_UNKNOWN`**：`RARX_USERBREAK` 不在 `dll.cpp:497` 的映射表里，落到 `default` | 适配器**必须自己记住中止原因**。否则外壳那些精确文案（「超出单文件上限」「已取消」）会被一句泛化错误盖掉，共享负测直接挂 |
 | 4 | **「解压大小未知」报的是哨兵 `0x7fffffff_7fffffff`**（`rartypes.hpp:30` 的 `INT64NDF`），不是 0 | 必须翻译成 `declared_size: None`。照原样用的话，声明值预检会拿 9.2e18 去比 4 GiB 上限，把一个好包直接拒掉，字节流配额根本轮不到跑 |
 | 5 | **条目名超过 1023 宽字符会被静默截断**（`dll.cpp:265` 的 `wcsncpyz`，除非调用方给 `FileNameEx` 缓冲区） | 名字填满缓冲区时**拒绝该条目**。截断后的路径是错的数据，可能指向别处或与其他条目撞名。恰好 1023 字符的合法名与被截断的长名无法区分，所以一律判可疑——宁可错拒一个病态长名 |
@@ -570,14 +570,29 @@ tar 当验收载体时不存在这个问题（tar 便宜，与 B 同一个 PR �
 6 个 FFI 声明、布局探针与断言、`NOTICE.md` 许可义务、policy 排除、
 `.gitattributes` 保住上游字节。**不接导入链路**，`hmm-infra` 尚未依赖它。
 
-**C2 / C3**：语料生成器与接入外壳。以下是 C 整体的完成定义：
+**C2（已实现）**：store-only RAR5 语料生成器 ＋ unrar 往返验证 ＋ `Archive` RAII
+（把「必须持锁」做成类型约束）。
 
-- vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明
-- 按「使用模式」接入外壳
-- **把 rar 加进判别第 1 步的「已支持格式」集合**，并把自解压 RAR 的测试期望从
-  `not-an-archive` 翻转为「正常导入」——翻不过来就说明第 1 步被写死了
-- `NOTICE.md` 许可义务落地
-- RAR4 / RAR5、solid 包、分卷、加密包各自落到明确档位
+**C3（已实现）**：`RarArchiveSource` 接入外壳、判别第 1 步扩容、暂存目录、
+加密 / 分卷两档 ＋ 三语文案、文件对话框过滤器。
+
+C 整体的完成定义与兑现情况：
+
+| 完成定义 | 状态 |
+| --- | --- |
+| vendor UnRAR 7.23 ＋ `build.rs` ＋ 6 个 FFI 声明 | ✅ C1 |
+| 按「使用模式」（`RAR_OM_EXTRACT` ＋ `RAR_TEST` ＋ 回调）接入外壳 | ✅ C3 |
+| 把 rar 加进判别第 1 步，自解压 RAR 期望从 `not-an-archive` 翻成「正常导入」 | ✅ C3，用例 `a_self_extracting_rar_now_imports_instead_of_being_called_not_an_archive` |
+| `NOTICE.md` 许可义务落地 | ✅ C1 |
+| **外壳接口零改动**（T21-B 的硬约束） | ✅ 三个 trait 与七条门禁一行未动 |
+| 共享负测整组跑在 rar 上、一条不重写 | ✅ C3 |
+| 加密包落明确档位 | ✅ `mod_import_archive_encrypted` |
+| 分卷包落明确档位 | ✅ `mod_import_archive_multi_volume`，且在 open 阶段就报得出来 |
+| RAR4 老世代 | ⬜ **未覆盖**：语料生成器只写 RAR5。unrar 本身支持 RAR 1.4–5.0（`archive.hpp:13`），但我们造不出 RAR4 语料 |
+| solid 包 | ⬜ **未覆盖**：store-only 语料构不成真实的固实链，`MHFL_SOLID` 标志位测得到、实际行为测不到 |
+
+**⬜ 两项留给维护者用真机素材验收，不在自动化网内谎称已覆盖。**
+理由见「语料只能在代码里合成」一节：开发机上没有任何 RAR 压缩器。
 
 ### T21-D：7z
 
