@@ -488,10 +488,11 @@ mod tests {
     #[test]
     fn archive_preview_runs_on_a_blocking_worker() {
         let caller = std::thread::current().id();
-        let result = tauri::async_runtime::block_on(dispatch_archive_preview(Vec::new(), move |_| {
-            assert_ne!(std::thread::current().id(), caller);
-            Vec::new()
-        }));
+        let result =
+            tauri::async_runtime::block_on(dispatch_archive_preview(Vec::new(), move |_| {
+                assert_ne!(std::thread::current().id(), caller);
+                Vec::new()
+            }));
         assert!(result.expect("worker completes").is_empty());
     }
 
@@ -501,7 +502,10 @@ mod tests {
             vec![String::new(); MAX_DROPPED_ARCHIVES + 1],
             |_| panic!("oversized input must not reach the worker"),
         ));
-        assert_eq!(result.expect_err("reject oversized request").code, "mod_import_preview_limit_exceeded");
+        assert_eq!(
+            result.expect_err("reject oversized request").code,
+            "mod_import_preview_limit_exceeded"
+        );
     }
 
     #[test]
@@ -510,7 +514,10 @@ mod tests {
             vec!["relative.zip".to_owned()],
             |_| panic!("invalid paths must not reach the worker"),
         ));
-        assert_eq!(result.expect_err("reject relative path").code, "archive_path_not_absolute");
+        assert_eq!(
+            result.expect_err("reject relative path").code,
+            "archive_path_not_absolute"
+        );
     }
 
     #[test]
