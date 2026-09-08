@@ -1,5 +1,29 @@
 import react from "@vitejs/plugin-react";
+import { relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const nonFrontendDirectories = new Set([
+  "src-tauri",
+  "target",
+  ".worktrees",
+  ".claude",
+  ".codex",
+  ".agents",
+  ".planning",
+  ".tmp",
+  "tmp",
+  ".vite",
+  "armor-data",
+]);
+
+export function createDevWatchIgnored(rootDirectory: string) {
+  return (watchedPath: string) => {
+    // Prune known repository-root trees, not same-named frontend subdirectories.
+    const [topLevelDirectory] = relative(rootDirectory, watchedPath).split(sep);
+    return nonFrontendDirectories.has(topLevelDirectory);
+  };
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -12,7 +36,7 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: createDevWatchIgnored(fileURLToPath(new URL(".", import.meta.url))),
     },
   },
 });
