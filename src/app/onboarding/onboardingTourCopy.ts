@@ -27,6 +27,7 @@ type RouteGuidanceCopy<TFeatureId extends string> = {
 };
 
 export type OnboardingTourCopy = {
+  language: { title: string; description: string; system: string };
   routes: {
     dashboard: RouteGuidanceCopy<
       "dashboard-steam-scan" | "dashboard-manual-directory" | "dashboard-launch-game" | "dashboard-prerequisites"
@@ -73,6 +74,7 @@ export type OnboardingTourCopy = {
 
 export const onboardingTourCopy = {
   zh_cn: {
+    language: { title: "语言 / Language", description: "Helsincy Mod Manager", system: "跟随系统" },
     routes: {
       dashboard: {
         title: "工作台",
@@ -291,6 +293,7 @@ export const onboardingTourCopy = {
     },
   },
   en: {
+    language: { title: "Language", description: "Helsincy Mod Manager", system: "System default" },
     routes: {
       dashboard: {
         title: "Workbench",
@@ -509,6 +512,7 @@ export const onboardingTourCopy = {
     },
   },
   ja: {
+    language: { title: "言語 / Language", description: "Helsincy Mod Manager", system: "システム設定" },
     routes: {
       dashboard: {
         title: "ワークベンチ",

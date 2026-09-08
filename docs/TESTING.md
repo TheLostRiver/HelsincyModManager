@@ -151,6 +151,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
+### 新手引导语言
+
+新手引导首步语言与持久化回归：
+
+```powershell
+node --test src/app/onboarding/onboardingLanguageBehavior.test.mjs src/app/onboarding/onboardingTour.test.mjs
+```
+
+行为测试加载真实 I18nProvider、TourProvider 与语言单选组，仅替换路由读取和 overlay 展示叶子。
+覆盖首次中文、三语自称、已保存偏好/跟随系统、即时翻译、跳过/重开、旧完成记录和路由推进。
+键盘焦点与原生方向键、窄屏布局仍需浏览器交互检查；渲染器通过不代表 WebView2 验收通过。
+
 ### 拖拽与会话缓存
 
 拖拽队列与会话缓存的 React 生命周期回归使用匹配 React 版本的 `react-test-renderer`，加载真实
