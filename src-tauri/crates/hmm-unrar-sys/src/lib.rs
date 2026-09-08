@@ -29,6 +29,12 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod fixture;
+
+#[cfg(test)]
+mod fixture_round_trip;
+
 use std::ffi::{c_int, c_uint, c_void};
 
 /// `wchar_t`。**两个平台不一样宽**：Windows 2 字节（UTF-16），Linux 4 字节（UCS-4）。
@@ -170,6 +176,38 @@ impl Default for RARHeaderDataEx {
     }
 }
 
+impl RARHeaderDataEx {
+    /// 条目名。
+    ///
+    /// `None` 表示**名字可能被截断**，调用方应当拒绝该条目而不是拿去用。
+    /// 起因：`dll.cpp:270` 只在调用方提供了 `FileNameEx` 缓冲区时才写完整名字，
+    /// 否则用 `wcsncpyz` 往 1024 宽字符的 `FileNameW` 里塞并**静默截断**。
+    /// 截断后的名字是错的数据——可能指向另一个路径，也可能与别的条目撞名。
+    /// 恰好 1023 字符的合法名字与被截断的长名字无法区分，所以一律判为可疑：
+    /// **宁可错拒一个病态长名，也不拿一个可能被改写过的路径去落盘。**
+    ///
+    /// 这个方法存在的另一半理由是 `packed`：`&self.FileNameW` 是硬编译错误
+    /// （对 packed 字段取引用即使不解引用也是 UB）。把这个坑关在本 crate 里，
+    /// 免得每个调用方各踩一次。
+    pub fn file_name(&self) -> Option<String> {
+        // SAFETY: `addr_of!` 不构造引用；`read_unaligned` 把定长数组整体拷成对齐的局部量。
+        let buffer: [WcharT; 1024] = unsafe { std::ptr::addr_of!(self.FileNameW).read_unaligned() };
+        let length = buffer.iter().position(|value| *value == 0)?;
+        if length >= buffer.len() - 1 {
+            return None;
+        }
+        Some(wide_buffer_to_string(&buffer[..length]))
+    }
+
+    /// 声明的解压大小，高低 32 位合成（`dll.cpp:287-288` 是拆开报的）。
+    ///
+    /// **返回的是原样值，包括「未知」哨兵**——把哨兵翻译成 `None` 是调用方的策略，
+    /// 不是这一层的事。见 `fixture::UNRAR_UNKNOWN_UNPACKED_SIZE`。
+    pub fn unpacked_size(&self) -> u64 {
+        (u64::from(self.UnpSizeHigh) << 32) | u64::from(self.UnpSize)
+    }
+}
+
 /// `dll.hpp:146-163`。
 #[repr(C, packed)]
 pub struct RAROpenArchiveDataEx {
@@ -210,6 +248,124 @@ extern "system" {
     ) -> c_int;
     pub fn RARSetCallback(hArcData: HANDLE, Callback: UnrarCallback, UserData: Lparam);
     pub fn RARGetDllVersion() -> c_int;
+}
+
+/// 进程内串行化 unrar 调用的锁。**每一次 `RAROpenArchiveEx` … `RARCloseArchive`
+/// 的完整序列都必须在持锁期间进行。**
+///
+/// ## 这不是保守，是实测
+///
+/// 落地 C2 时，8 条往返测试并行跑只过 2 条，其余全部报 `ERAR_UNKNOWN`；
+/// 同一批测试加 `--test-threads=1` 立刻变成 6 条通过（另 2 条是无关的路径分隔符断言）。
+/// 症状与归档内容无关，纯粹取决于是否并发。
+///
+/// 机制在源码里对得上：`vendor/unrar/global.hpp:10` 是
+/// `EXTVAR ErrorHandler ErrHandler;`——**整个进程共用一个错误处理器对象**。
+/// 一个线程出错会覆盖另一个线程的错误状态，于是 `RarErrorToDll` 报出的码
+/// 与实际发生的事无关。
+///
+/// HMM 的导入任务是并发的（多个 task 可同时在跑），所以这不是测试环境的特殊问题
+/// ——不加锁的话，两个玩家同时导入两个 rar 就会互相破坏，且症状是随机的错误码。
+///
+/// 中毒（持锁线程 panic）时取回内层继续用：拒绝服务比恢复更糟，而且穿过 FFI 的
+/// panic 本身就是我们必须杜绝的事（适配器把一切变成 `Err`，不 panic）。
+pub fn lock() -> std::sync::MutexGuard<'static, ()> {
+    static UNRAR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    UNRAR_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 一次「打开 → 读头 → 处理 → 关闭」的完整会话，**持锁贯穿全程**。
+///
+/// 存在的理由是结构性的，不是便利性的：`lock()` 只有在**每一个**调用点都取才有效，
+/// 而这正是靠注释约束不住的事——C2 落地时就漏了一个测试没取锁，症状是整组用例
+/// 随机失败、每次红的还不是同一条。把锁做进 RAII 值以后，
+/// **拿不到 `Archive` 就调不到 unrar**，漏取变成编译期不可能。
+///
+/// 顺带也堵住句柄泄漏：`Drop` 里一定 `RARCloseArchive`。
+pub struct Archive {
+    handle: HANDLE,
+    flags: c_uint,
+    // 字段顺序即析构顺序：句柄先关，锁后放。
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Archive {
+    /// 打开归档。失败时返回 `OpenResult`（`ERAR_*`）。
+    ///
+    /// `mode` 用 [`RAR_OM_EXTRACT`]——[`RAR_OM_LIST`] 下 `RARProcessFile` 不产出数据。
+    pub fn open(path: &std::path::Path, mode: c_uint) -> Result<Self, c_int> {
+        let guard = lock();
+        let Some(mut wide) = to_wide_path(path) else {
+            // 路径编不成宽字符串（非 UTF-8）。当作打不开处理，不猜编码。
+            return Err(ERAR_EOPEN);
+        };
+        let mut data = RAROpenArchiveDataEx {
+            ArcNameW: wide.as_mut_ptr(),
+            OpenMode: mode,
+            ..Default::default()
+        };
+        // SAFETY: `data` 是本地量且在调用期间存活；`wide` 以 NUL 结尾且比调用活得久。
+        let handle = unsafe { RAROpenArchiveEx(&mut data) };
+        if handle.is_null() {
+            let open_result = data.OpenResult as c_int;
+            return Err(if open_result == 0 {
+                ERAR_UNKNOWN
+            } else {
+                open_result
+            });
+        }
+        Ok(Self {
+            handle,
+            flags: data.Flags,
+            _guard: guard,
+        })
+    }
+
+    /// 打开时报出的归档级标志（`ROADF_*`）：分卷、固实、头加密等。
+    pub fn flags(&self) -> c_uint {
+        self.flags
+    }
+
+    /// 设置收字节的回调。`user_data` 必须在整个会话期间保持有效且不移动。
+    ///
+    /// # Safety
+    ///
+    /// `user_data` 指向的对象要活过所有 [`Self::process`] 调用；回调本身
+    /// **不得 unwind 出 FFI 边界**。
+    pub unsafe fn set_callback(&mut self, callback: UnrarCallback, user_data: Lparam) {
+        RARSetCallback(self.handle, callback, user_data);
+    }
+
+    /// 读下一个条目头。返回 [`ERAR_SUCCESS`] / [`ERAR_END_ARCHIVE`] / 其他错误码。
+    pub fn read_header(&mut self, header: &mut RARHeaderDataEx) -> c_int {
+        // SAFETY: 句柄由 `open` 产出且未关闭；`header` 是调用方的有效可变引用。
+        unsafe { RARReadHeaderEx(self.handle, header) }
+    }
+
+    /// 处理当前条目。`operation` 用 [`RAR_TEST`]（收字节，不落盘）或 [`RAR_SKIP`]（跳过）。
+    ///
+    /// **不提供 [`RAR_EXTRACT`] 的便利**：那会让 unrar 自己决定往哪写文件，
+    /// 安全外壳对 rar 就完全失效了。真要用得直接调裸函数，那时至少是显式的。
+    pub fn process(&mut self, operation: c_int) -> c_int {
+        // SAFETY: 句柄有效；`RAR_TEST` / `RAR_SKIP` 都忽略后两个路径参数。
+        unsafe {
+            RARProcessFileW(
+                self.handle,
+                operation,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        }
+    }
+}
+
+impl Drop for Archive {
+    fn drop(&mut self) {
+        // SAFETY: 句柄由 `open` 产出，且 `Archive` 无法被复制，因此只会关一次。
+        unsafe { RARCloseArchive(self.handle) };
+    }
 }
 
 /// 把路径编成 unrar 要的宽字符串（NUL 结尾）。平台差异在这里收口，调用方不必知道
