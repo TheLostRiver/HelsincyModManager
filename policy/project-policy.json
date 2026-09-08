@@ -33,10 +33,10 @@
   ],
   "checkScopes": {
     "preCommit": {
-      "excludePathPatterns": []
+      "excludePathPatterns": ["src-tauri/crates/hmm-unrar-sys/vendor/**"]
     },
     "verify": {
-      "excludePathPatterns": []
+      "excludePathPatterns": ["src-tauri/crates/hmm-unrar-sys/vendor/**"]
     }
   },
   "secretScan": {
@@ -108,7 +108,7 @@
       "pnpm-lock.yaml",
       "Cargo.lock"
     ],
-    "excludePathPatterns": []
+    "excludePathPatterns": ["src-tauri/crates/hmm-unrar-sys/vendor/**"]
   },
   "forbiddenFiles": {
     "extensions": [
