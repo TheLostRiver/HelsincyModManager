@@ -20,7 +20,9 @@ const stubs = {
     api.progress.add(callback);
     return Promise.resolve(() => api.progress.delete(callback));
   }`,
-  webview: `export function getCurrentWebview() { return { onDragDropEvent(callback) {
+  webview: `export function getCurrentWebview() {
+    if (globalThis.__hmmReactTest.webviewUnavailable) throw new Error("fixture WebView unavailable");
+    return { onDragDropEvent(callback) {
     const api = globalThis.__hmmReactTest;
     api.drop.add(callback);
     return Promise.resolve(() => api.drop.delete(callback));
@@ -126,9 +128,10 @@ function runtime(listenerFails = false) {
   return api;
 }
 
-export async function mountDrop(t, { cacheListenerFails = false } = {}) {
+export async function mountDrop(t, { cacheListenerFails = false, webviewUnavailable = false } = {}) {
   const api = runtime();
   api.cacheListenerFails = cacheListenerFails;
+  api.webviewUnavailable = webviewUnavailable;
   function Capture({ children }) { api.cache = useModLibrarySessionCache(); return children; }
   const tree = (route) => React.createElement(React.StrictMode, null,
     React.createElement(ModLibrarySessionCacheProvider, null,
@@ -137,7 +140,7 @@ export async function mountDrop(t, { cacheListenerFails = false } = {}) {
   let root;
   await act(async () => { root = TestRenderer.create(tree("mods")); });
   t.after(async () => { await act(async () => root.unmount()); });
-  assert.equal(api.drop.size, 1);
+  assert.equal(api.drop.size, webviewUnavailable ? 0 : 1);
   assert.equal(api.progress.size, cacheListenerFails ? 1 : 2, "One cache observer and one queue watcher survive StrictMode");
   assert.equal(api.overlay.listenerReady, true);
   return { api, changeRoute: async (route) => { await act(async () => root.update(tree(route))); } };

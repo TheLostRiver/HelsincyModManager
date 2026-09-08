@@ -4,6 +4,14 @@ import { act, mountDrop, options, loadFeature } from "./testing/reactHarness.mjs
 
 const { getDropRowNote } = await loadFeature("modImportDropState.ts");
 
+test("unavailable WebView disables native drop without crashing the app or routing", options, async (t) => {
+  const { api, changeRoute } = await mountDrop(t, { webviewUnavailable: true });
+  assert.equal(api.drop.size, 0);
+  assert.equal(api.starts.length, 0);
+  await changeRoute("about");
+  assert.equal(api.overlay.summary.active, false);
+});
+
 test("StrictMode one confirmation starts exactly one import", options, async (t) => {
   const { api } = await mountDrop(t);
   await act(async () => api.drag(["fixture-a.zip"]));
