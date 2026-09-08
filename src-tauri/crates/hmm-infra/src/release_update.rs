@@ -328,19 +328,24 @@ mod tests {
         })
         .expect("complete feed");
         assert_eq!(pages, vec![1, 2]);
-        assert_eq!(highest_release_version(&body, false), Ok(Some("v1.2.0".to_owned())));
+        assert_eq!(
+            highest_release_version(&body, false),
+            Ok(Some("v1.2.0".to_owned()))
+        );
     }
 
     #[test]
     fn failed_later_page_never_yields_a_partial_success() {
-        assert!(read_complete_release_feed(Duration::from_secs(1), |page, _| {
-            if page == 1 {
-                Ok(feed(&vec![("v1.0.0", false); RELEASE_PAGE_SIZE]))
-            } else {
-                Err(())
-            }
-        })
-        .is_err());
+        assert!(
+            read_complete_release_feed(Duration::from_secs(1), |page, _| {
+                if page == 1 {
+                    Ok(feed(&vec![("v1.0.0", false); RELEASE_PAGE_SIZE]))
+                } else {
+                    Err(())
+                }
+            })
+            .is_err()
+        );
     }
 
     #[test]
