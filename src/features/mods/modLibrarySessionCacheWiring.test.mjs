@@ -16,6 +16,10 @@ const providerSource = readFileSync(
   "src/features/mods/ModLibrarySessionCacheProvider.tsx",
   "utf8",
 );
+const dropProviderSource = readFileSync(
+  "src/features/mods/ModImportDropProvider.tsx",
+  "utf8",
+);
 
 test("缓存挂在 RouterOutlet 之上，否则它跟着页面一起被卸载，等于不存在", () => {
   const provider = appSource.indexOf("<ModLibrarySessionCacheProvider>");
@@ -25,6 +29,43 @@ test("缓存挂在 RouterOutlet 之上，否则它跟着页面一起被卸载，
   assert.notEqual(provider, -1, "App 里必须挂上缓存 Provider");
   assert.ok(provider < outlet, "Provider 必须在 RouterOutlet 之外");
   assert.ok(outlet < providerClose, "RouterOutlet 必须被它包住");
+});
+
+test("缓存 Provider 在拖拽导入之外，否则导入完成时够不到它", () => {
+  // 后台导入完成必须能作废缓存。嵌套反了就只能靠库页转发，而库页此刻正是卸载的。
+  const cacheProvider = appSource.indexOf("<ModLibrarySessionCacheProvider>");
+  const dropProvider = appSource.indexOf("<ModImportDropProvider>");
+
+  assert.notEqual(dropProvider, -1);
+  assert.ok(cacheProvider < dropProvider, "缓存 Provider 必须包住拖拽 Provider");
+});
+
+test("后台导入成功要作废整份分页缓存", () => {
+  // 这是「在别的页面拖拽导入，再切进 Mod 库」那条路径的唯一保护：库页是卸载的，
+  // libraryRevision 那个计数订阅没人听，只有这里能让下次进页面重新查。
+  const onSettled = dropProviderSource.slice(
+    dropProviderSource.indexOf("onSettled: (archivePath, outcome) => {"),
+    dropProviderSource.indexOf("}).finally(() => {"),
+  );
+  assert.ok(onSettled.length > 0, "没能定位到 onSettled");
+  assert.match(onSettled, /librarySessionCache\.invalidateAllPages\(\)/);
+
+  // 且只在成功时作废：失败的包没进库，凭什么让玩家多等一次全量重查。
+  const successBranch = onSettled.slice(onSettled.indexOf("if (outcome === \"succeeded\")"));
+  assert.match(successBranch, /librarySessionCache\.invalidateAllPages\(\)/);
+});
+
+test("写任务一开跑就作废分页缓存——玩家可能不等它结束就切走", () => {
+  // 写完成时的刷新会把缓存填回来，但前提是页面还挂着。点了安装就切走的话，
+  // 那次刷新会被 request gate 挡下，缓存里留着的是「装之前」的状态。
+  assert.match(
+    pageSource,
+    /const libraryWriteInFlight =[\s\S]{0,400}?managedInstallTaskActive[\s\S]{0,400}?reinstallWorkflow\.workflowActive[\s\S]{0,400}?deletionBusy[\s\S]{0,400}?batchWorkflow\.state\.status === "starting"/,
+  );
+  assert.match(
+    pageSource,
+    /if \(!libraryWriteInFlight\) return;\s*\n\s*librarySessionCache\.invalidateAllPages\(\);/,
+  );
 });
 
 test("缓存放 ref 不放 state：写缓存不得引起重渲染", () => {

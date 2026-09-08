@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   EMPTY_MOD_LIBRARY_SESSION_CACHE,
   MOD_LIBRARY_PAGE_CACHE_LIMIT,
+  invalidateAllCachedLibraryPages,
   invalidateCachedLibraryPage,
   readCachedCategories,
   readCachedLibraryPage,
@@ -135,4 +136,39 @@ test("分类写入不会连带清空分页槽位", () => {
   cache = writeCachedCategories(cache, [{ id: "c1", name: "武器" }]);
 
   assert.notEqual(readCachedLibraryPage(cache, "p1", "q1"), null);
+});
+
+test("整份作废把分页槽位清空", () => {
+  // 后台导入完成时用这个：新 Mod 可能命中任何筛选、任何搜索词、落在任何一页，
+  // 要逐槽位判断得先知道它长什么样，而我们恰恰不知道。
+  let cache = writeCachedLibraryPage(EMPTY_MOD_LIBRARY_SESSION_CACHE, "p1", "q1", pageOf("a"));
+  cache = writeCachedLibraryPage(cache, "p1", "q2", pageOf("b"));
+  cache = writeCachedLibraryPage(cache, "p2", "q1", pageOf("c"));
+
+  const cleared = invalidateAllCachedLibraryPages(cache);
+  assert.equal(cleared.pages.length, 0);
+  assert.equal(readCachedLibraryPage(cleared, "p1", "q1"), null);
+  assert.equal(readCachedLibraryPage(cleared, "p2", "q1"), null, "别的配置档也要清");
+});
+
+test("整份作废不碰分类——导入不会凭空造出新分类", () => {
+  let cache = writeCachedCategories(EMPTY_MOD_LIBRARY_SESSION_CACHE, [{ id: "c1", name: "武器" }]);
+  cache = writeCachedLibraryPage(cache, "p1", "q1", pageOf("a"));
+
+  assert.deepEqual(readCachedCategories(invalidateAllCachedLibraryPages(cache)), [
+    { id: "c1", name: "武器" },
+  ]);
+});
+
+test("已经空了就返回同一个缓存，不白造对象", () => {
+  assert.equal(
+    invalidateAllCachedLibraryPages(EMPTY_MOD_LIBRARY_SESSION_CACHE),
+    EMPTY_MOD_LIBRARY_SESSION_CACHE,
+  );
+});
+
+test("整份作废不改动传进来的缓存对象", () => {
+  const before = writeCachedLibraryPage(EMPTY_MOD_LIBRARY_SESSION_CACHE, "p1", "q1", pageOf("a"));
+  invalidateAllCachedLibraryPages(before);
+  assert.notEqual(readCachedLibraryPage(before, "p1", "q1"), null);
 });

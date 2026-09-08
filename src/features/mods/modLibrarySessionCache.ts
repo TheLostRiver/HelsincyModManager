@@ -101,6 +101,24 @@ export function invalidateCachedLibraryPage(
   return pages.length === cache.pages.length ? cache : { ...cache, pages };
 }
 
+/**
+ * 丢掉全部分页槽位。
+ *
+ * 用在「库本身变了，但本页没经手」的时候：在别的页面拖拽导入完成、或者写任务开跑之后
+ * 玩家切走了。这时候**没法逐槽位判断**——新导入的 Mod 可能命中任何筛选、任何搜索词、
+ * 落在任何一页，要判断得先知道它长什么样，而我们恰恰不知道。
+ *
+ * 一份「看起来完整、却少了刚导入那个」的列表比骨架屏糟得多：前者读作「导入失败了」。
+ * 所以宁可整份丢掉重查。
+ *
+ * 分类不受影响：分类是玩家自己建的标签，导入不会凭空造出新分类。
+ */
+export function invalidateAllCachedLibraryPages(
+  cache: ModLibrarySessionCache,
+): ModLibrarySessionCache {
+  return cache.pages.length === 0 ? cache : { ...cache, pages: [] };
+}
+
 export function readCachedCategories(
   cache: ModLibrarySessionCache,
 ): readonly CategoryItem[] | null {
