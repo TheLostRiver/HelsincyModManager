@@ -41,7 +41,7 @@ import {
 import { deleteModFromLibrary, previewModDeletion } from "./modDeleteApi";
 import { modDeleteCopy, type ModDeleteCopy } from "./modDeleteCopy";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
-import { ModImportDropZone } from "./ModImportDropZone";
+import { useModImportDrop } from "./ModImportDropProvider";
 import { ModLibraryPagination } from "./ModLibraryPagination";
 import {
   ModLibraryEmptyState,
@@ -630,6 +630,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     resetContentScroll();
     await refreshModLibrary();
   }, [refreshModLibrary, resetContentScroll]);
+
+  // 拖拽导入（T22 / #366）在 RouterOutlet 之上，回调穿不过路由，所以走计数订阅：
+  // 后台每导进一个就 +1，库页跟着刷新一次。**不重置滚动**——玩家可能正在翻库，
+  // 而这次刷新不是他触发的，把他弹回顶部是打断。
+  const { libraryRevision } = useModImportDrop();
+  const seenLibraryRevisionRef = useRef(libraryRevision);
+  useEffect(() => {
+    if (seenLibraryRevisionRef.current === libraryRevision) return;
+    seenLibraryRevisionRef.current = libraryRevision;
+    void refreshModLibrary();
+  }, [libraryRevision, refreshModLibrary]);
 
   const refreshTerminalDurableStatus = useCallback(
     (profileId: string, modId: string, modName: string) =>
@@ -1954,14 +1965,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           onAction={handleContextMenuAction}
         />
       )}
-
-      {/* 拖拽导入（T22 / #366）。挂在 Mod 库页而不是 App 根：拖进来的落点是「库里多一个
-          Mod」，在别的页面弹出待导入清单会把玩家从当前任务里拽走。**只能挂一处**
-          ——Tauri 的拖放事件是窗口级的，挂两处会把同一次拖拽处理两遍。 */}
-      <ModImportDropZone
-        disabledReason={storageWriteFreezeReason ?? null}
-        onImported={refreshModLibraryAfterWrite}
-      />
 
       {previewMod !== null && (
         <PreviewImageDialog

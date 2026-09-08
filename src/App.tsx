@@ -7,6 +7,7 @@ import { SidebarModeProvider } from "./app/shell/SidebarModeProvider";
 import { GameSetupProvider } from "./features/game-setup/GameSetupProvider";
 import { InstallConfigTargetProvider } from "./features/install-config/InstallConfigTargetProvider";
 import { ExternalStateSessionProvider } from "./features/mods/ExternalStateSessionProvider";
+import { ModImportDropProvider } from "./features/mods/ModImportDropProvider";
 import { ActiveProfileProvider } from "./features/profiles/ActiveProfileProvider";
 import { ProfileSaveDirectoryDiscoveryProvider } from "./features/profiles/ProfileSaveDirectoryDiscoveryProvider";
 import { ModStorageSettingsProvider } from "./features/settings/ModStorageSettingsProvider";
@@ -37,9 +38,14 @@ export function App() {
                               自己渲染面板（保证同时只有一个），而面板走 FeedbackPortal，
                               必须在 FeedbackProvider 之内。 */}
                           <InstallConfigTargetProvider>
-                            <AppShell>
-                              <RouterOutlet />
-                            </AppShell>
+                            {/* T22 / #366：拖拽导入也要活过路由切换。它自己渲染清单浮层，
+                                而队列必须比页面活得久——RouterOutlet 会卸载页面，挂在页面里
+                                的话切个页就把批量循环打断，剩下的包**永远不会起且不报错**。 */}
+                            <ModImportDropProvider>
+                              <AppShell>
+                                <RouterOutlet />
+                              </AppShell>
+                            </ModImportDropProvider>
                           </InstallConfigTargetProvider>
                         </ModStorageSettingsProvider>
                       </ExternalStateSessionProvider>
