@@ -692,9 +692,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
    * 所以在**开始**写的时候就丢掉：留在页面上的话马上会被刷新结果填回来；不留的话
    * 缓存就是空的，切回来老老实实出骨架屏。两条路都不会摆出已经过时的状态。
    */
+  // 四条都取「写真的在跑」而不是「相关面板开着」：重装用 taskActive 不用 workflowActive
+  // （后者只表示预览弹窗开着，那是读），批量取 starting 不取整个非 idle（预览也是读）。
+  // 打开一个预览再关掉不该白清一次缓存。
   const libraryWriteInFlight =
     managedInstallTaskActive
-    || reinstallWorkflow.workflowActive
+    || reinstallWorkflow.taskActive
     || deletionBusy
     || batchWorkflow.state.status === "starting";
   useEffect(() => {
