@@ -79,9 +79,16 @@ mod tests {
 
     #[test]
     fn empty_release_list_is_distinct_from_query_failure() {
-        assert_eq!(project_release_result("1.0.0".to_owned(), Ok(None)).status, "no_release");
         assert_eq!(
-            project_release_result("1.0.0".to_owned(), Err(LatestReleaseVersionError::Unavailable)).status,
+            project_release_result("1.0.0".to_owned(), Ok(None)).status,
+            "no_release"
+        );
+        assert_eq!(
+            project_release_result(
+                "1.0.0".to_owned(),
+                Err(LatestReleaseVersionError::Unavailable)
+            )
+            .status,
             "unknown"
         );
     }
