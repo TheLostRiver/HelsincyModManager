@@ -57,6 +57,26 @@ export type ModImportCopy = {
     importing: string;
     failedRetryHint: string;
   };
+  /** T22 / #366：拖拽导入的清单浮层。 */
+  drop: {
+    hint: string;
+    title: string;
+    checking: (count: number) => string;
+    selectAll: string;
+    selectedSummary: (selected: number, total: number) => string;
+    blockedSummary: (count: number) => string;
+    confirm: string;
+    cancel: string;
+    close: string;
+    nothingImportable: string;
+    warnNoGameContent: string;
+    tooMany: (count: number, limit: number) => string;
+    running: (index: number, total: number) => string;
+    doneAllSucceeded: (count: number) => string;
+    donePartial: (succeeded: number, failed: number) => string;
+    doneAllFailed: (count: number) => string;
+    previewFailed: string;
+  };
   /** #275 ④：导入成功但源压缩包没删时的提示，按 mod_import_archive_kept_* 码取词。 */
   archiveKept: Record<ModImportArchiveKeptCode, string>;
   toasts: {
@@ -128,6 +148,25 @@ export const modImportCopy = {
       prepareCompleted: "导入完成",
       importing: "正在导入",
       failedRetryHint: "导入失败，请检查压缩包后重试",
+    },
+    drop: {
+      hint: "松开鼠标，加入待导入清单",
+      title: "待导入的压缩包",
+      checking: (count) => `正在检查 ${count} 个文件…`,
+      selectAll: "全选",
+      selectedSummary: (selected, total) => `已选 ${selected} / ${total} 个`,
+      blockedSummary: (count) => `${count} 个读不了，已跳过`,
+      confirm: "开始导入",
+      cancel: "取消",
+      close: "关闭",
+      nothingImportable: "这些文件都没法导入，换一批再试。",
+      tooMany: (count, limit) => `一次最多拖 ${limit} 个，这次拖了 ${count} 个。分几批来吧。`,
+      warnNoGameContent: "没找到本游戏的内容目录，可能装不出东西。确认没问题就勾上，照样能导入。",
+      running: (index, total) => `正在导入第 ${index} / ${total} 个…`,
+      doneAllSucceeded: (count) => `${count} 个 Mod 已导入。`,
+      donePartial: (succeeded, failed) => `${succeeded} 个已导入，${failed} 个失败。`,
+      doneAllFailed: (count) => `${count} 个都没能导入。`,
+      previewFailed: "检查拖入的文件时出错了，重新拖一次试试。",
     },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "原始压缩包不是普通文件（目录、链接或联接点），已保留。",
@@ -207,6 +246,25 @@ export const modImportCopy = {
       importing: "Importing",
       failedRetryHint: "Import failed. Check the archive and retry.",
     },
+    drop: {
+      hint: "Drop to add these to the import list",
+      title: "Archives to import",
+      checking: (count) => `Checking ${count} file(s)…`,
+      selectAll: "Select all",
+      selectedSummary: (selected, total) => `${selected} of ${total} selected`,
+      blockedSummary: (count) => `${count} unreadable, skipped`,
+      confirm: "Start import",
+      cancel: "Cancel",
+      close: "Close",
+      nothingImportable: "None of these files can be imported. Try a different set.",
+      tooMany: (count, limit) => `Up to ${limit} files at a time; you dropped ${count}. Try smaller batches.`,
+      warnNoGameContent: "No game content folder found — this may install nothing. Tick it anyway if you know it is fine.",
+      running: (index, total) => `Importing ${index} of ${total}…`,
+      doneAllSucceeded: (count) => `${count} mod(s) imported.`,
+      donePartial: (succeeded, failed) => `${succeeded} imported, ${failed} failed.`,
+      doneAllFailed: (count) => `None of the ${count} could be imported.`,
+      previewFailed: "Could not check the dropped files. Try dropping them again.",
+    },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "The original archive is not a regular file (directory, link or junction); it was kept.",
       mod_import_archive_kept_protected_location: "The original archive lies inside the game, mod storage or app data directory; it was kept.",
@@ -285,6 +343,25 @@ export const modImportCopy = {
       prepareCompleted: "インポート完了",
       importing: "インポート中",
       failedRetryHint: "インポートに失敗しました。アーカイブを確認して再試行してください。",
+    },
+    drop: {
+      hint: "ドロップしてインポート一覧に追加",
+      title: "インポートする書庫",
+      checking: (count) => `${count} 件を確認しています…`,
+      selectAll: "すべて選択",
+      selectedSummary: (selected, total) => `${total} 件中 ${selected} 件を選択`,
+      blockedSummary: (count) => `${count} 件は読み込めないためスキップ`,
+      confirm: "インポート開始",
+      cancel: "キャンセル",
+      close: "閉じる",
+      nothingImportable: "どのファイルもインポートできません。別のファイルでお試しください。",
+      tooMany: (count, limit) => `一度にドロップできるのは ${limit} 件までです（今回は ${count} 件）。分けてお試しください。`,
+      warnNoGameContent: "ゲームのコンテンツフォルダーが見つかりません。何もインストールされない可能性がありますが、問題なければチェックしてインポートできます。",
+      running: (index, total) => `${total} 件中 ${index} 件目をインポート中…`,
+      doneAllSucceeded: (count) => `${count} 件の Mod をインポートしました。`,
+      donePartial: (succeeded, failed) => `${succeeded} 件成功、${failed} 件失敗。`,
+      doneAllFailed: (count) => `${count} 件すべてインポートできませんでした。`,
+      previewFailed: "ドロップしたファイルを確認できませんでした。もう一度ドロップしてください。",
     },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "元のアーカイブが通常のファイルではない（フォルダー、リンク、ジャンクション）ため保持しました。",
