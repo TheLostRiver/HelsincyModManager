@@ -42,6 +42,7 @@ import { deleteModFromLibrary, previewModDeletion } from "./modDeleteApi";
 import { modDeleteCopy, type ModDeleteCopy } from "./modDeleteCopy";
 import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { useModImportDrop } from "./ModImportDropProvider";
+import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { ModLibraryPagination } from "./ModLibraryPagination";
 import {
   ModLibraryEmptyState,
@@ -343,9 +344,18 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const lifecycleCopyRef = useRef(lifecycleCopy);
   lifecycleCopyRef.current = lifecycleCopy;
   const { activeProfile, activeProfileId } = useActiveProfile();
+  /*
+   * 会话级缓存挂在 RouterOutlet 之上。RouterOutlet 会卸载页面，本页所有查询 state
+   * 都活不过一次切页，于是每回进 Mod 库都从零重查一遍、先出一屏骨架屏。缓存让切回来
+   * 时先摆出上次的结果，同时照常重新校验——见 ModLibrarySessionCacheProvider。
+   */
+  const librarySessionCache = useModLibrarySessionCache();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<ModLibraryFilter>(allLibraryFilter);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  // 分类同样从缓存起步：否则每次切回来筛选药丸都要先空一下再蹦出来。
+  const [categories, setCategories] = useState<CategoryItem[]>(
+    () => [...(librarySessionCache.readCategories() ?? [])],
+  );
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
   const [selectionState, dispatchSelection] = useReducer(
@@ -358,7 +368,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     notice: selectionNotice,
   } = selectionState;
   const libraryItemsRef = useRef<ModLibraryItem[]>([]);
-  const categoriesRef = useRef<CategoryItem[]>([]);
+  // 与 categories 同一份起点（ref 只认第一次渲染的初值），否则浏览器预览的模拟查询
+  // 会拿着空分类去筛。
+  const categoriesRef = useRef<CategoryItem[]>(categories);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const renderedPageRef = useRef<number | null>(null);
   const [scrollUiState, setScrollUiState] = useState(initialScrollUiState);
@@ -468,6 +480,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     filter: activeFilter,
     profileContext,
     loadPage: loadModLibraryPage,
+    cache: librarySessionCache,
   });
   const loadBatchReplacementTargetFacts = useCallback(
     async (modIds: string[]): Promise<BatchModLifecycleReplacementTargetFacts[]> => {
@@ -615,11 +628,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       if (categoriesRequestGenerationRef.current === generation) {
         categoriesRef.current = loadedCategories;
         setCategories(loadedCategories);
+        librarySessionCache.writeCategories(loadedCategories);
       }
     } catch {
       // Category chips remain on their last successful snapshot.
     }
-  }, []);
+  }, [librarySessionCache]);
 
   const refreshModLibrary = useCallback(async () => {
     dispatchSelection({ type: "reset-context", reason: "library-refreshed" });
@@ -667,6 +681,30 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     refreshLibrary: refreshModLibraryAfterWrite,
   });
   const { openReinstall } = reinstallWorkflow;
+
+  /*
+   * 写任务一开跑就把分页缓存作废。
+   *
+   * 写完成时的刷新会把缓存重新填上——但**前提是玩家还留在这一页**。点了安装就切走、
+   * 后台装完的情况下，页面早卸载了，那次刷新的响应会被 request gate 挡下（不写缓存），
+   * 于是缓存里留着的是「装之前」的状态。切回来先摆出它，玩家会以为安装没生效。
+   *
+   * 所以在**开始**写的时候就丢掉：留在页面上的话马上会被刷新结果填回来；不留的话
+   * 缓存就是空的，切回来老老实实出骨架屏。两条路都不会摆出已经过时的状态。
+   */
+  // 四条都取「写真的在跑」而不是「相关面板开着」：重装用 taskActive 不用 workflowActive
+  // （后者只表示预览弹窗开着，那是读），批量取 starting 不取整个非 idle（预览也是读）。
+  // 打开一个预览再关掉不该白清一次缓存。
+  const libraryWriteInFlight =
+    managedInstallTaskActive
+    || reinstallWorkflow.taskActive
+    || deletionBusy
+    || batchWorkflow.state.status === "starting";
+  useEffect(() => {
+    if (!libraryWriteInFlight) return;
+    librarySessionCache.invalidateAllPages();
+  }, [librarySessionCache, libraryWriteInFlight]);
+
   const uninstallBlockerMessage = useMemo(() => {
     if (uninstallConfirmation === null) {
       return null;

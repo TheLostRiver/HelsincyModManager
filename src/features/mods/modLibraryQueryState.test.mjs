@@ -29,6 +29,7 @@ const {
   queryBrowserMockModLibrary,
   readModLibraryPageSize,
   resolveProfileQueryPage,
+  resolveQueryStartExecutionState,
   writeModLibraryPageSize,
 } = await import("./modLibraryQueryState.ts");
 
@@ -355,4 +356,98 @@ test("browser mock status queries require profile context", () => {
       error instanceof BrowserMockModLibraryQueryError
       && error.code === "mod_library_profile_context_required",
   );
+});
+
+// ---------------------------------------------------------------------------
+// 查询起步状态：决定「玩家在请求回来之前看见什么」。
+// ---------------------------------------------------------------------------
+
+const emptyExecutionState = {
+  record: null,
+  phase: "idle",
+  phaseProfileKey: "profile:none",
+  errorCode: null,
+};
+
+const pageWith = (...ids) => ({
+  items: ids.map((id) => ({
+    id,
+    name: id,
+    sizeLabel: "1 MB",
+    status: "not_installed",
+    categoryLabels: [],
+  })),
+  page: 1,
+  pageSize: 24,
+  libraryTotal: ids.length,
+  matchingTotal: ids.length,
+});
+
+test("手上什么都没有就只能出骨架屏", () => {
+  const next = resolveQueryStartExecutionState(emptyExecutionState, "p1", null);
+  assert.equal(next.record, null);
+  assert.equal(next.phase, "initial-loading");
+  assert.equal(next.phaseProfileKey, "p1");
+});
+
+test("已经有本档的数据就留着它，标记为重新校验中", () => {
+  // 翻页、改搜索词都走这里：把已经看得见的列表换成骨架屏是倒退。
+  const current = {
+    ...emptyExecutionState,
+    record: { profileKey: "p1", page: pageWith("a") },
+  };
+  const next = resolveQueryStartExecutionState(current, "p1", null);
+
+  assert.equal(next.record, current.record, "原地留着，不重建");
+  assert.equal(next.phase, "refreshing");
+});
+
+test("手上的数据属于别的配置档就不能留——那不是玩家要看的库", () => {
+  const current = {
+    ...emptyExecutionState,
+    record: { profileKey: "other", page: pageWith("a") },
+  };
+  const next = resolveQueryStartExecutionState(current, "p1", null);
+
+  assert.equal(next.phase, "initial-loading", "跨档不算「已有数据」");
+  assert.equal(next.phaseProfileKey, "p1");
+});
+
+test("缓存命中就直接摆出上次的结果，而不是骨架屏", () => {
+  // 这是整块缓存存在的理由：切回 Mod 库不该从零重来一遍。
+  const cached = pageWith("a", "b");
+  const next = resolveQueryStartExecutionState(emptyExecutionState, "p1", cached);
+
+  assert.deepEqual(next.record, { profileKey: "p1", page: cached });
+  assert.equal(next.phase, "refreshing", "必须标成重新校验中，不能装作已经是最新事实");
+  assert.equal(next.phaseProfileKey, "p1");
+});
+
+test("缓存命中时 record 整个换成本档的，绝不沿用别档的旧 record", () => {
+  // 沿用会让 record.profileKey 与实际展示的数据对不上，「现在看的是谁的库」不可判定。
+  const current = {
+    ...emptyExecutionState,
+    record: { profileKey: "other", page: pageWith("别的档") },
+  };
+  const cached = pageWith("本档");
+  const next = resolveQueryStartExecutionState(current, "p1", cached);
+
+  assert.equal(next.record.profileKey, "p1");
+  assert.equal(next.record.page, cached);
+});
+
+test("起步一律清掉上一轮的错误码", () => {
+  // 不清的话，上次失败的红字会盖在这次正在加载的内容上。
+  for (const cachedPage of [null, pageWith("a")]) {
+    const current = { ...emptyExecutionState, phase: "error", errorCode: "mod_library_unavailable" };
+    const next = resolveQueryStartExecutionState(current, "p1", cachedPage);
+    assert.equal(next.errorCode, null);
+    assert.notEqual(next.phase, "error");
+  }
+});
+
+test("缓存命中不会把状态标成 idle——那等于宣称请求已经回来了", () => {
+  // idle 会让 refreshing 为 false、进度条消失，玩家以为看到的是刚查出来的结果。
+  const next = resolveQueryStartExecutionState(emptyExecutionState, "p1", pageWith("a"));
+  assert.notEqual(next.phase, "idle");
 });
