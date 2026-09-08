@@ -16,6 +16,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 const MOD_IMPORT_QUEUED_PHASE: &str = "mod_import.queued";
+const MAX_DROPPED_ARCHIVES: usize = 100;
 
 #[tauri::command]
 pub fn start_import_mod_task(
@@ -318,15 +319,42 @@ pub struct DroppedArchivePreviewDto {
 ///
 /// 逐个独立判定：一个文件坏了不影响其余的结论——这正是「清单」要表达的东西。
 #[tauri::command]
-pub fn preview_dropped_mod_archives(
+pub async fn preview_dropped_mod_archives(
     archive_paths: Vec<String>,
 ) -> Result<Vec<DroppedArchivePreviewDto>, CommandErrorDto> {
+    dispatch_archive_preview(archive_paths, probe_dropped_archives).await
+}
+
+async fn dispatch_archive_preview<F>(
+    archive_paths: Vec<String>,
+    probe: F,
+) -> Result<Vec<DroppedArchivePreviewDto>, CommandErrorDto>
+where
+    F: FnOnce(Vec<PathBuf>) -> Vec<DroppedArchivePreviewDto> + Send + 'static,
+{
+    if archive_paths.len() > MAX_DROPPED_ARCHIVES {
+        return Err(CommandErrorDto {
+            code: "mod_import_preview_limit_exceeded".to_owned(),
+            message: "too many archives in one preview request".to_owned(),
+        });
+    }
+    let paths = archive_paths
+        .into_iter()
+        .map(parse_archive_path)
+        .collect::<Result<Vec<_>, _>>()?;
+    // Archive I/O and the RAR session lock must never block the WebView callback.
+    tauri::async_runtime::spawn_blocking(move || probe(paths))
+        .await
+        .map_err(|_| CommandErrorDto {
+            code: "mod_import_prepare_failed".to_owned(),
+            message: "archive preview is unavailable".to_owned(),
+        })
+}
+
+fn probe_dropped_archives(archive_paths: Vec<PathBuf>) -> Vec<DroppedArchivePreviewDto> {
     archive_paths
         .into_iter()
-        .map(|raw| {
-            // 路径本身不合法（空、非绝对）是**调用方的错**，不是某个文件的档位，
-            // 所以整条命令失败，而不是悄悄给出一个假的「不可导入」。
-            let archive_path = parse_archive_path(raw)?;
+        .map(|archive_path| {
             let file_name = archive_path
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -342,13 +370,13 @@ pub fn preview_dropped_mod_archives(
                 Ok(_) => (None, None),
                 Err(error) => (Some(error.code().to_owned()), None),
             };
-            Ok(DroppedArchivePreviewDto {
+            DroppedArchivePreviewDto {
                 archive_path: archive_path.to_string_lossy().into_owned(),
                 file_name,
                 size_bytes,
                 error_code,
                 warning_code,
-            })
+            }
         })
         .collect()
 }
@@ -456,6 +484,44 @@ mod tests {
     use crate::dto::TaskProgressEventDto;
     use hmm_app::{TaskKind, TaskStatus};
     use serde_json::Value;
+
+    #[test]
+    fn archive_preview_runs_on_a_blocking_worker() {
+        let caller = std::thread::current().id();
+        let result = tauri::async_runtime::block_on(dispatch_archive_preview(Vec::new(), move |_| {
+            assert_ne!(std::thread::current().id(), caller);
+            Vec::new()
+        }));
+        assert!(result.expect("worker completes").is_empty());
+    }
+
+    #[test]
+    fn archive_preview_rejects_excess_paths_before_work() {
+        let result = tauri::async_runtime::block_on(dispatch_archive_preview(
+            vec![String::new(); MAX_DROPPED_ARCHIVES + 1],
+            |_| panic!("oversized input must not reach the worker"),
+        ));
+        assert_eq!(result.expect_err("reject oversized request").code, "mod_import_preview_limit_exceeded");
+    }
+
+    #[test]
+    fn archive_preview_validates_all_paths_before_work() {
+        let result = tauri::async_runtime::block_on(dispatch_archive_preview(
+            vec!["relative.zip".to_owned()],
+            |_| panic!("invalid paths must not reach the worker"),
+        ));
+        assert_eq!(result.expect_err("reject relative path").code, "archive_path_not_absolute");
+    }
+
+    #[test]
+    fn archive_preview_worker_failure_has_a_stable_error() {
+        let result = tauri::async_runtime::block_on(dispatch_archive_preview(Vec::new(), |_| {
+            panic!("synthetic worker failure")
+        }));
+        let error = result.expect_err("worker panic is reported");
+        assert_eq!(error.code, "mod_import_prepare_failed");
+        assert!(!error.message.contains("synthetic"));
+    }
 
     #[test]
     fn parse_archive_path_rejects_empty_paths() {

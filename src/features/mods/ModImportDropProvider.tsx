@@ -20,6 +20,7 @@ import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { modImportCopy } from "./modImportCopy";
 import { previewDroppedModArchives, startImportModTask } from "./modImportApi";
 import { ModImportTaskWatcher, runDropImportPump } from "./modImportDropRunner";
+import { getModImportArchiveKeptMessage, getModImportFailedMessage, modImportStartFailureKind } from "./modImportTaskState";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import {
   cancelQueuedDropRows,
@@ -27,11 +28,15 @@ import {
   confirmDropSelection,
   dedupeDroppedPaths,
   dropQueueSummary,
+  getDropQueueStatus,
   emptyDropListState,
   markDropRowPhase,
   MAX_DROPPED_ARCHIVES,
   mergeDropRows,
   setAllDropRowsSelected,
+  settleDropRow,
+  selectedDropRows,
+  selectableDropRowCount,
   toggleDropRow,
   type DropListState,
 } from "./modImportDropState";
@@ -79,8 +84,6 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
   // 不挡的话玩家会拖 20 个包、确认、然后眼看着 20 条一个个失败。
   const modStorage = useModStorageSettings();
   const storageWriteFreezeReason = getModStorageFreezeReason(modStorage.writesFrozen, locale);
-  // 导入成功要把库页的会话缓存作废。库页此刻多半是**卸载**的（后台导入的意义就在这里），
-  // 没人去刷新它，缓存里躺着的是导入之前的快照。
   const librarySessionCache = useModLibrarySessionCache();
 
   const [dragActive, setDragActive] = useState(false);
@@ -104,10 +107,12 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
   const queueRef = useRef<string[]>([]);
   const pumpRunningRef = useRef(false);
   const copyRef = useRef(copy);
-  copyRef.current = copy;
   // 拖放回调不该因为文案或冻结状态变化就重订阅，所以走 ref 读最新值。
   const freezeReasonRef = useRef(storageWriteFreezeReason);
-  freezeReasonRef.current = storageWriteFreezeReason;
+  useLayoutEffect(() => {
+    copyRef.current = copy;
+    freezeReasonRef.current = storageWriteFreezeReason;
+  }, [copy, storageWriteFreezeReason]);
 
   // 任务进度订阅。**导入是否算完全靠它**，所以订阅没建起来时不允许确认导入
   // ——否则队列会等一个永远不来的终态，界面卡在「正在导入」。
@@ -157,27 +162,34 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
         }));
       },
       onSettled: (archivePath, outcome) => {
+        // The queue watcher remains a fallback if the cache's own listener failed.
+        // observeTask deduplicates the same terminal identity across both listeners.
+        if (outcome.taskId !== null) {
+          librarySessionCache.observeTask({ taskId: outcome.taskId, kind: "mod_import", status: outcome.status });
+        }
         setList((current) => ({
           ...current,
-          rows: markDropRowPhase(
-            current.rows,
-            archivePath,
-            outcome === "succeeded" ? "succeeded" : "failed",
-          ),
+          rows: settleDropRow(current.rows, archivePath, outcome),
         }));
-        if (outcome === "succeeded") {
+        if (outcome.status === "completed") {
           // 库页挂着的话，靠这个计数订阅刷新一次：清单现在是长活的，玩家可能一边导一边看库。
           setLibraryRevision((revision) => revision + 1);
-          // 库页没挂的话（后台导入的常态），上面那个计数没人听。缓存必须在这里作废，
-          // 否则玩家切回 Mod 库会先看到一份**缺了刚导入那个**的完整列表——
-          // 那读起来就是「导入失败了」，比骨架屏糟得多。
-          librarySessionCache.invalidateAllPages();
+          // Cache invalidation is owned by the session-level task observer, including other import entry points.
+          if (outcome.archiveKept !== null) {
+            pushToast({
+              eventKey: `mod-import.archive-kept.${outcome.taskId}`,
+              taskId: outcome.taskId,
+              title: copyRef.current.toasts.archiveKeptTitle,
+              message: getModImportArchiveKeptMessage(outcome.archiveKept, copyRef.current),
+              tone: "warning",
+            });
+          }
         }
       },
     }).finally(() => {
       pumpRunningRef.current = false;
     });
-  }, [librarySessionCache]);
+  }, [librarySessionCache, pushToast]);
 
   const handleDroppedPaths = useCallback(
     async (paths: readonly string[]) => {
@@ -214,7 +226,7 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
           rows: mergeDropRows(current.rows, previews),
           checking: Math.max(0, current.checking - unique.length),
         }));
-      } catch {
+      } catch (error) {
         setList((current) => ({
           ...current,
           checking: Math.max(0, current.checking - unique.length),
@@ -222,7 +234,9 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
         pushToast({
           eventKey: "mod-import.drop.preview-failed",
           title: copyRef.current.drop.title,
-          message: copyRef.current.drop.previewFailed,
+          message: modImportStartFailureKind(error) === "preview-limit"
+            ? getModImportFailedMessage("preview-limit", copyRef.current)
+            : copyRef.current.drop.previewFailed,
           tone: "danger",
         });
       }
@@ -269,37 +283,36 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
     };
   }, [handleDroppedPaths]);
 
-  const summary = dropQueueSummary(list.rows);
+  const summary = useMemo(() => dropQueueSummary(list.rows), [list.rows]);
   const openDropList = useCallback(() => setVisible(true), []);
 
   // 浮层关掉之后，进度走既有的任务通知（与单个导入同一套，不另造一份）。
   //
-  // 通知上必须带一个「查看清单」按钮：关掉之后没有别的入口能把清单叫回来
-  // （再拖一个包是**开新的**，不是重开），玩家就再也看不到还剩几个、哪个失败了。
+  // Preserve the result entry until rows are explicitly cleared, including failures and pending selections.
   const NOTICE_ID = "mod-import.drop.batch";
   useEffect(() => {
-    if (summary.active && !visible) {
+    if (!visible && (list.rows.length > 0 || list.checking > 0)) {
       showTaskNotice({
         taskId: NOTICE_ID,
-        title: copyRef.current.drop.title,
-        message: copyRef.current.drop.backgroundProgress(
-          summary.succeeded + summary.failed + 1,
-          summary.submitted,
-        ),
-        tone: "progress",
-        action: { label: copyRef.current.drop.reopenList, onClick: openDropList },
+        title: copy.drop.title,
+        message: getDropQueueStatus(summary, copy)
+          ?? (list.checking > 0 ? copy.drop.checking(list.checking)
+            : copy.drop.selectedSummary(selectedDropRows(list.rows).length, selectableDropRowCount(list.rows))),
+        tone: summary.active || list.checking > 0 ? "progress"
+          : summary.failed > 0 ? "danger" : summary.succeeded > 0 ? "success" : "neutral",
+        action: { label: copy.drop.reopenList, onClick: openDropList },
       });
       return;
     }
     dismissTaskNotice(NOTICE_ID);
   }, [
     dismissTaskNotice,
+    copy,
+    list.checking,
+    list.rows,
     openDropList,
     showTaskNotice,
-    summary.active,
-    summary.failed,
-    summary.submitted,
-    summary.succeeded,
+    summary,
     visible,
   ]);
 
@@ -329,6 +342,12 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
           }))
         }
         onConfirm={() => {
+          if (!listenerReady) return;
+          const frozen = freezeReasonRef.current;
+          if (frozen) {
+            pushToast({ eventKey: "mod-import.drop.disabled", title: copyRef.current.drop.title, message: frozen, tone: "warning" });
+            return;
+          }
           // 从**同一份快照**做决定：入队的路径与标成 queued 的行必须一致，
           // 所以先算完再一次性落地，不在 updater 里边算边做。
           const current = listRef.current;

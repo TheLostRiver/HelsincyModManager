@@ -1,4 +1,4 @@
-import { nextModImportTaskStateFromProgress, type ModImportTaskState } from "./modImportTaskState.ts";
+import { modImportStartFailureKind, nextModImportTaskStateFromProgress, type ModImportTaskState, type ModImportTerminalState } from "./modImportTaskState.ts";
 import type { TaskProgressEventDto } from "./modImportTypes";
 
 // 拖拽批量导入的执行引擎（T22 / #366）。
@@ -13,12 +13,12 @@ type Tracker = {
   resolve: (outcome: DropImportOutcome) => void;
 };
 
-export type DropImportOutcome = "succeeded" | "failed";
+export type DropImportOutcome = ModImportTerminalState;
 
 /** `start_import_mod_task` 返回的形状里，这里真正用到的部分。 */
 export type StartedImportTask = { kind: string; status: string; taskId: string };
 
-function isTerminal(state: ModImportTaskState) {
+function isTerminal(state: ModImportTaskState): state is ModImportTerminalState {
   return state.status === "completed" || state.status === "cancelled" || state.status === "failed";
 }
 
@@ -80,7 +80,7 @@ export class ModImportTaskWatcher {
     tracker.settled = true;
     this.trackers.delete(payload.taskId);
     // 取消也算这一条没导进去。**不把取消说成成功**——库里确实没多出这个 Mod。
-    tracker.resolve(tracker.state.status === "completed" ? "succeeded" : "failed");
+    tracker.resolve(tracker.state);
   }
 }
 
@@ -107,13 +107,13 @@ async function runOne(
   let task: StartedImportTask;
   try {
     task = await startImport(archivePath);
-  } catch {
+  } catch (error) {
     watcher.endStart();
-    return "failed";
+    return { status: "failed", taskId: null, phase: "mod_import.start.failed", messageKind: modImportStartFailureKind(error) };
   }
   if (task.kind !== "mod_import" || task.status !== "queued") {
     watcher.endStart();
-    return "failed";
+    return { status: "failed", taskId: null, phase: "mod_import.start.failed", messageKind: "invalid-start-state" };
   }
   const outcome = watcher.watch(task.taskId);
   watcher.endStart();
