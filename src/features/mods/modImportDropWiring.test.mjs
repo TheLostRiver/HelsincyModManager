@@ -130,10 +130,10 @@ test("库页靠计数订阅刷新，回调穿不过路由", () => {
   assert.match(provider(), /setLibraryRevision\(\(revision\) => revision \+ 1\)/);
 });
 
-test("关掉浮层之后进度走既有的任务通知，且能点回来", () => {
+test("关掉浮层之后进度和结果走任务通知，且能点回来", () => {
   const source = provider();
   assert.match(source, /showTaskNotice\(\{/);
-  assert.match(source, /summary\.active && !visible/, "只有收起时才用通知，不与浮层重复");
+  assert.match(source, /!visible && \(list\.rows\.length > 0 \|\| list\.checking > 0\)/);
   assert.match(source, /openDropList/);
 });
 

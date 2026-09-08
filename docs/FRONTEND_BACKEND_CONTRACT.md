@@ -1897,6 +1897,8 @@ start_mod_storage_migration_task({ directory: string | null })
 边界：
 
 - `preview_dropped_mod_archives(archivePaths: string[])` 是**只读预检**（T22 / #366）：逐个文件判断「能不能导入」，
+  命令先验证最多 100 条路径及全部路径语法，再将归档 I/O 与 RAR 锁等待派发到 blocking worker，不阻塞 WebView 回调。
+  超限返回稳定码 `mod_import_preview_limit_exceeded`（三语提示分批拖入）；worker 不可用返回既有 `mod_import_prepare_failed`，不暴露底层错误。
   返回 `DroppedArchivePreviewDto[]`，形如 `{ archivePath, fileName, sizeBytes, errorCode, warningCode }`。`errorCode` 为 `null` 表示可导入，
   否则是**与导入失败同一套**的语义码（`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
   `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` / `mod_import_prepare_failed`），

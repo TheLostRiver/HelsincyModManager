@@ -139,6 +139,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
+### 拖拽与会话缓存
+
+拖拽队列与会话缓存的 React 生命周期回归使用匹配 React 版本的 `react-test-renderer`，加载真实
+Provider、hook 和 runner，仅替换 IPC 与展示叶子。正式用例通过 `pnpm test` 一并执行：
+
+```powershell
+node --test src/features/mods/modImportDropBehavior.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
+```
+
+覆盖 StrictMode 单次确认、跨页/追加/停止、早到终态、失败原因与源包保留警告、终态重开、缓存
+generation、失效后重新取数、错误退出与手动重试、乱序响应及跨页写任务。渲染器不验证真实 WebView2
+拖放、视觉布局或玩家文件；其弃用提示不是用例失败。归档预检的线程切换、请求上限与路径准入由
+`mod_import_commands.rs` 的 `archive_preview_*` Rust 测试验证，JS 接线断言不能替代这些行为测试。
+
 ### T19 Feedback UI U1
 
 共享反馈基元和首个游戏目录 Dialog 至少运行：
