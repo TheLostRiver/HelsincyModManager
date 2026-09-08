@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,6 +86,16 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
   const [dragActive, setDragActive] = useState(false);
   const [visible, setVisible] = useState(false);
   const [list, setList] = useState<DropListState>(emptyDropListState);
+  /*
+   * 已提交清单的镜像。确认导入必须在 setState 的 updater **之外**算：
+   * updater 要求是纯函数，而 StrictMode 在开发模式下会把它调用两次——正是为了
+   * 暴露不纯的 updater。之前入队写在 updater 里，于是同一个包被 push 两次，
+   * 泵照队列起了两个导入任务，库里出现两份一模一样的 Mod。
+   */
+  const listRef = useRef<DropListState>(list);
+  useLayoutEffect(() => {
+    listRef.current = list;
+  }, [list]);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [listenerReady, setListenerReady] = useState(false);
 
@@ -318,14 +329,17 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
           }))
         }
         onConfirm={() => {
-          setList((current) => {
-            const { rows, queued } = confirmDropSelection(current.rows);
-            queueRef.current.push(...queued);
-            // 入队之后再唤醒泵。`takeNext` 是同步的，所以「泵刚好跑空」与「这里入队」
-            // 不会互相错过。
-            if (queued.length > 0) ensurePumpRunning();
-            return { ...current, rows };
-          });
+          // 从**同一份快照**做决定：入队的路径与标成 queued 的行必须一致，
+          // 所以先算完再一次性落地，不在 updater 里边算边做。
+          const current = listRef.current;
+          const { rows, queued } = confirmDropSelection(current.rows);
+          if (queued.length === 0) return;
+
+          queueRef.current.push(...queued);
+          setList({ ...current, rows });
+          // 入队之后再唤醒泵。`takeNext` 是同步的，所以「泵刚好跑空」与「这里入队」
+          // 不会互相错过。
+          ensurePumpRunning();
         }}
         onCancelQueued={() => {
           queueRef.current = [];
