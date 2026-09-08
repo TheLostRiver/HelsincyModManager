@@ -60,12 +60,24 @@ test("写任务一开跑就作废分页缓存——玩家可能不等它结束�
   // 那次刷新会被 request gate 挡下，缓存里留着的是「装之前」的状态。
   assert.match(
     pageSource,
-    /const libraryWriteInFlight =[\s\S]{0,400}?managedInstallTaskActive[\s\S]{0,400}?reinstallWorkflow\.workflowActive[\s\S]{0,400}?deletionBusy[\s\S]{0,400}?batchWorkflow\.state\.status === "starting"/,
+    /const libraryWriteInFlight =[\s\S]{0,400}?managedInstallTaskActive[\s\S]{0,400}?reinstallWorkflow\.taskActive[\s\S]{0,400}?deletionBusy[\s\S]{0,400}?batchWorkflow\.state\.status === "starting"/,
   );
   assert.match(
     pageSource,
     /if \(!libraryWriteInFlight\) return;\s*\n\s*librarySessionCache\.invalidateAllPages\(\);/,
   );
+});
+
+test("写判据取的是「写真的在跑」，不是「面板开着」——否则开个预览就白清缓存", () => {
+  // reinstall 的 workflowActive 只表示预览弹窗开着（读），batch 的非 idle 也包含预览。
+  // 用它们当判据会让「打开预览再关掉」白付一次全量重查。
+  const predicate = pageSource.slice(
+    pageSource.indexOf("const libraryWriteInFlight ="),
+    pageSource.indexOf("if (!libraryWriteInFlight) return;"),
+  );
+  assert.ok(predicate.length > 0, "没能定位到写判据");
+  assert.doesNotMatch(predicate, /workflowActive/, "重装要用 taskActive");
+  assert.doesNotMatch(predicate, /status !== "idle"/, "批量要用 starting");
 });
 
 test("缓存放 ref 不放 state：写缓存不得引起重渲染", () => {
