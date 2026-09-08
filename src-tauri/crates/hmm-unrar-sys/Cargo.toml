@@ -15,5 +15,13 @@ links = "unrar"
 # 会变成「本地能编、别人 checkout 编不了」。
 exclude = []
 
+[features]
+# 仅测试用的 RAR 语料生成器。默认关闭——它不该进产物。
+# hmm-infra 在 dev-dependencies 里打开它，用来给 rar 适配器造语料。
+test-fixtures = []
+
 [build-dependencies]
 cc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
