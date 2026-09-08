@@ -15,6 +15,7 @@ import { getModStorageFreezeReason } from "../settings/modStorageTypes";
 import { useModStorageSettings } from "../settings/ModStorageSettingsProvider";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { ModImportDropOverlay } from "./ModImportDropOverlay";
+import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { modImportCopy } from "./modImportCopy";
 import { previewDroppedModArchives, startImportModTask } from "./modImportApi";
 import { ModImportTaskWatcher, runDropImportPump } from "./modImportDropRunner";
@@ -77,6 +78,9 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
   // 不挡的话玩家会拖 20 个包、确认、然后眼看着 20 条一个个失败。
   const modStorage = useModStorageSettings();
   const storageWriteFreezeReason = getModStorageFreezeReason(modStorage.writesFrozen, locale);
+  // 导入成功要把库页的会话缓存作废。库页此刻多半是**卸载**的（后台导入的意义就在这里），
+  // 没人去刷新它，缓存里躺着的是导入之前的快照。
+  const librarySessionCache = useModLibrarySessionCache();
 
   const [dragActive, setDragActive] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -150,13 +154,19 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
             outcome === "succeeded" ? "succeeded" : "failed",
           ),
         }));
-        // 每导完一个就让库页刷新一次：清单现在是长活的，玩家可能一边导一边看库。
-        if (outcome === "succeeded") setLibraryRevision((revision) => revision + 1);
+        if (outcome === "succeeded") {
+          // 库页挂着的话，靠这个计数订阅刷新一次：清单现在是长活的，玩家可能一边导一边看库。
+          setLibraryRevision((revision) => revision + 1);
+          // 库页没挂的话（后台导入的常态），上面那个计数没人听。缓存必须在这里作废，
+          // 否则玩家切回 Mod 库会先看到一份**缺了刚导入那个**的完整列表——
+          // 那读起来就是「导入失败了」，比骨架屏糟得多。
+          librarySessionCache.invalidateAllPages();
+        }
       },
     }).finally(() => {
       pumpRunningRef.current = false;
     });
-  }, []);
+  }, [librarySessionCache]);
 
   const handleDroppedPaths = useCallback(
     async (paths: readonly string[]) => {

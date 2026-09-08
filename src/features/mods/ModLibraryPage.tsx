@@ -681,6 +681,27 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     refreshLibrary: refreshModLibraryAfterWrite,
   });
   const { openReinstall } = reinstallWorkflow;
+
+  /*
+   * 写任务一开跑就把分页缓存作废。
+   *
+   * 写完成时的刷新会把缓存重新填上——但**前提是玩家还留在这一页**。点了安装就切走、
+   * 后台装完的情况下，页面早卸载了，那次刷新的响应会被 request gate 挡下（不写缓存），
+   * 于是缓存里留着的是「装之前」的状态。切回来先摆出它，玩家会以为安装没生效。
+   *
+   * 所以在**开始**写的时候就丢掉：留在页面上的话马上会被刷新结果填回来；不留的话
+   * 缓存就是空的，切回来老老实实出骨架屏。两条路都不会摆出已经过时的状态。
+   */
+  const libraryWriteInFlight =
+    managedInstallTaskActive
+    || reinstallWorkflow.workflowActive
+    || deletionBusy
+    || batchWorkflow.state.status === "starting";
+  useEffect(() => {
+    if (!libraryWriteInFlight) return;
+    librarySessionCache.invalidateAllPages();
+  }, [librarySessionCache, libraryWriteInFlight]);
+
   const uninstallBlockerMessage = useMemo(() => {
     if (uninstallConfirmation === null) {
       return null;

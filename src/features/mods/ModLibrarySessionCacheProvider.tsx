@@ -17,6 +17,7 @@ import type { CategoryItem } from "./modCategoryApi";
 import type { ModLibraryPage } from "./modLibraryTypes";
 import {
   EMPTY_MOD_LIBRARY_SESSION_CACHE,
+  invalidateAllCachedLibraryPages,
   invalidateCachedLibraryPage,
   readCachedCategories,
   readCachedLibraryPage,
@@ -29,6 +30,8 @@ export type ModLibrarySessionCacheValue = {
   readPage: (profileKey: string, queryKey: string) => ModLibraryPage | null;
   writePage: (profileKey: string, queryKey: string, page: ModLibraryPage) => void;
   invalidatePage: (profileKey: string, queryKey: string) => void;
+  /** 库变了但本页没经手时调用（后台导入完成、写任务开跑）。 */
+  invalidateAllPages: () => void;
   readCategories: () => readonly CategoryItem[] | null;
   writeCategories: (categories: readonly CategoryItem[]) => void;
 };
@@ -46,6 +49,9 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
       },
       invalidatePage: (profileKey, queryKey) => {
         cacheRef.current = invalidateCachedLibraryPage(cacheRef.current, profileKey, queryKey);
+      },
+      invalidateAllPages: () => {
+        cacheRef.current = invalidateAllCachedLibraryPages(cacheRef.current);
       },
       readCategories: () => readCachedCategories(cacheRef.current),
       writeCategories: (categories) => {

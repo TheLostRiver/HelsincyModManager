@@ -42,16 +42,20 @@ export function App() {
                             {/* T22 / #366：拖拽导入也要活过路由切换。它自己渲染清单浮层，
                                 而队列必须比页面活得久——RouterOutlet 会卸载页面，挂在页面里
                                 的话切个页就把批量循环打断，剩下的包**永远不会起且不报错**。 */}
-                            <ModImportDropProvider>
-                              {/* 库页查询结果的会话缓存也要活过路由切换：RouterOutlet 卸载页面，
-                                  页级 state 全丢，于是每次进 Mod 库都从零重查一遍、先出一屏
-                                  骨架屏。命中缓存不取消请求，只是先摆出上次的结果。 */}
-                              <ModLibrarySessionCacheProvider>
+                            {/* 库页查询结果的会话缓存也要活过路由切换：RouterOutlet 卸载页面，
+                                页级 state 全丢，于是每次进 Mod 库都从零重查一遍、先出一屏
+                                骨架屏。命中缓存不取消请求，只是先摆出上次的结果。
+
+                                它在拖拽导入之外：后台每导进一个包就要把分页缓存作废，
+                                否则玩家从别的页面切回 Mod 库，会先看到一份缺了刚导入那个
+                                Mod 的**完整**列表——那读起来就是「导入失败了」。 */}
+                            <ModLibrarySessionCacheProvider>
+                              <ModImportDropProvider>
                                 <AppShell>
                                   <RouterOutlet />
                                 </AppShell>
-                              </ModLibrarySessionCacheProvider>
-                            </ModImportDropProvider>
+                              </ModImportDropProvider>
+                            </ModLibrarySessionCacheProvider>
                           </InstallConfigTargetProvider>
                         </ModStorageSettingsProvider>
                       </ExternalStateSessionProvider>
