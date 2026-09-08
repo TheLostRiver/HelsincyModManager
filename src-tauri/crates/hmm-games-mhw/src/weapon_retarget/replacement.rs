@@ -23,6 +23,7 @@ use hmm_ports::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 /// WR-02B 全量武器 catalog 按 family 拆成 14 份分片（合并校验的约束见
 /// `MhwWeaponCatalogSource::parse_sharded`）。这里必须与 artifact 测试使用同一份清单：
@@ -71,12 +72,14 @@ const WEAPON_STRATEGY_VERSION: u32 = 4;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MhwReplacementCatalog;
 
-impl ReplacementCatalogProvider for MhwReplacementCatalog {
-    fn game_id(&self) -> GameId {
-        GameId::mhw()
-    }
-
-    fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
+/// 解析一次就缓存住的完整 catalog（防具 ＋ 武器）。
+///
+/// 这一侧比防具侧更贵：要先把防具 catalog 整个跑一遍、`to_vec()` 全量克隆、再 extend
+/// 并对全部目标排序。debug 构建下不缓存实测 217ms／次，而它在库页与每次安装／卸载／
+/// 重定向的路径上被反复调用。
+fn cached_full_catalog() -> &'static ReplacementCatalogResult<ReplacementCatalog> {
+    static CACHED: OnceLock<ReplacementCatalogResult<ReplacementCatalog>> = OnceLock::new();
+    CACHED.get_or_init(|| {
         let mut targets = MhwArmorCatalog.replacement_catalog()?.targets().to_vec();
         targets.extend(weapon_targets()?);
         targets.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
@@ -87,6 +90,21 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
             targets,
         )
         .map_err(|_| ReplacementCatalogError::CatalogInvalid)
+    })
+}
+
+/// 只读地借出缓存。查目标、搜目标都走这里——它们不需要 owned catalog。
+fn borrow_full_catalog() -> ReplacementCatalogResult<&'static ReplacementCatalog> {
+    cached_full_catalog().as_ref().map_err(Clone::clone)
+}
+
+impl ReplacementCatalogProvider for MhwReplacementCatalog {
+    fn game_id(&self) -> GameId {
+        GameId::mhw()
+    }
+
+    fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog> {
+        cached_full_catalog().clone()
     }
 
     fn find_replacement_target(
@@ -95,7 +113,10 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
     ) -> ReplacementCatalogResult<ReplacementTarget> {
         // 与 MhwArmorCatalog 同一套回落：玩家已安装 manifest 里存的可能是
         // AR6 扩容前的旧 slug ID，不解析会碰坏他们已有的绑定。
-        resolve_target_allowing_legacy_ids(&self.replacement_catalog()?, target_id)
+        //
+        // **走引用**：这个函数在「逐槽位」的循环里，用 owned 版本等于每查一个目标就把
+        // 全部 1000+ 个三语目标克隆一遍。
+        resolve_target_allowing_legacy_ids(borrow_full_catalog()?, target_id)
     }
 
     fn search_replacement_targets(
@@ -106,8 +127,7 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
         if normalized.is_empty() {
             return Ok(Vec::new());
         }
-        Ok(self
-            .replacement_catalog()?
+        Ok(borrow_full_catalog()?
             .targets()
             .iter()
             .filter(|target| replacement_target_matches(target, &normalized))
