@@ -34,7 +34,39 @@ test("feedback provider owns one body-level portal host", () => {
   assert.match(provider, /next\[index\] = input/);
   assert.match(provider, /const actions = useMemo/);
   assert.match(provider, /<FeedbackActionsContext\.Provider value=\{actions\}>/);
-  assert.match(provider, /taskNotices\.map\(\(notice\) => <TaskNotice key=\{notice\.taskId\}/);
+  assert.match(provider, /taskNotices\.map\(\(\{ action, \.\.\.notice \}\) => \(/);
+  assert.match(provider, /<TaskNotice\s+key=\{notice\.taskId\}/);
+});
+
+test("任务通知能带一个动作按钮，且存的是文案＋回调而不是任意 JSX", () => {
+  // 通知会进共享状态。允许塞任意 ReactNode 等于把这个公共层变成 JSX 垃圾场，
+  // 而且调用方很容易塞进带过期闭包的节点。
+  const provider = readSource("src/shared/feedback/FeedbackProvider.tsx");
+
+  assert.match(provider, /export type FeedbackTaskNoticeAction = \{\s*\n\s*label: string;\s*\n\s*onClick: \(\) => void;/);
+  assert.match(provider, /action\?: FeedbackTaskNoticeAction;/);
+  // 没有动作时不能渲染出一个空按钮。
+  assert.match(provider, /actions=\{action === undefined \? undefined : \(/);
+  assert.match(provider, /className="feedback-task-notice__action"/);
+  assert.match(provider, /onClick=\{action\.onClick\}/);
+});
+
+test("后台导入通知必须带「查看清单」入口——关掉之后没有别的路能回去", () => {
+  // 再拖一个包是「开新的」不是「重开」。没有这个按钮，玩家看不到还剩几个、哪个失败了。
+  const dropProvider = readSource("src/features/mods/ModImportDropProvider.tsx");
+
+  assert.match(dropProvider, /action: \{ label: copyRef\.current\.drop\.reopenList, onClick: openDropList \}/);
+
+  // openDropList 必须声明在这个 effect 之前：它进了 effect 的依赖数组，而依赖数组在
+  // 渲染时求值，声明在后就是暂时性死区。
+  //
+  // 两个下标都要先确认 >= 0——indexOf 找不到时返回 -1，而 -1 小于任何正数，
+  // 光比大小的话「声明整个消失」反而会通过。
+  const declarationIndex = dropProvider.indexOf("const openDropList = useCallback");
+  const noticeIndex = dropProvider.indexOf("showTaskNotice({");
+  assert.ok(declarationIndex >= 0, "openDropList 的声明必须存在");
+  assert.ok(noticeIndex >= 0, "通知 effect 必须存在");
+  assert.ok(declarationIndex < noticeIndex, "openDropList 必须先于通知 effect 声明");
 });
 
 test("shared toast pauses dismissal, supports one action, and carries stable source keys", () => {
