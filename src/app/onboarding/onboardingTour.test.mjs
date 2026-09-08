@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import ts from "typescript";
 
+// 源码断言只钉接线/层叠结构；语言切换和生命周期由 onboardingLanguageBehavior 行为测试验证。
+
 const repoRoot = process.cwd();
 
 function readProjectFile(relativePath) {
@@ -38,7 +40,7 @@ test("task tour remains an independent route-driven overlay", () => {
 
   assert.match(appSource, /<AppRouteProvider>[\s\S]*?<TourProvider>[\s\S]*?<AppShell>/);
   assert.match(providerSource, /currentRoute\.id !== "dashboard"/);
-  assert.match(providerSource, /buildOnboardingTour\(currentRoute\.id, tourCopy\)/);
+  assert.match(providerSource, /buildOnboardingTour\(activeRun\.startRouteId, tourCopy, activeRun\)/);
   assert.match(providerSource, /shouldAutoStartTour\(firstRunTour, storage\)/);
   assert.match(providerSource, /activatedTargetStepIdRef\.current !== activeStep\.id/);
   assert.match(providerSource, /activeStep\.advance\.expectedRouteId !== currentRoute\.id/);
@@ -139,8 +141,9 @@ test("core onboarding stays concise while optional pages build local tours", asy
   const manualTour = buildOnboardingTour("profiles", zhTourCopy);
   assert.equal(manualTour.id, "hmm.first-run");
   assert.equal(manualTour.contentVersion, 5);
-  assert.equal(manualTour.steps[0].id, "profiles-list");
-  assert.equal(manualTour.steps.length, 17);
+  assert.equal(manualTour.steps[0].id, "language");
+  assert.equal(manualTour.steps[1].id, "profiles-list");
+  assert.equal(manualTour.steps.length, 18);
   assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 3);
   assert.equal(manualTour.steps.some((step) => step.id.startsWith("page-")), false);
   assert.deepEqual(
@@ -170,16 +173,17 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.deepEqual(manualTour.steps.at(-1).advance, { kind: "terminal" });
 
   const automaticTour = buildOnboardingTour("dashboard", zhTourCopy, { includeWelcome: true });
-  assert.equal(automaticTour.steps[0].id, "welcome");
-  assert.equal(automaticTour.steps[1].id, "dashboard-steam-scan");
-  assert.equal(automaticTour.steps.length, 18);
+  assert.equal(automaticTour.steps[0].id, "language");
+  assert.equal(automaticTour.steps[1].id, "welcome");
+  assert.equal(automaticTour.steps[2].id, "dashboard-steam-scan");
+  assert.equal(automaticTour.steps.length, 19);
   assert.equal(automaticTour.steps.at(-1).id, "settings-background-protection");
   assert.equal(automaticTour.steps.some((step) => step.id === "mods-toolbar"), false);
   assert.equal(automaticTour.steps.some((step) => step.id === "dashboard-status"), false);
   assert.equal(automaticTour.steps.some((step) => step.id === "settings-window-behavior"), false);
   assert.equal(automaticTour.steps.some((step) => step.id.startsWith("page-")), false);
   assert.deepEqual(
-    automaticTour.steps.slice(1, 5).map((step) => step.id),
+    automaticTour.steps.slice(2, 6).map((step) => step.id),
     [
       "dashboard-steam-scan",
       "dashboard-manual-directory",
@@ -191,14 +195,16 @@ test("core onboarding stays concise while optional pages build local tours", asy
   const recoveryTour = buildOnboardingTour("recovery", zhTourCopy);
   assert.equal(recoveryTour.id, "hmm.page-tour.recovery");
   assert.equal(recoveryTour.contentVersion, 1);
-  assert.equal(recoveryTour.steps.length, 4);
-  assert.equal(recoveryTour.steps[0].id, "page-recovery");
+  assert.equal(recoveryTour.steps.length, 5);
+  assert.equal(recoveryTour.steps[0].id, "language");
+  assert.equal(recoveryTour.steps[1].id, "page-recovery");
   assert.equal(recoveryTour.steps.at(-1).id, "recovery-mods");
   assert.equal(recoveryTour.steps.some((step) => step.advance.kind === "route-change"), false);
 
   const categoriesTour = buildOnboardingTour("categories", zhTourCopy);
   assert.equal(categoriesTour.id, "hmm.page-tour.categories");
   assert.deepEqual(categoriesTour.steps.map((step) => step.id), [
+    "language",
     "page-categories",
     "categories-create",
     "categories-manage",
