@@ -18,7 +18,21 @@ import { dismissFeedbackToast, enqueueFeedbackToast, type FeedbackToastInput, ty
 import "./feedback.css";
 
 const FeedbackHostContext = createContext<HTMLElement | null | undefined>(undefined);
-type FeedbackTaskNoticeInput = Pick<TaskNoticeProps, "taskId" | "title" | "message" | "tone">;
+
+/**
+ * 通知上的一个动作按钮。
+ *
+ * 存的是「文案 + 回调」而不是 ReactNode：通知会被放进共享状态里，让它接受任意 JSX
+ * 等于把这个公共层变成 JSX 垃圾场，而且调用方很容易塞进带过期闭包的节点。
+ */
+export type FeedbackTaskNoticeAction = {
+  label: string;
+  onClick: () => void;
+};
+
+type FeedbackTaskNoticeInput = Pick<TaskNoticeProps, "taskId" | "title" | "message" | "tone"> & {
+  action?: FeedbackTaskNoticeAction;
+};
 const FeedbackActionsContext = createContext<{
   pushToast: (input: FeedbackToastInput) => void;
   dismissToast: (id: string) => void;
@@ -87,7 +101,21 @@ export function FeedbackProvider({ children }: FeedbackProviderProps) {
         {children}
         {taskNotices.length > 0 ? (
           <TaskNoticeViewport>
-            {taskNotices.map((notice) => <TaskNotice key={notice.taskId} {...notice} />)}
+            {taskNotices.map(({ action, ...notice }) => (
+              <TaskNotice
+                key={notice.taskId}
+                {...notice}
+                actions={action === undefined ? undefined : (
+                  <button
+                    type="button"
+                    className="feedback-task-notice__action"
+                    onClick={action.onClick}
+                  >
+                    {action.label}
+                  </button>
+                )}
+              />
+            ))}
           </TaskNoticeViewport>
         ) : null}
         {toasts.length > 0 ? (

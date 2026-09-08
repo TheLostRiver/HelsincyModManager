@@ -77,6 +77,7 @@ export type ModImportCopy = {
     closeKeepRunning: string;
     emptyList: string;
     backgroundProgress: (index: number, total: number) => string;
+    reopenList: string;
     tooMany: (count: number, limit: number) => string;
     running: (index: number, total: number) => string;
     doneAllSucceeded: (count: number) => string;
@@ -175,7 +176,8 @@ export const modImportCopy = {
       clearFinished: "清除已完成",
       closeKeepRunning: "关闭（后台继续）",
       emptyList: "清单是空的。把 Mod 压缩包拖进窗口就会出现在这里。",
-      backgroundProgress: (index, total) => `正在后台导入第 ${index} / ${total} 个，点这里查看清单。`,
+      backgroundProgress: (index, total) => `正在后台导入第 ${index} / ${total} 个。`,
+      reopenList: "查看清单",
       running: (index, total) => `正在导入第 ${index} / ${total} 个…`,
       doneAllSucceeded: (count) => `${count} 个 Mod 已导入。`,
       donePartial: (succeeded, failed) => `${succeeded} 个已导入，${failed} 个失败。`,
@@ -279,7 +281,8 @@ export const modImportCopy = {
       clearFinished: "Clear finished",
       closeKeepRunning: "Close (keeps running)",
       emptyList: "The list is empty. Drop mod archives onto the window and they show up here.",
-      backgroundProgress: (index, total) => `Importing ${index} of ${total} in the background — click to open the list.`,
+      backgroundProgress: (index, total) => `Importing ${index} of ${total} in the background.`,
+      reopenList: "View list",
       running: (index, total) => `Importing ${index} of ${total}…`,
       doneAllSucceeded: (count) => `${count} mod(s) imported.`,
       donePartial: (succeeded, failed) => `${succeeded} imported, ${failed} failed.`,
@@ -384,7 +387,8 @@ export const modImportCopy = {
       clearFinished: "完了分をクリア",
       closeKeepRunning: "閉じる（処理は継続）",
       emptyList: "一覧は空です。Mod の書庫をウィンドウにドロップすると表示されます。",
-      backgroundProgress: (index, total) => `バックグラウンドで ${total} 件中 ${index} 件目をインポート中 — クリックで一覧を開きます。`,
+      backgroundProgress: (index, total) => `バックグラウンドで ${total} 件中 ${index} 件目をインポート中。`,
+      reopenList: "一覧を表示",
       running: (index, total) => `${total} 件中 ${index} 件目をインポート中…`,
       doneAllSucceeded: (count) => `${count} 件の Mod をインポートしました。`,
       donePartial: (succeeded, failed) => `${succeeded} 件成功、${failed} 件失敗。`,
