@@ -250,8 +250,8 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
     let disposed = false;
     let unlisten: (() => void) | null = null;
 
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
+    // 获取 WebView 自身也可能同步抛错，须纳入订阅失败的降级路径。
+    void Promise.resolve().then(() => getCurrentWebview().onDragDropEvent((event) => {
         if (disposed) return;
         const payload = event.payload;
         if (payload.type === "enter" || payload.type === "over") {
@@ -265,7 +265,7 @@ export function ModImportDropProvider({ children }: ModImportDropProviderProps) 
         setDragActive(false);
         // 导入进行中照样接：新的一批并进同一份清单，队列可追加。
         void handleDroppedPaths(payload.paths);
-      })
+      }))
       .then((dispose) => {
         if (disposed) {
           dispose();
