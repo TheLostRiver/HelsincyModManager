@@ -42,13 +42,15 @@
   background: rgb(0 0 0 / 45%);
 }
 
+/* 首版是 560px 且每行挤成一条横线，结果整句中文提示被截成省略号。
+   读不到「为什么装不了」等于没有提示。加宽只是一半，另一半是让提示语独占一行（见下）。 */
 .mod-import-drop__panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(560px, 100%);
-  max-height: min(72vh, 680px);
-  padding: 20px;
+  width: min(860px, 100%);
+  max-height: min(78vh, 760px);
+  padding: 22px 24px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
   background: var(--color-surface);
@@ -62,10 +64,25 @@
   outline: none;
 }
 
+.mod-import-drop__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .mod-import-drop__title {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 650;
+}
+
+.mod-import-drop__checking {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
 }
 
 .mod-import-drop__summary {
@@ -106,11 +123,12 @@
   list-style: none;
 }
 
+/* 行是**两行块**而不是一条横线：第一行定长信息，第二行提示语。 */
 .mod-import-drop__row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
   border-radius: 8px;
 }
 
@@ -122,16 +140,23 @@
   color: var(--color-text-muted);
 }
 
-/* 警示档与读不了的行必须看得出区别：前者只是提醒，勾回来就能导。 */
-.mod-import-drop__row[data-status="warned"] .mod-import-drop__row-note {
-  color: var(--color-warning-text, var(--color-text-muted));
+/* 已跑完的行淡下去，正在跑的不淡——一眼能看出队列走到哪。 */
+.mod-import-drop__row[data-phase="succeeded"],
+.mod-import-drop__row[data-phase="failed"] {
+  opacity: 0.72;
+}
+
+.mod-import-drop__row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .mod-import-drop__row-main {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  /* 文件名要能被挤压，否则长名把提示语顶出面板。 */
+  /* 文件名要能被挤压，否则长名把右侧信息顶出面板。 */
   min-width: 0;
   flex: 1 1 auto;
   cursor: pointer;
@@ -154,22 +179,37 @@
   font-variant-numeric: tabular-nums;
 }
 
-.mod-import-drop__row-note {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mod-import-drop__phase {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
   color: var(--color-text-muted);
   font-size: 0.8rem;
-  text-align: right;
+}
+
+/* 提示语：**整句显示，允许换行**。这里绝不能出现 nowrap / ellipsis——
+   被截断的失败原因等于没有原因，玩家只能看到半句话然后自己猜。 */
+.mod-import-drop__row-note {
+  margin: 0;
+  /* 与第一行的复选框 + 图标对齐，读起来是「这一行的说明」而不是新的一条。 */
+  padding-left: 30px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.mod-import-drop__row[data-status="warned"] .mod-import-drop__row-note {
+  color: var(--color-warning-text, var(--color-text-muted));
 }
 
 .mod-import-drop__ok {
+  flex: 0 0 auto;
   color: var(--color-accent);
 }
 
 .mod-import-drop__bad {
+  flex: 0 0 auto;
   color: var(--color-warning-text, var(--color-text-muted));
 }
 
@@ -217,6 +257,13 @@
 
 .mod-import-drop__button:hover:not(:disabled) {
   background: var(--color-surface-muted);
+}
+
+/* 「清除已完成」是收纳动作，不该和「确认导入」抢注意力。 */
+.mod-import-drop__button.is-quiet {
+  margin-right: auto;
+  border-color: transparent;
+  color: var(--color-text-muted);
 }
 
 .mod-import-drop__button.is-primary {

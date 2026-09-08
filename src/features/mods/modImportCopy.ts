@@ -70,6 +70,13 @@ export type ModImportCopy = {
     close: string;
     nothingImportable: string;
     warnNoGameContent: string;
+    phaseQueued: string;
+    phaseRunning: string;
+    stopQueued: string;
+    clearFinished: string;
+    closeKeepRunning: string;
+    emptyList: string;
+    backgroundProgress: (index: number, total: number) => string;
     tooMany: (count: number, limit: number) => string;
     running: (index: number, total: number) => string;
     doneAllSucceeded: (count: number) => string;
@@ -162,6 +169,13 @@ export const modImportCopy = {
       nothingImportable: "这些文件都没法导入，换一批再试。",
       tooMany: (count, limit) => `一次最多拖 ${limit} 个，这次拖了 ${count} 个。分几批来吧。`,
       warnNoGameContent: "没找到本游戏的内容目录，可能装不出东西。确认没问题就勾上，照样能导入。",
+      phaseQueued: "排队中",
+      phaseRunning: "导入中",
+      stopQueued: "停止排队",
+      clearFinished: "清除已完成",
+      closeKeepRunning: "关闭（后台继续）",
+      emptyList: "清单是空的。把 Mod 压缩包拖进窗口就会出现在这里。",
+      backgroundProgress: (index, total) => `正在后台导入第 ${index} / ${total} 个，点这里查看清单。`,
       running: (index, total) => `正在导入第 ${index} / ${total} 个…`,
       doneAllSucceeded: (count) => `${count} 个 Mod 已导入。`,
       donePartial: (succeeded, failed) => `${succeeded} 个已导入，${failed} 个失败。`,
@@ -259,6 +273,13 @@ export const modImportCopy = {
       nothingImportable: "None of these files can be imported. Try a different set.",
       tooMany: (count, limit) => `Up to ${limit} files at a time; you dropped ${count}. Try smaller batches.`,
       warnNoGameContent: "No game content folder found — this may install nothing. Tick it anyway if you know it is fine.",
+      phaseQueued: "Queued",
+      phaseRunning: "Importing",
+      stopQueued: "Stop queue",
+      clearFinished: "Clear finished",
+      closeKeepRunning: "Close (keeps running)",
+      emptyList: "The list is empty. Drop mod archives onto the window and they show up here.",
+      backgroundProgress: (index, total) => `Importing ${index} of ${total} in the background — click to open the list.`,
       running: (index, total) => `Importing ${index} of ${total}…`,
       doneAllSucceeded: (count) => `${count} mod(s) imported.`,
       donePartial: (succeeded, failed) => `${succeeded} imported, ${failed} failed.`,
@@ -357,6 +378,13 @@ export const modImportCopy = {
       nothingImportable: "どのファイルもインポートできません。別のファイルでお試しください。",
       tooMany: (count, limit) => `一度にドロップできるのは ${limit} 件までです（今回は ${count} 件）。分けてお試しください。`,
       warnNoGameContent: "ゲームのコンテンツフォルダーが見つかりません。何もインストールされない可能性がありますが、問題なければチェックしてインポートできます。",
+      phaseQueued: "待機中",
+      phaseRunning: "インポート中",
+      stopQueued: "キューを停止",
+      clearFinished: "完了分をクリア",
+      closeKeepRunning: "閉じる（処理は継続）",
+      emptyList: "一覧は空です。Mod の書庫をウィンドウにドロップすると表示されます。",
+      backgroundProgress: (index, total) => `バックグラウンドで ${total} 件中 ${index} 件目をインポート中 — クリックで一覧を開きます。`,
       running: (index, total) => `${total} 件中 ${index} 件目をインポート中…`,
       doneAllSucceeded: (count) => `${count} 件の Mod をインポートしました。`,
       donePartial: (succeeded, failed) => `${succeeded} 件成功、${failed} 件失敗。`,

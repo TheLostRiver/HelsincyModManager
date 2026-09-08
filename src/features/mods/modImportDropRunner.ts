@@ -1,26 +1,19 @@
-import {
-  advanceDropImportRun,
-  startDropImportRun,
-  stopDropImportRun,
-  type DropImportOutcome,
-  type DropImportRun,
-  type DropRow,
-  // 带 `.ts` 后缀：本模块要能被 node --test 直接跑，值导入需要显式扩展名。
-} from "./modImportDropState.ts";
 import { nextModImportTaskStateFromProgress, type ModImportTaskState } from "./modImportTaskState.ts";
 import type { TaskProgressEventDto } from "./modImportTypes";
 
 // 拖拽批量导入的执行引擎（T22 / #366）。
 //
 // 从组件里拆出来是为了**能真的断言行为**：仓库的前端测试大多只能正则读源码，
-// 而这里恰好是全部难点所在——进度事件比 taskId 先到、终态识别、串行推进、中途停止。
-// 拆出来之后这些都能用假依赖逐条跑，不需要 DOM。
+// 而这里恰好是全部难点所在——进度事件比 taskId 先到、终态识别、串行推进、中途停止、
+// 以及「跑着跑着又被追加」。拆出来之后这些都能用假依赖逐条跑，不需要 DOM。
 
 type Tracker = {
   state: ModImportTaskState;
   settled: boolean;
   resolve: (outcome: DropImportOutcome) => void;
 };
+
+export type DropImportOutcome = "succeeded" | "failed";
 
 /** `start_import_mod_task` 返回的形状里，这里真正用到的部分。 */
 export type StartedImportTask = { kind: string; status: string; taskId: string };
@@ -91,19 +84,24 @@ export class ModImportTaskWatcher {
   }
 }
 
-export type DropImportBatchDeps = {
+export type DropImportPumpDeps = {
   watcher: ModImportTaskWatcher;
+  /**
+   * 取下一个要跑的路径；没有就返回 `null`。
+   *
+   * **必须同步**。循环靠「同一个 tick 内取到 null 就退出并清标志」来避免竞态，
+   * 见 [`runDropImportPump`] 的说明。
+   */
+  takeNext: () => string | null;
   startImport: (archivePath: string) => Promise<StartedImportTask>;
-  /** 每推进一步回调一次，供界面显示进度。 */
-  onRunChange: (run: DropImportRun) => void;
-  /** 每次起下一个之前问一次；true = 不再往下起。 */
-  shouldStop: () => boolean;
+  onStarted: (archivePath: string) => void;
+  onSettled: (archivePath: string, outcome: DropImportOutcome) => void;
 };
 
 /** 起一个导入并等它的终态。起不来（抛错或状态不对）直接算这一条失败。 */
 async function runOne(
   archivePath: string,
-  { watcher, startImport }: Pick<DropImportBatchDeps, "watcher" | "startImport">,
+  { watcher, startImport }: Pick<DropImportPumpDeps, "watcher" | "startImport">,
 ): Promise<DropImportOutcome> {
   watcher.beginStart();
   let task: StartedImportTask;
@@ -123,24 +121,30 @@ async function runOne(
 }
 
 /**
- * 逐个**串行**导入选中的行。
+ * 串行消费队列，直到取不到东西为止。
  *
  * 串行而不是并发：并发会同时抢沙箱与 unrar 的进程级锁，收益不明而失败模式很难解释；
  * 串行还让「第几个 / 共几个」对玩家是准确的。
+ *
+ * ## 为什么是「拉」而不是「传一个数组进来」
+ *
+ * 队列**跑着的时候还会被追加**（玩家可以继续拖）。传数组进来等于在开跑那一刻把队列定死，
+ * 后面追加的永远轮不到。所以改成每轮问一次 `takeNext()`。
+ *
+ * ## 退出与入队的竞态
+ *
+ * `takeNext()` 返回 `null` 时循环就结束了，调用方随后会把「正在跑」标志清掉。如果这中间
+ * 有人入队，那一项就没人管了。解法是**要求 `takeNext` 同步**：JS 单线程下「取到 null」
+ * 与「清标志」处在同一个 tick，中间插不进任何入队操作。调用方只要在入队后调一次
+ * `ensurePumpRunning` 即可，不需要额外加锁。
  */
-export async function runDropImportBatch(
-  rows: readonly DropRow[],
-  deps: DropImportBatchDeps,
-): Promise<DropImportRun> {
-  let run = startDropImportRun(rows);
-  deps.onRunChange(run);
+export async function runDropImportPump(deps: DropImportPumpDeps): Promise<void> {
+  for (;;) {
+    const archivePath = deps.takeNext();
+    if (archivePath === null) return;
 
-  while (run.currentPath !== null) {
-    const outcome = await runOne(run.currentPath, deps);
-    run = advanceDropImportRun(run, outcome);
-    if (deps.shouldStop()) run = stopDropImportRun(run);
-    deps.onRunChange(run);
+    deps.onStarted(archivePath);
+    const outcome = await runOne(archivePath, deps);
+    deps.onSettled(archivePath, outcome);
   }
-
-  return run;
 }
