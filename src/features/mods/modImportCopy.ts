@@ -14,11 +14,13 @@ export type ModImportCopy = {
     storageFrozenRestart: string;
     unsupportedArchiveFormat: string;
     notAnArchive: string;
+    archiveEncrypted: string;
+    archiveMultiVolume: string;
   };
   dialog: {
     revisionTitle: string;
     newTitle: string;
-    zipFilterName: string;
+    archiveFilterName: string;
   };
   action: {
     pickArchive: string;
@@ -76,19 +78,21 @@ export type ModImportCopy = {
 export const modImportCopy = {
   zh_cn: {
     errors: {
-      invalidArchive: "请选择有效的本地 ZIP 压缩包",
+      invalidArchive: "请选择有效的本地压缩包",
       startFailed: "无法启动导入任务",
       pickerFailed: "无法打开文件选择器",
       invalidStartState: "导入任务返回了无效状态",
       storageFrozenMigration: "存储目录正在迁移，完成后再导入",
       storageFrozenRestart: "存储目录已更改，请先重启 HMM",
-      unsupportedArchiveFormat: "HMM 目前只支持 ZIP 压缩包，请先转成 ZIP 再导入",
-      notAnArchive: "这个文件不是压缩包，请选择 Mod 的 ZIP 压缩包",
+      unsupportedArchiveFormat: "HMM 目前只支持 ZIP 与 RAR 压缩包，请先转成其中一种再导入",
+      notAnArchive: "这个文件不是压缩包，请选择 Mod 的压缩包",
+      archiveEncrypted: "这个压缩包有密码，HMM 无法解开。请先解压去掉密码，再重新打包导入",
+      archiveMultiVolume: "这是分卷压缩包，HMM 只拿到了其中一卷。请先在本地解压合并，再重新打包导入",
     },
     dialog: {
-      revisionTitle: "选择新版本 ZIP 压缩包",
-      newTitle: "选择 Mod ZIP 压缩包",
-      zipFilterName: "ZIP 压缩包",
+      revisionTitle: "选择新版本压缩包",
+      newTitle: "选择 Mod 压缩包",
+      archiveFilterName: "压缩包（ZIP / RAR）",
     },
     action: {
       pickArchive: "选择压缩包...",
@@ -102,7 +106,7 @@ export const modImportCopy = {
       retryImport: "重试导入 Mod",
     },
     status: {
-      waitingArchive: "等待选择 ZIP 压缩包",
+      waitingArchive: "等待选择压缩包",
       creatingTask: "正在创建导入任务",
       revisionDone: "新版本导入完成，版本列表已更新",
       importDone: "导入完成，Mod 列表将自动刷新",
@@ -149,20 +153,24 @@ export const modImportCopy = {
   },
   en: {
     errors: {
-      invalidArchive: "Choose a valid local ZIP archive",
+      invalidArchive: "Choose a valid local archive",
       startFailed: "Cannot start the import task",
       pickerFailed: "Cannot open the file picker",
       invalidStartState: "The import task returned an invalid state",
       storageFrozenMigration: "The storage directory is being migrated; import after it finishes",
       storageFrozenRestart: "The storage directory changed; restart HMM first",
       unsupportedArchiveFormat:
-        "HMM currently supports ZIP archives only. Convert the file to ZIP and import it again.",
-      notAnArchive: "This file is not an archive. Choose the mod's ZIP archive instead.",
+        "HMM currently supports ZIP and RAR archives. Convert the file to one of them and import it again.",
+      notAnArchive: "This file is not an archive. Choose the mod's archive instead.",
+      archiveEncrypted:
+        "This archive is password protected and HMM cannot open it. Extract it, remove the password, repack and import again.",
+      archiveMultiVolume:
+        "This is a multi-volume archive and HMM only received one volume. Extract it locally, repack it as a single archive and import again.",
     },
     dialog: {
-      revisionTitle: "Choose the new version's ZIP archive",
-      newTitle: "Choose the mod's ZIP archive",
-      zipFilterName: "ZIP archive",
+      revisionTitle: "Choose the new version's archive",
+      newTitle: "Choose the mod's archive",
+      archiveFilterName: "Archive (ZIP / RAR)",
     },
     action: {
       pickArchive: "Choose archive…",
@@ -176,7 +184,7 @@ export const modImportCopy = {
       retryImport: "Retry importing the mod",
     },
     status: {
-      waitingArchive: "Waiting for a ZIP archive",
+      waitingArchive: "Waiting for an archive",
       creatingTask: "Creating the import task",
       revisionDone: "New version imported; the version list is updated",
       importDone: "Import finished; the mod list refreshes automatically",
@@ -224,20 +232,24 @@ export const modImportCopy = {
   },
   ja: {
     errors: {
-      invalidArchive: "有効なローカル ZIP アーカイブを選択してください",
+      invalidArchive: "有効なローカルアーカイブを選択してください",
       startFailed: "インポートタスクを開始できません",
       pickerFailed: "ファイル選択ダイアログを開けません",
       invalidStartState: "インポートタスクが無効な状態を返しました",
       storageFrozenMigration: "保存フォルダーの移行中です。完了後にインポートしてください",
       storageFrozenRestart: "保存フォルダーが変更されました。先に HMM を再起動してください",
       unsupportedArchiveFormat:
-        "HMM は現在 ZIP アーカイブのみ対応しています。ZIP に変換してからインポートしてください",
-      notAnArchive: "このファイルはアーカイブではありません。Mod の ZIP アーカイブを選択してください",
+        "HMM は現在 ZIP と RAR アーカイブに対応しています。どちらかに変換してからインポートしてください",
+      notAnArchive: "このファイルはアーカイブではありません。Mod のアーカイブを選択してください",
+      archiveEncrypted:
+        "このアーカイブにはパスワードが設定されており、HMM では開けません。展開してパスワードを解除し、再圧縮してからインポートしてください",
+      archiveMultiVolume:
+        "これは分割アーカイブで、HMM は 1 巻しか受け取っていません。ローカルで展開・結合し、単一のアーカイブに再圧縮してからインポートしてください",
     },
     dialog: {
-      revisionTitle: "新バージョンの ZIP アーカイブを選択",
-      newTitle: "Mod の ZIP アーカイブを選択",
-      zipFilterName: "ZIP アーカイブ",
+      revisionTitle: "新バージョンのアーカイブを選択",
+      newTitle: "Mod のアーカイブを選択",
+      archiveFilterName: "アーカイブ（ZIP / RAR）",
     },
     action: {
       pickArchive: "アーカイブを選択…",
@@ -251,7 +263,7 @@ export const modImportCopy = {
       retryImport: "Mod のインポートを再試行",
     },
     status: {
-      waitingArchive: "ZIP アーカイブの選択待ち",
+      waitingArchive: "アーカイブの選択待ち",
       creatingTask: "インポートタスクを作成中",
       revisionDone: "新バージョンのインポートが完了し、バージョン一覧を更新しました",
       importDone: "インポートが完了しました。Mod リストは自動的に更新されます",

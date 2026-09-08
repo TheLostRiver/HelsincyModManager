@@ -49,7 +49,9 @@ export type ModImportFailedMessageKind =
   | "storage-frozen-migration"
   | "storage-frozen-restart"
   | "unsupported-archive-format"
-  | "not-an-archive";
+  | "not-an-archive"
+  | "archive-encrypted"
+  | "archive-multi-volume";
 
 // 后端投影的解包失败语义码 -> 档位（#348）。
 //
@@ -61,6 +63,10 @@ export type ModImportFailedMessageKind =
 const failedMessageKindByErrorCode: ReadonlyMap<string, ModImportFailedMessageKind> = new Map([
   ["mod_import_unsupported_archive_format", "unsupported-archive-format"],
   ["mod_import_not_an_archive", "not-an-archive"],
+  // 容器打得开、但用了我们不支持的特性（#348 切片 C）。与「格式不支持」分开，
+  // 是因为玩家的下一步动作完全不同：那边要转档，这边要去掉密码 / 拿到完整分卷。
+  ["mod_import_archive_encrypted", "archive-encrypted"],
+  ["mod_import_archive_multi_volume", "archive-multi-volume"],
 ]);
 
 export function failedMessageKindFrom(error: string | null): ModImportFailedMessageKind {
@@ -115,6 +121,10 @@ export function getModImportFailedMessage(
       return copy.errors.unsupportedArchiveFormat;
     case "not-an-archive":
       return copy.errors.notAnArchive;
+    case "archive-encrypted":
+      return copy.errors.archiveEncrypted;
+    case "archive-multi-volume":
+      return copy.errors.archiveMultiVolume;
   }
 }
 

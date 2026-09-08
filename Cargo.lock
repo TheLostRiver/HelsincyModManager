@@ -1831,6 +1831,7 @@ dependencies = [
  "hmac",
  "hmm-core",
  "hmm-ports",
+ "hmm-unrar-sys",
  "image",
  "libc",
  "quick-xml",
