@@ -9,7 +9,7 @@ import type { AppUpdateStatusDto } from "./updateCheckTypes.ts";
  *
  * 返回 `null` 表示「没有结论」：非 Tauri 环境（浏览器预览）或调用本身出了意外。
  * 契约保证这个 command 不会失败，所以这里的 `catch` 只是兜底——
- * **任何异常都按「不知道」处理，绝不弹错误**、不让页面进入降级状态。
+ * 异常按「未能完成检查」呈现，不弹错误、不让页面进入降级状态。
  */
 export async function checkAppUpdate(): Promise<AppUpdateStatusDto | null> {
   if (!isTauri()) {

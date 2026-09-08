@@ -151,6 +151,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
+### 关于页更新检查
+
+```powershell
+node --test src/features/about/updateCheckBehavior.test.mjs src/features/about/updateCheckView.test.mjs src/features/about/updateCheckBoundary.test.mjs
+cargo test -p hmm-infra --lib release_update --no-fail-fast
+cargo test -p hmm-tauri --lib update_ --no-fail-fast
+```
+
+使用人工 release feed、可控 Promise 与时钟，验证版本通道筛选、空列表与坏响应、明确状态反馈、
+失败重试、StrictMode 单请求/单次偏好写入、超时与迟到响应隔离。网络仍在 Rust 侧，CSP 不扩宽。
+浏览器检查各语言的状态切换前后容器高度、图标及按钮位置恒定；自动检查不代表真实网络或 WebView2 验收。
+
 ### 新手引导语言
 
 新手引导首步语言与持久化回归：
