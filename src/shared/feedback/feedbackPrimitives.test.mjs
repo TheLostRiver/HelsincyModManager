@@ -56,12 +56,17 @@ test("后台导入通知必须带「查看清单」入口——关掉之后没�
   const dropProvider = readSource("src/features/mods/ModImportDropProvider.tsx");
 
   assert.match(dropProvider, /action: \{ label: copyRef\.current\.drop\.reopenList, onClick: openDropList \}/);
-  // openDropList 必须声明在这个 effect 之前，否则是暂时性死区。
-  assert.ok(
-    dropProvider.indexOf("const openDropList = useCallback")
-      < dropProvider.indexOf("showTaskNotice({"),
-    "openDropList 必须先于通知 effect 声明",
-  );
+
+  // openDropList 必须声明在这个 effect 之前：它进了 effect 的依赖数组，而依赖数组在
+  // 渲染时求值，声明在后就是暂时性死区。
+  //
+  // 两个下标都要先确认 >= 0——indexOf 找不到时返回 -1，而 -1 小于任何正数，
+  // 光比大小的话「声明整个消失」反而会通过。
+  const declarationIndex = dropProvider.indexOf("const openDropList = useCallback");
+  const noticeIndex = dropProvider.indexOf("showTaskNotice({");
+  assert.ok(declarationIndex >= 0, "openDropList 的声明必须存在");
+  assert.ok(noticeIndex >= 0, "通知 effect 必须存在");
+  assert.ok(declarationIndex < noticeIndex, "openDropList 必须先于通知 effect 声明");
 });
 
 test("shared toast pauses dismissal, supports one action, and carries stable source keys", () => {
