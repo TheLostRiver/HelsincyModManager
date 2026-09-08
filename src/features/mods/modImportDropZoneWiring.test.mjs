@@ -55,10 +55,13 @@ test("进度订阅没建起来时不允许确认：否则整批会等一个永�
   assert.match(source, /listState\.status !== "ready" \|\| !canStartDropImport\(rows\) \|\| !listenerReady/);
 });
 
-test("被挡住的行不可勾选，且带上与导入失败同一套的三语文案", () => {
+test("读不了的行不可勾选，警示行必须可勾", () => {
+  // 判据走 isDropRowSelectable，不在组件里再写一遍状态比较——两处一旦各写各的，
+  // 迟早出现「模型说能勾、界面画成灰的」。
   const source = readSource("src/features/mods/ModImportDropZone.tsx");
-  assert.match(source, /disabled=\{row\.status === "blocked" \|\| importing\}/);
-  assert.match(source, /getDropRowBlockedMessage\(row, copy\)/);
+  assert.match(source, /disabled=\{!isDropRowSelectable\(row\) \|\| importing\}/);
+  assert.doesNotMatch(source, /disabled=\{row\.status === "blocked"/);
+  assert.match(source, /getDropRowNote\(row, copy\)/);
 });
 
 test("整批跑完只刷新一次库", () => {

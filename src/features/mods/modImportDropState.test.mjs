@@ -6,7 +6,8 @@ import {
   dedupeDroppedPaths,
   dropRowsFromPreviews,
   dropSelectAllState,
-  getDropRowBlockedMessage,
+  getDropRowNote,
+  isDropRowSelectable,
   advanceDropImportRun,
   dropImportRunSummary,
   MAX_DROPPED_ARCHIVES,
@@ -18,12 +19,17 @@ import {
   toggleDropRow,
 } from "./modImportDropState.ts";
 
-const preview = (fileName, errorCode = null, sizeBytes = 1024) => ({
+const preview = (fileName, errorCode = null, sizeBytes = 1024, warningCode = null) => ({
   archivePath: `C:\\downloads\\${fileName}`,
   fileName,
   sizeBytes,
   errorCode,
+  warningCode,
 });
+
+/** 内容层警示档：读得了，但看起来装不出东西。 */
+const warned = (fileName) =>
+  preview(fileName, null, 1024, "mod_import_archive_no_game_content");
 
 test("importable rows default to selected, blocked rows do not", () => {
   const rows = dropRowsFromPreviews([
@@ -125,11 +131,11 @@ test("blocked rows render the same three-language copy as a failed import", asyn
 
   for (const locale of ["zh_cn", "en", "ja"]) {
     const copy = modImportCopy[locale];
-    const blocked = getDropRowBlockedMessage(rows[0], copy);
+    const blocked = getDropRowNote(rows[0], copy);
     assert.equal(typeof blocked, "string");
     assert.ok(blocked.trim().length > 0, `${locale}: 被挡住的行必须有非空提示`);
     assert.equal(blocked, copy.errors.archiveEncrypted, `${locale}: 必须复用同一句文案`);
-    assert.equal(getDropRowBlockedMessage(rows[1], copy), null, "可导入的行没有提示语");
+    assert.equal(getDropRowNote(rows[1], copy), null, "可导入的行没有提示语");
   }
 });
 
@@ -209,4 +215,66 @@ test("一次拖太多整批拒绝，不静默截断", () => {
     MAX_DROPPED_ARCHIVES + 1,
     "去重不负责设上限——上限是调用方的决定，且必须让玩家看见数量",
   );
+});
+
+test("内容层警示默认不勾选，但**必须**能勾回来", () => {
+  // 这是这一整档存在的理由：包级否决是错的，我们的判定会错，而错的代价是
+  // 玩家眼睁睁看着一个好包装不进来（#350 / #354 那一整轮的教训）。
+  const rows = dropRowsFromPreviews([warned("mystery.zip")]);
+  assert.equal(rows[0].status, "warned");
+  assert.equal(rows[0].selected, false, "默认不勾选");
+  assert.equal(isDropRowSelectable(rows[0]), true, "警示档必须可勾");
+
+  const toggled = toggleDropRow(rows, rows[0].archivePath);
+  assert.equal(toggled[0].selected, true, "玩家必须能覆盖我们的判断");
+  assert.deepEqual(
+    selectedDropRows(toggled).map((row) => row.fileName),
+    ["mystery.zip"],
+    "勾回来之后必须真的进导入队列",
+  );
+});
+
+test("警示档与读不了的档不能混同", () => {
+  const rows = dropRowsFromPreviews([
+    warned("mystery.zip"),
+    preview("secret.rar", "mod_import_archive_encrypted"),
+  ]);
+  assert.equal(isDropRowSelectable(rows[0]), true, "警示档可勾");
+  assert.equal(isDropRowSelectable(rows[1]), false, "读不了的不可勾");
+
+  const all = setAllDropRowsSelected(rows, true);
+  assert.equal(all[0].selected, true, "全选要把警示档勾上");
+  assert.equal(all[1].selected, false, "全选不该把读不了的勾上");
+});
+
+test("警示档算进「可选」的分母，全选状态才不会自相矛盾", () => {
+  const rows = dropRowsFromPreviews([preview("a.zip"), warned("b.zip")]);
+  assert.equal(importableDropRowCount(rows), 2);
+  assert.equal(dropSelectAllState(rows), "some", "一个勾了一个没勾");
+  assert.equal(canStartDropImport(rows), true);
+
+  assert.equal(dropSelectAllState(setAllDropRowsSelected(rows, true)), "all");
+  assert.equal(dropSelectAllState(setAllDropRowsSelected(rows, false)), "none");
+});
+
+test("警示语必须三语齐全，而且要说清仍然能导入", async () => {
+  const { modImportCopy } = await import("./modImportCopy.ts");
+  const rows = dropRowsFromPreviews([warned("mystery.zip")]);
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const copy = modImportCopy[locale];
+    const note = getDropRowNote(rows[0], copy);
+    assert.equal(note, copy.drop.warnNoGameContent, `${locale}: 必须走警示文案`);
+    assert.ok(note.trim().length > 0, `${locale}: 警示语不能为空`);
+    // 不能复用「读不了」那套词汇——那会让玩家以为这行根本导不了。
+    assert.notEqual(note, copy.errors.notAnArchive, `${locale}: 不能与读不了的档同一句`);
+  }
+});
+
+test("认不出的警示码当成没有警示，而不是默认取消勾选", () => {
+  // 后端将来多发一个我们还不认识的码时，最坏结果应该是「少说一句提示」，
+  // 而不是「一整批包突然都默认不勾选了」。
+  const rows = dropRowsFromPreviews([preview("a.zip", null, 1024, "mod_import_future_warning")]);
+  assert.equal(rows[0].status, "importable");
+  assert.equal(rows[0].selected, true);
+  assert.equal(rows[0].warningKind, null);
 });

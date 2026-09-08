@@ -308,6 +308,10 @@ pub struct DroppedArchivePreviewDto {
     /// 这里只是给玩家一个「我拖的是不是那个包」的旁证，所以缺了就不显示。
     pub size_bytes: Option<u64>,
     pub error_code: Option<String>,
+    /// 内容层警示码。**与 `errorCode` 不是一类**：这条只警示，玩家可以覆盖。
+    ///
+    /// `errorCode` 非空时恒为 `None`——读都读不了的包，谈不上「里面有没有内容目录」。
+    pub warning_code: Option<String>,
 }
 
 /// 拖拽进来的文件逐个预检。**只读归档头，不解包、不写任何东西。**
@@ -329,14 +333,21 @@ pub fn preview_dropped_mod_archives(
                 .unwrap_or_default();
             // 大小失败不升级成命令失败，也不改判可导入性：见 `size_bytes` 的说明。
             let size_bytes = std::fs::metadata(&archive_path).ok().map(|meta| meta.len());
-            let error_code = hmm_infra::probe_mod_archive(&archive_path)
-                .err()
-                .map(|error| error.code().to_owned());
+            let (error_code, warning_code) = match hmm_infra::probe_mod_archive(&archive_path) {
+                // 读得了，但按目录结构看装不出东西：只警示，不否决。
+                Ok(probe) if !probe.declares_game_content_root => (
+                    None,
+                    Some(hmm_ports::MOD_IMPORT_ARCHIVE_NO_GAME_CONTENT_CODE.to_owned()),
+                ),
+                Ok(_) => (None, None),
+                Err(error) => (Some(error.code().to_owned()), None),
+            };
             Ok(DroppedArchivePreviewDto {
                 archive_path: archive_path.to_string_lossy().into_owned(),
                 file_name,
                 size_bytes,
                 error_code,
+                warning_code,
             })
         })
         .collect()

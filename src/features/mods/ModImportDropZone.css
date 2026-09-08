@@ -122,6 +122,11 @@
   color: var(--color-text-muted);
 }
 
+/* 警示档与读不了的行必须看得出区别：前者只是提醒，勾回来就能导。 */
+.mod-import-drop__row[data-status="warned"] .mod-import-drop__row-note {
+  color: var(--color-warning-text, var(--color-text-muted));
+}
+
 .mod-import-drop__row-main {
   display: inline-flex;
   align-items: center;

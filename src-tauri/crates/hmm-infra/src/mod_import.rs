@@ -2,6 +2,7 @@ use crate::archive_extraction::{
     extract_archive, pump_reader_into_sink, ArchiveChunkSink, ArchiveEntryHeader, ArchiveEntryKind,
     ArchiveExtractionLimits, ArchiveGate, ArchiveSource,
 };
+use crate::content_root::{MAX_CONTENT_ROOT_SEARCH_DEPTH, NATIVE_PC_DIR_NAME};
 use crate::controlled_fs::{
     create_new_regular_file, open_child_directory_nofollow, open_existing_directory_chain,
     open_existing_directory_nofollow, open_or_create_child_directory,
@@ -15,7 +16,7 @@ use cap_std::fs::Dir;
 use hmm_core::sanitize_mod_metadata_text;
 use hmm_ports::{
     CancellationToken, DiagnosticPackageExportRequest, DiagnosticPackageExportResult,
-    DiagnosticPackageExporter, ModImportPackagePrepareReaderRequest,
+    DiagnosticPackageExporter, ModArchiveProbe, ModImportPackagePrepareReaderRequest,
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportPrepareError,
     ModImportSandboxLocator, ModPackageMetadata, ModPackageMetadataAnalysis,
     ModPackageMetadataAnalyzer, NonArchiveFile, PreparedModPackage, UnsupportedArchiveFormat,
@@ -594,7 +595,14 @@ fn open_managed_sandbox_root(storage_root: &Path, create: bool) -> Result<Dir> {
 /// 拖拽清单的**容器层预检**（T22，#366）：只判断「这个文件能不能导入」，不解包。
 ///
 /// 返回值刻意与 `prepare_package` **同一个错误类型**——于是清单里的档位与导入失败的
-/// 档位是同一套词汇，前端不必维护第二张映射表。`Ok(())` = 可导入。
+/// 档位是同一套词汇，前端不必维护第二张映射表。`Ok(_)` = 可导入。
+///
+/// ## 两级判定，只有一级能否决
+///
+/// - **容器层**（`Err`）：链路物理上读不了。硬事实，玩家不可覆盖。
+/// - **内容层**（`Ok` 里的 [`ModArchiveProbe`]）：读得了，但按目录结构看装不出东西。
+///   **只警示，绝不否决**——判定会错，而错的代价是玩家眼睁睁看着一个好包装不进来
+///   （#350 / #354 那一整轮的教训）。
 ///
 /// ## 只读头，不落盘
 ///
@@ -609,12 +617,14 @@ fn open_managed_sandbox_root(storage_root: &Path, create: bool) -> Result<Dir> {
 /// 生命周期会把签名扭得很难看，所以选了另一条：
 /// `probe_and_import_agree_on_every_fixture` 拿同一组语料同时跑预检与真实导入，
 /// 断言两者给出**同一个错误码**。漂了就红。
-pub fn probe_mod_archive(path: &Path) -> std::result::Result<(), ModImportPrepareError> {
+pub fn probe_mod_archive(
+    path: &Path,
+) -> std::result::Result<ModArchiveProbe, ModImportPrepareError> {
     let mut archive = open_archive_file_nofollow(path)?;
 
     // 顺序与解包链路一致：zip → 7z → rar。
-    if zip::ZipArchive::new(&mut archive).is_ok() {
-        return Ok(());
+    if let Ok(zip_archive) = zip::ZipArchive::new(&mut archive) {
+        return Ok(probe_zip_content(zip_archive));
     }
 
     archive
@@ -628,7 +638,11 @@ pub fn probe_mod_archive(path: &Path) -> std::result::Result<(), ModImportPrepar
                 hmm_ports::UnsupportedArchiveFeature::Encrypted,
             ))
         }
-        Ok(_) => return Ok(()),
+        Ok(archive) => {
+            return Ok(ModArchiveProbe {
+                declares_game_content_root: archive.declares_game_content_root(),
+            })
+        }
         Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
         Err(_) => {}
     }
@@ -651,15 +665,27 @@ pub fn probe_mod_archive(path: &Path) -> std::result::Result<(), ModImportPrepar
     Err(explain_unopenable_archive(&mut archive, unopenable))
 }
 
-/// 把 rar 的条目头走一遍，只为触发**容器级**的判定（加密、跨卷）。
+/// 把 rar 的条目头走一遍：触发**容器级**判定（加密、跨卷），顺带收内容层的旁证。
 /// 不调 `write_current_to`，所以不解压、不落盘。
 fn walk_rar_headers(
     source: &mut rar_archive_source::RarArchiveSource,
-) -> std::result::Result<(), ModImportPrepareError> {
+) -> std::result::Result<ModArchiveProbe, ModImportPrepareError> {
+    let mut declares_game_content_root = false;
     loop {
         match source.next_entry() {
-            Ok(Some(_)) => {}
-            Ok(None) => return Ok(()),
+            Ok(Some(header)) => {
+                if entry_declares_game_content_root(
+                    &header.name,
+                    header.kind == ArchiveEntryKind::Directory,
+                ) {
+                    declares_game_content_root = true;
+                }
+            }
+            Ok(None) => {
+                return Ok(ModArchiveProbe {
+                    declares_game_content_root,
+                })
+            }
             Err(error) => {
                 return Err(source
                     .take_structured_failure()
@@ -667,6 +693,58 @@ fn walk_rar_headers(
             }
         }
     }
+}
+
+/// zip 的内容层旁证。
+///
+/// **逐条目的读取错误一律忽略**：这一步只产出警示，绝不能把一个本来可导入的 zip
+/// 变成不可导入——那会让预检与真实导入的结论分叉，而 `probe_and_import_agree_on_every_fixture`
+/// 正是为了不让它们分叉才存在的。
+fn probe_zip_content<R: io::Read + io::Seek>(mut archive: zip::ZipArchive<R>) -> ModArchiveProbe {
+    let mut declares_game_content_root = false;
+    for index in 0..archive.len() {
+        let Ok(entry) = archive.by_index(index) else {
+            continue;
+        };
+        if entry_declares_game_content_root(entry.name(), entry.is_dir()) {
+            declares_game_content_root = true;
+            break;
+        }
+    }
+    ModArchiveProbe {
+        declares_game_content_root,
+    }
+}
+
+/// 归档条目名里有没有本游戏的内容目录。
+///
+/// **判据与 `content_root::resolve_content_root` 同源**：同一个目录名常量、同一个深度
+/// 上限、同样大小写不敏感。区别只是这里看的是归档条目名而不是已解包的目录树
+/// ——拖拽清单不能为了预检去解包。复用同一组常量而不是另写一份，是因为两处一旦
+/// 各写各的，迟早会对「内容根在哪」给出不同答案（#284 就是这么来的）。
+///
+/// 只认**目录**：文件条目只看最后一段之前的路径段，目录条目才把最后一段算上。
+/// 否则一个恰好叫 `nativePC` 的文件会被当成内容目录。
+pub(crate) fn entry_declares_game_content_root(name: &str, is_directory: bool) -> bool {
+    // rar 在 Windows 上发的是**宿主原生分隔符**（反斜杠），zip / 7z 是正斜杠。
+    // 两种都要切——只切一种等于对另一半格式失明。
+    let components: Vec<&str> = name
+        .split(['/', '\\'])
+        .filter(|component| !component.is_empty() && *component != ".")
+        .collect();
+
+    let directory_components = if is_directory {
+        components.as_slice()
+    } else {
+        // 文件条目的最后一段是文件名。
+        components.split_last().map_or(&[][..], |(_, rest)| rest)
+    };
+
+    directory_components
+        .iter()
+        // 深度上限与内容根解析一致：包装目录最多 3 层，第 4 层起够不着。
+        .take(MAX_CONTENT_ROOT_SEARCH_DEPTH)
+        .any(|component| component.eq_ignore_ascii_case(NATIVE_PC_DIR_NAME))
 }
 
 fn open_archive_file_nofollow(path: &Path) -> Result<File> {
@@ -2566,6 +2644,136 @@ mod tests {
                 "{label}: 预检说 {probe_code:?}，真实导入说 {import_code:?}"
             );
         }
+    }
+
+    /// 内容层判据的**纯函数**部分。
+    ///
+    /// 判据与 `content_root::resolve_content_root` 同源，所以这里逐条对齐它的语义：
+    /// 同一个目录名、同样大小写不敏感、同一个深度上限、只认目录。
+    #[test]
+    fn game_content_root_detection_mirrors_the_content_root_rule() {
+        // 直接在根下，以及 1~3 层包装：都要认出来。
+        for name in [
+            "nativePC/models/a.mod3",
+            "wrapper/nativePC/models/a.mod3",
+            "outer/inner/nativePC/models/a.mod3",
+            "a/b/c/nativePC/models/a.mod3",
+        ] {
+            assert!(
+                entry_declares_game_content_root(name, false),
+                "{name} 应当被认作内容目录"
+            );
+        }
+
+        // 第 4 层包装起够不着——与 resolve_content_root 的深度上限一致。
+        assert!(
+            !entry_declares_game_content_root("a/b/c/d/nativePC/models/a.mod3", false),
+            "超出深度上限的 nativePC 不该被认出来"
+        );
+
+        // 大小写不敏感：实测第三方包里出现过 NATIVEpc 这类写法。
+        assert!(entry_declares_game_content_root(
+            "wrapper/NATIVEpc/a.mod3",
+            false
+        ));
+
+        // rar 在 Windows 上发的是宿主原生分隔符。只切正斜杠等于对 rar 失明。
+        assert!(entry_declares_game_content_root(
+            "wrapper\\nativePC\\a.mod3",
+            false
+        ));
+
+        // 只认目录：一个恰好叫 nativePC 的**文件**不是内容目录。
+        assert!(
+            !entry_declares_game_content_root("wrapper/nativePC", false),
+            "文件条目的最后一段是文件名，不是目录"
+        );
+        assert!(
+            entry_declares_game_content_root("wrapper/nativePC", true),
+            "目录条目的最后一段才算目录"
+        );
+
+        // 没有内容目录的包。
+        assert!(!entry_declares_game_content_root("dinput8.dll", false));
+        assert!(!entry_declares_game_content_root(
+            "readme/nativepc.txt",
+            false
+        ));
+    }
+
+    /// 内容层旁证要对**三种格式**都成立。
+    ///
+    /// 只测纯函数是不够的：每种格式各自决定怎么报条目名与目录标志，
+    /// 漏接一种就会让那一种格式的包全部被误标成「找不到内容目录」。
+    #[test]
+    fn every_format_reports_whether_it_declares_a_game_content_root() {
+        let temp = tempfile::tempdir().expect("temp dir");
+
+        let with_content_zip = temp.path().join("with.zip");
+        create_zip(
+            &with_content_zip,
+            &[("wrapper/nativePC/models/a.mod3", b"x".as_slice())],
+        );
+        let without_content_zip = temp.path().join("without.zip");
+        create_zip(&without_content_zip, &[("readme.txt", b"x".as_slice())]);
+
+        let with_content_rar = write_rar(
+            &temp,
+            "with.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file(
+                "wrapper/nativePC/models/a.mod3",
+                b"x".to_vec(),
+            )]),
+        );
+        let without_content_rar = write_rar(
+            &temp,
+            "without.rar",
+            &Rar5Archive::new(vec![Rar5Entry::file("readme.txt", b"x".to_vec())]),
+        );
+
+        let with_content_sevenz = write_sevenz(
+            &temp,
+            "with.7z",
+            &[("wrapper/nativePC/models/a.mod3", Some(b"x".as_slice()))],
+        );
+        let without_content_sevenz = write_sevenz(
+            &temp,
+            "without.7z",
+            &[("readme.txt", Some(b"x".as_slice()))],
+        );
+
+        for (label, path, expected) in [
+            ("zip 有", &with_content_zip, true),
+            ("zip 无", &without_content_zip, false),
+            ("rar 有", &with_content_rar, true),
+            ("rar 无", &without_content_rar, false),
+            ("7z 有", &with_content_sevenz, true),
+            ("7z 无", &without_content_sevenz, false),
+        ] {
+            let probe = probe_mod_archive(path).expect("这些语料都应当可导入");
+            assert_eq!(
+                probe.declares_game_content_root, expected,
+                "{label}: 内容层旁证不对"
+            );
+        }
+    }
+
+    /// 内容层**绝不否决**：没有内容目录的包仍然可导入。
+    ///
+    /// 这是 #350 / #354 那一整轮的教训——包级否决是错的，我们的判定会错，
+    /// 而错的代价是玩家眼睁睁看着一个好包装不进来。
+    #[test]
+    fn a_package_without_a_game_content_root_is_still_importable() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("plain.zip");
+        create_zip(&path, &[("dinput8.dll", b"x".as_slice())]);
+
+        let probe = probe_mod_archive(&path).expect("找不到内容目录不构成拒绝");
+        assert!(!probe.declares_game_content_root);
+
+        // 而且真实导入也不该因此失败——预检与导入必须同进退。
+        let preparer = rar_preparer(&temp, default_extraction_limits());
+        prepare_package(&preparer, "no-content-root", &path).expect("真实导入同样不该拒绝");
     }
 
     /// 目录、以及根本不存在的路径，都要落到明确失败而不是 panic。
