@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+// 见文件末尾「setState updater 必须是纯的」——那条判据抓的是导致「一个包导入两份」的
+// 那类写法，不是某一行具体代码。
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
@@ -70,7 +72,15 @@ test("导入进行中仍然接新的拖拽，并入同一份清单", () => {
 test("入队之后必须唤醒泵，否则新项没人跑", () => {
   const source = provider();
   assert.match(source, /queueRef\.current\.push\(\.\.\.queued\)/);
-  assert.match(source, /if \(queued\.length > 0\) ensurePumpRunning\(\)/);
+
+  // 顺序要紧：先入队再唤醒。反过来的话泵可能在队列还空的时候跑一圈就退出，
+  // 新入队的项没人跑，而且不报错。
+  const pushIndex = source.indexOf("queueRef.current.push(...queued)");
+  const pumpIndex = source.indexOf("ensurePumpRunning();");
+  assert.ok(pushIndex >= 0, "找不到入队");
+  assert.ok(pumpIndex >= 0, "找不到唤醒泵");
+  assert.ok(pushIndex < pumpIndex, "必须先入队再唤醒泵");
+
   // takeNext 取到 null 与清标志必须同一 tick，否则「刚跑空就入队」会丢项。
   assert.match(source, /if \(next === null\) pumpRunningRef\.current = false;/);
 });
@@ -150,4 +160,88 @@ test("存储写入被冻结时，拖进来只说原因，不开清单", () => {
   const preview = source.indexOf("previewDroppedModArchives(unique)");
   assert.ok(guard > 0 && preview > guard, "冻结守卫必须早于预检");
   assert.match(source, /if \(frozen\) \{[\s\S]{0,200}pushToast\(/);
+});
+
+// ---------------------------------------------------------------------------
+// setState 的 updater 必须是纯函数。
+//
+// StrictMode 在开发模式下会**故意把 updater 调用两次**，就是为了暴露不纯的 updater。
+// 曾经入队写在 `setList` 的 updater 里：
+//
+//     setList((current) => {
+//       const { rows, queued } = confirmDropSelection(current.rows);
+//       queueRef.current.push(...queued);   // ← 被执行两次
+//       ...
+//     });
+//
+// 于是同一个包被 push 两次，泵照队列起了两个导入任务，**库里出现两份一模一样的 Mod**。
+// 所有既有判据都没抓到：纯模型测的是 confirmDropSelection，源码正则测的是接线形状，
+// 没有一条会因为「updater 里多了个副作用」而转红。
+// ---------------------------------------------------------------------------
+
+/** 粗略但够用的括号配对：从 `setList(` 开始截到它自己的右括号。 */
+function extractSetListCalls(text) {
+  const calls = [];
+  const marker = "setList(";
+  let cursor = text.indexOf(marker);
+
+  while (cursor >= 0) {
+    let depth = 0;
+    let index = cursor + marker.length - 1;
+    for (; index < text.length; index += 1) {
+      const character = text[index];
+      if (character === "(") depth += 1;
+      else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    calls.push(text.slice(cursor, index + 1));
+    cursor = text.indexOf(marker, index + 1);
+  }
+
+  return calls;
+}
+
+test("setList 的 updater 里不得出现副作用——StrictMode 会把它调两次", () => {
+  const source = readFileSync("src/features/mods/ModImportDropProvider.tsx", "utf8");
+  const calls = extractSetListCalls(source);
+  assert.ok(calls.length >= 4, `没能定位到 setList 调用，只找到 ${calls.length} 处`);
+
+  // 每一条都会被执行两次；两次都做等于做了两遍。
+  const forbidden = [
+    "queueRef.current.push",
+    "ensurePumpRunning(",
+    "setLibraryRevision(",
+    "invalidateAllPages(",
+    "pushToast(",
+    "startImportModTask(",
+    "showTaskNotice(",
+  ];
+
+  for (const call of calls) {
+    for (const effect of forbidden) {
+      assert.ok(
+        !call.includes(effect),
+        `setList 的 updater 里出现了副作用 ${effect}：\n${call.slice(0, 260)}`,
+      );
+    }
+  }
+});
+
+test("确认导入从同一份快照做决定：入队与标记 queued 不得看两份不同的状态", () => {
+  // 分开取快照的话，入队的路径和被标成「排队中」的行可能对不上——
+  // 一个包进了队列却没在清单里显示，或者反过来。
+  const source = readFileSync("src/features/mods/ModImportDropProvider.tsx", "utf8");
+
+  assert.match(source, /const current = listRef\.current;\s*\n\s*const \{ rows, queued \} = confirmDropSelection\(current\.rows\);/);
+  assert.match(source, /queueRef\.current\.push\(\.\.\.queued\);\s*\n\s*setList\(\{ \.\.\.current, rows \}\);/);
+  // 空选择直接返回：否则会白唤醒一次泵，也会白写一次 state。
+  assert.match(source, /if \(queued\.length === 0\) return;/);
+});
+
+test("清单镜像走 layout effect 同步，不在 render 期间赋值", () => {
+  const source = readFileSync("src/features/mods/ModImportDropProvider.tsx", "utf8");
+  assert.match(source, /useLayoutEffect\(\(\) => \{\s*\n\s*listRef\.current = list;\s*\n\s*\}, \[list\]\);/);
+  assert.doesNotMatch(source, /\n {2}listRef\.current = list;/, "不得在 render 期间直接赋值");
 });

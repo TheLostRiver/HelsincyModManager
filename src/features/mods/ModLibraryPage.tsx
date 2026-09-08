@@ -608,18 +608,19 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   );
 
   const toggleCardCategoryLabels = useCallback(() => {
-    setShowCardCategoryLabels((currentValue) => {
-      const nextValue = !currentValue;
+    // 落盘放在 updater **之外**：updater 必须是纯函数，StrictMode 会把它调两次。
+    // 这里写的是同一个值，两次落盘幂等、没有可观察后果——但同一类写法在拖拽导入里
+    // 就不是幂等的（入队 push 了两次，一个包导入两份），所以不留这种先例。
+    const nextValue = !showCardCategoryLabels;
 
-      try {
-        window.localStorage.setItem(CARD_CATEGORY_LABELS_STORAGE_KEY, String(nextValue));
-      } catch {
-        // The in-memory UI state still works if storage is unavailable.
-      }
+    try {
+      window.localStorage.setItem(CARD_CATEGORY_LABELS_STORAGE_KEY, String(nextValue));
+    } catch {
+      // The in-memory UI state still works if storage is unavailable.
+    }
 
-      return nextValue;
-    });
-  }, []);
+    setShowCardCategoryLabels(nextValue);
+  }, [showCardCategoryLabels]);
 
   const refreshCategories = useCallback(async () => {
     const generation = ++categoriesRequestGenerationRef.current;
