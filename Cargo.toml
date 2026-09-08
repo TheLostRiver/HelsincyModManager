@@ -47,3 +47,22 @@ uuid = { version = "1", features = ["v4"] }
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 quick-xml = "0.39.4"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
+
+# dev 构建下**优化依赖，但不优化我们自己的 crate**。
+#
+# 为什么需要这条：`scan_install_recovery` 会把每个受管文件整个读进来做 SHA-256，而库页打开、
+# 以及每次安装／卸载／导入之后都要扫一遍。debug 默认不优化依赖，实测 `sha2` 只有 **33.9 MB/s**
+# （release 是 1~2 GB/s），450MB 左右的受管内容一次扫描就要十几秒——玩家看到的就是
+# 「打开 Mod 库卡死几十秒」，而 CPU 是后端单核跑满 93%。
+#
+# 只调依赖的 opt-level：自己的 crate 保持不优化，增量编译速度与调试体验不变；依赖只在首次
+# 或版本变动时重编。压缩／解压（zip、7z）与 unrar 的 C++ 也一并受益。
+#
+# **不影响 release 与 CI 的产物语义**，opt-level 不改变行为。
+[profile.dev.package."*"]
+opt-level = 3
+
+# workspace 成员不被上面的 `"*"` 覆盖。这个 crate 里是 vendor 进来的 48 个 C++ 文件，
+# `cc` 跟随 profile 的 opt-level——不优化的话 rar 解压在 dev 下慢到没法用。
+[profile.dev.package.hmm-unrar-sys]
+opt-level = 3
