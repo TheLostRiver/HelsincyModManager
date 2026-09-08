@@ -1897,7 +1897,7 @@ start_mod_storage_migration_task({ directory: string | null })
 边界：
 
 - `preview_dropped_mod_archives(archivePaths: string[])` 是**只读预检**（T22 / #366）：逐个文件判断「能不能导入」，
-  返回 `DroppedArchivePreviewDto[]`，形如 `{ archivePath, fileName, sizeBytes, errorCode }`。`errorCode` 为 `null` 表示可导入，
+  返回 `DroppedArchivePreviewDto[]`，形如 `{ archivePath, fileName, sizeBytes, errorCode, warningCode }`。`errorCode` 为 `null` 表示可导入，
   否则是**与导入失败同一套**的语义码（`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
   `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` / `mod_import_prepare_failed`），
   前端因此复用同一张档位映射表，不必维护第二套词汇。
@@ -1906,6 +1906,14 @@ start_mod_storage_migration_task({ directory: string | null })
   而不是把它伪装成某个文件的档位。后端与真实导入的判定一致性由 `probe_and_import_agree_on_every_fixture` 钉住。
   `sizeBytes` 只是给玩家核对「拖的是不是那个包」的旁证：读不到就是 `null`，**不因此改判可导入性**
   ——能不能导入只由 `errorCode` 说了算。
+  `warningCode` 是**内容层**判定，与 `errorCode` 不是一类：`errorCode` 代表「链路物理上读不了」（硬事实、
+  玩家不可覆盖），`warningCode` 代表「读得了，但按目录结构看装不出东西」。目前只有一个值
+  `mod_import_archive_no_game_content`（归档条目名里找不到本游戏的内容目录）。
+  **它只警示、绝不否决**：清单里对应的行默认不勾选，但必须允许玩家勾回来——包级否决是错的，
+  我们的判定会错，而错的代价是玩家眼睁睁看着一个好包装不进来（#350 / #354）。
+  `errorCode` 非空时 `warningCode` 恒为 `null`：读都读不了的包，谈不上里面有没有内容目录。
+  内容层判据与 `content_root::resolve_content_root` **复用同一组常量**（目录名、深度上限、大小写不敏感），
+  区别只是这里看归档条目名而不是已解包的目录树——两处各写一份迟早会对「内容根在哪」给出不同答案（#284）。
 
 - 当前 `start_import_mod_task` 会做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；随后后台 prepare runner 会执行受控 zip 沙盒解包和预览图处理，并发送 `unpack.*`、`preview_image.*` 与 `prepare.completed` 事件。受控 zip 解包会拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限。prepare 成功后，导入分析结果会保存到 app data 下的受控结果仓储；进度事件仍不承载巨大结果。若任务在 running prepare 期间被取消，zip 解压会在 entry/chunk 检查点协作式停止并清理本次 sandbox；预览图扫描/处理会在 scanner 遍历和 processor 读文件、解码前后、缩略图写入前后的检查点停止。runner 会停止保存结果，不再发送 `prepare.completed`，也不会用 failed 覆盖 cancelled 状态，并会 best-effort 触发一次缩略图缓存维护。
 - `get_mod_library()` 返回已持久化的导入分析结果列表，条目包含 `id`、`name`、`author`、`versionLabel`、`status`、`sizeLabel`、`categoryLabels` 和 `previewImage`。当前 MVP 使用 `packageId` 作为稳定 `id`；`name` 的解析优先级为：manifest 显式声明 → 压缩包文件名（仅新建 Mod 导入；文件名是导入者导入前唯一亲自确认过的名称）→ readme 首行（只作末端兜底，其首行可能是教程或致谢而非标题）→ 回退 `packageId`；文件名不回填包内元数据，revision 导入不参与命名，保持"revision 导入不重命名"约定；`author` 和 `versionLabel` 只来自后端解析的短文本 metadata；`categoryLabels` 来自后端解析的通用 category 和 tags，不由前端从路径推断。后端会从受控 sandbox 的 manifest/readme 候选解析通用元数据，多个 manifest 候选只用于补齐缺失字段，不作为安装事实来源。

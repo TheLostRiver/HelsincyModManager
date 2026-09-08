@@ -14,7 +14,8 @@ import {
   dropImportRunSummary,
   dropRowsFromPreviews,
   dropSelectAllState,
-  getDropRowBlockedMessage,
+  getDropRowNote,
+  isDropRowSelectable,
   MAX_DROPPED_ARCHIVES,
   setAllDropRowsSelected,
   toggleDropRow,
@@ -322,7 +323,7 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
 
                 <ul className="mod-import-drop__rows">
                   {rows.map((row) => {
-                    const blockedMessage = getDropRowBlockedMessage(row, copy);
+                    const note = getDropRowNote(row, copy);
                     const outcome = run?.results[row.archivePath];
                     const active = run?.currentPath === row.archivePath;
                     return (
@@ -336,7 +337,7 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
                             type="checkbox"
                             checked={row.selected}
                             // 读不了的行不是「默认不选」，是**不能选**：链路物理上读不了它。
-                            disabled={row.status === "blocked" || importing}
+                            disabled={!isDropRowSelectable(row) || importing}
                             onChange={() =>
                               setListState({
                                 status: "ready",
@@ -354,8 +355,8 @@ export function ModImportDropZone({ disabledReason, onImported }: ModImportDropZ
                             {formatBytes(row.sizeBytes)}
                           </span>
                         ) : null}
-                        {blockedMessage ? (
-                          <span className="mod-import-drop__row-note">{blockedMessage}</span>
+                        {note ? (
+                          <span className="mod-import-drop__row-note">{note}</span>
                         ) : null}
                         {active ? (
                           <LoaderCircle

@@ -21,9 +21,31 @@ export type DroppedArchivePreview = {
   sizeBytes: number | null;
   /** `null` = 可导入；否则是与导入失败同一套的语义码。 */
   errorCode: string | null;
+  /**
+   * 内容层警示码。**与 `errorCode` 不是一类**——那个是「读不了」，这个是
+   * 「读得了，但看起来装不出东西」。只警示，玩家可以覆盖。
+   */
+  warningCode: string | null;
 };
 
-export type DropRowStatus = "importable" | "blocked";
+/** 内容层警示的档位。目前只有一档，留成联合类型是为了新增时有穷尽性检查。 */
+export type DropRowWarningKind = "no-game-content";
+
+const warningKindByCode: Readonly<Record<string, DropRowWarningKind>> = {
+  mod_import_archive_no_game_content: "no-game-content",
+};
+
+/**
+ * 三档，不是两档。
+ *
+ * - `importable`：能导，默认勾选
+ * - `warned`：能导，但看起来装不出东西。默认**不**勾选，**但必须能勾回来**
+ * - `blocked`：链路物理上读不了。不勾选，且**不能**勾
+ *
+ * `warned` 与 `blocked` 的区别是这一整档存在的理由：包级否决是错的，我们的判定会错，
+ * 而错的代价是玩家眼睁睁看着一个好包装不进来（#350 / #354 那一整轮的教训）。
+ */
+export type DropRowStatus = "importable" | "warned" | "blocked";
 
 export type DropRow = {
   archivePath: string;
@@ -32,8 +54,15 @@ export type DropRow = {
   status: DropRowStatus;
   /** 只有 `blocked` 行才有；复用导入失败的档位，不另造词汇。 */
   messageKind: ModImportFailedMessageKind | null;
+  /** 只有 `warned` 行才有。 */
+  warningKind: DropRowWarningKind | null;
   selected: boolean;
 };
+
+/** 能不能勾。**只有 `blocked` 不能**——警示档必须允许玩家覆盖。 */
+export function isDropRowSelectable(row: DropRow): boolean {
+  return row.status !== "blocked";
+}
 
 export type DropListState =
   | { status: "idle" }
@@ -50,14 +79,30 @@ export type DropListState =
  */
 export function dropRowsFromPreviews(previews: readonly DroppedArchivePreview[]): DropRow[] {
   return previews.map((preview) => {
-    const importable = preview.errorCode === null;
+    if (preview.errorCode !== null) {
+      return {
+        archivePath: preview.archivePath,
+        fileName: preview.fileName,
+        sizeBytes: preview.sizeBytes,
+        status: "blocked",
+        messageKind: failedMessageKindFrom(preview.errorCode),
+        warningKind: null,
+        selected: false,
+      };
+    }
+    // 认不出的警示码**不当成警示**：宁可什么都不说，也不要摆一个空提示语，
+    // 更不能因为后端多发了一个我们还不认识的码就把行默认取消勾选。
+    const warningKind =
+      preview.warningCode === null ? null : warningKindByCode[preview.warningCode] ?? null;
     return {
       archivePath: preview.archivePath,
       fileName: preview.fileName,
       sizeBytes: preview.sizeBytes,
-      status: importable ? "importable" : "blocked",
-      messageKind: importable ? null : failedMessageKindFrom(preview.errorCode),
-      selected: importable,
+      status: warningKind === null ? "importable" : "warned",
+      messageKind: null,
+      warningKind,
+      // 警示档默认不勾选——但 toggle 与全选都允许把它勾回来。
+      selected: warningKind === null,
     };
   });
 }
@@ -65,7 +110,7 @@ export function dropRowsFromPreviews(previews: readonly DroppedArchivePreview[])
 /** 逐行切换勾选。`blocked` 行**不响应**——它不是「默认不选」，是「不能选」。 */
 export function toggleDropRow(rows: readonly DropRow[], archivePath: string): DropRow[] {
   return rows.map((row) =>
-    row.archivePath === archivePath && row.status === "importable"
+    row.archivePath === archivePath && isDropRowSelectable(row)
       ? { ...row, selected: !row.selected }
       : row,
   );
@@ -73,15 +118,16 @@ export function toggleDropRow(rows: readonly DropRow[], archivePath: string): Dr
 
 /** 全选 / 全不选，只作用于可导入的行。 */
 export function setAllDropRowsSelected(rows: readonly DropRow[], selected: boolean): DropRow[] {
-  return rows.map((row) => (row.status === "importable" ? { ...row, selected } : row));
+  // 「全选」把警示档也勾上：玩家明确要求了全部，而警示档本来就允许覆盖。
+  return rows.map((row) => (isDropRowSelectable(row) ? { ...row, selected } : row));
 }
 
 export function selectedDropRows(rows: readonly DropRow[]): DropRow[] {
-  return rows.filter((row) => row.status === "importable" && row.selected);
+  return rows.filter((row) => isDropRowSelectable(row) && row.selected);
 }
 
 export function importableDropRowCount(rows: readonly DropRow[]): number {
-  return rows.filter((row) => row.status === "importable").length;
+  return rows.filter(isDropRowSelectable).length;
 }
 
 /**
@@ -91,7 +137,7 @@ export function importableDropRowCount(rows: readonly DropRow[]): number {
  * 「已全选」，然后确认按钮却是灰的，自相矛盾。
  */
 export function dropSelectAllState(rows: readonly DropRow[]): "none" | "some" | "all" {
-  const importable = rows.filter((row) => row.status === "importable");
+  const importable = rows.filter(isDropRowSelectable);
   if (importable.length === 0) return "none";
   const selected = importable.filter((row) => row.selected).length;
   if (selected === 0) return "none";
@@ -103,9 +149,16 @@ export function canStartDropImport(rows: readonly DropRow[]): boolean {
   return selectedDropRows(rows).length > 0;
 }
 
-/** 被挡住的行的提示语，复用导入失败的三语文案。 */
-export function getDropRowBlockedMessage(row: DropRow, copy: ModImportCopy): string | null {
-  return row.messageKind === null ? null : getModImportFailedMessage(row.messageKind, copy);
+/**
+ * 行的提示语。
+ *
+ * `blocked` 复用导入失败的三语文案（不另造词汇）；`warned` 用内容层自己的一句，
+ * 而那句必须说明「仍然可以导入」——否则玩家会以为它和读不了的行是一回事。
+ */
+export function getDropRowNote(row: DropRow, copy: ModImportCopy): string | null {
+  if (row.messageKind !== null) return getModImportFailedMessage(row.messageKind, copy);
+  if (row.warningKind === "no-game-content") return copy.drop.warnNoGameContent;
+  return null;
 }
 
 /**

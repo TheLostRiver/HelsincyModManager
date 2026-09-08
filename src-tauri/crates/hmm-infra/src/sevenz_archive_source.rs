@@ -90,6 +90,16 @@ impl<R: Read + Seek> SevenZipArchive<R> {
         })
     }
 
+    /// 内容层旁证：条目名里有没有本游戏的内容目录。
+    ///
+    /// 只读头部条目表，**不解码任何数据**——与 `is_content_encrypted` 同一个理由：
+    /// 拖拽清单的预检不解内容。
+    pub(crate) fn declares_game_content_root(&self) -> bool {
+        self.reader.archive().files.iter().any(|entry| {
+            crate::mod_import::entry_declares_game_content_root(entry.name(), entry.is_directory())
+        })
+    }
+
     /// 逐条目过门禁并落盘。
     pub(crate) fn extract_into(
         &mut self,

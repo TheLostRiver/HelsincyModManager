@@ -20,6 +20,7 @@ const preview = (fileName, errorCode = null) => ({
   archivePath: `C:\\downloads\\${fileName}`,
   fileName,
   sizeBytes: 1024,
+  warningCode: null,
   errorCode,
 });
 
