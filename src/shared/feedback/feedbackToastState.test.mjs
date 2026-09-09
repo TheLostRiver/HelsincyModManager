@@ -21,6 +21,7 @@ test("toast queue merges by stable event key instead of message text", () => {
     message: "第二次消息",
     taskId: "task-b",
     tone: "warning",
+    durationMs: 60_000,
   }, 2);
   const sameCopyDifferentEvent = enqueueFeedbackToast(merged, {
     eventKey: "profile.discovery.other",

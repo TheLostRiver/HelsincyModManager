@@ -69,14 +69,14 @@ test("后台导入通知必须带「查看清单」入口——关掉之后没�
   assert.ok(declarationIndex < noticeIndex, "openDropList 必须先于通知 effect 声明");
 });
 
-test("shared toast pauses dismissal, supports one action, and carries stable source keys", () => {
+test("shared toast tracks pointer and keyboard focus separately, supports one action, and carries stable source keys", () => {
   const toast = readSource("src/shared/feedback/FeedbackToast.tsx");
   const state = readSource("src/shared/feedback/feedbackToastState.ts");
 
   assert.match(toast, /data-event-key=\{toast\.eventKey\}/);
   assert.match(toast, /data-task-id=\{toast\.taskId\}/);
-  assert.match(toast, /onMouseEnter=\{\(\) => setPaused\(true\)\}/);
-  assert.match(toast, /onFocusCapture=\{\(\) => setPaused\(true\)\}/);
+  assert.match(toast, /onMouseEnter=\{\(\) => setHovered\(true\)\}/);
+  assert.match(toast, /onFocusCapture=\{\(\) => setFocused\(true\)\}/);
   assert.match(toast, /toast\.action\s*\?/);
   assert.match(state, /eventKey:\s*string/);
   assert.match(state, /action\?:\s*FeedbackToastAction/);
