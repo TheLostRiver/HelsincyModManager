@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import type {
   AnalyzeImportedModReplacementInput,
+  ModReplacementSummary,
   CancelRetargetInstallTaskInput,
   InitialRetargetInstallPreview,
   ListReplacementTargetOccupancyInput,
@@ -37,6 +38,12 @@ export function analyzeImportedModReplacement(
       profileId: input.profileId,
       modId: input.modId,
     },
+  });
+}
+
+export function getModReplacementSummary(input: AnalyzeImportedModReplacementInput): Promise<ModReplacementSummary> {
+  return invoke<ModReplacementSummary>("get_mod_replacement_summary", {
+    request: { gameId: input.gameId, profileId: input.profileId, modId: input.modId },
   });
 }
 

@@ -151,6 +151,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
 
+### Mod 悬浮信息与装备名称
+
+```powershell
+node --test src/features/mods/modHoverModel.test.mjs src/features/mods/modHoverBehavior.test.mjs
+cargo test -p hmm-app --lib display --no-fail-fast
+cargo test -p hmm-tauri --lib replacement --no-fail-fast
+```
+
+覆盖真实字段映射、缺失版本、备注截断、来源降级、名称/编号、包身份一致性、按需请求、
+profile/generation 失效、响应乱序、部分失败、超时与卸载。Rust 用人工 catalog/manifest 验证名称唯一
+匹配和多绑定展示与单目标写门禁分离。CSS 在 Node 渲染器中不执行，四模式 hover/focus/Escape、
+选择行为、视口边缘与长文本必须用真实浏览器补充检查；不得使用真实 Mod/玩家目录做自动 fixture。
+
+### 狩技盒子迁移与接管
+
+```powershell
+node --test src/features/mods/externalAdoptOriginBehavior.test.mjs src/features/mods/externalStateBehavior.test.mjs src/features/mods/externalAdoptUi.test.mjs
+cargo test -p hmm-runtime --test external_mod_adopt --no-fail-fast
+cargo test -p hmm-app --lib external_import --no-fail-fast
+cargo test -p hmm-infra --lib external_import --no-fail-fast
+```
+
+前端行为用例使用真实详情/接管组件与真实扫描 hook，覆盖来源未加载、普通文件导入、未知来源、
+其他迁移 adapter、狩技盒子、显式确认，以及 Mod/profile 切换、查询乱序和卸载后的迟到响应。
+浏览器检查实际按钮可见性、确认弹窗、键盘交互和小窗口布局。Runtime 用 fake/temp 验证不支持的
+来源在锁外拒绝，写锁内再次复核来源，并保留既有清单原子写入、取消屏障和审计降级测试。
+迁移回归覆盖选择封存、来源及内容漂移、取消/重试、持久去重、失败清理和历史保留；不使用真实
+狩技盒子目录、玩家游戏目录或第三方 Mod 包。
+
 ### 关于页更新检查
 
 ```powershell

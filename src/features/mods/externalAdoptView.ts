@@ -16,6 +16,12 @@
 
 import type { ExternalInstallStateSummary } from "./externalInstallStatusView";
 import type { ExternalModStateDto } from "./externalStateApi";
+import type { ModOrigin } from "./modLibraryTypes";
+
+/** 接管入口只面向已确认的狩技盒子迁移来源；未知来源不提供写入口。 */
+export function supportsExternalAdoption(origin: ModOrigin | null | undefined): boolean {
+  return origin?.kind === "external_import" && origin.adapterId === "hunting_box_directory_v1";
+}
 
 /** 接管会写出的条目数与不会写出的各类计数，供确认弹窗如实陈述。 */
 export type ExternalAdoptCounts = {

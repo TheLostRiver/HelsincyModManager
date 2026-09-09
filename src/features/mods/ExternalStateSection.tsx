@@ -43,6 +43,8 @@ type ExternalStateSectionProps = {
   modName: string;
   /** The details tab is visible; gates the initial cached-state query. */
   active: boolean;
+  /** 当前 Mod 的权威来源已加载且允许接管；不影响只读扫描。 */
+  allowAdopt: boolean;
   /** Mirrors every getter result to the page-level session store (#286 3b-2). */
   onResult?: (modId: string, state: ExternalModStateDto) => void;
   /** An adopt is running: the dialog must not close or switch tabs meanwhile. */
@@ -57,6 +59,7 @@ export function ExternalStateSection({
   modId,
   modName,
   active,
+  allowAdopt,
   onResult,
   onBusyChange,
   onAdoptCompleted,
@@ -116,7 +119,7 @@ export function ExternalStateSection({
   const errorCode = workflow.scanErrorCode ?? workflow.state?.lastError ?? null;
   const busy = workflow.scanning || workflow.adopting;
   const availability = projectExternalAdoptAvailability(workflow.state);
-  const adoptCounts = availability.status === "available" ? availability.counts : null;
+  const adoptCounts = allowAdopt && availability.status === "available" ? availability.counts : null;
   // No hint before the first scan: `neverScanned` already tells the player what to do.
   const adoptBlockedHint =
     summary && availability.status === "blocked" && availability.reason !== "no_summary"
@@ -166,7 +169,7 @@ export function ExternalStateSection({
             >
               {summary ? copy.rescanAction : copy.checkAction}
             </button>
-            <button
+            {allowAdopt ? <button
               type="button"
               className="mod-detail-dialog__button is-primary"
               onClick={requestAdopt}
@@ -174,7 +177,7 @@ export function ExternalStateSection({
               title={adoptBlockedHint ?? undefined}
             >
               {adoptCounts ? copy.adopt.action(adoptCounts.claimable) : copy.adopt.actionIdle}
-            </button>
+            </button> : null}
             {workflow.scanning ? (
               <span className="mod-detail-dialog__external-status" role="status">
                 {copy.scanning}
@@ -191,7 +194,7 @@ export function ExternalStateSection({
               {externalStateErrorMessage(errorCode, copy)}
             </p>
           ) : null}
-          {!busy && workflow.adoptErrorCode ? (
+          {allowAdopt && !busy && workflow.adoptErrorCode ? (
             <p className="mod-detail-dialog__external-notice is-error" role="alert">
               {externalAdoptErrorMessage(workflow.adoptErrorCode, copy)}
             </p>
@@ -201,7 +204,7 @@ export function ExternalStateSection({
               {copy.staleNotice}
             </p>
           ) : null}
-          {!busy && adoptBlockedHintLine ? (
+          {allowAdopt && !busy && adoptBlockedHintLine ? (
             <p className="mod-detail-dialog__external-notice">{adoptBlockedHintLine}</p>
           ) : null}
           {summary && badge && pillLabel ? (

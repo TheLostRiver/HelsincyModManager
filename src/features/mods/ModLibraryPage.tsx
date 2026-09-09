@@ -1959,6 +1959,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               {libraryItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
+                  gameId={DEFAULT_INSTALL_GAME_ID}
+                  profileId={profileContext?.profileId ?? null}
                   item={item}
                   selected={selectedIds.has(item.id)}
                   selectionMode={selectionMode}

@@ -68,6 +68,7 @@ import {
   type RetargetInstallTaskState,
 } from "./replacementWorkflow";
 import "./ReplacementTargetPanel.css";
+import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
 
 type ReplacementTargetPanelProps = {
   gameId: GameId;
@@ -624,8 +625,8 @@ export function ReplacementTargetPanel({
           <dl className="replacement-panel__source-facts">
             {analysis.sources.map((source) => (
               <div key={source.id}>
-                <dt>{source.sourceType}</dt>
-                <dd>{source.internalId}</dd>
+                <dt>{replacementKindLabel(source.sourceType, locale)}</dt>
+                <dd>{replacementIdentityLabel(source, locale)}</dd>
               </div>
             ))}
           </dl>
@@ -793,11 +794,11 @@ export function ReplacementTargetPanel({
                   <dl className="replacement-panel__preview-facts">
                     <div>
                       <dt>{rCopy.panel.factResourceType}</dt>
-                      <dd>{previewState.preview.target.targetType}</dd>
+                      <dd>{replacementKindLabel(previewState.preview.target.targetType, locale)}</dd>
                     </div>
                     <div>
                       <dt>{rCopy.panel.factTargetId}</dt>
-                      <dd>{previewState.preview.target.internalId}</dd>
+                      <dd>{replacementIdentityLabel(previewState.preview.target, locale)}</dd>
                     </div>
                     <div>
                       <dt>{rCopy.panel.factActions}</dt>
