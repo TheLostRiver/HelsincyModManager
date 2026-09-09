@@ -60,6 +60,7 @@ pub struct StartRecoveryActionTaskRequest {
     pub mod_id: ModId,
     pub profile_id: ProfileId,
     pub action_kind: InstallRecoveryActionKind,
+    pub plan_token: Option<String>,
 }
 
 pub struct InstallTaskService {
@@ -341,6 +342,7 @@ impl InstallRecoveryActionExecutor for InstallRecoveryActionService {
             profile_id: request.profile_id,
             mod_id: request.mod_id,
             action_kind: request.action_kind,
+            plan_token: request.plan_token,
         })
     }
 }
@@ -1696,11 +1698,28 @@ fn recovery_action_operation(action_kind: InstallRecoveryActionKind) -> &'static
     match action_kind {
         InstallRecoveryActionKind::RollbackInstall => "rollback_install",
         InstallRecoveryActionKind::ReconcileReinstall => "reconcile_reinstall",
+        InstallRecoveryActionKind::UninstallMissingTargets => "uninstall_missing_targets",
     }
 }
 
 fn recovery_action_failed_phase(error: &InstallRecoveryActionError) -> &'static str {
     match error {
+        InstallRecoveryActionError::MissingTargetUninstall(
+            crate::UninstallModError::ManifestStateMismatch,
+        ) => "stale_preview",
+        InstallRecoveryActionError::MissingTargetUninstall(
+            crate::UninstallModError::GameRunning,
+        ) => "game_running",
+        InstallRecoveryActionError::MissingTargetUninstall(
+            crate::UninstallModError::GameRunningUnknown,
+        ) => "game_running_unknown",
+        InstallRecoveryActionError::MissingTargetUninstall(
+            crate::UninstallModError::ManifestSaveFailed
+            | crate::UninstallModError::RemoveFailed
+            | crate::UninstallModError::RestoreFailed
+            | crate::UninstallModError::RollbackFailed { .. },
+        ) => "processing",
+        InstallRecoveryActionError::MissingTargetUninstall(_) => "planning",
         InstallRecoveryActionError::ActionUnavailable
         | InstallRecoveryActionError::Blocked { .. } => "planning",
         InstallRecoveryActionError::RemoveFailed
@@ -1792,6 +1811,7 @@ mod tests {
 
         let task = service
             .start_recovery_action_task(StartRecoveryActionTaskRequest {
+                plan_token: None,
                 game_id: GameId::mhw(),
                 mod_id: ModId::new("visible-mod-id"),
                 profile_id: ProfileId::new("default-profile"),
@@ -3055,6 +3075,7 @@ mod tests {
 
     fn sample_recovery_action_request() -> StartRecoveryActionTaskRequest {
         StartRecoveryActionTaskRequest {
+            plan_token: None,
             game_id: GameId::mhw(),
             mod_id: ModId::new("mod-a"),
             profile_id: ProfileId::new("default"),
