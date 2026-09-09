@@ -16,6 +16,7 @@ export type ModDetailDialogCopy = {
   originImported: string;
   originExternalImport: (sourceLabel: string, importedAt: string) => string;
   originUnknownSource: string;
+  originUnspecified: string;
   originMigrated: string;
   selectedCategoriesLabel: string;
   noCategoriesSelected: string;
@@ -52,7 +53,8 @@ export const modDetailDialogCopy = {
     noPreview: "暂无预览图",
     packageIdLabel: "Package ID",
     originLabel: "来源",
-    originImported: "手动导入",
+    originImported: "文件导入",
+    originUnspecified: "来源未知",
     originExternalImport: (sourceLabel: string, importedAt: string) =>
       `第三方导入 · ${sourceLabel} · ${importedAt}`,
     originUnknownSource: "第三方来源",
@@ -81,6 +83,7 @@ export const modDetailDialogCopy = {
     },
   },
   en: {
+    originUnspecified: "Unknown origin",
     eyebrow: "Mod Details",
     closeAria: "Close",
     tablistAria: "Mod detail views",
@@ -90,7 +93,7 @@ export const modDetailDialogCopy = {
     noPreview: "No preview image",
     packageIdLabel: "Package ID",
     originLabel: "Origin",
-    originImported: "Manual import",
+    originImported: "File import",
     originExternalImport: (sourceLabel: string, importedAt: string) =>
       `Third-party import · ${sourceLabel} · ${importedAt}`,
     originUnknownSource: "Third-party source",
@@ -119,6 +122,7 @@ export const modDetailDialogCopy = {
     },
   },
   ja: {
+    originUnspecified: "不明なインポート元",
     eyebrow: "Mod 詳細",
     closeAria: "閉じる",
     tablistAria: "Mod 詳細ビュー",
@@ -128,7 +132,7 @@ export const modDetailDialogCopy = {
     noPreview: "プレビュー画像なし",
     packageIdLabel: "Package ID",
     originLabel: "由来",
-    originImported: "手動インポート",
+    originImported: "ファイルからインポート",
     originExternalImport: (sourceLabel: string, importedAt: string) =>
       `サードパーティインポート · ${sourceLabel} · ${importedAt}`,
     originUnknownSource: "サードパーティソース",

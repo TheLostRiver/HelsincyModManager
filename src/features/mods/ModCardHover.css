@@ -1,0 +1,85 @@
+.mod-hover-card {
+  z-index: 120;
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 24px));
+  max-height: min(540px, calc(100dvh - 24px));
+  overflow: auto;
+  padding: 14px 16px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mod-hover-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.mod-hover-card p,
+.mod-hover-card dl,
+.mod-hover-card dd,
+.mod-hover-card ul {
+  margin: 0;
+}
+
+.mod-hover-card__metadata {
+  display: grid;
+  gap: 7px;
+}
+
+.mod-hover-card__metadata > div {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mod-hover-card dt,
+.mod-hover-card small,
+.mod-hover-card p {
+  color: var(--color-text-muted);
+}
+
+.mod-hover-card__notes {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.mod-hover-card__replacements {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.mod-hover-card h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.mod-hover-card h4:not(:first-child) {
+  margin-top: 10px;
+}
+
+.mod-hover-card ul {
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  list-style: none;
+}
+
+.mod-hover-card li {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.mod-hover-card small {
+  font-size: 12px;
+}

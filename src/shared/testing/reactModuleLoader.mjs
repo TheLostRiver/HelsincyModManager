@@ -10,10 +10,16 @@ const reactUrls = new Map(["react", "react/jsx-runtime", "react/jsx-dev-runtime"
 ));
 
 // Execute production TS/TSX without copying hook logic; callers name only external/leaf stubs.
-export function registerReactTestModules(stubs = {}) {
+export function registerReactTestModules(stubs = {}, packages = {}) {
   const modules = new Map(Object.entries(stubs).map(([path, source]) => [new URL(path, sourceRoot).href, source]));
+  const packageUrls = new Map(Object.entries(packages).map(([name, source]) => {
+    const url = `hmm-test:${encodeURIComponent(name)}`;
+    modules.set(url, source);
+    return [name, url];
+  }));
   return registerHooks({
     resolve(specifier, context, nextResolve) {
+      if (packageUrls.has(specifier)) return { url: packageUrls.get(specifier), shortCircuit: true };
       if (reactUrls.has(specifier)) return { url: reactUrls.get(specifier), shortCircuit: true };
       if (specifier.startsWith(".") && context.parentURL?.startsWith(sourceRoot.href)) {
         const base = new URL(specifier, context.parentURL).href;
@@ -27,6 +33,7 @@ export function registerReactTestModules(stubs = {}) {
     },
     load(url, context, nextLoad) {
       if (modules.has(url)) return { format: "module", source: modules.get(url), shortCircuit: true };
+      if (url.startsWith(sourceRoot.href) && url.endsWith(".css")) return { format: "module", source: "", shortCircuit: true };
       if (url.startsWith(sourceRoot.href) && /\.tsx?$/.test(url)) {
         return {
           format: "module",

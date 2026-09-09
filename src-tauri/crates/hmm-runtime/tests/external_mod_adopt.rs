@@ -27,9 +27,10 @@ use hmm_app::{
     TaskManager, TaskStatus,
 };
 use hmm_core::{
-    installed_file_summary, ExternalFileState, ExternalInstallState, FileLayer,
-    GameDirectoryStatus, GameId, GameInstance, InstallManifest, InstallManifestEntry,
-    InstallManifestStatus, InstallTargetPath, ModId, PackageFileId, ProfileId,
+    installed_file_summary, ExternalFileState, ExternalImportAdapterId, ExternalImportBatchId,
+    ExternalImportProvenance, ExternalInstallState, FileLayer, GameDirectoryStatus, GameId,
+    GameInstance, InstallManifest, InstallManifestEntry, InstallManifestStatus, InstallTargetPath,
+    ModId, ModRevisionId, PackageFileId, ProfileId,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, CancellationToken, CrossProcessWriteAdmissionError,
@@ -38,7 +39,8 @@ use hmm_ports::{
     InstallManifestRepository, ModImportResultRepository, ModImportSandboxLocator,
     ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
     ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    NeverCancelled, StoredImportPreviewImage, StoredModImportAnalysis,
+    NeverCancelled, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
+    StoredModOriginProvenance,
 };
 use hmm_runtime::external_mod_adopt::{
     ConfiguredExternalModAdoptError, ConfiguredExternalModAdoptRequest,
@@ -183,9 +185,10 @@ impl InstallManifestRepository for RecordingManifestRepository {
     }
 }
 
-#[derive(Default)]
 struct FakeModImportResultRepository {
     analysis: Option<StoredModImportAnalysis>,
+    origin: Mutex<StoredModOriginProvenance>,
+    next_origin: Mutex<Option<StoredModOriginProvenance>>,
 }
 
 impl ModImportResultRepository for FakeModImportResultRepository {
@@ -202,6 +205,34 @@ impl ModImportResultRepository for FakeModImportResultRepository {
             .analysis
             .clone()
             .filter(|analysis| analysis.mod_id == mod_id))
+    }
+
+    fn get_mod(&self, mod_id: &ModId) -> anyhow::Result<Option<StoredLogicalMod>> {
+        let mut origin = self.origin.lock().unwrap();
+        let current_origin = origin.clone();
+        if let Some(next) = self.next_origin.lock().unwrap().take() {
+            *origin = next;
+        }
+        Ok(self
+            .get_analysis(mod_id.as_str())?
+            .map(|analysis| StoredLogicalMod {
+                mod_id: ModId::new(analysis.mod_id),
+                origin_revision_id: ModRevisionId::new("revision-a"),
+                display_revision_id: ModRevisionId::new("revision-a"),
+                origin_provenance: current_origin,
+            }))
+    }
+}
+
+fn migrated_origin(adapter_id: &str) -> StoredModOriginProvenance {
+    StoredModOriginProvenance::ExternalImport {
+        provenance: ExternalImportProvenance {
+            adapter_id: ExternalImportAdapterId::new(adapter_id),
+            batch_id: ExternalImportBatchId::new("batch-a"),
+            source_item_key_hash: "source-a".to_owned(),
+            content_fingerprint: "fingerprint-a".to_owned(),
+            imported_at_unix_millis: 1,
+        },
     }
 }
 
@@ -481,6 +512,7 @@ struct Harness {
     game_fs: Arc<RecordingGameFs>,
     game_config: Arc<FakeGameConfigRepository>,
     manifest_repository: Arc<RecordingManifestRepository>,
+    mod_import_results: Arc<FakeModImportResultRepository>,
     write_admission: Arc<FakeWriteAdmission>,
     audit_log: Arc<RecordingAuditLog>,
     scan_cache: Arc<ExternalStateScanCache>,
@@ -504,6 +536,8 @@ fn harness(package_files: &[(&str, &[u8])], game_files: &[(&str, &[u8])]) -> Har
     manifest_repository.bind_probe(Arc::clone(&write_lock));
     let mod_import_results = Arc::new(FakeModImportResultRepository {
         analysis: Some(analysis("mod-a", "package-a")),
+        origin: Mutex::new(migrated_origin("hunting_box_directory_v1")),
+        next_origin: Mutex::new(None),
     });
     let clock = Arc::new(FixedClock(CLOCK_MILLIS));
     let scan_cache = Arc::new(ExternalStateScanCache::new(
@@ -546,7 +580,7 @@ fn harness(package_files: &[(&str, &[u8])], game_files: &[(&str, &[u8])]) -> Har
 
     let adopter = Arc::new(ConfiguredExternalModAdopter::new(
         Arc::clone(&game_config) as Arc<dyn GameConfigRepository>,
-        mod_import_results,
+        Arc::clone(&mod_import_results) as Arc<dyn ModImportResultRepository>,
         Arc::clone(&manifest_repository) as Arc<dyn InstallManifestRepository>,
         write_locks,
         Arc::clone(&write_admission) as Arc<dyn InstallWriteAdmission>,
@@ -565,6 +599,7 @@ fn harness(package_files: &[(&str, &[u8])], game_files: &[(&str, &[u8])]) -> Har
         game_fs,
         game_config,
         manifest_repository,
+        mod_import_results,
         write_admission,
         audit_log,
         scan_cache,
@@ -1118,6 +1153,44 @@ fn an_unknown_mod_is_refused_before_anything_else() {
 }
 
 #[test]
+fn file_imports_legacy_unknown_and_other_migration_origins_cannot_be_adopted() {
+    for origin in [
+        StoredModOriginProvenance::Imported,
+        StoredModOriginProvenance::MigratedV1 {
+            legacy_mod_id: "mod-a".to_owned(),
+            legacy_package_id: "package-a".to_owned(),
+        },
+        migrated_origin("other_adapter"),
+    ] {
+        let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same-a")];
+        let harness = harness(files, files);
+        harness.scan();
+        *harness.mod_import_results.origin.lock().unwrap() = origin;
+        assert_eq!(
+            harness.adopt(),
+            Err(ConfiguredExternalModAdoptError::OriginUnsupported)
+        );
+        assert_no_side_effects(&harness);
+        assert_eq!(harness.write_admission.calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn adoption_rechecks_origin_after_entering_the_write_lock() {
+    let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same-a")];
+    let harness = harness(files, files);
+    harness.scan();
+    *harness.mod_import_results.next_origin.lock().unwrap() =
+        Some(StoredModOriginProvenance::Imported);
+    assert_eq!(
+        harness.adopt(),
+        Err(ConfiguredExternalModAdoptError::OriginUnsupported)
+    );
+    assert_eq!(harness.write_admission.calls.load(Ordering::SeqCst), 1);
+    assert_no_side_effects(&harness);
+}
+
+#[test]
 fn a_cancellation_before_the_lock_is_reported_as_cancelled_and_not_audited() {
     let files: &[(&str, &[u8])] = &[("nativePC/a.mod3", b"same-a")];
     let harness = harness(files, files);
@@ -1376,6 +1449,10 @@ fn error_codes_are_stable_and_distinct() {
         (
             ConfiguredExternalModAdoptError::ModUnavailable,
             "external_mod_adopt_mod_unavailable",
+        ),
+        (
+            ConfiguredExternalModAdoptError::OriginUnsupported,
+            "external_mod_adopt_origin_unsupported",
         ),
         (
             ConfiguredExternalModAdoptError::ScanRequired,
