@@ -1,8 +1,9 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { useGameSetup } from "../game-setup/GameSetupProvider";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { recoveryCenterCopy, type RecoveryCenterCopy } from "./recoveryCenterCopy";
+import { copyForRecoveryAction } from "./missingTargetRecoveryCopy";
 import {
   deriveRecoveryCenterViewModel,
   type RecoveryCenterIssueView,
@@ -23,7 +24,7 @@ import {
   getRecoveryRollbackPhaseLabel,
   type RecoveryRollbackState,
 } from "./useRecoveryRollback";
-import type { InstallRecoveryActionPreview } from "../mods/modInstallPlanTypes";
+import type { InstallRecoveryActionKind, InstallRecoveryActionPreview } from "../mods/modInstallPlanTypes";
 
 type ActiveRecoveryDiagnosticsExportState = Exclude<RecoveryDiagnosticsExportState, { status: "idle" }>;
 
@@ -90,7 +91,8 @@ export function RecoveryCenterPage() {
       {rollback.state.status !== "idle" ? (
         <RollbackPanel
           state={rollback.state}
-          copy={copy}
+          copy={copyForRecoveryAction(copy, rollback.actionKind)}
+          modName={scan.modNames[rollback.state.modId] ?? rollback.state.modId}
           onConfirm={rollback.confirmRollback}
           onDismiss={rollback.dismiss}
         />
@@ -101,6 +103,7 @@ export function RecoveryCenterPage() {
       ) : (
         <RecoveryCenterBody
           state={scan.state}
+          modNames={scan.modNames}
           copy={copy}
           onRefresh={scan.refresh}
           onExportDiagnostics={diagnostics.requestExport}
@@ -119,15 +122,25 @@ export function RecoveryCenterPage() {
 function RollbackPanel({
   state,
   copy,
+  modName,
   onConfirm,
   onDismiss,
 }: {
   state: Exclude<RecoveryRollbackState, { status: "idle" }>;
   copy: RecoveryCenterCopy;
+  modName: string;
   onConfirm: () => void;
   onDismiss: () => void;
 }) {
   const panelCopy = copy.page.rollbackPanel;
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (state.status === "confirming" || state.status === "blocked" || state.status === "failed") {
+      panelRef.current?.focus({ preventScroll: true });
+      panelRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [state.status]);
 
   if (state.status === "previewing" || state.status === "starting") {
     return (
@@ -137,7 +150,7 @@ function RollbackPanel({
         </div>
         <div className="recovery-center__rollback-body">
           <h3>{state.status === "previewing" ? panelCopy.previewingTitle : panelCopy.startingTitle}</h3>
-          <p>{state.modId}</p>
+          <p>{modName}</p>
         </div>
       </section>
     );
@@ -145,13 +158,13 @@ function RollbackPanel({
 
   if (state.status === "blocked") {
     return (
-      <section className="recovery-center__rollback-panel is-failed" aria-labelledby="rollback-blocked-title">
+      <section ref={panelRef} tabIndex={-1} className="recovery-center__rollback-panel is-failed" aria-labelledby="rollback-blocked-title">
         <div className="recovery-center__rollback-icon" aria-hidden="true">
           <AlertTriangle size={18} />
         </div>
         <div className="recovery-center__rollback-body">
           <h3 id="rollback-blocked-title">{panelCopy.blockedTitle}</h3>
-          <p>{panelCopy.blockedDetail(state.modId)}</p>
+          <p>{panelCopy.blockedDetail(modName)}</p>
           <BlockReasonList preview={state.preview} blockReasons={copy.blockReasons} />
           <div className="recovery-center__rollback-actions">
             <button type="button" onClick={onDismiss}>
@@ -166,14 +179,14 @@ function RollbackPanel({
 
   if (state.status === "confirming") {
     return (
-      <section className="recovery-center__rollback-panel" aria-labelledby="rollback-confirm-title">
+      <section ref={panelRef} tabIndex={-1} className="recovery-center__rollback-panel" aria-labelledby="rollback-confirm-title">
         <div className="recovery-center__rollback-icon" aria-hidden="true">
           <RotateCcw size={18} />
         </div>
         <div className="recovery-center__rollback-body">
           <h3 id="rollback-confirm-title">{panelCopy.confirmTitle}</h3>
-          <p>{panelCopy.confirmBody(state.modId)}</p>
-          <RollbackPreviewStats preview={state.preview} panelCopy={panelCopy} />
+          <p>{panelCopy.confirmBody(modName)}</p>
+          <RollbackPreviewStats preview={state.preview} panelCopy={panelCopy} missingLabel={copy.missingTargets.statsMissing} />
           <div className="recovery-center__rollback-actions">
             <button type="button" className="is-primary" onClick={onConfirm}>
               <RotateCcw size={14} aria-hidden="true" />
@@ -196,7 +209,7 @@ function RollbackPanel({
         </div>
         <div className="recovery-center__rollback-body">
           <h3>{getRecoveryRollbackPhaseLabel(state.phase, copy.rollback.phases)}</h3>
-          <p>{state.modId}</p>
+          <p>{modName}</p>
         </div>
       </section>
     );
@@ -210,7 +223,7 @@ function RollbackPanel({
         </div>
         <div className="recovery-center__rollback-body">
           <h3 id="rollback-done-title">{panelCopy.completedTitle}</h3>
-          <p>{panelCopy.completedBody(state.modId)}</p>
+          <p>{panelCopy.completedBody(modName)}</p>
           <div className="recovery-center__rollback-actions">
             <button type="button" onClick={onDismiss}>
               {panelCopy.close}
@@ -222,13 +235,13 @@ function RollbackPanel({
   }
 
   return (
-    <section className="recovery-center__rollback-panel is-failed" aria-labelledby="rollback-failed-title">
+    <section ref={panelRef} tabIndex={-1} className="recovery-center__rollback-panel is-failed" aria-labelledby="rollback-failed-title">
       <div className="recovery-center__rollback-icon" aria-hidden="true">
         <AlertTriangle size={18} />
       </div>
       <div className="recovery-center__rollback-body">
         <h3 id="rollback-failed-title">{panelCopy.failedTitle}</h3>
-        <p>{panelCopy.failedBody(state.modId, rollbackFailureMessage(state, copy))}</p>
+        <p>{panelCopy.failedBody(modName, rollbackFailureMessage(state, copy))}</p>
         <div className="recovery-center__rollback-actions">
           <button type="button" onClick={onDismiss}>
             {panelCopy.close}
@@ -244,8 +257,9 @@ function rollbackFailureMessage(
   copy: RecoveryCenterCopy,
 ) {
   if (state.reason === "task_failed") {
-    return state.backendMessage ?? copy.rollback.failures.taskFallback;
+    return (state.backendMessage ? copy.missingTargets.taskErrors[state.backendMessage] ?? state.backendMessage : null) ?? copy.rollback.failures.taskFallback;
   }
+  if (state.reason === "listener_unavailable") return copy.rollback.failures.listenerUnavailable;
   if (state.reason === "profile_not_ready") return copy.rollback.failures.profileNotReady;
   if (state.reason === "preview_failed") return copy.rollback.failures.previewFailed;
   return copy.rollback.failures.startFailed;
@@ -254,15 +268,18 @@ function rollbackFailureMessage(
 function RollbackPreviewStats({
   preview,
   panelCopy,
+  missingLabel,
 }: {
   preview: InstallRecoveryActionPreview;
   panelCopy: RecoveryCenterCopy["page"]["rollbackPanel"];
+  missingLabel: (count: number) => string;
 }) {
   return (
     <div className="recovery-center__rollback-stats">
       <span>{panelCopy.statsRemove(preview.removeFileCount)}</span>
       <span>{panelCopy.statsRestore(preview.restoreFileCount)}</span>
       <span>{panelCopy.statsBackups(preview.backupCount)}</span>
+      {preview.actionKind === "uninstall_missing_targets" ? <span>{missingLabel(preview.missingFileCount ?? 0)}</span> : null}
     </div>
   );
 }
@@ -368,6 +385,7 @@ function NotConfiguredPanel({ copy }: { copy: RecoveryCenterCopy }) {
 
 function RecoveryCenterBody({
   state,
+  modNames,
   copy,
   onRefresh,
   onExportDiagnostics,
@@ -379,6 +397,7 @@ function RecoveryCenterBody({
   modListRef,
 }: {
   state: RecoveryCenterScanState;
+  modNames: Record<string, string>;
   copy: RecoveryCenterCopy;
   onRefresh: () => void;
   onExportDiagnostics: () => void;
@@ -386,13 +405,13 @@ function RecoveryCenterBody({
   isRefreshing: boolean;
   isExporting: boolean;
   rollbackState: RecoveryRollbackState;
-  onRequestRollback: (modId: string) => void;
+  onRequestRollback: (modId: string, actionKind?: InstallRecoveryActionKind) => void;
   modListRef: React.RefObject<HTMLElement | null>;
 }) {
   const summaries = state.status === "ready" ? state.summaries : null;
   const viewModel = useMemo(
-    () => (summaries ? deriveRecoveryCenterViewModel(summaries, copy) : null),
-    [copy, summaries],
+    () => (summaries ? deriveRecoveryCenterViewModel(summaries, copy, modNames) : null),
+    [copy, modNames, summaries],
   );
 
   if (state.status === "idle" || state.status === "loading") {
@@ -472,7 +491,7 @@ function RecoveryCenterSummary({
   isRefreshing: boolean;
   isExporting: boolean;
   rollbackState: RecoveryRollbackState;
-  onRequestRollback: (modId: string) => void;
+  onRequestRollback: (modId: string, actionKind?: InstallRecoveryActionKind) => void;
   modListRef: React.RefObject<HTMLElement | null>;
 }) {
   const overview = overviewCopy(viewModel, copy.page.overview);
@@ -645,7 +664,7 @@ function RecoveryModRow({
   mod: RecoveryCenterModView;
   copy: RecoveryCenterCopy;
   rollbackState: RecoveryRollbackState;
-  onRequestRollback: (modId: string) => void;
+  onRequestRollback: (modId: string, actionKind?: InstallRecoveryActionKind) => void;
 }) {
   const isRollbackTarget = mod.status === "rollback_required";
   const isRollbackLocked = rollbackState.status !== "idle";
@@ -659,18 +678,22 @@ function RecoveryModRow({
     <article className={`recovery-center__mod is-${mod.statusTone}`}>
       <div className="recovery-center__mod-main">
         <span className={`recovery-center__status is-${mod.statusTone}`}>{mod.statusLabel}</span>
-        <strong>{mod.modId}</strong>
+        <div className="recovery-center__mod-identity">
+          <strong>{mod.displayName}</strong>
+          {mod.displayName !== mod.modId ? <small>{mod.modId}</small> : null}
+        </div>
       </div>
       <div className="recovery-center__mod-metrics" aria-label={copy.page.modMetricsAria(mod.modId)}>
-        {isRollbackTarget ? (
+        {isRollbackTarget || mod.canReviewMissingTargets ? (
           <button
             type="button"
             className="recovery-center__mod-rollback"
             disabled={isRollbackLocked}
-            onClick={() => onRequestRollback(mod.modId)}
+            onClick={() => onRequestRollback(mod.modId, mod.canReviewMissingTargets ? "uninstall_missing_targets" : "rollback_install")}
           >
             <RotateCcw size={13} aria-hidden="true" />
-            {isThisModRollingBack ? copy.page.modRollbackBusy : copy.page.modRollbackAction}
+            {mod.canReviewMissingTargets ? (isThisModRollingBack ? copy.missingTargets.busy : copy.missingTargets.action)
+              : isThisModRollingBack ? copy.page.modRollbackBusy : copy.page.modRollbackAction}
           </button>
         ) : null}
         <span>{copy.page.modFiles(mod.managedFileCount)}</span>

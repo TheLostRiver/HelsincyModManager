@@ -406,6 +406,7 @@ struct InstallRecoveryScanOptions {
 enum InstallRecoveryActionOption {
     RollbackInstall,
     ReconcileReinstall,
+    UninstallMissingTargets,
 }
 
 impl From<InstallRecoveryActionOption> for ReadOnlyInstallRecoveryAction {
@@ -413,6 +414,7 @@ impl From<InstallRecoveryActionOption> for ReadOnlyInstallRecoveryAction {
         match value {
             InstallRecoveryActionOption::RollbackInstall => Self::RollbackInstall,
             InstallRecoveryActionOption::ReconcileReinstall => Self::ReconcileReinstall,
+            InstallRecoveryActionOption::UninstallMissingTargets => Self::UninstallMissingTargets,
         }
     }
 }
@@ -2591,6 +2593,9 @@ fn write_human_install_result<W: Write>(
             writeln!(writer, "remove files: {}", snapshot.remove_file_count)?;
             writeln!(writer, "restore files: {}", snapshot.restore_file_count)?;
             writeln!(writer, "backups: {}", snapshot.backup_count)?;
+            if snapshot.action == ReadOnlyInstallRecoveryAction::UninstallMissingTargets.as_str() {
+                writeln!(writer, "missing files: {}", snapshot.missing_file_count)?;
+            }
             writeln!(writer, "blocking issues: {}", snapshot.blocking_issue_count)?;
             for reason in &snapshot.blocking_reasons {
                 writeln!(writer, "blocking reason {}: {}", reason.code, reason.count)?;

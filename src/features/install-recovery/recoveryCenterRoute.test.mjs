@@ -51,7 +51,7 @@ test("Recovery Center scans with short ids and delegates rollback to controlled 
   assert.match(rollbackHook, /useActiveProfile/);
   assert.match(rollbackHook, /activeProfile\.status\s*!==\s*"ready"/);
   assert.match(rollbackHook, /profileId:\s*activeProfileId/);
-  assert.match(rollbackHook, /actionKind:\s*"rollback_install"/);
+  // 两种动作的默认值、身份校验及确认转发由 recoveryActionBehavior.test.mjs 执行真实 hook 验证。
   assert.match(rollbackHook, /notifyInstallRecoveryRefresh/);
 
   const forbidden = [
