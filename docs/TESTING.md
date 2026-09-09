@@ -11,6 +11,9 @@
 
 ## 基础环境
 
+Linux CI 安装 Tauri 系统依赖前会移除 runner 预装的 Chrome apt 软件源配置；这些依赖来自 Ubuntu。
+这样避免无关软件源发布期间的索引不一致阻断验证，Ubuntu 的签名与摘要校验仍按默认规则执行。
+
 当前使用：
 
 - Node.js 24 或更新的 LTS 版本。
