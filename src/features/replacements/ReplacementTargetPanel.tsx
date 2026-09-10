@@ -16,15 +16,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
-import {
-  matchedHiddenReplacementTargetNames,
-  replacementTargetSearchHit,
-} from "./replacementTargetMatch";
-import {
-  replacementTargetSearchValues,
-  resolveReplacementTargetAliases,
-  resolveReplacementTargetNames,
-} from "./replacementTargetNames";
+import { matchedHiddenReplacementTargetNames } from "./replacementTargetMatch";
+import { resolveReplacementTargetAliases } from "./replacementTargetNames";
+import { buildReplacementTargetOptions, replacementTargetOption } from "./replacementTargetOptions";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
@@ -183,6 +177,7 @@ export function ReplacementTargetPanel({
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [selectedAlias, setSelectedAlias] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState>({ status: "idle" });
   const [taskState, setTaskState] = useState<RetargetInstallTaskState>({ status: "idle" });
   const taskStateRef = useRef<RetargetInstallTaskState>(taskState);
@@ -231,6 +226,7 @@ export function ReplacementTargetPanel({
     previewRequestGenerationRef.current += 1;
     setLoadState({ status: "loading" });
     setSelectedTargetId(null);
+    setSelectedAlias(null);
     setPreviewState({ status: "idle" });
 
     void Promise.all([
@@ -339,22 +335,14 @@ export function ReplacementTargetPanel({
   );
   const analysis = loadState.status === "ready" ? loadState.analysis : null;
   const installedTargetId = analysis?.installedTargetId;
-  const filteredTargets = useMemo(() => {
-    const keyword = query.trim().toLocaleLowerCase();
-    if (!keyword) {
-      return targets;
-    }
-    return targets.filter((target) =>
-      [...replacementTargetSearchValues(target.displayNames), target.internalId, ...target.aliases]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => replacementTargetSearchHit(value, keyword)),
-    );
-  }, [query, targets]);
+  const filteredOptions = useMemo(() => buildReplacementTargetOptions(targets, locale, query), [locale, query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
-  // #274 PR 2: names sharing the selected target's model, in the UI language; empty for
-  // catalogs that do not carry aliases per locale (armor), so the summary simply stays hidden.
+  const selectedOption = selectedTarget ? replacementTargetOption(selectedTarget, locale, selectedAlias) : null;
+  const selectedModelOptions = selectedTarget ? buildReplacementTargetOptions([selectedTarget], locale) : [];
   const selectedAliases = selectedTarget
-    ? resolveReplacementTargetAliases(selectedTarget.aliasesByLocale, locale)
+    ? selectedTarget.targetType === "weapon"
+      ? selectedModelOptions.length > 1 ? selectedModelOptions.map((option) => option.displayName) : []
+      : resolveReplacementTargetAliases(selectedTarget.aliasesByLocale, locale)
     : [];
   const occupancyByTarget = useMemo(
     () =>
@@ -377,7 +365,7 @@ export function ReplacementTargetPanel({
   );
   const targetSwitch = installStatus === "installed";
 
-  const selectTarget = (targetId: string) => {
+  const selectTarget = (targetId: string, alias: string | null) => {
     if (
       taskActive ||
       installCompletedLocally ||
@@ -387,6 +375,7 @@ export function ReplacementTargetPanel({
     }
     previewRequestGenerationRef.current += 1;
     setSelectedTargetId(targetId);
+    setSelectedAlias(alias);
     setPreviewState({ status: "idle" });
     setTrackedTaskState({ status: "idle" });
   };
@@ -648,7 +637,7 @@ export function ReplacementTargetPanel({
       <section className="replacement-panel__catalog" aria-labelledby="replacement-catalog-title">
         <div className="replacement-panel__section-heading">
           <h3 id="replacement-catalog-title">{rCopy.panel.targetsTitle}</h3>
-          <span>{rCopy.panel.targetCount(filteredTargets.length)}</span>
+          <span>{rCopy.panel.targetCount(filteredOptions.length)}</span>
         </div>
         <label className="replacement-panel__search">
           <Search size={16} aria-hidden="true" />
@@ -661,33 +650,32 @@ export function ReplacementTargetPanel({
             disabled={taskActive}
           />
         </label>
-        {filteredTargets.length ? (
+        {filteredOptions.length ? (
           <div className="replacement-panel__target-list" role="radiogroup" aria-label={rCopy.panel.targetsAria}>
-            {filteredTargets.map((target) => {
+            {filteredOptions.map((option) => {
+              const target = option.target;
               const currentInstalled = isCurrentInstalledReplacementTarget(
                 target.id,
                 installedTargetId,
               );
               const occupied = occupancyByTarget.get(target.id) ?? null;
-              const names = resolveReplacementTargetNames(target.displayNames, locale);
-              // #274: the filter also matches aliases and other locales' display names,
-              // none of which the row renders; say what was hit so the row does not look wrong.
-              const matchHint = matchedHiddenReplacementTargetNames(target, names, query);
+              const matchHint = matchedHiddenReplacementTargetNames(target, option, query);
               const aliasCount = resolveReplacementTargetAliases(target.aliasesByLocale, locale).length;
               return (
                 <label
                   className="replacement-panel__target-row"
                   data-installed={currentInstalled}
                   data-occupied={occupied ? "true" : "false"}
-                  data-selected={target.id === selectedTargetId}
-                  key={target.id}
+                  data-selected={option.key === selectedOption?.key}
+                  data-target-id={target.id}
+                  key={option.key}
                 >
                   <input
                     type="radio"
                     name="replacement-target"
-                    value={target.id}
-                    checked={target.id === selectedTargetId}
-                    onChange={() => selectTarget(target.id)}
+                    value={option.key}
+                    checked={option.key === selectedOption?.key}
+                    onChange={() => selectTarget(target.id, option.alias)}
                     disabled={
                       !analysis?.retargetable ||
                       previewState.status === "loading" ||
@@ -697,8 +685,8 @@ export function ReplacementTargetPanel({
                     }
                   />
                   <span className="replacement-panel__target-name">
-                    <strong>{names.displayName}</strong>
-                    {names.secondaryName ? <small>{names.secondaryName}</small> : null}
+                    <strong>{option.displayName}</strong>
+                    {option.secondaryName ? <small>{option.secondaryName}</small> : null}
                     {matchHint ? (
                       <small className="replacement-panel__target-match">
                         <Search size={11} aria-hidden="true" />
@@ -742,7 +730,7 @@ export function ReplacementTargetPanel({
         )}
       </section>
 
-      {selectedTarget && selectedAliases.length > 0 ? (
+      {selectedTarget && selectedOption && selectedAliases.length > 0 ? (
         <section className="replacement-panel__aliases" aria-labelledby="replacement-aliases-title">
           <div className="replacement-panel__section-heading">
             <Tags size={17} aria-hidden="true" />
@@ -750,7 +738,7 @@ export function ReplacementTargetPanel({
             <span>{rCopy.panel.selectedAliasesCount(selectedAliases.length)}</span>
           </div>
           <p className="replacement-panel__aliases-target">
-            <strong>{resolveReplacementTargetNames(selectedTarget.displayNames, locale).displayName}</strong>
+            <strong>{selectedOption.displayName}</strong>
             <code>{selectedTarget.internalId}</code>
           </p>
           <ul className="replacement-panel__alias-list" aria-label={rCopy.panel.selectedAliasesAria}>
@@ -789,6 +777,11 @@ export function ReplacementTargetPanel({
                   <span>{rCopy.panel.actionCount(previewState.preview.actions.length)}</span>
                 ) : null}
               </div>
+              {previewState.mode === "switch" && selectedTarget && selectedOption ? (
+                <p className="replacement-panel__selected-name">
+                  {replacementIdentityLabel(selectedTarget, locale, selectedOption.displayName)}
+                </p>
+              ) : null}
               {previewState.mode === "initial" ? (
                 <>
                   <dl className="replacement-panel__preview-facts">
@@ -798,7 +791,8 @@ export function ReplacementTargetPanel({
                     </div>
                     <div>
                       <dt>{rCopy.panel.factTargetId}</dt>
-                      <dd>{replacementIdentityLabel(previewState.preview.target, locale)}</dd>
+                      <dd>{replacementIdentityLabel(previewState.preview.target, locale,
+                        previewState.preview.target.id === selectedTargetId ? selectedOption?.displayName : undefined)}</dd>
                     </div>
                     <div>
                       <dt>{rCopy.panel.factActions}</dt>
