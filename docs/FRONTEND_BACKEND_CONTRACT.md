@@ -1627,11 +1627,14 @@ cancel_task(taskId)
 - `get_install_manifest_status` 不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文、目标文件 hash 或第三方 Mod 内容。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。manifest-only 路径读取失败使用稳定错误码 `install_manifest_unavailable`；传入 `gameId` 后读取游戏配置或恢复扫描失败时沿用 `scan_install_recovery` 的稳定错误码 `game_instance_unavailable` / `install_recovery_unavailable`。
 - `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；`modIds` 可为空，表示扫描该 profile manifest 内全部已知托管 Mod，便于启动级恢复检查或独立恢复中心先获得全局健康摘要。后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
 - `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、接管条目计数（`adoptedFileCount`，见 #286）、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`committed_cleanup_pending` 表示 candidate manifest/targets 已证明，但 completed bookkeeping 尚待受控收敛；`cleanup_pending` 表示 transaction 已 completed 但 snapshot/record cleanup 尚未结束；`rollback_required` 表示重装前/普通安装写入窗口未确认完成；`repair_required` 表示无法安全自动收敛的一致性问题；`unknown` 表示读取失败等无法判断状态。缺失 manifest、无匹配 entry 且没有 recovery record 时返回 `not_installed`。当前命令只读，不自动删除、恢复、回滚或写 manifest。
-- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；action kind contract 为 `rollback_install` 或 `reconcile_reinstall`。现有详细 availability/count preview 针对 `rollback_install`；`reconcile_reinstall` 在没有专用 preview 证明时返回 blocked，不能据此绕过后端 task revalidation。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容，也不执行写入或写 Audit Log。
-- `preview_recovery_action` 只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
+- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；action kind 为 `rollback_install`、`reconcile_reinstall` 或 `uninstall_missing_targets`。详细 availability/count preview 支持回滚和缺失目标卸载；`reconcile_reinstall` 在没有专用 preview 证明时返回 blocked，不能据此绕过后端 task revalidation。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容，也不执行写入或写 Audit Log。
+- `rollback_install` 预览只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
+- `uninstall_missing_targets` 用于正常安装后目标被外部删除的情况，不要求有未完成安装记录。预览必须验证 manifest 状态可消费、profile 与归属一致、每项有 installed 摘要、至少一个目标缺失、仍存在的目标摘要一致且全部所需备份可读。同 profile 未完成安装恢复记录或任一尚未清理的重装事务、游戏运行中或状态未知都会阻断。新增 reason 为 `install_state_unavailable`、`target_state_unavailable`、`backup_unavailable`、`recovery_pending`、`preview_required`、`game_running`、`game_running_unknown`。
+- 缺失目标预览返回 `missingFileCount` 和 `planToken`（`missing-uninstall-v1:` 加 64 位小写十六进制摘要）。`missingFileCount` 包含有备份和无备份的缺失目标，不能与删除/恢复计数相加。`removeFileCount` 是实际删除数，`restoreFileCount` / `backupCount` 是实际恢复数。blocked 和其他动作省略 token；其他动作缺失计数为 `0`。token 绑定 game/profile/Mod、清单、目标现状和备份内容，仅用于漂移检查；UI 原样透传，不展示、不解析、不写日志。
 - `start_recovery_action_task` 是后端驱动的受控恢复动作任务入口。`rollback_install` 根据普通 install recovery record 回到安装前状态；`reconcile_reinstall` 根据 durable reinstall transaction 重新验证 candidate/pre-reinstall manifest 与 target/snapshot facts，再完成 post-commit cleanup 或受控回到 pre-reinstall。无法证明时进入 `repair_required` 并 fail closed。该 command 不接受 `targetPath`、game root、backup/snapshot ref/root、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
+- 新动作必须携带预览返回的 `planToken`；缺失或格式非法在创建任务前返回 `plan_token_invalid`。执行在原任务锁内复核事务门禁并重建摘要，逐项写入前重读目标：缺失无备份仅清记录，有备份恢复原文件，仍存在且匹配的无备份文件删除。普通卸载仍拒绝缺失目标。失败保留原清单并尝试恢复执行前状态；回滚遇外部新内容时停止覆盖并返回失败。`install_recovery_failed:stale_preview`、`:game_running`、`:game_running_unknown` 分别指向重新预览、关闭游戏和稍后重试；其他失败沿用 `:planning` / `:processing`。后端成功提交通过共享 manifest 仓储刷新库投影，前端再触发恢复摘要刷新。
 - `start_recovery_action_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.recovery.queued` 事件；后台 runner 会发送 `install.recovery.planning`、`install.recovery.processing`、`install.recovery.completed` 或 `install.recovery.failed`。失败事件的 `error` 使用稳定前缀 `install_recovery_failed:<phase>`，当前 phase 可为 `lock`、`planning`、`processing` 或 `complete`。写入准入层还可能直接给出 `recovery_pending` / `recovery_unavailable` / `write_safety_rejected` 与四个 `write_admission_*`（`busy` / `cancelled` / `order_violation` / `unavailable`），语义同上。事件 payload 不承载目标路径、完整本地路径、backup ref、manifest 内容、目标 hash、sandbox/cache 路径或第三方 Mod 内容。
-- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install` 或 `reconcile_reinstall`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、backup/snapshot ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
+- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install`、`reconcile_reinstall` 或 `uninstall_missing_targets`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录 plan token、完整本地路径、用户名、Steam ID、backup/snapshot ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - Mod 库前端应在 `get_install_manifest_status` 中传入 `gameId`，让状态摘要直接反映只读 recovery scan。前端应把 `committed_cleanup_pending` / `cleanup_pending` / `rollback_required` / `repair_required` / `unknown` 都作为不安全状态展示并阻断新的安装、卸载或重装；扫描失败时应降级为 `unknown`，不回退为 mock 安装事实或任务内存态。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的 rich repair summary、风险等级、阻断原因和人工处理建议。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
@@ -1772,7 +1775,7 @@ type InstallRecoveryScanRequestDto = {
   modIds: string[];
 };
 
-type InstallRecoveryActionKindDto = "rollback_install" | "reconcile_reinstall";
+type InstallRecoveryActionKindDto = "rollback_install" | "reconcile_reinstall" | "uninstall_missing_targets";
 
 type InstallRecoveryActionPreviewRequestDto = {
   gameId: string;
@@ -1786,6 +1789,7 @@ type StartRecoveryActionTaskRequestDto = {
   profileId: string;
   modId: string;
   actionKind: InstallRecoveryActionKindDto;
+  planToken?: string | null; // uninstall_missing_targets 必填；旧动作兼容省略
 };
 
 type InstallManifestStatusDto =
@@ -1848,7 +1852,14 @@ type InstallRecoveryActionBlockReasonDto =
   | "target_changed"
   | "target_read_failed"
   | "backup_missing"
-  | "backup_read_failed";
+  | "backup_read_failed"
+  | "install_state_unavailable"
+  | "target_state_unavailable"
+  | "backup_unavailable"
+  | "recovery_pending"
+  | "preview_required"
+  | "game_running"
+  | "game_running_unknown";
 
 type InstallRecoveryActionPreviewDto = {
   profileId: string;
@@ -1858,6 +1869,8 @@ type InstallRecoveryActionPreviewDto = {
   removeFileCount: number;
   restoreFileCount: number;
   backupCount: number;
+  missingFileCount: number;
+  planToken?: string;
   blockingIssueCount: number;
   blockingReasons: Array<{
     reason: InstallRecoveryActionBlockReasonDto;

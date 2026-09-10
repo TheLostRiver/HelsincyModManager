@@ -282,7 +282,8 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "无法确认当前安装状态。" },
         replacement_initial_install_blocked: {
-          message: "当前安装或恢复状态不允许首次替换安装。",
+          message: "当前配置档中有尚未处理的安装或恢复状态，暂时不能首次重定向安装。",
+          hint: "打开恢复中心可查看涉及的 Mod 和原因；文件缺失时可预览卸载清理方案。",
         },
         replacement_installed_binding_unavailable: {
           message: "无法确认当前已安装的替换目标。",
@@ -565,7 +566,8 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "The current install status could not be confirmed." },
         replacement_initial_install_blocked: {
-          message: "The current install or recovery status does not allow a first replacement install.",
+          message: "This profile has unresolved installation or recovery state, so an initial retarget install is blocked.",
+          hint: "Open the recovery center to identify the affected mods and causes. Missing files can be reviewed for a safe uninstall.",
         },
         replacement_installed_binding_unavailable: {
           message: "The currently installed replacement target could not be confirmed.",
@@ -850,7 +852,8 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "現在のインストール状態を確認できません。" },
         replacement_initial_install_blocked: {
-          message: "現在のインストール／復旧状態では初回の置換インストールを実行できません。",
+          message: "このプロファイルに未解決のインストール／復旧状態があるため、初回の置換インストールを実行できません。",
+          hint: "復旧センターで対象の Mod と原因を確認してください。ファイル欠落時はアンインストール内容を確認できます。",
         },
         replacement_installed_binding_unavailable: {
           message: "現在インストール済みの置換ターゲットを確認できません。",

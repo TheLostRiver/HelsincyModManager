@@ -1,5 +1,5 @@
 export const FEEDBACK_TOAST_QUEUE_LIMIT = 4;
-export const DEFAULT_FEEDBACK_TOAST_DURATION_MS = 6000;
+export const DEFAULT_FEEDBACK_TOAST_DURATION_MS = 3000;
 
 export type FeedbackToastTone = "neutral" | "success" | "warning" | "danger";
 export type FeedbackToastAction = { label: string; onSelect: () => void };
@@ -28,7 +28,8 @@ export function enqueueFeedbackToast(queue: FeedbackToastItem[], input: Feedback
       ...input,
       id: existing.id,
       tone: input.tone ?? "neutral",
-      durationMs: input.durationMs ?? DEFAULT_FEEDBACK_TOAST_DURATION_MS,
+      // 合并更新内容与次数，沿用当前通知的展示周期。
+      durationMs: existing.durationMs,
       occurrences: existing.occurrences + 1,
       revision: existing.revision + 1,
     };
