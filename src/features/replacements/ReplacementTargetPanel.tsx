@@ -63,6 +63,7 @@ import {
 } from "./replacementWorkflow";
 import "./ReplacementTargetPanel.css";
 import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
+import { ReplacementContextPanel } from "./ReplacementContextPanel";
 
 type ReplacementTargetPanelProps = {
   gameId: GameId;
@@ -573,30 +574,40 @@ export function ReplacementTargetPanel({
       });
   };
 
+  const contextPanel = <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId}
+    reloadKey={retryToken} targets={targets} onRetry={() => setRetryToken((value) => value + 1)} />;
+
   if (loadState.status === "loading") {
     return (
-      <div className="replacement-panel__state" role="status">
-        <LoaderCircle className="replacement-panel__spinner" size={20} aria-hidden="true" />
-        <span>{rCopy.panel.analyzing}</span>
+      <div className="replacement-panel">
+        {contextPanel}
+        <div className="replacement-panel__state" role="status">
+          <LoaderCircle className="replacement-panel__spinner" size={20} aria-hidden="true" />
+          <span>{rCopy.panel.analyzing}</span>
+        </div>
       </div>
     );
   }
 
   if (loadState.status === "error") {
     return (
-      <div className="replacement-panel__state is-error" role="alert">
-        <ShieldAlert size={20} aria-hidden="true" />
-        <span>{loadState.message}</span>
-        <button type="button" onClick={() => setRetryToken((value) => value + 1)}>
-          <RefreshCw size={15} aria-hidden="true" />
-          {rCopy.panel.retry}
-        </button>
+      <div className="replacement-panel">
+        {contextPanel}
+        <div className="replacement-panel__state is-error" role="alert">
+          <ShieldAlert size={20} aria-hidden="true" />
+          <span>{loadState.message}</span>
+          <button type="button" onClick={() => setRetryToken((value) => value + 1)}>
+            <RefreshCw size={15} aria-hidden="true" />
+            {rCopy.panel.retry}
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="replacement-panel">
+      {contextPanel}
       {blockMessage ? (
         <div className="replacement-panel__notice is-blocked" role="status">
           <ShieldAlert size={18} aria-hidden="true" />
@@ -604,35 +615,16 @@ export function ReplacementTargetPanel({
         </div>
       ) : null}
 
-      <section className="replacement-panel__source" aria-labelledby="replacement-source-title">
-        <div className="replacement-panel__section-heading">
-          <Target size={17} aria-hidden="true" />
-          <h3 id="replacement-source-title">{rCopy.panel.detectionTitle}</h3>
-          <span>{rCopy.panel.resourceCount(analysis?.matchedAssetCount ?? 0)}</span>
-        </div>
-        {analysis?.sources.length ? (
-          <dl className="replacement-panel__source-facts">
-            {analysis.sources.map((source) => (
-              <div key={source.id}>
-                <dt>{replacementKindLabel(source.sourceType, locale)}</dt>
-                <dd>{replacementIdentityLabel(source, locale)}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="replacement-panel__empty">{rCopy.panel.noSources}</p>
-        )}
-        {analysis?.warnings.length ? (
-          <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
-            {analysis.warnings.map((warning) => (
-              <li key={warning}>
-                <AlertTriangle size={14} aria-hidden="true" />
-                {rCopy.warnings[warning]}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+      {analysis?.warnings.length ? (
+        <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
+          {analysis.warnings.map((warning) => (
+            <li key={warning}>
+              <AlertTriangle size={14} aria-hidden="true" />
+              {rCopy.warnings[warning]}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <section className="replacement-panel__catalog" aria-labelledby="replacement-catalog-title">
         <div className="replacement-panel__section-heading">

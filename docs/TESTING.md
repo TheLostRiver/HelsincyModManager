@@ -1078,6 +1078,16 @@ radio/view key 唯一，而实际 target ID 仍为 601 个。防具仍按目标�
 `replacementOptionBehavior.test.mjs` 执行真实 React 组件，覆盖别名选择和预览文案、只提交 canonical
 target ID、同模型已安装/占用阻断、语言不重扫，以及 profile 改变后丢弃迟到预览。
 
+默认替换对象还需运行：
+
+```powershell
+cargo test -p hmm-runtime --test replacement_default_targets
+```
+
+该测试只构造临时人工包，用真实 MHW catalog 验证尚未安装/重定向的武器、防具名称与多源包默认对象。
+前端同时覆盖默认信息在零写入时显示、当前安装与未确认候选区分、安装事实不可确认、未知名称回退、
+多源重定向不可用和配置档迟到响应；截图使用已核实编号并标明人工 IPC，不把占位名称当作游戏事实。
+
 浏览器夹具使用同一武器 family 的 bundled 名称和人工 IPC，检查三语、宽窄窗口、同模型各名称可选、
 只有一项 radio 选中、名称加编号的预览、共享影响提示，以及键盘、搜索和完整安装参数。不得通过真实
 游戏写入验收展示逻辑，也不得根据数组顺序配对独立排序的分语言别名。

@@ -294,6 +294,11 @@ displayNames 语言映射切换。切换 Mod/profile 时清空名称选择和旧
 
 这是展示投影调整，catalog artifact、stable ID、资源路径与安装执行规则均保持原有内容。
 
+面板同时独立显示 `get_mod_replacement_summary` 的默认对象与当前安装对象。默认名称从 Mod 原有资源
+和 catalog 匹配得到，不要求存在 HMM 重定向记录；多源包仍能查看默认对象，即使其单目标重定向被拒。
+已安装目标以当前配置档的可信 binding 为依据，未确认的安装事实不能被默认对象替代。测试截图必须
+标明人工场景；名称与编号用已核实 catalog 条目，未收录编号不能配造一个装备名称。
+
 ## 路径 Schema
 
 ### Resource Root
