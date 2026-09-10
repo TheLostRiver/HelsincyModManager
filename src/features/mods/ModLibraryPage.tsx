@@ -608,27 +608,29 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   );
 
   const toggleCardCategoryLabels = useCallback(() => {
-    setShowCardCategoryLabels((currentValue) => {
-      const nextValue = !currentValue;
+    // 落盘放在 updater **之外**：updater 必须是纯函数，StrictMode 会把它调两次。
+    // 这里写的是同一个值，两次落盘幂等、没有可观察后果——但同一类写法在拖拽导入里
+    // 就不是幂等的（入队 push 了两次，一个包导入两份），所以不留这种先例。
+    const nextValue = !showCardCategoryLabels;
 
-      try {
-        window.localStorage.setItem(CARD_CATEGORY_LABELS_STORAGE_KEY, String(nextValue));
-      } catch {
-        // The in-memory UI state still works if storage is unavailable.
-      }
+    try {
+      window.localStorage.setItem(CARD_CATEGORY_LABELS_STORAGE_KEY, String(nextValue));
+    } catch {
+      // The in-memory UI state still works if storage is unavailable.
+    }
 
-      return nextValue;
-    });
-  }, []);
+    setShowCardCategoryLabels(nextValue);
+  }, [showCardCategoryLabels]);
 
   const refreshCategories = useCallback(async () => {
     const generation = ++categoriesRequestGenerationRef.current;
+    const cacheGeneration = librarySessionCache.getGeneration();
     try {
       const loadedCategories = await listCategories();
       if (categoriesRequestGenerationRef.current === generation) {
         categoriesRef.current = loadedCategories;
         setCategories(loadedCategories);
-        librarySessionCache.writeCategories(loadedCategories);
+        librarySessionCache.writeCategories(loadedCategories, cacheGeneration);
       }
     } catch {
       // Category chips remain on their last successful snapshot.
@@ -641,20 +643,22 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [refreshCategories, refreshLibraryPage]);
 
   const refreshModLibraryAfterWrite = useCallback(async () => {
+    librarySessionCache.invalidateAllPages();
     resetContentScroll();
     await refreshModLibrary();
-  }, [refreshModLibrary, resetContentScroll]);
+  }, [librarySessionCache, refreshModLibrary, resetContentScroll]);
 
   // 拖拽导入（T22 / #366）在 RouterOutlet 之上，回调穿不过路由，所以走计数订阅：
-  // 后台每导进一个就 +1，库页跟着刷新一次。**不重置滚动**——玩家可能正在翻库，
+  // 后台每导进一个就 +1，更新分类与选择；分页由共享失效订阅刷新。**不重置滚动**——玩家可能正在翻库，
   // 而这次刷新不是他触发的，把他弹回顶部是打断。
   const { libraryRevision } = useModImportDrop();
   const seenLibraryRevisionRef = useRef(libraryRevision);
   useEffect(() => {
     if (seenLibraryRevisionRef.current === libraryRevision) return;
     seenLibraryRevisionRef.current = libraryRevision;
-    void refreshModLibrary();
-  }, [libraryRevision, refreshModLibrary]);
+    dispatchSelection({ type: "reset-context", reason: "library-refreshed" });
+    void refreshCategories();
+  }, [libraryRevision, refreshCategories]);
 
   const refreshTerminalDurableStatus = useCallback(
     (profileId: string, modId: string, modName: string) =>
@@ -1955,6 +1959,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
               {libraryItems.map((item, index) => (
                 <ModPosterCard
                   key={item.id}
+                  gameId={DEFAULT_INSTALL_GAME_ID}
+                  profileId={profileContext?.profileId ?? null}
                   item={item}
                   selected={selectedIds.has(item.id)}
                   selectionMode={selectionMode}

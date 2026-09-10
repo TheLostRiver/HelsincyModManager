@@ -89,6 +89,7 @@ export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Pr
       profileId: input.profileId,
       modId: input.modId,
       actionKind: input.actionKind,
+      ...(input.planToken ? { planToken: input.planToken } : {}),
     },
   });
 }

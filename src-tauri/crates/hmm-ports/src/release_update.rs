@@ -4,8 +4,8 @@
 //! 实现放在 `hmm-infra`，测试里用假实现替换。
 //!
 //! **查询失败在这里是常态而不是异常**——断网、超时、接口变动、仓库还没有已发布
-//! 版本，都会发生在普通用户身上。因此调用方一律静默处理：不弹错误、不写失败日志
-//! 打扰用户、不让应用进入任何降级状态。
+//! 版本，都会发生在普通用户身上。调用方提供不含内部细节的查询结果，不弹错误、不写
+//! 失败日志打扰用户，也不让应用进入降级状态。
 
 use std::time::Duration;
 use thiserror::Error;
@@ -21,7 +21,7 @@ pub enum LatestReleaseVersionError {
 }
 
 pub trait LatestReleaseVersionSource: Send + Sync {
-    /// 返回**版本号最高**的那个已发布版本的原始版本号字符串。
+    /// 返回所选通道中**版本号最高**的已发布版本原始字符串；正式通道不含预发布标签。
     ///
     /// - `Ok(Some(version))`：查到了可用版本号（`version` 已能被引擎解析，
     ///   可能带 `v` 前缀，由调用方决定怎么展示）。
@@ -31,5 +31,6 @@ pub trait LatestReleaseVersionSource: Send + Sync {
     fn latest_release_version(
         &self,
         timeout: Duration,
+        include_prereleases: bool,
     ) -> Result<Option<String>, LatestReleaseVersionError>;
 }

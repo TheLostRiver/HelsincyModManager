@@ -189,8 +189,8 @@ pub use game_setup::{
 pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
-    InstallPlanFile, InstallPlanningError, InstallPlanningService, UninstallModError,
-    UninstallModRequest, UninstallModResult, UninstallModService,
+    InstallPlanFile, InstallPlanningError, InstallPlanningService, MissingTargetUninstallPreview,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
 };
 pub use install_manifest_query::{
     InstallManifestQueryError, InstallManifestQueryRequest, InstallManifestQueryService,
@@ -306,11 +306,11 @@ pub use replacement::{
     is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
     InitialRetargetSelection, InitialRetargetSlotIntent, MaterializeRetargetRequest,
-    MaterializedInitialRetargetInstall, MaterializedRetarget, PlannedInitialRetargetInstall,
-    PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    MaterializedInitialRetargetInstall, MaterializedRetarget, ModReplacementSummary,
+    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
-    ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
-    RetargetReinstallRequest, RetargetStagingMaterializerFactory,
+    ReplacementSummaryItem, ReplacementWorkflowError, ReplacementWorkflowService,
+    RetargetMaterializeError, RetargetReinstallRequest, RetargetStagingMaterializerFactory,
 };
 pub use replacement_audit::ReplacementAdapterAuditFacts;
 pub use replacement_occupancy::{ReplacementOccupancyService, ReplacementTargetOccupancy};

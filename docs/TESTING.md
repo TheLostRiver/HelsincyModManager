@@ -11,6 +11,9 @@
 
 ## 基础环境
 
+Linux CI 安装 Tauri 系统依赖前会移除 runner 预装的 Chrome apt 软件源配置；这些依赖来自 Ubuntu。
+这样避免无关软件源发布期间的索引不一致阻断验证，Ubuntu 的签名与摘要校验仍按默认规则执行。
+
 当前使用：
 
 - Node.js 24 或更新的 LTS 版本。
@@ -91,6 +94,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 前端改动
 
+开发服务器的监视边界由 `vite.config.ts` 管理。修改它时运行：
+
+```powershell
+node --test src/devServerWatch.test.mjs
+```
+
+这些用例也由 `pnpm test` 执行：逐项验证根级非前端目录被排除、`src` / `public` 内同名目录及
+环境文件仍可监视，并在临时目录启动真实 Vite，检查源文件变化能使转换后的模块更新。
+不启动 Tauri，不读取玩家数据；自动通过不替代原工作目录中的 Windows 启动对照。
+`pnpm typecheck` 同时检查前端和 Node 侧配置；后者使用 Node 类型与 ES2022，并禁用本次检查的
+composite / incremental 输出，避免类型检查生成配置构建产物。
+
 适用范围：
 
 - `src/`
@@ -138,6 +153,73 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 - `cargo check -p hmm-tauri`
 
 可视化检查需要覆盖：normal close dialog、`starting` 与 `worker_unhealthy` unsafe dialog、收起至托盘后从托盘恢复、完全退出、记住选择、设置页改回每次询问。unsafe 必须默认聚焦留在托盘、不显示 remember，并在最小 `960x640` 窗口无文字重叠；只有后端状态为 `protected` 才能描述退出后受保护。
+
+### Mod 悬浮信息与装备名称
+
+```powershell
+node --test src/features/mods/modHoverModel.test.mjs src/features/mods/modHoverBehavior.test.mjs
+cargo test -p hmm-app --lib display --no-fail-fast
+cargo test -p hmm-tauri --lib replacement --no-fail-fast
+```
+
+覆盖真实字段映射、缺失版本、备注截断、来源降级、名称/编号、包身份一致性、按需请求、
+profile/generation 失效、响应乱序、部分失败、超时与卸载。Rust 用人工 catalog/manifest 验证名称唯一
+匹配和多绑定展示与单目标写门禁分离。CSS 在 Node 渲染器中不执行，四模式 hover/focus/Escape、
+选择行为、视口边缘与长文本必须用真实浏览器补充检查；不得使用真实 Mod/玩家目录做自动 fixture。
+
+### 狩技盒子迁移与接管
+
+```powershell
+node --test src/features/mods/externalAdoptOriginBehavior.test.mjs src/features/mods/externalStateBehavior.test.mjs src/features/mods/externalAdoptUi.test.mjs
+cargo test -p hmm-runtime --test external_mod_adopt --no-fail-fast
+cargo test -p hmm-app --lib external_import --no-fail-fast
+cargo test -p hmm-infra --lib external_import --no-fail-fast
+```
+
+前端行为用例使用真实详情/接管组件与真实扫描 hook，覆盖来源未加载、普通文件导入、未知来源、
+其他迁移 adapter、狩技盒子、显式确认，以及 Mod/profile 切换、查询乱序和卸载后的迟到响应。
+浏览器检查实际按钮可见性、确认弹窗、键盘交互和小窗口布局。Runtime 用 fake/temp 验证不支持的
+来源在锁外拒绝，写锁内再次复核来源，并保留既有清单原子写入、取消屏障和审计降级测试。
+迁移回归覆盖选择封存、来源及内容漂移、取消/重试、持久去重、失败清理和历史保留；不使用真实
+狩技盒子目录、玩家游戏目录或第三方 Mod 包。
+
+### 关于页更新检查
+
+```powershell
+node --test src/features/about/updateCheckBehavior.test.mjs src/features/about/updateCheckView.test.mjs src/features/about/updateCheckBoundary.test.mjs
+cargo test -p hmm-infra --lib release_update --no-fail-fast
+cargo test -p hmm-tauri --lib update_ --no-fail-fast
+```
+
+使用人工 release feed、可控 Promise 与时钟，验证版本通道筛选、空列表与坏响应、明确状态反馈、
+失败重试、StrictMode 单请求/单次偏好写入、超时与迟到响应隔离。网络仍在 Rust 侧，CSP 不扩宽。
+浏览器检查各语言的状态切换前后容器高度、图标及按钮位置恒定；自动检查不代表真实网络或 WebView2 验收。
+
+### 新手引导语言
+
+新手引导首步语言与持久化回归：
+
+```powershell
+node --test src/app/onboarding/onboardingLanguageBehavior.test.mjs src/app/onboarding/onboardingTour.test.mjs
+```
+
+行为测试加载真实 I18nProvider、TourProvider 与语言单选组，仅替换路由读取和 overlay 展示叶子。
+覆盖首次中文、三语自称、已保存偏好/跟随系统、即时翻译、跳过/重开、旧完成记录和路由推进。
+键盘焦点与原生方向键、窄屏布局仍需浏览器交互检查；渲染器通过不代表 WebView2 验收通过。
+
+### 拖拽与会话缓存
+
+拖拽队列与会话缓存的 React 生命周期回归使用匹配 React 版本的 `react-test-renderer`，加载真实
+Provider、hook 和 runner，仅替换 IPC 与展示叶子。正式用例通过 `pnpm test` 一并执行：
+
+```powershell
+node --test src/features/mods/modImportDropBehavior.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
+```
+
+覆盖 StrictMode 单次确认、跨页/追加/停止、早到终态、失败原因与源包保留警告、终态重开、缓存
+generation、失效后重新取数、错误退出与手动重试、乱序响应及跨页写任务。渲染器不验证真实 WebView2
+拖放、视觉布局或玩家文件；其弃用提示不是用例失败。归档预检的线程切换、请求上限与路径准入由
+`mod_import_commands.rs` 的 `archive_preview_*` Rust 测试验证，JS 接线断言不能替代这些行为测试。
 
 ### T19 Feedback UI U1
 
@@ -687,6 +769,32 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 使用临时目录模拟游戏目录。
 - 不直接操作真实 MHW:I 安装目录。
 - 每个测试结束后校验临时目录状态。
+
+### 装后目标缺失恢复（#340）
+
+使用 fake filesystem 和临时人工包执行以下聚焦检查，不依赖真实游戏、存档或第三方 Mod：
+
+```powershell
+cargo test -p hmm-app --lib missing_target
+cargo test -p hmm-runtime --lib missing_target_tests
+cargo test -p hmm-tauri --lib missing_target_recovery
+node --test "src/features/install-recovery/*.test.mjs"
+```
+
+Rust 命令从 `src-tauri` 执行，前端命令从仓库根执行。还需运行 install/recovery 既有回归、CLI contract、
+类型检查、lint 和 build。公共契约及写入路径的 PR 验证遵循完整门禁要求。
+
+- 无备份缺失文件只清 manifest；有备份恢复原文件；混合缺失与存在文件正确卸载且保留其他 Mod/未知文件。
+- 普通卸载仍拒绝缺失；目标变化、读取失败、备份不足、错误 profile/归属、大小写碰撞、不可消费 manifest 都不能写。
+- 预览后更换配置游戏目录、目标重新出现、备份/清单变化、游戏启动或运行状态未知、新增未完成 install/reinstall 事务时拒绝。
+- 缺失目标重读失败不能因 `None` 比较而放行；manifest 保存失败能回滚到原先内容和不存在状态，且不覆盖
+  回滚前被外部替换的新内容。
+- Runtime 走真实任务闭环：安装→外部删除→扫描 repair_required→预览→恢复；核实同实例预热的 Mod 库
+  状态变成 NotInstalled，整个 profile 的首次重定向准入恢复，未修改原门禁。
+- DTO 接受并保留 canonical token，拒绝缺失/非法 token；日志与进度不泄露 token、路径或清单正文。
+- React StrictMode 只启动一次扫描；先显示事实，有限并发补名称；换 profile 后忽略旧预览和迟到名称。
+- 三语浏览器夹具检查预览前后均无写请求，只有确认启动一次；blocked 无确认按钮，事件按 taskId 匹配，
+  完成后刷新。检查窄窗口换行、确认可见性、异常 Mod 名称与 ID，以及重定向错误按钮进入恢复中心。
 
 ### T13 批量生命周期分阶段矩阵
 

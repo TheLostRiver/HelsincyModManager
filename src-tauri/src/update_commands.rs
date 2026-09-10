@@ -10,9 +10,9 @@
 
 use std::time::Duration;
 
-use hmm_core::decide_update;
+use hmm_core::{decide_update, parse_app_version, UpdateDecision};
 use hmm_infra::{GitHubLatestReleaseSource, ReqwestReleaseFeedHttpTransport};
-use hmm_ports::LatestReleaseVersionSource;
+use hmm_ports::{LatestReleaseVersionError, LatestReleaseVersionSource};
 
 use crate::update_dto::AppUpdateStatusDto;
 
@@ -24,27 +24,36 @@ const RELEASE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 /// 这是 `async` 命令：真正的 HTTP 走 `spawn_blocking`（本机 reqwest 只有 blocking
 /// feature），避免阻塞 Tauri 的异步运行时。
 ///
-/// **任何失败都收敛为 `unknown`**——断网、超时、接口 404、仓库还没有已发布版本，
-/// 对普通用户都是常态，一律静默，不写失败日志打扰用户。
+/// 失败收敛为 `unknown`，成功查询但无当前通道可用版本为 `no_release`。
+/// 不返回内部网络细节，不写失败日志打扰用户。
 #[tauri::command]
 pub async fn check_app_update() -> AppUpdateStatusDto {
     let current_version = env!("CARGO_PKG_VERSION").to_owned();
 
     let latest_version = tauri::async_runtime::spawn_blocking(move || {
+        let current = parse_app_version(env!("CARGO_PKG_VERSION"))
+            .map_err(|_| LatestReleaseVersionError::Unavailable)?;
         let source = GitHubLatestReleaseSource::new(Box::new(ReqwestReleaseFeedHttpTransport));
-        source
-            .latest_release_version(RELEASE_CHECK_TIMEOUT)
-            .ok()
-            .flatten()
+        source.latest_release_version(RELEASE_CHECK_TIMEOUT, current.is_prerelease())
     })
     .await
-    .ok()
-    .flatten();
+    .unwrap_or(Err(LatestReleaseVersionError::Unavailable));
 
-    AppUpdateStatusDto::from_decision(
-        current_version,
-        decide_update(env!("CARGO_PKG_VERSION"), latest_version.as_deref()),
-    )
+    project_release_result(current_version, latest_version)
+}
+
+fn project_release_result(
+    current_version: String,
+    result: Result<Option<String>, LatestReleaseVersionError>,
+) -> AppUpdateStatusDto {
+    match result {
+        Ok(Some(latest)) => {
+            let decision = decide_update(&current_version, Some(&latest));
+            AppUpdateStatusDto::from_decision(current_version, decision)
+        }
+        Ok(None) => AppUpdateStatusDto::no_release(current_version),
+        Err(_) => AppUpdateStatusDto::from_decision(current_version, UpdateDecision::Unknown),
+    }
 }
 
 #[cfg(test)]
@@ -66,5 +75,21 @@ mod tests {
     #[test]
     fn the_timeout_stays_short_enough_to_never_block_the_ui() {
         assert!(RELEASE_CHECK_TIMEOUT <= Duration::from_secs(5));
+    }
+
+    #[test]
+    fn empty_release_list_is_distinct_from_query_failure() {
+        assert_eq!(
+            project_release_result("1.0.0".to_owned(), Ok(None)).status,
+            "no_release"
+        );
+        assert_eq!(
+            project_release_result(
+                "1.0.0".to_owned(),
+                Err(LatestReleaseVersionError::Unavailable)
+            )
+            .status,
+            "unknown"
+        );
     }
 }

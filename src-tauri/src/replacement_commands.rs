@@ -23,7 +23,8 @@ use crate::dto::{
 use crate::reinstall_commands::{parse_plan_token, preview_error_to_command_error};
 use crate::reinstall_dto::ReinstallPlanPreviewDto;
 use crate::replacement_dto::{
-    ListReplacementTargetOccupancyRequestDto, ReplacementTargetOccupancyDto,
+    ListReplacementTargetOccupancyRequestDto, ModReplacementSummaryDto,
+    ReplacementTargetOccupancyDto,
 };
 use crate::state::{AppState, ConfiguredRetargetReinstallError};
 use crate::task_events::{emit_task_progress, INSTALL_REINSTALL_QUEUED_PHASE};
@@ -59,6 +60,7 @@ pub fn analyze_imported_mod_replacement(
         .replacement_workflow
         .analyze_imported_mod(request)
         .map_err(replacement_workflow_error_to_command_error)?;
+    let source_names = state.replacement_workflow.describe_sources(&analysis);
     let installed_target_id = profile_id
         .map(|profile_id| {
             state
@@ -71,7 +73,35 @@ pub fn analyze_imported_mod_replacement(
             message: "replacement install state is unavailable".to_owned(),
         })?
         .flatten();
-    Ok(replacement_analysis_to_dto(analysis, installed_target_id))
+    let mut response = replacement_analysis_to_dto(analysis, installed_target_id);
+    let mut source_names: std::collections::BTreeMap<_, _> = source_names
+        .into_iter()
+        .map(|source| (source.id, source.display_names))
+        .collect();
+    for source in &mut response.sources {
+        source.display_names = source_names.remove(&source.id).unwrap_or_default();
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn get_mod_replacement_summary(
+    request: AnalyzeImportedModReplacementRequestDto,
+    state: State<'_, AppState>,
+) -> Result<ModReplacementSummaryDto, CommandErrorDto> {
+    let (request, profile_id) = analyze_request_from_dto(request)?;
+    let workflow = Arc::clone(&state.replacement_workflow);
+    tauri::async_runtime::spawn_blocking(move || {
+        workflow.replacement_summary(request, profile_id.as_ref())
+    })
+    .await
+    .map_err(|_| {
+        replacement_workflow_error_to_command_error(
+            ReplacementWorkflowError::PackageFilesUnavailable,
+        )
+    })?
+    .map(Into::into)
+    .map_err(replacement_workflow_error_to_command_error)
 }
 
 /// 列出该 profile 下**其他 Mod** 已占用的替换目标，供前端提示占用方并禁用写入。
@@ -581,6 +611,7 @@ impl From<ReplacementAnalysis> for ReplacementAnalysisDto {
                     source_type: source.source_type().as_str().to_owned(),
                     internal_id: source.internal_id().to_owned(),
                     supported: source.is_supported(),
+                    display_names: std::collections::BTreeMap::new(),
                 })
                 .collect(),
             warnings: analysis

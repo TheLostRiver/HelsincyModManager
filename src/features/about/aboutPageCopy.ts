@@ -24,7 +24,9 @@ export type AboutPageCopy = {
     autoCheck: string;
     autoCheckHint: string;
     download: string;
-    staleNote: string;
+    notChecked: string;
+    unavailable: string;
+    noRelease: string;
   };
   linkLabels: {
     releases: string;
@@ -75,7 +77,9 @@ export const aboutPageCopy = {
       autoCheck: "自动检查更新",
       autoCheckHint: "打开本页时检查，24 小时内不重复查询。",
       download: "前往下载页",
-      staleNote: "上次检查失败，以下为上次的结果。",
+      notChecked: "尚未检查更新",
+      unavailable: "未能完成更新检查，请稍后重试。",
+      noRelease: "当前通道未找到可用的发行版本。",
     },
     linkLabels: {
       releases: "GitHub Releases",
@@ -136,7 +140,9 @@ export const aboutPageCopy = {
       autoCheck: "Check for updates automatically",
       autoCheckHint: "Checks when this page opens, at most once every 24 hours.",
       download: "Go to downloads",
-      staleNote: "The last check failed - showing the previous result.",
+      notChecked: "Updates have not been checked",
+      unavailable: "Could not check for updates. Please try again later.",
+      noRelease: "No usable release was found for this channel.",
     },
     linkLabels: {
       releases: "GitHub Releases",
@@ -203,7 +209,9 @@ export const aboutPageCopy = {
       autoCheck: "更新を自動的に確認する",
       autoCheckHint: "このページを開いたときに確認します。24 時間以内は再確認しません。",
       download: "ダウンロードページへ",
-      staleNote: "前回の確認に失敗したため、前回の結果を表示しています。",
+      notChecked: "更新はまだ確認されていません",
+      unavailable: "更新を確認できませんでした。しばらくしてから再試行してください。",
+      noRelease: "このチャンネルで利用可能なリリースは見つかりませんでした。",
     },
     linkLabels: {
       releases: "GitHub Releases",

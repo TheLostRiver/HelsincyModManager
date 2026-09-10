@@ -17,7 +17,7 @@ import {
   getModImportFailedMessage,
   getModImportTaskPhaseLabel,
   nextModImportTaskStateFromProgress,
-  type ModImportFailedMessageKind,
+  modImportStartFailureKind as startErrorMessageKind,
   type ModImportTaskState,
 } from "./modImportTaskState";
 import "./ModImportAction.css";
@@ -30,25 +30,6 @@ type ModImportActionProps = {
   tourId?: string;
   onImported: () => Promise<void> | void;
 };
-
-function startErrorMessageKind(error: unknown): ModImportFailedMessageKind {
-  const code =
-    typeof error === "object" && error !== null && "code" in error
-      ? String(error.code)
-      : "unknown";
-
-  if (code === "archive_path_empty" || code === "archive_path_not_absolute") {
-    return "invalid-archive";
-  }
-  // #275 storage write gate: the code tells the user what to wait for.
-  if (code === "mod_storage_migration_in_progress") {
-    return "storage-frozen-migration";
-  }
-  if (code === "mod_storage_restart_required") {
-    return "storage-frozen-restart";
-  }
-  return "start-failed";
-}
 
 function isImportTaskActive(state: ModImportTaskState) {
   return state.status === "choosing" || state.status === "starting" || state.status === "running";

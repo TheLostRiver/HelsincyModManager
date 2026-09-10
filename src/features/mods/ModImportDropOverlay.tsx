@@ -5,6 +5,7 @@ import {
   canStartDropImport,
   dropSelectAllState,
   getDropRowNote,
+  getDropQueueStatus,
   isDropRowSelectable,
   selectableDropRowCount,
   selectedDropRows,
@@ -66,16 +67,6 @@ function RowPhaseMark({ row, copy }: { row: DropRow; copy: ModImportCopy }) {
   }
 }
 
-function statusLine(summary: DropQueueSummary, copy: ModImportCopy): string | null {
-  if (summary.running > 0 || summary.queued > 0) {
-    return copy.drop.running(summary.succeeded + summary.failed + 1, summary.submitted);
-  }
-  if (summary.submitted === 0) return null;
-  if (summary.failed === 0) return copy.drop.doneAllSucceeded(summary.succeeded);
-  if (summary.succeeded === 0) return copy.drop.doneAllFailed(summary.failed);
-  return copy.drop.donePartial(summary.succeeded, summary.failed);
-}
-
 export function ModImportDropOverlay({
   copy,
   dragActive,
@@ -118,7 +109,7 @@ export function ModImportDropOverlay({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, visible]);
 
-  const status = statusLine(summary, copy);
+  const status = getDropQueueStatus(summary, copy);
   const hasFinished = summary.succeeded + summary.failed > 0;
 
   return (

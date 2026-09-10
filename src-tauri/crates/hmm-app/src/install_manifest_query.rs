@@ -1,6 +1,6 @@
 use hmm_core::{
     InstallManifest, InstallManifestStatusConsumption, ModId, ModRevisionId, ProfileId,
-    ReplacementTargetId,
+    ReplacementBindingSnapshot, ReplacementTargetId,
 };
 use hmm_ports::InstallManifestRepository;
 use std::sync::Arc;
@@ -130,6 +130,47 @@ impl InstallManifestQueryService {
         }
 
         Ok(Some(binding.binding().target_id().clone()))
+    }
+
+    /// 展示全部绑定；与单目标写流程查询独立，不放宽后者的多绑定拒绝门禁。
+    pub fn query_installed_replacement_bindings_for_display(
+        &self,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<Vec<ReplacementBindingSnapshot>, InstallManifestQueryError> {
+        let manifest = self
+            .manifest_repository
+            .load_manifest(profile_id)
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
+        let Some(manifest) = manifest else {
+            return Ok(Vec::new());
+        };
+        if manifest.profile_id != *profile_id
+            || manifest.status.consumption() != InstallManifestStatusConsumption::TrustEntries
+        {
+            return Err(InstallManifestQueryError::ManifestUnavailable);
+        }
+        manifest
+            .validate()
+            .map_err(|_| InstallManifestQueryError::ManifestUnavailable)?;
+        if summary_for_mod(profile_id, mod_id, Some(&manifest)).status
+            != InstallManifestStatus::Installed
+        {
+            return Ok(Vec::new());
+        }
+        let bindings: Vec<_> = manifest
+            .replacement_bindings
+            .iter()
+            .filter(|binding| binding.mod_id() == mod_id)
+            .cloned()
+            .collect();
+        if bindings
+            .iter()
+            .any(|binding| binding.profile_id() != profile_id)
+        {
+            return Err(InstallManifestQueryError::ManifestUnavailable);
+        }
+        Ok(bindings)
     }
 
     /// 列出该 profile 下**其他 Mod** 已占用的替换目标。
@@ -560,6 +601,136 @@ mod tests {
             adopted: false,
         }
     }
+
+    fn display_test_manifest() -> InstallManifest {
+        let mut manifest = InstallManifest::completed(
+            ProfileId::new("default"),
+            vec![
+                manifest_entry("mod-a", "nativePC/a.mod3", None),
+                manifest_entry("mod-b", "nativePC/b.mod3", None),
+            ],
+        );
+        manifest.replacement_bindings = ["first", "second", "other"]
+            .iter()
+            .map(|id| {
+                ReplacementBindingSnapshot::new(
+                    ReplacementBinding::new(
+                        ReplacementBindingId::parse(format!("binding-{id}")).unwrap(),
+                        ModId::new(if *id == "other" { "mod-b" } else { "mod-a" }),
+                        ProfileId::new("default"),
+                        ReplacementSourceId::parse(format!("source-{id}")).unwrap(),
+                        ReplacementTargetId::parse(*id).unwrap(),
+                        1,
+                    )
+                    .unwrap(),
+                    None,
+                    format!("source-{id}"),
+                    *id,
+                    "family",
+                    "family",
+                    ReplacementTargetKind::parse("armor").unwrap(),
+                )
+                .unwrap()
+            })
+            .collect();
+        manifest
+    }
+
+    #[test]
+    fn display_query_lists_multiple_bindings_without_relaxing_the_single_target_gate() {
+        let manifest = display_test_manifest();
+        let expected = manifest.replacement_bindings[..2].to_vec();
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+        let profile = ProfileId::new("default");
+        let mod_id = ModId::new("mod-a");
+        assert_eq!(
+            service.query_installed_replacement_bindings_for_display(&profile, &mod_id),
+            Ok(expected)
+        );
+        assert_eq!(
+            service.query_installed_replacement_target(&profile, &mod_id),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
+    #[test]
+    fn display_query_rejects_another_profiles_manifest() {
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(display_test_manifest()),
+        }));
+        assert_eq!(
+            service.query_installed_replacement_bindings_for_display(
+                &ProfileId::new("other"),
+                &ModId::new("mod-a")
+            ),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
+    #[test]
+    fn display_query_rejects_inconsistent_revision_facts() {
+        let mut manifest = display_test_manifest();
+        manifest.entries[0].revision_id = Some(ModRevisionId::new("different"));
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: Some(manifest),
+        }));
+        assert_eq!(
+            service.query_installed_replacement_bindings_for_display(
+                &ProfileId::new("default"),
+                &ModId::new("mod-a")
+            ),
+            Err(InstallManifestQueryError::ManifestUnavailable)
+        );
+    }
+
+    #[test]
+    fn display_query_without_a_manifest_is_known_empty() {
+        let service = InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+            manifest: None,
+        }));
+        assert_eq!(
+            service.query_installed_replacement_bindings_for_display(
+                &ProfileId::new("default"),
+                &ModId::new("mod-a")
+            ),
+            Ok(vec![])
+        );
+    }
+
+    macro_rules! display_rejects_status {
+        ($name:ident, $status:expr) => {
+            #[test]
+            fn $name() {
+                let mut manifest = display_test_manifest();
+                manifest.status = $status;
+                let service =
+                    InstallManifestQueryService::new(Arc::new(FakeInstallManifestRepository {
+                        manifest: Some(manifest),
+                    }));
+                assert_eq!(
+                    service.query_installed_replacement_bindings_for_display(
+                        &ProfileId::new("default"),
+                        &ModId::new("mod-a")
+                    ),
+                    Err(InstallManifestQueryError::ManifestUnavailable)
+                );
+            }
+        };
+    }
+    display_rejects_status!(
+        display_query_rejects_inflight_facts,
+        CoreManifestStatus::Committing
+    );
+    display_rejects_status!(
+        display_query_rejects_rollback_required_facts,
+        CoreManifestStatus::RollbackRequired
+    );
+    display_rejects_status!(
+        display_query_rejects_repair_required_facts,
+        CoreManifestStatus::RepairRequired
+    );
 
     fn replacement_snapshot(
         mod_id: &str,

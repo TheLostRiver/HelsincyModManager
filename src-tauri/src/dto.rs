@@ -191,6 +191,8 @@ pub struct StartRecoveryActionTaskRequestDto {
     pub profile_id: String,
     pub mod_id: String,
     pub action_kind: InstallRecoveryActionKindDto,
+    #[serde(default)]
+    pub plan_token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -320,6 +322,9 @@ pub struct InstallRecoveryActionPreviewDto {
     pub backup_count: usize,
     pub blocking_issue_count: usize,
     pub blocking_reasons: Vec<InstallRecoveryActionBlockReasonSummaryDto>,
+    pub missing_file_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -357,6 +362,13 @@ pub enum InstallRecoveryActionBlockReasonDto {
     TargetReadFailed,
     BackupMissing,
     BackupReadFailed,
+    InstallStateUnavailable,
+    TargetStateUnavailable,
+    BackupUnavailable,
+    RecoveryPending,
+    PreviewRequired,
+    GameRunning,
+    GameRunningUnknown,
 }
 
 impl From<AppSettings> for AppSettingsDto {
@@ -533,6 +545,8 @@ impl From<InstallRecoveryActionPreview> for InstallRecoveryActionPreviewDto {
             restore_file_count: preview.restore_file_count,
             backup_count: preview.backup_count,
             blocking_issue_count: preview.blocking_issue_count,
+            missing_file_count: preview.missing_file_count,
+            plan_token: preview.plan_token,
             blocking_reasons: preview
                 .blocking_reasons
                 .into_iter()
@@ -585,6 +599,17 @@ impl From<InstallRecoveryActionBlockReason> for InstallRecoveryActionBlockReason
             InstallRecoveryActionBlockReason::TargetReadFailed => Self::TargetReadFailed,
             InstallRecoveryActionBlockReason::BackupMissing => Self::BackupMissing,
             InstallRecoveryActionBlockReason::BackupReadFailed => Self::BackupReadFailed,
+            InstallRecoveryActionBlockReason::InstallStateUnavailable => {
+                Self::InstallStateUnavailable
+            }
+            InstallRecoveryActionBlockReason::TargetStateUnavailable => {
+                Self::TargetStateUnavailable
+            }
+            InstallRecoveryActionBlockReason::BackupUnavailable => Self::BackupUnavailable,
+            InstallRecoveryActionBlockReason::RecoveryPending => Self::RecoveryPending,
+            InstallRecoveryActionBlockReason::PreviewRequired => Self::PreviewRequired,
+            InstallRecoveryActionBlockReason::GameRunning => Self::GameRunning,
+            InstallRecoveryActionBlockReason::GameRunningUnknown => Self::GameRunningUnknown,
         }
     }
 }
