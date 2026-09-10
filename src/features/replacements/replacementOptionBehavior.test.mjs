@@ -11,6 +11,7 @@ registerReactTestModules({
     export const analyzeImportedModReplacement = (input) => globalThis.__weaponOptions.request("analysis", input);
     export const listReplacementTargets = (input) => globalThis.__weaponOptions.request("targets", input);
     export const listReplacementTargetOccupancy = (input) => globalThis.__weaponOptions.request("occupancy", input);
+    export const getModReplacementSummary = (input) => globalThis.__weaponOptions.request("context", input);
     export const previewInitialRetargetInstall = (input) => globalThis.__weaponOptions.request("preview", input);
     export const previewRetargetReinstall = (input) => globalThis.__weaponOptions.request("switchPreview", input);
     export const startRetargetInstallTask = (input) => globalThis.__weaponOptions.request("start", input);
@@ -29,8 +30,10 @@ const weapon = {
 const another = { ...weapon, id: "physical-model-b", internalId: "swo002", displayNames: { zh_cn: "另一把刀", en: "Another Sword", ja: "別の刀" }, aliases: [], aliasesByLocale: {} };
 const text = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children ?? []).map(text).join("");
 
-async function mount(t, { installed = false, occupied = false } = {}) {
-  const api = { locale: "zh_cn", calls: [], previews: [], listeners: new Set(), holdPreview: false };
+async function mount(t, { installed = false, occupied = false, targetFailure = false, contextOverride = {}, holdContext = false } = {}) {
+  const summaryItem = (target) => ({ id: target.id, kind: target.targetType, internalId: target.internalId, displayNames: target.displayNames });
+  const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], listeners: new Set(), holdPreview: false,
+    installedTargets: installed ? [summaryItem(weapon)] : [] };
   api.listen = async (callback) => { api.listeners.add(callback); return () => api.listeners.delete(callback); };
   api.preview = (input) => ({ analysis: { gameId: "mhw", sources: [], warnings: [], retargetable: true, matchedAssetCount: 1 },
     target: input.targetId === weapon.id ? weapon : another, actions: [{ sourceInternalId: "swo099", targetInternalId: "bs_swo001" }], warnings: [],
@@ -39,7 +42,16 @@ async function mount(t, { installed = false, occupied = false } = {}) {
     api.calls.push({ kind, input });
     if (kind === "analysis") return { gameId: "mhw", installedTargetId: installed ? weapon.id : undefined,
       retargetable: true, matchedAssetCount: 1, sources: [{ id: "source", sourceType: "weapon", internalId: "swo099", supported: true }], warnings: [] };
-    if (kind === "targets") return [weapon, another];
+    if (kind === "targets") {
+      if (targetFailure) throw { code: "replacement_source_not_retargetable", message: "fixture multiple sources" };
+      return [weapon, another];
+    }
+    if (kind === "context") {
+      const summary = { gameId: input.gameId, modId: input.modId, packageId: "fixture-package",
+        sources: [summaryItem(another)], installedTargets: api.installedTargets, ...contextOverride };
+      if (holdContext) return new Promise((resolve) => api.contexts.push({ input, summary, resolve }));
+      return summary;
+    }
     if (kind === "occupancy") return occupied ? [{ targetId: weapon.id, modId: "other-mod", displayName: "占用者" }] : [];
     if (kind === "preview") {
       if (api.holdPreview) return new Promise((resolve) => api.previews.push({ input, resolve }));
@@ -132,4 +144,60 @@ test("changing profile clears the selected name and rejects late preview results
   assert.equal(h.radios().filter((radio) => radio.props.checked).length, 0);
   assert.equal(h.root.root.findAllByProps({ className: "replacement-panel__preview" }).length, 0);
   assert.equal(h.buttons()[1].props.disabled, true);
+});
+
+test("default replacement names are shown before preview, install, or HMM retargeting", options, async (t) => {
+  const h = await mount(t);
+  const original = text(h.root.root.findByProps({ className: "replacement-context__default" }));
+  assert.ok(original.includes("Mod 默认替换对象"));
+  assert.ok(original.includes("另一把刀 (swo002)"));
+  assert.equal(h.root.root.findAllByProps({ className: "replacement-context__current" }).length, 0);
+  assert.equal(h.api.calls.filter((call) => call.kind === "context").length, 1, "StrictMode does not duplicate the read-only context query");
+  assert.equal(h.api.calls.filter((call) => ["preview", "start", "switchStart"].includes(call.kind)).length, 0);
+});
+
+test("installed target and original package target remain distinct from a pending selection", options, async (t) => {
+  const h = await mount(t, { installed: true });
+  await h.choose(null, another.id);
+  await act(async () => h.buttons()[0].props.onClick());
+  assert.ok(text(h.root.root.findByProps({ className: "replacement-context__current" })).includes("原型刀 (bs_swo001)"));
+  assert.ok(text(h.root.root.findByProps({ className: "replacement-context__default" })).includes("另一把刀 (swo002)"));
+});
+
+test("unsupported multi-source retargeting still shows all known default equipment", options, async (t) => {
+  const h = await mount(t, { targetFailure: true, contextOverride: { sources: [
+    { id: weapon.id, kind: "weapon", internalId: weapon.internalId, displayNames: weapon.displayNames },
+    { id: "armor-default", kind: "armor", internalId: "pl129_0000", displayNames: { zh_cn: "已确认的防具名称" } },
+  ] } });
+  const defaults = text(h.root.root.findByProps({ className: "replacement-context__default" }));
+  assert.ok(defaults.includes("原型刀 (bs_swo001)"));
+  assert.ok(defaults.includes("已确认的防具名称 (pl129_0000)"));
+  assert.equal(h.root.root.findAllByProps({ className: "replacement-panel__actions" }).length, 0);
+});
+
+test("unknown installation facts do not claim that the original target is currently installed", options, async (t) => {
+  const h = await mount(t, { contextOverride: { installedTargets: null } });
+  assert.equal(h.root.root.findAllByProps({ className: "replacement-context__current" }).length, 0);
+  assert.ok(text(h.root.toJSON()).includes("当前安装对象暂不可确认"));
+  assert.ok(text(h.root.root.findByProps({ className: "replacement-context__default" })).includes("另一把刀"));
+});
+
+test("an unmapped resource keeps its real reported ID and never receives a fabricated equipment name", options, async (t) => {
+  const h = await mount(t, { contextOverride: { sources: [{ id: "unmapped", kind: "weapon", internalId: "unmapped-id", displayNames: {} }] } });
+  const defaults = text(h.root.root.findByProps({ className: "replacement-context__default" }));
+  assert.ok(defaults.includes("名称未知 (unmapped-id)"));
+  assert.ok(defaults.includes("目录没有可确认的装备名称"));
+  assert.ok(!defaults.includes("原型刀"));
+});
+
+test("late context responses from another profile cannot overwrite current installed names", options, async (t) => {
+  const h = await mount(t, { installed: true, holdContext: true });
+  h.api.installedTargets = [{ id: another.id, kind: "weapon", internalId: another.internalId, displayNames: another.displayNames }];
+  await h.update({ profileId: "profile-b" });
+  assert.equal(h.api.contexts.length, 2);
+  await act(async () => h.api.contexts[1].resolve(h.api.contexts[1].summary));
+  await act(async () => h.api.contexts[0].resolve(h.api.contexts[0].summary));
+  const current = text(h.root.root.findByProps({ className: "replacement-context__current" }));
+  assert.ok(current.includes("另一把刀 (swo002)"));
+  assert.ok(!current.includes("原型刀"));
 });

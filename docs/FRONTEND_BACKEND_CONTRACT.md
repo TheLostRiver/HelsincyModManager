@@ -1036,6 +1036,11 @@ start_retarget_reinstall_task({ gameId, profileId, modId, targetId, layerName, l
 - 分语言别名列表独立排序，不保证下标间翻译对应；跨语言查询显示实际命中的后台名称。所选别名在
   预览中使用原文名称加 `internalId`，切换语言仍保留原文和模型目标，不猜翻译、不重扫 Mod。
   代表名继续按 `displayNames` 切换语言；Mod/profile 改变时清除所选名称与过期预览。
+- 替换面板独立调用共享 `get_mod_replacement_summary` 展示作者原包的「Mod 默认替换对象」，无需先安装或
+  使用 HMM 重定向。存在已验证的安装 binding 时另列「当前安装替换对象」；`installedTargets: null`
+  表示当前安装事实不可确认，不能当成「当前使用默认对象」。选择候选和生成预览不改变当前安装显示。
+  多源包或单目标重定向不可用时，默认名称仍可显示；不以写入能力查询的失败隐藏已知装备名称。
+  只按后端提供的同一目标 ID 补充共用模型名称，不能从编号猜装备；未找到名称时保留「名称未知＋编号」。
 - 分析响应只可附带可选稳定 `installedTargetId`；它是展示和同目标阻断事实，不是路径或 binding DTO。
 - 首次安装由 repository 解析当前 display revision；已安装 target switch 从 manifest 解析 installed revision，
   不接受 cache、sandbox 或 staging path，也不隐式升级。

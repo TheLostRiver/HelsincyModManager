@@ -48,6 +48,15 @@ export type ReplacementCopy = {
     analyzing: string;
     retry: string;
     detectionTitle: string;
+    defaultTargetsTitle: string;
+    defaultTargetsHint: string;
+    currentTargetsTitle: string;
+    currentTargetsHint: string;
+    currentTargetsUnknown: string;
+    contextLoading: string;
+    contextUnavailable: string;
+    contextNameUnknown: string;
+    contextSharedNames: string;
     resourceCount: (count: number) => string;
     noSources: string;
     warningsAria: string;
@@ -325,6 +334,15 @@ export const replacementCopy = {
       analyzing: "正在分析替换资源",
       retry: "重试",
       detectionTitle: "检测结果",
+      defaultTargetsTitle: "Mod 默认替换对象",
+      defaultTargetsHint: "按作者提供的 Mod 文件识别。安装或启用原包后，在游戏中装备对应的武器或防具即可查看效果。",
+      currentTargetsTitle: "当前安装替换对象",
+      currentTargetsHint: "根据当前配置档的 HMM 安装记录显示。",
+      currentTargetsUnknown: "当前安装对象暂不可确认；下面显示的是 Mod 原包的默认对象。",
+      contextLoading: "正在读取 Mod 的替换对象…",
+      contextUnavailable: "暂时无法读取 Mod 的替换对象，请重试。",
+      contextNameUnknown: "已识别资源编号，但目录没有可确认的装备名称。",
+      contextSharedNames: "共用该模型、也会受到影响的其他名称：",
       resourceCount: (count: number) => `${count} 个资源`,
       noSources: "未检测到可替换的外观槽位。",
       warningsAria: "分析警告",
@@ -599,6 +617,15 @@ export const replacementCopy = {
       analyzing: "Analyzing replacement assets",
       retry: "Retry",
       detectionTitle: "Detection Result",
+      defaultTargetsTitle: "Mod's default replacements",
+      defaultTargetsHint: "Identified from the author's mod files. After installing or enabling the original package, equip these weapons or armor to see the mod.",
+      currentTargetsTitle: "Currently installed replacements",
+      currentTargetsHint: "From HMM's installation records for the current profile.",
+      currentTargetsUnknown: "Current installed replacements cannot be verified. The original package's defaults are shown below.",
+      contextLoading: "Reading the mod's replacements…",
+      contextUnavailable: "The mod's replacements could not be read. Please retry.",
+      contextNameUnknown: "The resource ID was detected, but its equipment name is not verified in the catalog.",
+      contextSharedNames: "Other names sharing this model and affected by the replacement:",
       resourceCount: (count: number) => `${count} asset${count === 1 ? "" : "s"}`,
       noSources: "No replaceable appearance slots detected.",
       warningsAria: "Analysis warnings",
@@ -875,6 +902,15 @@ export const replacementCopy = {
       analyzing: "置換アセットを分析中",
       retry: "再試行",
       detectionTitle: "検出結果",
+      defaultTargetsTitle: "Mod 本来の置換対象",
+      defaultTargetsHint: "作者の Mod ファイルから識別しています。元のパッケージをインストールまたは有効にした後、該当の武器・防具を装備すると変更を確認できます。",
+      currentTargetsTitle: "現在インストール済みの置換対象",
+      currentTargetsHint: "現在のプロファイルの HMM インストール記録に基づきます。",
+      currentTargetsUnknown: "現在のインストール対象を確認できません。以下は元のパッケージの対象です。",
+      contextLoading: "Mod の置換対象を読み込み中…",
+      contextUnavailable: "Mod の置換対象を読み取れません。再試行してください。",
+      contextNameUnknown: "リソース番号は検出されましたが、対応する装備名を確認できません。",
+      contextSharedNames: "このモデルを共有し、一緒に変更される他の名称：",
       resourceCount: (count: number) => `${count} 件のアセット`,
       noSources: "置換可能な外観スロットは検出されませんでした。",
       warningsAria: "分析の警告",
