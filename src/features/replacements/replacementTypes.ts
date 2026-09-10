@@ -66,10 +66,11 @@ export type ReplacementTarget = {
   gameId: string;
   targetType: string;
   displayNames: Record<string, string>;
-  /** 跨语言压平的检索平表（不带 locale），只供过滤匹配。 */
+  /** 跨语言检索平表。搜索可显示命中原文，不据此猜测不同语言的名称配对。 */
   aliases: string[];
   /**
    * 按语言分组的别名（locale -> 别名列表），键集 ⊆ displayNames 键集，供展示（#274）。
+   * 武器逐名称展开为选项；各语言列表独立排序，不能按下标配对翻译。
    * 来源不按语言给别名时（铠甲 catalog）后端省略该键：缺席 = 不知道，不等于空表。
    */
   aliasesByLocale?: Record<string, string[]>;

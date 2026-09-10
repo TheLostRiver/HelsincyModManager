@@ -71,14 +71,14 @@ test("别名 fallback 链与展示名相同（locale → fallback → en），�
   assert.deepEqual(resolveReplacementTargetAliases({ zh_cn: ["黑龙玄刃"] }, "en"), []);
 });
 
-test("别名计数文案三语：药丸带 + 号，摘要计数不带；英文按数量变复数", () => {
-  assert.equal(replacementCopy.zh_cn.panel.aliasCount(19), "+19 个名称");
+test("同模型计数文案三语：说明共享模型，摘要保持名称计数", () => {
+  assert.equal(replacementCopy.zh_cn.panel.aliasCount(19), "同模型 · +19");
   assert.equal(replacementCopy.zh_cn.panel.selectedAliasesCount(19), "19 个名称");
-  assert.equal(replacementCopy.en.panel.aliasCount(1), "+1 name");
-  assert.equal(replacementCopy.en.panel.aliasCount(19), "+19 names");
+  assert.equal(replacementCopy.en.panel.aliasCount(1), "Shared model · +1");
+  assert.equal(replacementCopy.en.panel.aliasCount(19), "Shared model · +19");
   assert.equal(replacementCopy.en.panel.selectedAliasesCount(1), "1 name");
   assert.equal(replacementCopy.en.panel.selectedAliasesCount(19), "19 names");
-  assert.equal(replacementCopy.ja.panel.aliasCount(19), "+19 件の名称");
+  assert.equal(replacementCopy.ja.panel.aliasCount(19), "共有モデル · +19");
   assert.equal(replacementCopy.ja.panel.selectedAliasesCount(19), "19 件の名称");
   // 摘要要说清「共用模型 → 外观一同改变」这层事实，三语都得有这一句。
   for (const locale of ["zh_cn", "en", "ja"]) {

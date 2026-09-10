@@ -110,18 +110,15 @@ test("Mod detail unified panel owns the replacement target tab", () => {
 test("搜索命中别名或其他语言展示名时，目标行给出「匹配：…」提示（#274）", () => {
   const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
   const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
+  const options = readSource("src/features/replacements/replacementTargetOptions.ts");
 
   // 命中判定与过滤共用同一个判据函数，提示才不会与过滤结果打架。
-  assert.match(
-    panel,
-    /import \{\s*matchedHiddenReplacementTargetNames,\s*replacementTargetSearchHit,\s*\} from "\.\/replacementTargetMatch"/,
-  );
-  assert.match(panel, /\.some\(\(value\) => replacementTargetSearchHit\(value, keyword\)\)/);
+  assert.match(options, /replacementTargetSearchHit\(text, keyword\)/);
+  assert.match(panel, /buildReplacementTargetOptions\(targets, locale, query\)/);
   assert.doesNotMatch(panel, /toLocaleLowerCase\(\)\.includes\(keyword\)/);
   // 行内：按当前语言解析一次名字，再用同一份「已渲染的名字」判断哪些命中没显示出来。
-  assert.match(panel, /const names = resolveReplacementTargetNames\(target\.displayNames, locale\);/);
-  assert.match(panel, /const matchHint = matchedHiddenReplacementTargetNames\(target, names, query\);/);
-  assert.match(panel, /<strong>\{names\.displayName\}<\/strong>/);
+  assert.match(panel, /const matchHint = matchedHiddenReplacementTargetNames\(target, option, query\);/);
+  assert.match(panel, /<strong>\{option\.displayName\}<\/strong>/);
   const hint = panel.match(
     /\{matchHint \? \(\s*<small className="replacement-panel__target-match">([\s\S]*?)<\/small>\s*\) : null\}/,
   );
@@ -149,7 +146,7 @@ test("目标行显示本语言别名计数药丸，选中后在列表下方铺�
 
   // DTO 的 aliasesByLocale 是可选键：缺席（铠甲）与空表对 UI 效果相同，类型上必须是可选。
   assert.match(types, /aliasesByLocale\?: Record<string, string\[\]>;/);
-  assert.match(panel, /resolveReplacementTargetAliases,/);
+  assert.match(panel, /resolveReplacementTargetAliases/);
   // 行内：按界面语言取本语言别名数，只在 > 0 时渲染中性药丸，带说明性 title。
   assert.match(
     panel,
@@ -161,12 +158,9 @@ test("目标行显示本语言别名计数药丸，选中后在列表下方铺�
   assert.ok(pill, "别名计数药丸必须只在 aliasCount > 0 时渲染并带 title");
   assert.match(pill[1], /rCopy\.panel\.aliasCount\(aliasCount\)/);
   // 摘要条：只在选中且本语言有别名时渲染，列出全部别名与「共用模型」说明。
-  assert.match(
-    panel,
-    /const selectedAliases = selectedTarget\s*\?\s*resolveReplacementTargetAliases\(selectedTarget\.aliasesByLocale, locale\)\s*:\s*\[\];/,
-  );
+  assert.match(panel, /selectedModelOptions\.map\(\(option\) => option\.displayName\)/);
   const summary = panel.match(
-    /\{selectedTarget && selectedAliases\.length > 0 \? \(\s*<section className="replacement-panel__aliases"([\s\S]*?)<\/section>\s*\) : null\}/,
+    /\{selectedTarget && selectedOption && selectedAliases\.length > 0 \? \(\s*<section className="replacement-panel__aliases"([\s\S]*?)<\/section>\s*\) : null\}/,
   );
   assert.ok(summary, "别名摘要条必须只在选中目标且有本语言别名时渲染");
   assert.match(summary[1], /rCopy\.panel\.selectedAliasesTitle/);

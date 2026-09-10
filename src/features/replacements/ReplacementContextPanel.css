@@ -1,0 +1,110 @@
+.replacement-context,
+.replacement-context__current,
+.replacement-context__default {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.replacement-context h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.replacement-context h3 svg {
+  flex: none;
+  color: var(--color-accent);
+}
+
+.replacement-context p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.replacement-context__items {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.replacement-context__items > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 10px;
+}
+
+.replacement-context__items dt,
+.replacement-context__items dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.replacement-context__items dt,
+.replacement-context__items small {
+  color: var(--color-text-muted);
+}
+
+.replacement-context__items dd {
+  display: grid;
+  gap: 5px;
+}
+
+.replacement-context__shared ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 90px;
+  overflow: auto;
+  list-style: none;
+  padding: 0;
+  margin: 5px 0 0;
+}
+
+.replacement-context__shared li {
+  padding: 2px 7px;
+  color: var(--color-text-soft);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.replacement-context__current {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.replacement-context .replacement-context__unknown {
+  color: var(--color-warning-text);
+}
+
+.replacement-context > button {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  padding: 7px 10px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.replacement-context > button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
