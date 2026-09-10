@@ -107,6 +107,24 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
         cached_full_catalog().clone()
     }
 
+    fn original_target_for_source(
+        &self,
+        source: &ReplacementSource,
+    ) -> ReplacementCatalogResult<ReplacementTarget> {
+        let mut matching = borrow_full_catalog()?.targets().iter().filter(|target| {
+            target.game_id() == source.game_id()
+                && target.target_type() == source.source_type()
+                && target.internal_id() == source.internal_id()
+                && target.metadata().get("path_family").and_then(Value::as_str)
+                    == Some(source.path_family())
+        });
+        match (matching.next(), matching.next()) {
+            (Some(target), None) => Ok(target.clone()),
+            (None, None) => crate::equipment_retarget::original_target_identity(source),
+            _ => Err(ReplacementCatalogError::CatalogInvalid),
+        }
+    }
+
     fn find_replacement_target(
         &self,
         target_id: &hmm_core::ReplacementTargetId,
@@ -136,12 +154,12 @@ impl ReplacementCatalogProvider for MhwReplacementCatalog {
     }
 }
 
-/// WR-05 门禁翻转后，武器 analysis/plan 在 Production 与 Sandbox 一视同仁；
-/// 原 `weapon_developer_seed_unavailable` 拒绝路径随 developer seed 一并退役。
+/// 显式材质迁移策略，用于既有转换能力的兼容与回归。
+/// 正常安装入口使用保留材质内容的 MhwReplacementAdapter。
 #[derive(Debug, Clone, Copy, Default)]
-pub struct MhwReplacementAdapter;
+pub struct MhwMaterialReplacementAdapter;
 
-impl ReplacementAdapter for MhwReplacementAdapter {
+impl ReplacementAdapter for MhwMaterialReplacementAdapter {
     fn game_id(&self) -> GameId {
         GameId::mhw()
     }
@@ -793,7 +811,7 @@ mod tests {
     /// 钉住"拒绝路径已删除"：如果有人重建 developer 门禁，这里要显式改回来。
     #[test]
     fn router_accepts_weapon_candidate_without_developer_gate() {
-        let analysis = MhwReplacementAdapter
+        let analysis = crate::MhwReplacementAdapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {
                 game_id: GameId::mhw(),
                 assets: artificial_weapon_assets(),
@@ -808,7 +826,7 @@ mod tests {
     /// 真机上第一个被击中的点。
     #[test]
     fn router_recognizes_weapon_candidate_under_an_author_package_root_directory() {
-        let analysis = MhwReplacementAdapter
+        let analysis = crate::MhwReplacementAdapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {
                 game_id: GameId::mhw(),
                 assets: vec![
@@ -832,8 +850,8 @@ mod tests {
     }
 
     #[test]
-    fn router_builds_content_sealed_weapon_plan_from_artificial_bytes() {
-        let adapter = MhwReplacementAdapter;
+    fn material_strategy_builds_content_sealed_weapon_plan_from_artificial_bytes() {
+        let adapter = MhwMaterialReplacementAdapter;
         let assets = artificial_weapon_assets();
         let analysis = adapter
             .analyze_replacement_assets(ReplacementAnalysisRequest {

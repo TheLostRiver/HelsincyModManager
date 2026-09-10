@@ -35,4 +35,4 @@ pub use mrl3_transform::{
     MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 pub use path::{WeaponModelAssetKind, WeaponModelAssetPath, WeaponPathError, WeaponResourceRoot};
-pub use replacement::{MhwReplacementAdapter, MhwReplacementCatalog};
+pub use replacement::{MhwMaterialReplacementAdapter, MhwReplacementCatalog};

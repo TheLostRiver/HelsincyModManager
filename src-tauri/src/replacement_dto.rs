@@ -166,6 +166,7 @@ pub enum ReplacementWarningDto {
     UnsupportedSource,
     SourceMatchesTarget,
     WeaponPartialPartSet,
+    UnmappedResourcesKept,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

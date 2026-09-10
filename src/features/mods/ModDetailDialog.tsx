@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
-import { ReplacementTargetPanel } from "../replacements/ReplacementTargetPanel";
+import { EquipmentRetargetPanel as ReplacementTargetPanel } from "../replacements/EquipmentRetargetPanel";
 import { modOriginLabel } from "./modOriginView";
 import { supportsExternalAdoption } from "./externalAdoptView";
 import type { ExternalModStateDto } from "./externalStateApi";

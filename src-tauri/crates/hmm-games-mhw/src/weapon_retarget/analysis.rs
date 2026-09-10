@@ -27,6 +27,8 @@ pub enum WeaponAnalysisError {
     CaseInsensitivePathCollision,
     #[error("weapon source was not found")]
     SourceNotFound,
+    #[error("weapon source has no resources with an unambiguous target path")]
+    NoRelocatableResources,
     #[error("weapon package contains multiple source roots")]
     MultipleSourceRoots,
     #[error("weapon package contains mixed weapon families")]
@@ -64,6 +66,7 @@ impl WeaponAnalysisError {
             Self::DuplicateAssetPath => "weapon_duplicate_asset_path",
             Self::CaseInsensitivePathCollision => "weapon_case_insensitive_path_collision",
             Self::SourceNotFound => "weapon_source_not_found",
+            Self::NoRelocatableResources => "weapon_no_relocatable_resources",
             Self::MultipleSourceRoots => "weapon_multiple_source_roots",
             Self::MixedFamily => "weapon_mixed_family",
             Self::UnknownFamily => "weapon_unknown_family",

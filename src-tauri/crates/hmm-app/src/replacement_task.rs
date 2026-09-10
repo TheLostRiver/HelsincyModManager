@@ -15,7 +15,8 @@ use crate::replacement_audit::{
 };
 use crate::{
     GamePrerequisiteDecision, GameProfileWriteLockRegistry, ImportedModInstallCommitRequest,
-    InstallPlanCommitter, InstallWriteAdmission, ReplacementWorkflowError, TaskKind, TaskManager,
+    InitialRetargetSelection, InstallPlanCommitter, InstallWriteAdmission,
+    PreviewInitialRetargetInstallRequest, ReplacementWorkflowError, TaskKind, TaskManager,
     TaskManagerError, TaskProgressEvent, TaskStarted, TaskStatus,
 };
 
@@ -32,6 +33,36 @@ pub struct StartRetargetInstallTaskRequest {
     pub mod_id: ModId,
     pub target_id: ReplacementTargetId,
     pub layer: FileLayer,
+}
+
+impl From<StartRetargetInstallTaskRequest> for PreviewInitialRetargetInstallRequest {
+    fn from(request: StartRetargetInstallTaskRequest) -> Self {
+        Self {
+            game_id: request.game_id,
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            selection: InitialRetargetSelection::SoleSource {
+                target_id: request.target_id,
+            },
+            layer: request.layer,
+        }
+    }
+}
+
+fn single_target_request(
+    request: &PreviewInitialRetargetInstallRequest,
+) -> Result<StartRetargetInstallTaskRequest, ReplacementWorkflowError> {
+    Ok(StartRetargetInstallTaskRequest {
+        game_id: request.game_id.clone(),
+        profile_id: request.profile_id.clone(),
+        mod_id: request.mod_id.clone(),
+        target_id: request
+            .selection
+            .sole_target_id()
+            .cloned()
+            .ok_or(ReplacementWorkflowError::SourceNotRetargetable)?,
+        layer: request.layer.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +84,21 @@ pub trait InitialRetargetInstallPlanner: Send + Sync {
         &self,
         request: &StartRetargetInstallTaskRequest,
     ) -> Result<(), ReplacementWorkflowError>;
+
+    /// 旧实现默认仍只接受单源；支持多源的生产 planner 显式覆盖此入口。
+    fn build_equipment_retarget_install_plan(
+        &self,
+        request: PreviewInitialRetargetInstallRequest,
+    ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
+        self.build_initial_retarget_install_plan(single_target_request(&request)?)
+    }
+
+    fn revalidate_equipment_install(
+        &self,
+        request: &PreviewInitialRetargetInstallRequest,
+    ) -> Result<(), ReplacementWorkflowError> {
+        self.revalidate_initial_install(&single_target_request(request)?)
+    }
 
     fn prerequisite_decision(&self, game_id: &GameId) -> GamePrerequisiteDecision;
 
@@ -87,6 +133,13 @@ impl RetargetInstallTaskService {
     pub fn start_retarget_install_task(
         &self,
         _request: StartRetargetInstallTaskRequest,
+    ) -> Result<TaskStarted, TaskManagerError> {
+        self.start_equipment_retarget_install_task(_request.into())
+    }
+
+    pub fn start_equipment_retarget_install_task(
+        &self,
+        _request: PreviewInitialRetargetInstallRequest,
     ) -> Result<TaskStarted, TaskManagerError> {
         let task = self.task_manager.create_task(TaskKind::Install)?;
         Ok(TaskStarted {
@@ -126,6 +179,14 @@ impl RetargetInstallTaskRunner {
         task_id: &str,
         request: StartRetargetInstallTaskRequest,
     ) -> Result<Vec<TaskProgressEvent>, RetargetInstallTaskRunError> {
+        self.run_equipment_retarget_install_task(task_id, request.into())
+    }
+
+    pub fn run_equipment_retarget_install_task(
+        &self,
+        task_id: &str,
+        request: PreviewInitialRetargetInstallRequest,
+    ) -> Result<Vec<TaskProgressEvent>, RetargetInstallTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(RetargetInstallTaskRunError { events: Vec::new() });
         }
@@ -137,7 +198,7 @@ impl RetargetInstallTaskRunner {
         }
         let planned = match self
             .planner
-            .build_initial_retarget_install_plan(request.clone())
+            .build_equipment_retarget_install_plan(request.clone())
         {
             Ok(planned) => planned,
             Err(_) => return Err(self.fail(task_id, &request, events, "planning", 0, None)),
@@ -261,7 +322,7 @@ impl RetargetInstallTaskRunner {
                     )
                 })?;
             self.planner
-                .revalidate_initial_install(&request)
+                .revalidate_equipment_install(&request)
                 .map_err(|_| {
                     self.planner.discard_initial_retarget_install(&plan);
                     self.fail(
@@ -353,7 +414,7 @@ impl RetargetInstallTaskRunner {
     fn fail(
         &self,
         task_id: &str,
-        request: &StartRetargetInstallTaskRequest,
+        request: &PreviewInitialRetargetInstallRequest,
         mut events: Vec<TaskProgressEvent>,
         phase: &str,
         action_count: usize,
@@ -385,7 +446,7 @@ impl RetargetInstallTaskRunner {
     fn record_audit(
         &self,
         task_id: &str,
-        request: &StartRetargetInstallTaskRequest,
+        request: &PreviewInitialRetargetInstallRequest,
         result: &str,
         action_count: usize,
         error_code: Option<&str>,
@@ -399,12 +460,11 @@ impl RetargetInstallTaskRunner {
                 "profile_id".to_owned(),
                 request.profile_id.as_str().to_owned(),
             ),
-            (
-                "target_id".to_owned(),
-                request.target_id.as_str().to_owned(),
-            ),
             ("action_count".to_owned(), action_count.to_string()),
         ]);
+        if let Some(target_id) = request.selection.sole_target_id() {
+            fields.insert("target_id".to_owned(), target_id.as_str().to_owned());
+        }
         if let Some(error_code) = error_code {
             fields.insert("error_code".to_owned(), error_code.to_owned());
         }
@@ -930,7 +990,7 @@ mod tests {
             ReplacementAdapterAuditFacts::from_adapter_facts(&facts).expect("audit projection");
         runner.record_audit(
             "install-1",
-            &request(),
+            &request().into(),
             "success",
             2,
             None,

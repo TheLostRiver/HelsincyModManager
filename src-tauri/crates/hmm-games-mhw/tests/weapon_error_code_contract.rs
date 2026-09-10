@@ -25,6 +25,7 @@ fn analysis_code(error: WeaponAnalysisError) -> &'static str {
         | WeaponAnalysisError::DuplicateAssetPath
         | WeaponAnalysisError::CaseInsensitivePathCollision
         | WeaponAnalysisError::SourceNotFound
+        | WeaponAnalysisError::NoRelocatableResources
         | WeaponAnalysisError::MultipleSourceRoots
         | WeaponAnalysisError::MixedFamily
         | WeaponAnalysisError::UnknownFamily
@@ -50,13 +51,14 @@ fn binary_code(error: WeaponBinaryError) -> &'static str {
     }
 }
 
-const ALL_ANALYSIS_ERRORS: [WeaponAnalysisError; 15] = [
+const ALL_ANALYSIS_ERRORS: [WeaponAnalysisError; 16] = [
     WeaponAnalysisError::InvalidPackageFileId,
     WeaponAnalysisError::DuplicatePackageFileId,
     WeaponAnalysisError::UnsafePath,
     WeaponAnalysisError::DuplicateAssetPath,
     WeaponAnalysisError::CaseInsensitivePathCollision,
     WeaponAnalysisError::SourceNotFound,
+    WeaponAnalysisError::NoRelocatableResources,
     WeaponAnalysisError::MultipleSourceRoots,
     WeaponAnalysisError::MixedFamily,
     WeaponAnalysisError::UnknownFamily,
@@ -78,13 +80,14 @@ const ALL_BINARY_ERRORS: [WeaponBinaryError; 7] = [
     WeaponBinaryError::OutputInvalid,
 ];
 
-const EXPECTED_ANALYSIS_CODES: [&str; 15] = [
+const EXPECTED_ANALYSIS_CODES: [&str; 16] = [
     "weapon_invalid_package_file_id",
     "weapon_duplicate_package_file_id",
     "weapon_unsafe_path",
     "weapon_duplicate_asset_path",
     "weapon_case_insensitive_path_collision",
     "weapon_source_not_found",
+    "weapon_no_relocatable_resources",
     "weapon_multiple_source_roots",
     "weapon_mixed_family",
     "weapon_unknown_family",

@@ -6,6 +6,8 @@ mod category_commands;
 mod debug_log_commands;
 mod diagnostics_dto;
 mod dto;
+mod equipment_retarget_commands;
+mod equipment_retarget_dto;
 mod external_import_commands;
 mod external_import_dto;
 mod external_mod_adopt_commands;
@@ -53,6 +55,11 @@ use category_commands::{
     update_category,
 };
 use debug_log_commands::{get_debug_log_settings, set_debug_log_settings};
+use equipment_retarget_commands::{
+    get_equipment_retarget_configuration, preview_equipment_retarget_install,
+    preview_equipment_retarget_reinstall, start_equipment_retarget_install_task,
+    start_equipment_retarget_reinstall_task,
+};
 use external_import_commands::{
     create_external_import_selection, get_external_import_batch_result,
     get_external_import_preview, list_external_import_batches, retry_external_import_batch,
@@ -219,6 +226,11 @@ pub fn run() {
             analyze_imported_mod_replacement,
             get_mod_replacement_summary,
             list_replacement_target_occupancy,
+            get_equipment_retarget_configuration,
+            preview_equipment_retarget_install,
+            preview_equipment_retarget_reinstall,
+            start_equipment_retarget_install_task,
+            start_equipment_retarget_reinstall_task,
             preview_mod_deletion,
             delete_mod_from_library,
             preview_initial_retarget_install,
