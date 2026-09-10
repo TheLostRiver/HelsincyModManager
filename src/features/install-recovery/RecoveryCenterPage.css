@@ -908,3 +908,13 @@
     flex-direction: column;
   }
 }
+.recovery-center__mod-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.recovery-center__mod-identity small {
+  color: var(--color-text-muted);
+}

@@ -69,6 +69,8 @@ import {
 } from "./replacementWorkflow";
 import "./ReplacementTargetPanel.css";
 import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
+import { useAppRoute } from "../../app/routing/useAppRoute";
+import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 
 type ReplacementTargetPanelProps = {
   gameId: GameId;
@@ -95,7 +97,7 @@ type PreviewState =
   | { status: "loading" }
   | { status: "ready"; mode: "initial"; preview: InitialRetargetInstallPreview }
   | { status: "ready"; mode: "switch"; preview: ReinstallPlanPreview }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; recoveryBlocked?: boolean };
 
 type TaskStateUpdate =
   | RetargetInstallTaskState
@@ -451,6 +453,8 @@ export function ReplacementTargetPanel({
           setPreviewState({
             status: "error",
             message: replacementErrorMessage(error, rCopy.events.previewFallback, rCopy.errors),
+            recoveryBlocked: typeof error === "object" && error !== null && "code" in error
+              && error.code === "replacement_initial_install_blocked",
           });
         }
       });
@@ -774,6 +778,7 @@ export function ReplacementTargetPanel({
             <div className="replacement-panel__inline-state is-error">
               <AlertTriangle size={17} aria-hidden="true" />
               {previewState.message}
+              {previewState.recoveryBlocked ? <RecoveryCenterButton /> : null}
             </div>
           ) : null}
           {previewState.status === "ready" ? (
@@ -1067,4 +1072,12 @@ export function ReplacementTargetPanel({
       </div>
     </div>
   );
+}
+
+function RecoveryCenterButton() {
+  const { navigate } = useAppRoute();
+  const { locale } = useI18n();
+  return <button type="button" className="replacement-panel__recovery-link" onClick={() => navigate("/recovery")}>
+    {resolveCopy(recoveryCenterCopy, locale).page.title}
+  </button>;
 }

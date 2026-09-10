@@ -348,7 +348,7 @@ hmm install plan --game mhw --mod <mod-id>
 hmm install status [--game mhw] --profile <profile-id> --mod <mod-id> [--mod <mod-id>...]
 hmm install recovery scan --game mhw --profile <profile-id> [--mod <mod-id>...]
 hmm install recovery preview --game mhw --profile <profile-id> --mod <mod-id> \
-  --action rollback-install|reconcile-reinstall
+  --action rollback-install|reconcile-reinstall|uninstall-missing-targets
 ```
 
 CLI-2C 在 Sandbox 落地、CLI-3B 起对 Production 开放同一形态（Production 使用 production
@@ -362,7 +362,7 @@ hmm install uninstall --game mhw --profile <profile-id> --mod <mod-id> \
 hmm install reinstall --game mhw --profile <profile-id> --mod <mod-id> \
   --candidate-revision <revision-id> --plan-token <token> --commit --yes
 hmm install recovery apply --game mhw --profile <profile-id> --mod <mod-id> \
-  --action rollback-install|reconcile-reinstall --plan-token <token> --commit --yes
+  --action rollback-install|reconcile-reinstall|uninstall-missing-targets --plan-token <token> --commit --yes
 ```
 
 省略任一确认参数时，四条命令只返回同源 preview。只有 ready/available preview 签发 5 分钟
@@ -371,6 +371,12 @@ hmm install recovery apply --game mhw --profile <profile-id> --mod <mod-id> \
 backup/recovery ref 或内部 reinstall token。uninstall/recovery token 额外绑定 repository 读取出的完整结构化
 manifest/install-recovery/reinstall-recovery 状态摘要，因此内容变化即使聚合计数相同也会使旧 token
 失效。
+
+`uninstall-missing-targets` 为正常安装后文件缺失提供受控卸载。只读预览返回实际删除/恢复/备份计数和
+`missingFileCount`；外层 lifecycle token 额外绑定应用层缺失卸载摘要，包括文件与备份内容，因此相同
+计数不代表旧确认仍有效。内部摘要不单独暴露到 CLI，也不能代替外层 token。apply 继续要求
+`--commit --yes`，并在写锁内检查未完成事务、游戏运行状态、清单与文件漂移。缺失无备份只清记录，
+有备份恢复原文件；被修改、不可读、备份不足的情况保持阻断，不从导入包补文件。
 
 plan 当前使用后端固定 base layer，并只输出经 `InstallTargetPath` 校验的逻辑相对 target、priority 和
 聚合计数；不输出 package file id 或自由 layer 名。status 省略 `--game` 时只读 manifest，提供 game

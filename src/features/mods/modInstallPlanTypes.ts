@@ -36,7 +36,7 @@ export type PreviewRecoveryActionInput = {
   actionKind: InstallRecoveryActionKind;
 };
 
-export type StartRecoveryActionTaskInput = PreviewRecoveryActionInput;
+export type StartRecoveryActionTaskInput = PreviewRecoveryActionInput & { planToken?: string };
 
 export type InstallManifestStatus =
   | "not_installed"
@@ -103,7 +103,7 @@ export type InstallRecoverySummary = {
   issues: InstallRecoveryIssueSummary[];
 };
 
-export type InstallRecoveryActionKind = "rollback_install" | "reconcile_reinstall";
+export type InstallRecoveryActionKind = "rollback_install" | "reconcile_reinstall" | "uninstall_missing_targets";
 
 export type InstallRecoveryActionAvailability = "available" | "blocked";
 
@@ -114,7 +114,14 @@ export type InstallRecoveryActionBlockReason =
   | "target_changed"
   | "target_read_failed"
   | "backup_missing"
-  | "backup_read_failed";
+  | "backup_read_failed"
+  | "install_state_unavailable"
+  | "target_state_unavailable"
+  | "backup_unavailable"
+  | "recovery_pending"
+  | "preview_required"
+  | "game_running"
+  | "game_running_unknown";
 
 export type InstallRecoveryActionBlockReasonSummary = {
   reason: InstallRecoveryActionBlockReason;
@@ -131,6 +138,8 @@ export type InstallRecoveryActionPreview = {
   backupCount: number;
   blockingIssueCount: number;
   blockingReasons: InstallRecoveryActionBlockReasonSummary[];
+  missingFileCount?: number;
+  planToken?: string;
 };
 
 export type InstallPlanProvider = {

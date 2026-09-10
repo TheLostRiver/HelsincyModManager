@@ -1,6 +1,7 @@
 import type { LocaleDictionary } from "../../shared/i18n";
 import type { InstallRecoveryIssue, InstallRecoveryStatus } from "../mods/modInstallPlanTypes";
 import type { RecoveryRollbackPhase } from "./useRecoveryRollback";
+import { missingTargetRecoveryCopy, type MissingTargetRecoveryCopy } from "./missingTargetRecoveryCopy.ts";
 
 // 恢复中心（页面、聚合/逐 Mod 视图模型、受控回滚、诊断导出、全局告警）的
 // 全部用户可见文案。语义（severity/排序/状态推进）留在 viewModel 与 hooks，
@@ -13,6 +14,7 @@ export type RecoveryRepairSummaryCopy = {
 };
 
 export type RecoveryCenterCopy = {
+  missingTargets: MissingTargetRecoveryCopy;
   issues: Record<InstallRecoveryIssue, { label: string; guidance: string }>;
   status: Record<InstallRecoveryStatus, string>;
   overviewRepair: {
@@ -60,6 +62,7 @@ export type RecoveryCenterCopy = {
     phases: Record<RecoveryRollbackPhase, string>;
     failures: {
       profileNotReady: string;
+      listenerUnavailable: string;
       previewFailed: string;
       startFailed: string;
       taskFallback: string;
@@ -172,6 +175,7 @@ export type RecoveryCenterCopy = {
 
 export const recoveryCenterCopy = {
   zh_cn: {
+    missingTargets: missingTargetRecoveryCopy.zh_cn,
     issues: {
       missing_installed_file_summary: {
         label: "摘要缺失",
@@ -179,7 +183,7 @@ export const recoveryCenterCopy = {
       },
       target_missing: {
         label: "目标缺失",
-        guidance: "暂停自动处理，等待受控恢复或重新安装流程确认缺失目标。",
+        guidance: "在该 Mod 的卸载清理预览中核对缺失文件与备份，再决定是否执行。",
       },
       target_changed: {
         label: "目标变更",
@@ -313,6 +317,7 @@ export const recoveryCenterCopy = {
       },
       failures: {
         profileNotReady: "配置档尚未就绪",
+        listenerUnavailable: "后台任务连接尚未就绪，请重新打开恢复中心后再试。",
         previewFailed: "预览回滚动作时出错",
         startFailed: "启动回滚任务时出错",
         taskFallback: "回滚失败",
@@ -326,6 +331,7 @@ export const recoveryCenterCopy = {
       target_read_failed: "目标读取失败",
       backup_missing: "备份缺失",
       backup_read_failed: "备份读取失败",
+      ...missingTargetRecoveryCopy.zh_cn.blockReasons,
     },
     page: {
       eyebrow: "受控恢复中心",
@@ -436,6 +442,7 @@ export const recoveryCenterCopy = {
     },
   },
   en: {
+    missingTargets: missingTargetRecoveryCopy.en,
     issues: {
       missing_installed_file_summary: {
         label: "Summary missing",
@@ -443,7 +450,7 @@ export const recoveryCenterCopy = {
       },
       target_missing: {
         label: "Target missing",
-        guidance: "Pause automatic handling and let the controlled recovery or reinstall flow confirm the missing target.",
+        guidance: "Review this mod's uninstall plan to check missing files and backups before confirming.",
       },
       target_changed: {
         label: "Target changed",
@@ -577,6 +584,7 @@ export const recoveryCenterCopy = {
       },
       failures: {
         profileNotReady: "The profile is not ready yet",
+        listenerUnavailable: "The task connection is unavailable. Reopen the recovery center and retry.",
         previewFailed: "Failed to preview the rollback action",
         startFailed: "Failed to start the rollback task",
         taskFallback: "Rollback failed",
@@ -584,6 +592,7 @@ export const recoveryCenterCopy = {
     },
     blockReasons: {
       rollback_state_missing: "Rollback state missing",
+      ...missingTargetRecoveryCopy.en.blockReasons,
       missing_installed_file_summary: "Summary missing",
       target_missing: "Target missing",
       target_changed: "Target changed",
@@ -700,6 +709,7 @@ export const recoveryCenterCopy = {
     },
   },
   ja: {
+    missingTargets: missingTargetRecoveryCopy.ja,
     issues: {
       missing_installed_file_summary: {
         label: "サマリー欠落",
@@ -707,7 +717,7 @@ export const recoveryCenterCopy = {
       },
       target_missing: {
         label: "対象欠落",
-        guidance: "自動処理を一時停止し、管理された復旧または再インストールフローで欠落対象を確認してください。",
+        guidance: "この Mod のアンインストール内容で欠落ファイルとバックアップを確認してから実行してください。",
       },
       target_changed: {
         label: "対象変更",
@@ -841,6 +851,7 @@ export const recoveryCenterCopy = {
       },
       failures: {
         profileNotReady: "プロファイルが未準備です",
+        listenerUnavailable: "タスク接続を確認できません。復旧センターを開き直してからお試しください。",
         previewFailed: "ロールバック動作のプレビューでエラーが発生しました",
         startFailed: "ロールバックタスクの開始でエラーが発生しました",
         taskFallback: "ロールバックに失敗しました",
@@ -848,6 +859,7 @@ export const recoveryCenterCopy = {
     },
     blockReasons: {
       rollback_state_missing: "ロールバック状態欠落",
+      ...missingTargetRecoveryCopy.ja.blockReasons,
       missing_installed_file_summary: "サマリー欠落",
       target_missing: "対象欠落",
       target_changed: "対象変更",

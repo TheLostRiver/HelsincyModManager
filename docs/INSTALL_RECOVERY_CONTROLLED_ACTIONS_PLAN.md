@@ -12,6 +12,7 @@
 - `modIds: []` 会扫描当前 profile manifest 内全部已知托管 Mod，可支撑启动级提示和恢复中心聚合。
 - `start_install_task` 和 `start_uninstall_task` 都复用 `gameId/profileId` 写锁；commit / uninstall 写入窗口串行。
 - `UninstallModService` 已有最小安全删除/恢复能力：只在 `installed_file` 摘要匹配且 backup 可读时删除新增文件或恢复覆盖文件。
+- 正常安装也会先写恢复记录，成功收尾后清理；装后外部删除引起的 `repair_required` 不能依赖这些记录解决。`uninstall_missing_targets` 已提供独立的 manifest 支撑入口，复用卸载执行器。
 - 安装、卸载和受控回滚任务已写最小 Audit Log，字段只包含 task/game/profile/mod id 和聚合计数，不记录完整路径或 backup ref。
 - Durable recovery record 基础、安装 commit 写入、只读恢复扫描消费、只读动作预览和后端受控回滚任务已落地：`hmm-core` 提供 `InstallRecoveryRecord` / `InstallRecoveryRecordStatus` 状态模型，`hmm-ports` 提供窄 repository trait，`hmm-infra` 提供受控 JSON 仓储；`preview_recovery_action` 已能基于该记录判断 `rollback_install` 是否具备受控回滚前置条件；`start_recovery_action_task` 已能在同一 `gameId/profileId` 写锁下执行 `rollback_install`。
 - 当安装替换已有托管目标并在写入窗口后失败且 best-effort rollback 失败时，`rollback_required` recovery record 的 `backup_ref` 使用本次提交前创建的 pending backup，用于恢复到“安装前一刻”的状态；如果后续 action 才拿到该 pending backup，`committing` record 会立即重新持久化，避免崩溃恢复读取到旧 backup 语义；manifest 保存成功后，`completed` record 会重新同步为 manifest entry 的长期 backup 语义，避免指向随后会被清理的 pending backup。
@@ -29,7 +30,7 @@
 - 所有写入、删除、恢复和 manifest 变更必须在同一 `gameId/profileId` 写锁下执行，并在写入前重新验证目标状态。
 - 可执行动作只来自后端生成的恢复计划或恢复任务，不接受前端传入 target path、backup ref、manifest path、sandbox/cache path 或本地路径。
 - 恢复动作只能基于 manifest、backup、受控 recovery record 和当前目标摘要；不能基于当前 Mod 包内容重新猜测。
-- 对目标缺失、目标摘要变化、backup 缺失、backup 读取失败或旧 manifest 缺少摘要的场景，默认阻断自动动作并转入人工处理。
+- 普通卸载和安装回滚仍拒绝目标缺失。只有 `uninstall_missing_targets` 可在可信 manifest、完整预览和用户确认后处理缺失；目标摘要变化、读取失败、backup 不可用或旧 manifest 缺少摘要仍阻断写入。
 - 任何成功、失败、回滚成功或回滚失败都必须写 Audit Log，且只记录短 id、聚合计数和顶层结果；稳定失败 phase / error code 留在 task event 中，不默认写入当前最小审计字段。
 - 诊断导出可以辅助用户反馈，但不能把诊断包当作恢复状态来源。
 
@@ -42,7 +43,7 @@
 | `completed` | manifest、目标文件摘要和必要 backup 均一致。 | 可提供安全卸载；恢复中心可显示无需处理。 |
 | `rollback_required` | 后端有持久化证据表明 commit 已进入写入窗口且未完成，需要回滚到安装前状态。 | 仅当所有目标仍匹配可回滚前置条件时，提供受控回滚任务。 |
 | `rolled_back` | 已执行回滚，游戏目录恢复到安装前状态或清理了本工具新增文件。 | 不再重复回滚；保留审计记录。 |
-| `repair_required` | manifest、backup 或目标状态不一致，但无法安全自动判断。 | 阻断破坏性操作，仅提供诊断和人工处理建议。 |
+| `repair_required` | manifest、backup 或目标状态不一致。 | 含目标缺失时可进入受控卸载预览；其余不安全事实仍阻断执行。 |
 | `unknown` | 目标或 backup 读取失败，状态不可判定。 | 阻断自动动作，提示重新扫描或导出诊断。 |
 
 `rollback_required` 不能只由当前目标文件变化推断，必须来自 durable recovery record、rich manifest status 或等价受控事务记录。当前 durable recovery record 已由安装 commit 写入，`scan_install_recovery` 已只读消费该记录，`preview_recovery_action` 已能预览 `rollback_install` 的前置条件，后端 `start_recovery_action_task` 已能执行受控 `rollback_install`；恢复中心 UI 已把该能力收敛为逐 Mod、先预览后确认的受控入口。
@@ -65,6 +66,7 @@
 - 稳定 action id 或 action kind。
 - 可执行性：`available` / `blocked`。
 - 聚合计数：将删除的新文件数、将恢复的覆盖文件数、需要 backup 的文件数、阻断 issue 计数。
+- 缺失目标卸载额外返回缺失数和用于执行时重验的 opaque `planToken`；它不是路径、授权或可展示文案。
 - 稳定阻断 reason code，例如 `target_changed`、`target_missing`、`backup_missing`、`missing_installed_file_summary`、`rollback_state_missing`。
 
 禁止输出：
@@ -104,6 +106,28 @@
 - manifest 缺少 `installed_file`。
 - recovery record 缺少可证明的写入事实。
 - 任一目标在预览后、执行前发生变化。
+
+### `uninstall_missing_targets`
+
+处理正常安装成功后目标被外部删除的情况。它不是“接受任意现状”：预览和执行均要求可信 manifest、
+正确 profile、每项 installed 摘要、唯一目标归属及至少一个缺失目标。仍存在的目标必须与摘要匹配，
+所需备份必须全部可读；同 profile 有未完成 install record 或尚未清理的 reinstall transaction 时拒绝。
+正常安装的 Completed/RolledBack 终态记录不当作待执行事务，但不会被此动作删除。
+
+确认令牌绑定配置游戏根的 opaque 摘要、game/profile/Mod、该 Mod 清单、目标存在状态与内容、备份内容。GUI 只透传令牌；CLI
+外层 lifecycle token 同时绑定这份摘要。执行继续使用原有写锁、跨进程准入、取消屏障和运行中门禁，
+锁内重建摘要并逐项重验，不能把读取失败当作文件不存在。
+
+- 缺失无备份：不写游戏文件，仅在最终原子 manifest 提交时清理记录。
+- 缺失有备份：恢复原文件；仍存在目标按常规卸载删除或恢复。
+- 混合文件：所有候选预检成功才进入写入，不清理其他 Mod 记录或未知文件。
+- 写入或 manifest 失败：沿用卸载 best-effort 回滚；先确认目标仍是本次写出的内容，再恢复执行前的
+  内容或不存在状态。没有新增持久化卸载事务，也不声称覆盖任意进程中断恢复。
+- 成功：共享 manifest 仓储使库投影失效，GUI 刷新恢复事实；首次重定向依旧使用整个 profile 的原准入
+  检查，只有异常实际解决才恢复可用。
+
+恢复中心以名称和 Mod ID 标明受影响对象，提供三语预览和明确确认。含缺失与变化的混合问题仍允许
+只读检查，但后端拒绝写入。首次重定向被恢复状态阻断时，错误区提供恢复中心导航。
 
 ### `verify_and_mark_completed`
 
@@ -167,7 +191,7 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 验收：
 
 - command 不接受路径或 backup ref。
-- preview 对 `target_changed`、`target_missing`、`backup_missing`、`unknown` 全部阻断。
+- `rollback_install` preview 对 `target_changed`、`target_missing`、`backup_missing`、`unknown` 全部阻断；缺失卸载的例外遵循上节独立规则。
 - preview 只返回聚合计数和稳定 reason code。
 - 前端在 blocked 时只提供重新扫描和诊断导出。
 
@@ -218,7 +242,10 @@ MVP 不先实现“手动标记已处理”。任何手动处理都必须通过�
 | completed 且目标匹配 | 可预览安全卸载/回滚等价摘要，但不应绕过已有卸载边界。 |
 | 新增文件目标匹配 | 回滚任务可删除该目标，并更新 manifest/recovery record。 |
 | 覆盖文件目标匹配且 backup 可读 | 回滚任务可恢复 backup。 |
-| 目标缺失 | 阻断自动动作，返回稳定 reason code。 |
+| 目标缺失 | 普通卸载/回滚仍拒绝；缺失卸载先预览确认，无备份清账，有备份恢复。 |
+| 预览后状态漂移 | 更换配置游戏目录、目标重新出现、备份/清单变化、运行状态变化或新增未完成事务时拒绝旧确认。 |
+| 缺失卸载清单保存失败 | 恢复执行前的混合存在/缺失状态，并保留外部新内容。 |
+| 恢复后同进程查询 | Mod 库刷新为未安装，恢复扫描与首次重定向准入从真实事实派生。 |
 | 目标摘要变化 | 阻断自动动作，避免覆盖外部修改。 |
 | backup 缺失或读取失败 | 阻断自动动作。 |
 | recovery record 保存失败 | 已执行文件动作必须 best-effort rollback，并写失败审计。 |

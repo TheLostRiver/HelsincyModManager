@@ -880,6 +880,8 @@ mod install_recovery_dto_tests {
     #[test]
     fn serializes_recovery_action_preview_without_paths_or_backup_refs() {
         let dto: InstallRecoveryActionPreviewDto = hmm_app::InstallRecoveryActionPreview {
+            missing_file_count: 0,
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: hmm_app::InstallRecoveryActionKind::RollbackInstall,
@@ -918,5 +920,32 @@ mod install_recovery_dto_tests {
         assert!(value.get("manifestPath").is_none());
         assert!(!value.to_string().contains("nativePC"));
         assert!(!value.to_string().contains("backup-original"));
+    }
+
+    #[test]
+    fn serializes_missing_target_recovery_preview_with_counts_and_opaque_token_only() {
+        let token = format!("missing-uninstall-v1:{}", "a1".repeat(32));
+        let dto: InstallRecoveryActionPreviewDto = hmm_app::InstallRecoveryActionPreview {
+            profile_id: ProfileId::new("default"),
+            mod_id: ModId::new("mod-a"),
+            action_kind: hmm_app::InstallRecoveryActionKind::UninstallMissingTargets,
+            availability: hmm_app::InstallRecoveryActionAvailability::Available,
+            remove_file_count: 1,
+            restore_file_count: 2,
+            backup_count: 2,
+            missing_file_count: 3,
+            plan_token: Some(token.clone()),
+            blocking_issue_count: 0,
+            blocking_reasons: vec![],
+        }
+        .into();
+        assert_eq!(
+            serde_json::to_value(dto).unwrap(),
+            serde_json::json!({
+                "profileId": "default", "modId": "mod-a", "actionKind": "uninstall_missing_targets",
+                "availability": "available", "removeFileCount": 1, "restoreFileCount": 2, "backupCount": 2,
+                "missingFileCount": 3, "planToken": token, "blockingIssueCount": 0, "blockingReasons": [],
+            })
+        );
     }
 }

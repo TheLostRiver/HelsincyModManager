@@ -20,6 +20,9 @@ use std::sync::{Arc, Mutex};
 mod install_recovery_replacement_tests;
 use install_recovery_replacement_tests::reinstall_recovery_fixture;
 
+#[path = "install_recovery_missing_targets_tests.rs"]
+mod missing_target_actions;
+
 #[derive(Default)]
 struct FakeGameFiles {
     files: Mutex<BTreeMap<String, Vec<u8>>>,
@@ -153,6 +156,7 @@ struct FakeRecoveryRecords {
     listed_profiles: Mutex<Vec<ProfileId>>,
     removed_records: Mutex<Vec<(ProfileId, ModId)>>,
     fail_saves: Mutex<bool>,
+    fail_lists: Mutex<bool>,
 }
 
 impl FakeRecoveryRecords {
@@ -183,6 +187,9 @@ impl InstallRecoveryRecordRepository for FakeRecoveryRecords {
     }
 
     fn list_records(&self, profile_id: &ProfileId) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
+        if *self.fail_lists.lock().expect("fail lists lock") {
+            anyhow::bail!("simulated record list failure");
+        }
         self.listed_profiles
             .lock()
             .expect("listed profiles lock")
@@ -227,6 +234,7 @@ struct FakeReinstallTransactions {
     save_count: Mutex<usize>,
     remove_count: Mutex<usize>,
     fail_saves: Mutex<bool>,
+    fail_lists: Mutex<bool>,
 }
 
 impl FakeReinstallTransactions {
@@ -259,6 +267,9 @@ impl ReinstallRecoveryTransactionRepository for FakeReinstallTransactions {
         &self,
         profile_id: &ProfileId,
     ) -> anyhow::Result<Vec<ReinstallRecoveryTransaction>> {
+        if *self.fail_lists.lock().expect("fail lists lock") {
+            anyhow::bail!("simulated transaction list failure");
+        }
         Ok(self
             .transactions
             .lock()
@@ -718,6 +729,7 @@ fn reconcile_rollback_required_reinstall_restores_pre_state_then_cleans() {
 
     let result = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -762,6 +774,7 @@ fn reconcile_rollback_required_already_pre_state_cleans_without_game_mutation() 
 
     let result = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -791,6 +804,7 @@ fn reconcile_rollback_required_rejects_corrupt_snapshot_before_game_mutation() {
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -821,6 +835,7 @@ fn reconcile_rollback_required_persists_intent_before_game_mutation() {
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -856,6 +871,7 @@ fn reconcile_rollback_required_compensates_partial_mutation_failure() {
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -894,6 +910,7 @@ fn reconcile_committed_reinstall_marks_completed_then_cleans_without_game_mutati
 
     let result = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -935,6 +952,7 @@ fn reconcile_committed_reinstall_marks_repair_when_candidate_state_is_not_proven
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -966,6 +984,7 @@ fn reconcile_post_commit_save_failure_keeps_committing_transaction_and_snapshot(
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::ReconcileReinstall,
@@ -1254,6 +1273,8 @@ fn preview_rollback_action_is_available_when_recovery_record_targets_are_safe() 
     assert_eq!(
         preview,
         InstallRecoveryActionPreview {
+            missing_file_count: 0,
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::RollbackInstall,
@@ -1491,6 +1512,7 @@ fn run_rollback_install_action_removes_new_files_restores_backups_and_marks_roll
 
     let result = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::RollbackInstall,
@@ -1544,6 +1566,7 @@ fn run_rollback_install_action_revalidates_target_before_writing() {
 
     let error = service
         .run(InstallRecoveryActionRequest {
+            plan_token: None,
             profile_id: ProfileId::new("default"),
             mod_id: ModId::new("mod-a"),
             action_kind: InstallRecoveryActionKind::RollbackInstall,

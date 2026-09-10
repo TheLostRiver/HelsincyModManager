@@ -314,6 +314,7 @@ impl From<InstallRecoveryStatus> for InstallRecoveryStatusDto {
 pub enum InstallRecoveryActionKindDto {
     RollbackInstall,
     ReconcileReinstall,
+    UninstallMissingTargets,
 }
 
 impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
@@ -321,6 +322,7 @@ impl From<InstallRecoveryActionKind> for InstallRecoveryActionKindDto {
         match action_kind {
             InstallRecoveryActionKind::RollbackInstall => Self::RollbackInstall,
             InstallRecoveryActionKind::ReconcileReinstall => Self::ReconcileReinstall,
+            InstallRecoveryActionKind::UninstallMissingTargets => Self::UninstallMissingTargets,
         }
     }
 }

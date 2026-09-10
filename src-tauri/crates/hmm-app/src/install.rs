@@ -19,6 +19,10 @@ use thiserror::Error;
 
 const INSTALL_PLAN_MANIFEST_BACKEND: &str = "install_plan";
 
+#[path = "install_missing_targets.rs"]
+mod missing_targets;
+pub use missing_targets::MissingTargetUninstallPreview;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildInstallPlanRequest {
     pub allowed_target_roots: Vec<String>,
@@ -194,6 +198,7 @@ pub struct UninstallModService {
     backup_store: Arc<dyn InstallBackupStore>,
     manifest_repository: Arc<dyn InstallManifestRepository>,
     game_running_detector: Option<Arc<dyn GameRunningDetector>>,
+    missing_target_scope_binding: Option<String>,
 }
 
 /// 游戏运行中不得写入玩家文件。
@@ -243,13 +248,14 @@ struct ActiveInstallRecoveryRecords {
 
 struct PreparedUninstallChange {
     entry: InstallManifestEntry,
-    current_bytes: Vec<u8>,
+    current_bytes: Option<Vec<u8>>,
     backup_bytes: Option<Vec<u8>>,
 }
 
 struct AppliedUninstallChange {
     target_path: InstallTargetPath,
-    previous_bytes: Vec<u8>,
+    previous_bytes: Option<Vec<u8>>,
+    committed_bytes: Option<Vec<u8>>,
 }
 
 impl InstallCommitService {
@@ -829,6 +835,7 @@ impl UninstallModService {
             backup_store,
             manifest_repository,
             game_running_detector: None,
+            missing_target_scope_binding: None,
         }
     }
 
@@ -846,7 +853,7 @@ impl UninstallModService {
         &self,
         request: UninstallModRequest,
     ) -> Result<UninstallModResult, UninstallModError> {
-        self.uninstall_mod_internal(request, None, None)
+        self.uninstall_mod_internal(request, None, None, None)
     }
 
     pub fn uninstall_mod_for_revision(
@@ -854,7 +861,7 @@ impl UninstallModService {
         request: UninstallModRequest,
         expected_installed_revision_id: ModRevisionId,
     ) -> Result<UninstallModResult, UninstallModError> {
-        self.uninstall_mod_internal(request, Some(&expected_installed_revision_id), None)
+        self.uninstall_mod_internal(request, Some(&expected_installed_revision_id), None, None)
     }
 
     pub fn uninstall_mod_for_revision_and_manifest(
@@ -867,6 +874,7 @@ impl UninstallModService {
             request,
             Some(&expected_installed_revision_id),
             Some(expected_manifest_digest),
+            None,
         )
     }
 
@@ -875,6 +883,7 @@ impl UninstallModService {
         request: UninstallModRequest,
         expected_installed_revision_id: Option<&ModRevisionId>,
         expected_manifest_digest: Option<&str>,
+        expected_missing_target_plan: Option<&str>,
     ) -> Result<UninstallModResult, UninstallModError> {
         // 必须先于 manifest 读取与任何删除/还原动作。
         ensure_game_not_running(
@@ -889,6 +898,9 @@ impl UninstallModService {
             .load_manifest(&request.profile_id)
             .map_err(|_| UninstallModError::ManifestUnavailable)?
             .ok_or(UninstallModError::ModNotInstalled)?;
+        if expected_missing_target_plan.is_some() {
+            missing_targets::validate_manifest(&manifest, &request)?;
+        }
         if expected_manifest_digest.is_some_and(|expected| {
             manifest.profile_id != request.profile_id
                 || manifest.validate().is_err()
@@ -944,44 +956,27 @@ impl UninstallModService {
             }
         }
 
-        let mut prepared_changes = Vec::with_capacity(uninstall_entries.len());
-        for entry in uninstall_entries {
-            let expected = entry
-                .installed_file
-                .as_ref()
-                .ok_or(UninstallModError::MissingInstalledFileSummary)?;
-            let current = self
-                .game_files
-                .read_game_file(&entry.target_path)
-                .map_err(|_| UninstallModError::TargetStateMismatch)?
-                .ok_or(UninstallModError::TargetStateMismatch)?;
-
-            if &installed_file_summary(&current) != expected {
-                return Err(UninstallModError::TargetStateMismatch);
+        let prepared_changes = self
+            .prepare_uninstall_changes(uninstall_entries, expected_missing_target_plan.is_some())?;
+        if let Some(expected) = expected_missing_target_plan {
+            let preview = missing_targets::project_preview(
+                &request,
+                &reclaim_base,
+                &prepared_changes,
+                self.missing_target_scope_binding.as_deref(),
+            )?;
+            if expected != preview.plan_token {
+                return Err(UninstallModError::ManifestStateMismatch);
             }
-
-            let backup_bytes = match &entry.backup_ref {
-                Some(backup_ref) => Some(
-                    self.backup_store
-                        .read_backup(backup_ref)
-                        .map_err(|_| UninstallModError::BackupUnavailable)?
-                        .ok_or(UninstallModError::BackupUnavailable)?,
-                ),
-                None => None,
-            };
-
-            prepared_changes.push(PreparedUninstallChange {
-                entry,
-                current_bytes: current,
-                backup_bytes,
-            });
         }
 
         let mut removed_file_count = 0;
         let mut restored_file_count = 0;
         let mut applied_changes = Vec::with_capacity(prepared_changes.len());
         for change in &prepared_changes {
-            if !self.target_still_matches(&change.entry.target_path, &change.current_bytes) {
+            if !self
+                .target_still_matches(&change.entry.target_path, change.current_bytes.as_deref())
+            {
                 return Err(self.rollback_or_error(
                     &applied_changes,
                     UninstallModPhase::Revalidate,
@@ -1002,7 +997,7 @@ impl UninstallModService {
                     ));
                 }
                 restored_file_count += 1;
-            } else {
+            } else if change.current_bytes.is_some() {
                 if self
                     .game_files
                     .remove_game_file(&change.entry.target_path)
@@ -1015,10 +1010,14 @@ impl UninstallModService {
                     ));
                 }
                 removed_file_count += 1;
+            } else {
+                // 已确认不存在且没有备份：仅在最终原子清单提交中移除记录。
+                continue;
             }
             applied_changes.push(AppliedUninstallChange {
                 target_path: change.entry.target_path.clone(),
                 previous_bytes: change.current_bytes.clone(),
+                committed_bytes: change.backup_bytes.clone(),
             });
         }
 
@@ -1061,13 +1060,55 @@ impl UninstallModService {
         })
     }
 
-    fn target_still_matches(&self, target_path: &InstallTargetPath, expected_bytes: &[u8]) -> bool {
-        self.game_files
-            .read_game_file(target_path)
-            .ok()
-            .flatten()
-            .as_deref()
-            == Some(expected_bytes)
+    fn prepare_uninstall_changes(
+        &self,
+        entries: Vec<InstallManifestEntry>,
+        allow_missing: bool,
+    ) -> Result<Vec<PreparedUninstallChange>, UninstallModError> {
+        entries
+            .into_iter()
+            .map(|entry| {
+                let expected = entry
+                    .installed_file
+                    .as_ref()
+                    .ok_or(UninstallModError::MissingInstalledFileSummary)?;
+                let current = self
+                    .game_files
+                    .read_game_file(&entry.target_path)
+                    .map_err(|_| UninstallModError::TargetStateMismatch)?;
+                match &current {
+                    Some(bytes) if &installed_file_summary(bytes) == expected => {}
+                    None if allow_missing => {}
+                    _ => return Err(UninstallModError::TargetStateMismatch),
+                }
+                let backup_bytes = match &entry.backup_ref {
+                    Some(backup_ref) => Some(
+                        self.backup_store
+                            .read_backup(backup_ref)
+                            .map_err(|_| UninstallModError::BackupUnavailable)?
+                            .ok_or(UninstallModError::BackupUnavailable)?,
+                    ),
+                    None => None,
+                };
+                Ok(PreparedUninstallChange {
+                    entry,
+                    current_bytes: current,
+                    backup_bytes,
+                })
+            })
+            .collect()
+    }
+
+    fn target_still_matches(
+        &self,
+        target_path: &InstallTargetPath,
+        expected_bytes: Option<&[u8]>,
+    ) -> bool {
+        // 读取失败不是“文件缺失”，尤其不能在 expected=None 时因 flatten 而误放行。
+        match self.game_files.read_game_file(target_path) {
+            Ok(current) => current.as_deref() == expected_bytes,
+            Err(_) => false,
+        }
     }
 
     fn rollback_or_error(
@@ -1084,9 +1125,14 @@ impl UninstallModService {
 
     fn rollback_uninstall(&self, applied_changes: &[AppliedUninstallChange]) -> Result<(), ()> {
         for change in applied_changes.iter().rev() {
-            self.game_files
-                .write_game_file(&change.target_path, &change.previous_bytes)
-                .map_err(|_| ())?;
+            if !self.target_still_matches(&change.target_path, change.committed_bytes.as_deref()) {
+                return Err(());
+            }
+            match &change.previous_bytes {
+                Some(bytes) => self.game_files.write_game_file(&change.target_path, bytes),
+                None => self.game_files.remove_game_file(&change.target_path),
+            }
+            .map_err(|_| ())?;
         }
         Ok(())
     }
