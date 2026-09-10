@@ -60,6 +60,8 @@ export type RecoveryCenterOverview = {
 
 export type RecoveryCenterModView = {
   modId: string;
+  displayName: string;
+  canReviewMissingTargets: boolean;
   status: InstallRecoveryStatus;
   statusLabel: string;
   statusTone: "healthy" | "attention" | "unknown" | "empty";
@@ -117,18 +119,23 @@ function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
 export function deriveRecoveryCenterViewModel(
   summaries: InstallRecoverySummary[],
   copy: RecoveryCenterCopy,
+  modNames: Readonly<Record<string, string>> = {},
 ): RecoveryCenterViewModel {
   const issueCounts = new Map<InstallRecoveryIssue, number>();
   let completedModCount = 0;
   let attentionModCount = 0;
   let unknownModCount = 0;
   let rollbackRequiredModCount = 0;
+  let missingTargetModCount = 0;
   let managedFileCount = 0;
   let backupCount = 0;
   let issueCount = 0;
 
   const mods = summaries
     .map((summary): RecoveryCenterModView => {
+      const canReviewMissingTargets = summary.status === "repair_required"
+        && summary.issues.some((issue) => issue.issue === "target_missing" && issue.count > 0);
+      if (canReviewMissingTargets) missingTargetModCount += 1;
       if (summary.status === "completed") {
         completedModCount += 1;
       } else if (summary.status === "unknown") {
@@ -150,6 +157,8 @@ export function deriveRecoveryCenterViewModel(
 
       return {
         modId: summary.modId,
+        displayName: typeof modNames[summary.modId] === "string" ? modNames[summary.modId] : summary.modId,
+        canReviewMissingTargets,
         status: summary.status,
         statusLabel: copy.status[summary.status],
         statusTone: statusTone(summary.status),
@@ -184,6 +193,7 @@ export function deriveRecoveryCenterViewModel(
           scannedModCount: summaries.length,
           attentionModCount,
           unknownModCount,
+          missingTargetModCount,
         },
         copy,
       ),
@@ -192,6 +202,7 @@ export function deriveRecoveryCenterViewModel(
           attentionModCount,
           unknownModCount,
           rollbackRequiredModCount,
+          missingTargetModCount,
         },
         copy,
       ),
@@ -222,6 +233,7 @@ function issueView(issue: InstallRecoveryIssue, count: number, copy: RecoveryCen
 function deriveOverviewRepairSummary(
   input: {
     scannedModCount: number;
+    missingTargetModCount: number;
     attentionModCount: number;
     unknownModCount: number;
   },
@@ -248,6 +260,10 @@ function deriveOverviewRepairSummary(
   }
 
   if (input.attentionModCount > 0) {
+    if (input.missingTargetModCount > 0) {
+      return { status: "manual_required", ...copy.missingTargets.summary,
+        title: copy.overviewRepair.manualRequired.title, description: copy.missingTargets.reviewDescription };
+    }
     return {
       status: "manual_required",
       title: copy.overviewRepair.manualRequired.title,
@@ -310,6 +326,9 @@ function deriveModRepairSummary(summary: InstallRecoverySummary, copy: RecoveryC
   }
 
   if (summary.status === "repair_required") {
+    if (summary.issues.some((issue) => issue.issue === "target_missing" && issue.count > 0)) {
+      return { status: "manual_required", ...copy.missingTargets.summary };
+    }
     return {
       status: "manual_required",
       title: copy.modRepair.repairRequired.title,
@@ -345,6 +364,7 @@ function deriveManualDecision(
     attentionModCount: number;
     unknownModCount: number;
     rollbackRequiredModCount: number;
+    missingTargetModCount: number;
   },
   copy: RecoveryCenterCopy,
 ): RecoveryCenterManualDecision {
@@ -370,6 +390,9 @@ function deriveManualDecision(
       description: copy.manualDecision.controlledRollbackDescription(input.rollbackRequiredModCount),
       state: "available",
     });
+  } else if (input.missingTargetModCount > 0) {
+    actions.push({ id: "controlled_recovery", label: copy.missingTargets.action,
+      description: copy.missingTargets.reviewDescription, state: "available" });
   } else {
     actions.push({
       id: "controlled_recovery",
@@ -382,11 +405,11 @@ function deriveManualDecision(
   return {
     status: "blocked",
     title: copy.manualDecision.blockedTitle,
-    description: copy.manualDecision.blockedDescription,
+    description: input.missingTargetModCount > 0 ? copy.missingTargets.reviewDescription : copy.manualDecision.blockedDescription,
     recommendedAction: input.rollbackRequiredModCount > 0
       ? copy.manualDecision.recommendedRollback
-      : copy.manualDecision.recommendedRescan,
-    safeguards: [...copy.manualDecision.safeguards],
+      : input.missingTargetModCount > 0 ? copy.missingTargets.action : copy.manualDecision.recommendedRescan,
+    safeguards: [...(input.missingTargetModCount > 0 ? copy.missingTargets.safeguards : copy.manualDecision.safeguards)],
     actions,
   };
 }

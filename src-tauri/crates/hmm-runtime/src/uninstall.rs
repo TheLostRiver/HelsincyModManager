@@ -6,8 +6,9 @@ use hmm_core::ModRevisionId;
 use hmm_infra::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem, JsonInstallManifestRepository,
 };
-use hmm_ports::{GameConfigRepository, GameRunningDetector};
-use std::path::PathBuf;
+use hmm_ports::{GameConfigRepository, GameRunningDetector, InstallManifestRepository};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub(super) fn mod_uninstaller(
@@ -20,6 +21,25 @@ pub(super) fn mod_uninstaller(
         app_data_dir,
         game_running_detector,
     ))
+}
+
+pub(super) fn configured_uninstall_service(
+    game_root: PathBuf,
+    app_data_dir: &Path,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
+) -> UninstallModService {
+    let scope_binding = format!(
+        "{:x}",
+        Sha256::digest(game_root.as_os_str().as_encoded_bytes())
+    );
+    UninstallModService::new(
+        Arc::new(FileSystemInstallGameFileSystem::new(game_root)),
+        Arc::new(FileSystemInstallBackupStore::new(
+            app_data_dir.join("install").join("backups"),
+        )),
+        manifest_repository,
+    )
+    .with_missing_target_scope_binding(scope_binding)
 }
 
 struct ConfiguredModUninstaller {
@@ -50,11 +70,9 @@ impl ConfiguredModUninstaller {
             .load_game_instance(&request.game_id)
             .map_err(|_| UninstallModError::GameInstanceUnavailable)?
             .ok_or(UninstallModError::GameInstanceUnavailable)?;
-        Ok(UninstallModService::new(
-            Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
-            Arc::new(FileSystemInstallBackupStore::new(
-                self.app_data_dir.join("install").join("backups"),
-            )),
+        Ok(configured_uninstall_service(
+            game_instance.root_dir,
+            &self.app_data_dir,
             Arc::new(JsonInstallManifestRepository::new(
                 self.app_data_dir.join("install").join("manifests"),
             )),

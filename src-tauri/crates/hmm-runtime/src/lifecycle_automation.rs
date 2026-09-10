@@ -21,6 +21,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const LIFECYCLE_PLAN_TOKEN_PREFIX: &str = "hmm-lifecycle-plan-v1:";
+
+#[cfg(test)]
+#[path = "lifecycle_missing_target_tests.rs"]
+mod missing_target_tests;
 const LIFECYCLE_PLAN_TOKEN_PAYLOAD_HEX_LENGTH: usize = 80;
 
 #[cfg(test)]
@@ -519,6 +523,7 @@ impl CliLifecycleAutomation {
             &game_id,
         )?;
         let action_kind = preview.action_kind;
+        let missing_target_plan_token = preview.plan_token.clone();
         let write_admission: Arc<dyn InstallWriteAdmission> =
             Arc::new(LifecycleRecoveryWriteAdmission {
                 root_admission,
@@ -547,6 +552,7 @@ impl CliLifecycleAutomation {
                 mod_id,
                 profile_id,
                 action_kind,
+                plan_token: missing_target_plan_token,
             }),
         })
     }
@@ -1085,6 +1091,8 @@ struct RecoveryPlanTokenFacts<'a> {
     blocking_issue_count: usize,
     blocking_reasons: Vec<RecoveryBlockReasonTokenFacts>,
     state_binding: &'a str,
+    missing_file_count: usize,
+    missing_target_plan_token: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -1439,6 +1447,8 @@ fn build_recovery_plan_token(
                 })
                 .collect(),
             state_binding,
+            missing_file_count: preview.missing_file_count,
+            missing_target_plan_token: preview.plan_token.as_deref(),
         },
     )
 }
@@ -1538,6 +1548,7 @@ fn recovery_action_token_code(action: InstallRecoveryActionKind) -> &'static str
     match action {
         InstallRecoveryActionKind::RollbackInstall => "rollback_install",
         InstallRecoveryActionKind::ReconcileReinstall => "reconcile_reinstall",
+        InstallRecoveryActionKind::UninstallMissingTargets => "uninstall_missing_targets",
     }
 }
 
@@ -1561,6 +1572,13 @@ fn recovery_block_reason_token_code(reason: InstallRecoveryActionBlockReason) ->
         InstallRecoveryActionBlockReason::TargetReadFailed => "target_read_failed",
         InstallRecoveryActionBlockReason::BackupMissing => "backup_missing",
         InstallRecoveryActionBlockReason::BackupReadFailed => "backup_read_failed",
+        InstallRecoveryActionBlockReason::InstallStateUnavailable => "install_state_unavailable",
+        InstallRecoveryActionBlockReason::TargetStateUnavailable => "target_state_unavailable",
+        InstallRecoveryActionBlockReason::BackupUnavailable => "backup_unavailable",
+        InstallRecoveryActionBlockReason::RecoveryPending => "recovery_pending",
+        InstallRecoveryActionBlockReason::PreviewRequired => "preview_required",
+        InstallRecoveryActionBlockReason::GameRunning => "game_running",
+        InstallRecoveryActionBlockReason::GameRunningUnknown => "game_running_unknown",
     }
 }
 

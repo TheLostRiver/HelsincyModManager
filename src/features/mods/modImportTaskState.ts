@@ -10,6 +10,17 @@ export type ModImportTaskState =
   | { status: "cancelled"; taskId: string; phase: string }
   | { status: "failed"; taskId: string | null; phase: string; messageKind: ModImportFailedMessageKind };
 
+export type ModImportTerminalState = Extract<ModImportTaskState, { status: "completed" | "cancelled" | "failed" }>;
+
+export function modImportStartFailureKind(error: unknown): ModImportFailedMessageKind {
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : null;
+  if (code === "archive_path_empty" || code === "archive_path_not_absolute") return "invalid-archive";
+  if (code === "mod_storage_migration_in_progress") return "storage-frozen-migration";
+  if (code === "mod_storage_restart_required") return "storage-frozen-restart";
+  if (code === "mod_import_preview_limit_exceeded") return "preview-limit";
+  return "start-failed";
+}
+
 /**
  * #275 ④「移动导入」：导入已成功、只是源压缩包没删的降级码（契约「移动导入（#275 切片④）」）。
  * 挂在 completed 事件的 error 上；不在此列表的字串一律忽略，不当码用。
@@ -51,7 +62,8 @@ export type ModImportFailedMessageKind =
   | "unsupported-archive-format"
   | "not-an-archive"
   | "archive-encrypted"
-  | "archive-multi-volume";
+  | "archive-multi-volume"
+  | "preview-limit";
 
 // 后端投影的解包失败语义码 -> 档位（#348）。
 //
@@ -125,6 +137,8 @@ export function getModImportFailedMessage(
       return copy.errors.archiveEncrypted;
     case "archive-multi-volume":
       return copy.errors.archiveMultiVolume;
+    case "preview-limit":
+      return copy.errors.previewLimitExceeded;
   }
 }
 

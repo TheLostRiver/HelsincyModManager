@@ -82,7 +82,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - Mod 存储目录（#275）：`get_mod_storage_settings`、`validate_mod_storage_dir`、`set_mod_storage_dir`、`start_mod_storage_migration_task`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
-- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
+- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`get_mod_replacement_summary`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
 - 检查是否有可用更新：`check_app_update`
 
@@ -319,6 +319,11 @@ batch/result 事实或伪造导入失败。
   锁内重验（stat 指纹 vs 扫描记录；以当下清单重算可认领集并与记录比对）→ 提交屏障 → 追加条目 →
   原子保存清单 → 审计。任一重验不通过以 `external_mod_adopt_stale` 失败并要求重扫。支持
   `cancel_task`（`queued` / `running`，提交屏障内不可取消）。
+- 接管只面向持久来源为 `external_import` 且 adapter 为 `hunting_box_directory_v1` 的 Mod。
+  Runtime 在写锁前及锁内复核 logical Mod 的来源；普通文件导入、未知旧来源及其他 adapter 返回
+  `external_mod_adopt_origin_unsupported`。前端等当前 Mod 的权威详情加载后才展示接管按钮、确认弹窗
+  和禁用说明；手动选择与拖拽导入都不展示接管 UI，但仍可执行只读的游戏目录检查。迟到的详情或
+  扫描查询不能把另一 Mod/profile 或旧请求的事实写入当前界面及会话缓存。
 - 可认领集 = 与导入包**一致**（`matched`）且**无主**（清单里没有任何条目引用该路径）的文件；
   `changed` / `missing` 不认领只计数；任一 `unreadable` 阻断整次；可认领集为空拒绝；该 MOD
   在清单里已有条目拒绝（应走重装）；清单 status 非可信（进行中 / 失败态）拒绝。
@@ -336,6 +341,7 @@ batch/result 事实或伪造导入失败。
 - 事件 `resultRef` 只带 opaque `modId`，payload 不承载目标路径、清单内容或第三方 Mod 内容；接管
   没有独立结果 getter。失败事件的 `error` 为下列稳定码之一：
   `external_mod_adopt_game_instance_unavailable`、`external_mod_adopt_mod_unavailable`、
+  `external_mod_adopt_origin_unsupported`、
   `external_mod_adopt_scan_required`、`external_mod_adopt_unreadable_files`、
   `external_mod_adopt_nothing_to_adopt`、`external_mod_adopt_already_installed`、
   `external_mod_adopt_manifest_not_trusted`、`external_mod_adopt_manifest_unavailable`、
@@ -615,12 +621,13 @@ AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
-七个 command 的请求只使用稳定身份：
+替换目标 command 的请求只使用稳定身份：
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
 | `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
+| `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sources, installedTargets }`，供卡片悬浮展示 |
 | `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
@@ -685,6 +692,20 @@ binding、staging、game root 或最终路径。
 `installedTargetId`，仅用于重启后标记“当前已安装”和阻止把当前 target 当成切换候选。manifest 缺失、
 Mod 未安装或状态不可信时省略该字段；binding 歧义时返回稳定的安装状态不可用错误。该字段不包含
 binding identity、revision、internal id、相对/绝对路径、staging 或 manifest 内容。
+
+`analyze_imported_mod_replacement` 的 source 另携带 `displayNames`（locale -> 名称）；目录不可用、
+缺失或匹配歧义时为空表，编号保留。名称投影不改变 support/retargetable 或单目标写流程的门禁。
+
+`get_mod_replacement_summary` 在 blocking worker 内读取 display revision 的受控包清单与可信
+manifest，不执行安装、staging 或写入。`sources` 和 `installedTargets` 的条目均为
+`{ id, kind, internalId, displayNames }`，没有 path-family、路径、二进制、hash 或原始 catalog metadata。
+源名称必须按 game/type/internalId/path-family 精确且唯一匹配；已安装名称还必须匹配 manifest 的
+target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型、编号和 path-family），名称不确定只回空表。`installedTargets: null` 表示没有 profile 或安装事实不可验证，
+不可解释成未重定向；可信空清单为 `[]`。可展示多个绑定，但原有单目标查询仍拒绝多绑定，不放宽
+安装切换能力。`packageId` 是不透明的包身份，用于 hover 校验详情与源摘要来自同一 display revision。
+前端只在实际 hover/键盘焦点后按需查询，不永久缓存这份安装事实；库 generation、Mod/profile 改变或
+离开时抛弃旧响应，查询失败不自动循环。详情可先于源扫描显示；15 秒前端等待上限只结束等待，
+不伪造后端扫描取消。来源 `imported` 只可表述文件导入，不能区分手动选择与拖拽。
 
 同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，且新
 `targetId` 与已安装 target 不同时才允许进入真正重装。当前 target、缺失 binding、不安全 recovery
@@ -1596,11 +1617,14 @@ cancel_task(taskId)
 - `get_install_manifest_status` 不返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、manifest 正文、目标文件 hash 或第三方 Mod 内容。缺失 manifest 不是错误，不应让前端回退为 mock 安装事实或从任务内存态推断已安装状态。manifest-only 路径读取失败使用稳定错误码 `install_manifest_unavailable`；传入 `gameId` 后读取游戏配置或恢复扫描失败时沿用 `scan_install_recovery` 的稳定错误码 `game_instance_unavailable` / `install_recovery_unavailable`。
 - `scan_install_recovery` 是只读恢复扫描摘要入口。前端只提交 `gameId`、`profileId` 和 `modIds`；`modIds` 可为空，表示扫描该 profile manifest 内全部已知托管 Mod，便于启动级恢复检查或独立恢复中心先获得全局健康摘要。后端通过受控游戏配置解析 game root，并复用同一 `gameId/profileId` 的安装/卸载写锁后读取受控 manifest、目标文件摘要和 backup 是否存在。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、导入包路径、游戏目录路径或 manifest 正文。
 - `scan_install_recovery` 返回每个 mod 的 `status`、托管文件计数、backup 计数、接管条目计数（`adoptedFileCount`，见 #286）、聚合 issue 计数和稳定 issue code。`completed` 表示 manifest entries、当前目标摘要和需要的 backup 均一致；`committed_cleanup_pending` 表示 candidate manifest/targets 已证明，但 completed bookkeeping 尚待受控收敛；`cleanup_pending` 表示 transaction 已 completed 但 snapshot/record cleanup 尚未结束；`rollback_required` 表示重装前/普通安装写入窗口未确认完成；`repair_required` 表示无法安全自动收敛的一致性问题；`unknown` 表示读取失败等无法判断状态。缺失 manifest、无匹配 entry 且没有 recovery record 时返回 `not_installed`。当前命令只读，不自动删除、恢复、回滚或写 manifest。
-- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；action kind contract 为 `rollback_install` 或 `reconcile_reinstall`。现有详细 availability/count preview 针对 `rollback_install`；`reconcile_reinstall` 在没有专用 preview 证明时返回 blocked，不能据此绕过后端 task revalidation。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容，也不执行写入或写 Audit Log。
-- `preview_recovery_action` 只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
+- `preview_recovery_action` 是只读恢复动作预览入口。前端只提交 `gameId`、`profileId`、`modId` 和 `actionKind`；action kind 为 `rollback_install`、`reconcile_reinstall` 或 `uninstall_missing_targets`。详细 availability/count preview 支持回滚和缺失目标卸载；`reconcile_reinstall` 在没有专用 preview 证明时返回 blocked，不能据此绕过后端 task revalidation。该 command 不接受或返回 target path、game root、backup ref/root、manifest root/path、sandbox/cache 路径、目标文件 hash 明文、导入包路径、游戏目录路径、manifest 正文或第三方 Mod 内容，也不执行写入或写 Audit Log。
+- `rollback_install` 预览只有在 durable recovery record 为 `committing` 或 `rollback_required`、每个目标仍匹配 `installed_file` 摘要，且覆盖文件所需 backup 均存在并可读时才返回 `available`。无 recovery record、状态不在可回滚窗口、缺少 `installed_file`、目标缺失、目标摘要变化、目标读取失败、backup 缺失或 backup 读取失败都会返回 `blocked`，并使用 `rollback_state_missing`、`missing_installed_file_summary`、`target_missing`、`target_changed`、`target_read_failed`、`backup_missing` 或 `backup_read_failed` 等稳定 reason code。
+- `uninstall_missing_targets` 用于正常安装后目标被外部删除的情况，不要求有未完成安装记录。预览必须验证 manifest 状态可消费、profile 与归属一致、每项有 installed 摘要、至少一个目标缺失、仍存在的目标摘要一致且全部所需备份可读。同 profile 未完成安装恢复记录或任一尚未清理的重装事务、游戏运行中或状态未知都会阻断。新增 reason 为 `install_state_unavailable`、`target_state_unavailable`、`backup_unavailable`、`recovery_pending`、`preview_required`、`game_running`、`game_running_unknown`。
+- 缺失目标预览返回 `missingFileCount` 和 `planToken`（`missing-uninstall-v1:` 加 64 位小写十六进制摘要）。`missingFileCount` 包含有备份和无备份的缺失目标，不能与删除/恢复计数相加。`removeFileCount` 是实际删除数，`restoreFileCount` / `backupCount` 是实际恢复数。blocked 和其他动作省略 token；其他动作缺失计数为 `0`。token 绑定 game/profile/Mod、清单、目标现状和备份内容，仅用于漂移检查；UI 原样透传，不展示、不解析、不写日志。
 - `start_recovery_action_task` 是后端驱动的受控恢复动作任务入口。`rollback_install` 根据普通 install recovery record 回到安装前状态；`reconcile_reinstall` 根据 durable reinstall transaction 重新验证 candidate/pre-reinstall manifest 与 target/snapshot facts，再完成 post-commit cleanup 或受控回到 pre-reinstall。无法证明时进入 `repair_required` 并 fail closed。该 command 不接受 `targetPath`、game root、backup/snapshot ref/root、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
+- 新动作必须携带预览返回的 `planToken`；缺失或格式非法在创建任务前返回 `plan_token_invalid`。执行在原任务锁内复核事务门禁并重建摘要，逐项写入前重读目标：缺失无备份仅清记录，有备份恢复原文件，仍存在且匹配的无备份文件删除。普通卸载仍拒绝缺失目标。失败保留原清单并尝试恢复执行前状态；回滚遇外部新内容时停止覆盖并返回失败。`install_recovery_failed:stale_preview`、`:game_running`、`:game_running_unknown` 分别指向重新预览、关闭游戏和稍后重试；其他失败沿用 `:planning` / `:processing`。后端成功提交通过共享 manifest 仓储刷新库投影，前端再触发恢复摘要刷新。
 - `start_recovery_action_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.recovery.queued` 事件；后台 runner 会发送 `install.recovery.planning`、`install.recovery.processing`、`install.recovery.completed` 或 `install.recovery.failed`。失败事件的 `error` 使用稳定前缀 `install_recovery_failed:<phase>`，当前 phase 可为 `lock`、`planning`、`processing` 或 `complete`。写入准入层还可能直接给出 `recovery_pending` / `recovery_unavailable` / `write_safety_rejected` 与四个 `write_admission_*`（`busy` / `cancelled` / `order_violation` / `unavailable`），语义同上。事件 payload 不承载目标路径、完整本地路径、backup ref、manifest 内容、目标 hash、sandbox/cache 路径或第三方 Mod 内容。
-- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install` 或 `reconcile_reinstall`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录完整本地路径、用户名、Steam ID、backup/snapshot ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
+- `start_recovery_action_task` 会写最小 Audit Log 事件，`operation` 为 `rollback_install`、`reconcile_reinstall` 或 `uninstall_missing_targets`，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`remove_file_count`、`restore_file_count` 和 `backup_count` 等短 id/计数，不记录 plan token、完整本地路径、用户名、Steam ID、backup/snapshot ref/root、manifest 正文、sandbox/cache 路径或第三方 Mod 内容。
 - Mod 库前端应在 `get_install_manifest_status` 中传入 `gameId`，让状态摘要直接反映只读 recovery scan。前端应把 `committed_cleanup_pending` / `cleanup_pending` / `rollback_required` / `repair_required` / `unknown` 都作为不安全状态展示并阻断新的安装、卸载或重装；扫描失败时应降级为 `unknown`，不回退为 mock 安装事实或任务内存态。
 - Dashboard / App Frame / 独立恢复中心可以在游戏目录配置完成后调用 `scan_install_recovery`，传入空 `modIds` 获取当前 profile 的全量托管安装健康摘要。Dashboard 等入口级摘要只能展示扫描 Mod 数、需处理数、未知数、托管文件数、backup 计数、issue 总数和 `issues[].issue/count` 等聚合信息；App Frame 全局告警只能在需要处理、状态未知或扫描不可用时展示轻量摘要和恢复中心导航；独立恢复中心可以额外展示每个托管 Mod 的短 id、状态、托管文件计数、backup 计数、issue 计数、稳定 issue 分类，以及由前端 view model 基于稳定 issue code 派生的 rich repair summary、风险等级、阻断原因和人工处理建议。扫描失败必须展示状态未知，不能解释为健康或自动触发恢复。
 - 独立恢复中心可以提供用户主动触发的 `export_support_diagnostics` 入口。该入口必须通过 feature-local typed API 调用无参数 command；前端导出前先展示将包含的已脱敏类别确认，导出后只展示 `exportId`、`fileName`、`sizeBytes`、`appLogLineCount`、`taskLogLineCount` 和 `auditEventCount`，不能传入或展示输出路径、日志路径、诊断包完整路径、日志正文、审计事件正文、manifest/backup/root、sandbox/cache 路径或第三方 Mod 内容。诊断导出成功不改变安装、卸载、恢复扫描或 manifest 状态。
@@ -1741,7 +1765,7 @@ type InstallRecoveryScanRequestDto = {
   modIds: string[];
 };
 
-type InstallRecoveryActionKindDto = "rollback_install" | "reconcile_reinstall";
+type InstallRecoveryActionKindDto = "rollback_install" | "reconcile_reinstall" | "uninstall_missing_targets";
 
 type InstallRecoveryActionPreviewRequestDto = {
   gameId: string;
@@ -1755,6 +1779,7 @@ type StartRecoveryActionTaskRequestDto = {
   profileId: string;
   modId: string;
   actionKind: InstallRecoveryActionKindDto;
+  planToken?: string | null; // uninstall_missing_targets 必填；旧动作兼容省略
 };
 
 type InstallManifestStatusDto =
@@ -1817,7 +1842,14 @@ type InstallRecoveryActionBlockReasonDto =
   | "target_changed"
   | "target_read_failed"
   | "backup_missing"
-  | "backup_read_failed";
+  | "backup_read_failed"
+  | "install_state_unavailable"
+  | "target_state_unavailable"
+  | "backup_unavailable"
+  | "recovery_pending"
+  | "preview_required"
+  | "game_running"
+  | "game_running_unknown";
 
 type InstallRecoveryActionPreviewDto = {
   profileId: string;
@@ -1827,6 +1859,8 @@ type InstallRecoveryActionPreviewDto = {
   removeFileCount: number;
   restoreFileCount: number;
   backupCount: number;
+  missingFileCount: number;
+  planToken?: string;
   blockingIssueCount: number;
   blockingReasons: Array<{
     reason: InstallRecoveryActionBlockReasonDto;
@@ -1897,6 +1931,8 @@ start_mod_storage_migration_task({ directory: string | null })
 边界：
 
 - `preview_dropped_mod_archives(archivePaths: string[])` 是**只读预检**（T22 / #366）：逐个文件判断「能不能导入」，
+  命令先验证最多 100 条路径及全部路径语法，再将归档 I/O 与 RAR 锁等待派发到 blocking worker，不阻塞 WebView 回调。
+  超限返回稳定码 `mod_import_preview_limit_exceeded`（三语提示分批拖入）；worker 不可用返回既有 `mod_import_prepare_failed`，不暴露底层错误。
   返回 `DroppedArchivePreviewDto[]`，形如 `{ archivePath, fileName, sizeBytes, errorCode, warningCode }`。`errorCode` 为 `null` 表示可导入，
   否则是**与导入失败同一套**的语义码（`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
   `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` / `mod_import_prepare_failed`），
@@ -2212,18 +2248,20 @@ type ModDeletionResultDto = {
 
 - `check_app_update` **无参数**、不依赖 `AppState`，返回 `AppUpdateStatusDto`：
   `{ status, currentVersion, latestVersion }`。**它不是 `Result`——这个 command 不会失败**，
-  查不到就是 `status: "unknown"`，没有 `CommandErrorDto` 分支。
-- `status` 的稳定取值只有三个：**`up_to_date`**（已是最新，或当前是正式版而对方是预发布）、
+  查询失败就是 `status: "unknown"`，没有 `CommandErrorDto` 分支。
+- `status` 的稳定取值：**`up_to_date`**（当前通道没有更新的版本）、
   **`update_available`**（有可用更新，此时 `latestVersion` 才有值）、**`unknown`**
-  （拿不到最新版本，或版本号无法解析）。**只有 `update_available` 会带 `latestVersion`**。
+  （查询失败、响应格式不可解析，或当前版本号无法解析）及 **`no_release`**（查询成功，但列表中没有当前通道可用的版本）。**只有 `update_available` 会带 `latestVersion`**。
 - `latestVersion` 是**发布标签原文**（可能带 `v` 前缀），前端**原样展示不解析**。
 - 版本先后按 semver 2.0.0 优先级规则的子集判定，实现在 `hmm-core::app_version`：
   核心版本号逐级数值比较；带预发布标识的版本**小于**同核心版本号的正式版；预发布段逐段比较
   （数字段比数值且小于字母段，前面相等时段多者更大）；`+build` 元数据不参与比较。
   **不可用字符串比较**——`0.1.0-alpha.10` 按字符串排会小于 `0.1.0-alpha.9`。
 - **通道规则**：当前是正式版时**不提示预发布版本**（预览通道只面向已在预览通道的用户）。
+  必须先筛选通道再比较最高版本，不能让一个更高的预发布标签遮住列表中的正式版更新。
   通道划分本身仍是未决问题，见 [应用内更新器规划](release/UPDATER_PLAN.md)。
 - 查询源是 GitHub Releases **列表**端点，URL 为**编译期常量**、不接受调用方输入。
+  每页 100 项、至多 10 页且共用 3 秒请求预算；读取至不足一页才视为完整，后续页失败或上限耗尽返回未知，不能用首屏部分列表宣称最新。
   实现**自己比较出版本号最高的一个**，不依赖接口返回顺序；跳过草稿；解析不了的标签忽略
   （一个不合规范的旧标签不该让整次查询失效）。不用 `/releases/latest`——
   仓库只有草稿发布时它返回 **404**（本仓库当前就是这个状态，实测确认）。
@@ -2232,8 +2270,10 @@ type ModDeletionResultDto = {
   （与 `UPDATER_PLAN.md` 的安全边界一致）。若把这个请求移到前端，就必须给 CSP 的
   `connect-src` 加上 `https://api.github.com`，那是放宽整个前端的网络策略，不被接受。
 - 超时固定 3 秒，走 `tauri::async_runtime::spawn_blocking`，不阻塞异步运行时。
-- **失败一律静默**：断网、超时、接口变动、仓库还没有已发布版本，对普通用户都是常态。
-  前端**不得**因为 `unknown` 弹错误、写失败提示，或让应用进入任何降级状态。
+- 前端在固定状态区显示尚未检查、检查中、有更新、已是最新、无可用发行版或未能完成检查。
+  `unknown`、调用失败、非法 DTO 与前端 10 秒超时只显示无内部细节的失败结果，不弹错误、不使应用降级。
+  失败会撤下旧成功结论，不记录成功检查时刻；超时后的迟到响应不得覆盖新的重试结果。
+  前端超时只结束本次等待，不声称已取消 Rust 网络操作。检查按钮与下载页入口始终保留。
 - 本 command **不下载、不校验签名、不写入任何文件**，因此与 `UPDATER_PLAN.md`
   「Alpha 阶段不引入应用内自动更新」不冲突——它是 updater 的**前置改良**而非替代。
 - 前端负责查询节流（最短间隔）与「是否自动检查」开关。两者都是**前端偏好**

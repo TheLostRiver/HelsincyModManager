@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ModLibraryFilter } from "./modLibraryFilters";
 import {
   consumeOneShotQueryKey,
@@ -22,6 +22,8 @@ import type {
 } from "./modLibraryTypes";
 
 const MOD_LIBRARY_SEARCH_DEBOUNCE_MS = 250;
+const noCacheGeneration = () => 0;
+const noCacheSubscription = () => () => {};
 
 type ModLibraryQueryRequest = {
   input: QueryModLibraryInput;
@@ -38,8 +40,10 @@ type ModLibraryQueryRequest = {
  */
 export type ModLibraryQueryCache = {
   readPage: (profileKey: string, queryKey: string) => ModLibraryPage | null;
-  writePage: (profileKey: string, queryKey: string, page: ModLibraryPage) => void;
+  writePage: (profileKey: string, queryKey: string, page: ModLibraryPage, generation: number) => void;
   invalidatePage: (profileKey: string, queryKey: string) => void;
+  getGeneration: () => number;
+  subscribe: (notify: () => void) => () => void;
 };
 
 type UseModLibraryQueryInput = {
@@ -84,7 +88,7 @@ export function useModLibraryQuery({
   //
   // 同步走 layout effect 而不是 render 期间直接赋值：render 期间写 ref 违反 React 的
   // 约定（唯一被许可的例外是惰性初始化），因为 render 可能被丢弃或重跑。今天本仓库
-  // 没有并发特性、且这里写的是 Provider 里 `useMemo(..., [])` 的恒定对象，所以还看不出
+  // 没有并发特性、且这里写的是 Provider 持有的恒定 store 对象，所以还看不出
   // 差别——但那是**碰巧**无害，不是设计上无害。
   //
   // 声明顺序有意义：本 effect 必须排在下面读缓存的那个 layout effect 之前，同一次提交里
@@ -93,6 +97,16 @@ export function useModLibraryQuery({
   useLayoutEffect(() => {
     cacheRef.current = cache;
   }, [cache]);
+  const cacheGeneration = useSyncExternalStore(
+    cache?.subscribe ?? noCacheSubscription,
+    cache?.getGeneration ?? noCacheGeneration,
+    noCacheGeneration,
+  );
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [submittedSearch, setSubmittedSearch] = useState(rawSearch);
   const [requestedPage, setRequestedPage] = useState(1);
   const [pageSize, setPageSizeState] = useState<ModLibraryPageSize>(() =>
@@ -100,17 +114,20 @@ export function useModLibraryQuery({
   );
   const profileKey = getProfileKey(profileContext);
   const previousProfileKeyRef = useRef(profileKey);
-  const [executionState, setExecutionState] = useState<ModLibraryQueryExecutionState>({
+  const [executionState, setExecutionState] = useState<ModLibraryQueryExecutionState & { generation: number }>({
     record: null,
     phase: "idle",
     phaseProfileKey: profileKey,
     errorCode: null,
+    generation: cacheGeneration,
   });
   const requestGateRef = useRef(createLatestRequestSequenceGate());
   const debounceTimerRef = useRef<number | null>(null);
   const skippedClampQueryKeyRef = useRef<string | null>(null);
   const skippedCommittedQueryEffectKeyRef = useRef<string | null>(null);
   const latestCommittedQueryKeyRef = useRef<string | null>(null);
+  const latestCommittedGenerationRef = useRef(cacheGeneration);
+  const lastExecutionRef = useRef<{ queryKey: string; generation: number; loadPage: typeof loadPage } | null>(null);
   const latestRequestRef = useRef<ModLibraryQueryRequest | null>(null);
   const profileQueryPage = resolveProfileQueryPage(
     previousProfileKeyRef.current,
@@ -150,16 +167,18 @@ export function useModLibraryQuery({
   const queryKey = queryInput === null ? null : getQueryKey(queryInput);
 
   useLayoutEffect(() => {
-    if (latestCommittedQueryKeyRef.current === queryKey) {
+    const generationChanged = latestCommittedGenerationRef.current !== cacheGeneration;
+    if (latestCommittedQueryKeyRef.current === queryKey && !generationChanged) {
       return;
     }
 
     latestCommittedQueryKeyRef.current = queryKey;
+    latestCommittedGenerationRef.current = cacheGeneration;
     latestRequestRef.current = queryInput === null || queryKey === null
       ? null
       : { input: queryInput, profileKey, queryKey };
 
-    const clampConsumption = queryKey === null
+    const clampConsumption = queryKey === null || generationChanged
       ? { matches: false, remainingKey: null }
       : consumeOneShotQueryKey(skippedClampQueryKeyRef.current, queryKey);
     skippedClampQueryKeyRef.current = clampConsumption.remainingKey;
@@ -168,7 +187,10 @@ export function useModLibraryQuery({
       return;
     }
 
-    requestGateRef.current.invalidate();
+    if (lastExecutionRef.current?.queryKey !== queryKey
+      || lastExecutionRef.current?.generation !== cacheGeneration) {
+      requestGateRef.current.invalidate();
+    }
     if (queryKey === null) {
       return;
     }
@@ -177,23 +199,40 @@ export function useModLibraryQuery({
     // 缓存只负责填住「请求在路上」这段空窗，不负责代替事实。
     const cachedPage = cacheRef.current?.readPage(profileKey, queryKey) ?? null;
 
-    setExecutionState((current) => resolveQueryStartExecutionState(current, profileKey, cachedPage));
-  }, [profileKey, queryInput, queryKey]);
+    setExecutionState((current) => ({
+      ...resolveQueryStartExecutionState(
+        current.generation === cacheGeneration ? current : { ...current, record: null },
+        profileKey,
+        cachedPage,
+      ),
+      generation: cacheGeneration,
+    }));
+  }, [cacheGeneration, profileKey, queryInput, queryKey]);
 
   const executeQuery = useCallback(
     async (request: ModLibraryQueryRequest) => {
+      if (!mountedRef.current) return null;
       const requestId = requestGateRef.current.beginRequest();
+      const generation = cacheRef.current?.getGeneration() ?? 0;
+      lastExecutionRef.current = { queryKey: request.queryKey, generation, loadPage };
 
       const isCurrentResponse = () => isCommittedModLibraryQueryResponse(
-        requestGateRef.current.isLatest(requestId),
+        mountedRef.current && requestGateRef.current.isLatest(requestId)
+          && generation === (cacheRef.current?.getGeneration() ?? 0),
         latestCommittedQueryKeyRef.current,
         request.queryKey,
       );
 
       // 这里不再查缓存：空窗期显示什么已经在 useLayoutEffect 里定过了，
       // 再查一遍只会把可能更新的在途结果按回到同一份旧快照。
-      setExecutionState((current) =>
-        resolveQueryStartExecutionState(current, request.profileKey, null));
+      setExecutionState((current) => ({
+        ...resolveQueryStartExecutionState(
+          current.generation === generation ? current : { ...current, record: null },
+          request.profileKey,
+          null,
+        ),
+        generation,
+      }));
 
       try {
         const page = await loadPage(request.input);
@@ -206,6 +245,7 @@ export function useModLibraryQuery({
           phase: "idle",
           phaseProfileKey: request.profileKey,
           errorCode: null,
+          generation,
         });
 
         if (page.page !== request.input.page) {
@@ -213,10 +253,10 @@ export function useModLibraryQuery({
           // 下次请求越界页码时先闪一下别的页，所以按**结果实际对应**的 key 存。
           const clampedInput = { ...request.input, page: page.page };
           skippedClampQueryKeyRef.current = getQueryKey(clampedInput);
-          cacheRef.current?.writePage(request.profileKey, skippedClampQueryKeyRef.current, page);
+          cacheRef.current?.writePage(request.profileKey, skippedClampQueryKeyRef.current, page, generation);
           setRequestedPage(page.page);
         } else {
-          cacheRef.current?.writePage(request.profileKey, request.queryKey, page);
+          cacheRef.current?.writePage(request.profileKey, request.queryKey, page, generation);
         }
 
         return page;
@@ -225,8 +265,10 @@ export function useModLibraryQuery({
           return null;
         }
 
+        cacheRef.current?.invalidatePage(request.profileKey, request.queryKey);
         setExecutionState((current) => ({
           ...current,
+          record: null,
           phase: "error",
           phaseProfileKey: request.profileKey,
           errorCode: normalizeModLibraryQueryErrorCode(error),
@@ -248,10 +290,13 @@ export function useModLibraryQuery({
     }
 
     const request = latestRequestRef.current;
+    const previous = lastExecutionRef.current;
+    if (previous?.queryKey === queryKey && previous.generation === cacheGeneration
+      && previous.loadPage === loadPage) return;
     if (request?.queryKey === queryKey) {
       void executeQuery(request).catch(() => undefined);
     }
-  }, [executeQuery, queryKey]);
+  }, [cacheGeneration, executeQuery, loadPage, queryKey]);
 
   useEffect(() => {
     if (debounceTimerRef.current !== null) {
@@ -279,6 +324,7 @@ export function useModLibraryQuery({
   useEffect(
     () => () => {
       requestGateRef.current.invalidate();
+      lastExecutionRef.current = null;
       if (debounceTimerRef.current !== null) {
         window.clearTimeout(debounceTimerRef.current);
       }
@@ -319,6 +365,7 @@ export function useModLibraryQuery({
 
   const updateCurrentPageItems = useCallback(
     (update: (items: ModLibraryItem[]) => ModLibraryItem[]) => {
+      if (!mountedRef.current || latestRequestRef.current?.profileKey !== profileKey) return;
       // 这条路径只在页面已经判定手里这份不可信时走（安装终态校验失败的 fail-closed 标记）。
       // 缓存里那份是标记**之前**的快照，留着复用等于下次进页面把已知有问题的状态又摆回来，
       // 所以直接丢掉槽位，让下次重新查——缓存失效必须倒向重新取数。
@@ -326,17 +373,28 @@ export function useModLibraryQuery({
       // 故意不看下面那个「记录属不属于当前配置档」的判据：判据不成立时多丢一个槽位的代价
       // 只是下次多查一遍，而漏丢一个槽位的代价是留下一份已知不可信的快照。
       const committedQueryKey = latestCommittedQueryKeyRef.current;
+      const generation = cacheRef.current?.getGeneration() ?? 0;
+      requestGateRef.current.invalidate();
       if (committedQueryKey !== null) {
         cacheRef.current?.invalidatePage(profileKey, committedQueryKey);
       }
 
       setExecutionState((current) => {
-        if (current.record?.profileKey !== profileKey) {
-          return current;
+        if (current.record?.profileKey !== profileKey || current.generation !== generation) {
+          return {
+            ...current,
+            record: null,
+            phase: "error",
+            phaseProfileKey: profileKey,
+            errorCode: "mod_library_status_unavailable",
+            generation,
+          };
         }
 
         return {
           ...current,
+          phase: "idle",
+          errorCode: null,
           record: {
             ...current.record,
             page: {
@@ -350,8 +408,9 @@ export function useModLibraryQuery({
     [profileKey],
   );
 
-  const page = executionState.record?.profileKey === profileKey ? executionState.record.page : null;
-  const phaseIsCurrent = executionState.phaseProfileKey === profileKey;
+  const generationIsCurrent = executionState.generation === cacheGeneration;
+  const page = generationIsCurrent && executionState.record?.profileKey === profileKey ? executionState.record.page : null;
+  const phaseIsCurrent = generationIsCurrent && executionState.phaseProfileKey === profileKey;
   const phase = phaseIsCurrent ? executionState.phase : "initial-loading";
   const errorCode = phaseIsCurrent ? executionState.errorCode : null;
   const blockedReason: ModLibraryQueryFilterBlockReason | null =

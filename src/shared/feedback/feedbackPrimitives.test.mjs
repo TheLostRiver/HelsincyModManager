@@ -55,7 +55,7 @@ test("后台导入通知必须带「查看清单」入口——关掉之后没�
   // 再拖一个包是「开新的」不是「重开」。没有这个按钮，玩家看不到还剩几个、哪个失败了。
   const dropProvider = readSource("src/features/mods/ModImportDropProvider.tsx");
 
-  assert.match(dropProvider, /action: \{ label: copyRef\.current\.drop\.reopenList, onClick: openDropList \}/);
+  assert.match(dropProvider, /action: \{ label: copy\.drop\.reopenList, onClick: openDropList \}/);
 
   // openDropList 必须声明在这个 effect 之前：它进了 effect 的依赖数组，而依赖数组在
   // 渲染时求值，声明在后就是暂时性死区。

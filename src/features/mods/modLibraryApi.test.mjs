@@ -63,7 +63,7 @@ test("mod library write completions use a dedicated refresh that clears selectio
 
   assert.match(
     source,
-    /const refreshModLibraryAfterWrite = useCallback\(async \(\) => \{\s*resetContentScroll\(\);\s*await refreshModLibrary\(\);/,
+    /const refreshModLibraryAfterWrite = useCallback\(async \(\) => \{\s*librarySessionCache\.invalidateAllPages\(\);\s*resetContentScroll\(\);\s*await refreshModLibrary\(\);/,
   );
   assert.match(source, /refreshLibrary:\s*refreshModLibraryAfterWrite/);
   assert.match(source, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
