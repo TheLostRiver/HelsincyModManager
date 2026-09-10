@@ -279,6 +279,21 @@ node scripts/check-weapon-alias-coverage.mjs --json     # 机读结果
 → `validate_equipment_candidates --require-bundled` 校验 → 重生成 artifact →
 `GAME_TERMINOLOGY_SIGNOFF.md` 重签（签核只对 artifact 版本有效）。
 
+## 武器选择行（2026-09-10）
+
+武器目标选择列表按后端给出的当前语言名称展开：代表名和每个别名都可以单独选中，每行保留模型编号。
+当前 bundled 数据每种语言有 3123 个名称，对应的 601 个资源目标保持唯一。列表仍先由后端按源 Mod
+的兼容类型筛选；显示行的 key 只用于 React/radio，预览和安装始终提交原始 `target.id`。
+
+同模型选项共享已安装/占用状态，不能通过换一个名称绕过同目标切换限制。选择后显示同模型影响范围，
+明确这些武器外观会一同改变。预览使用用户实际选中的名称与模型编号，防具仍按原有目标显示。
+
+分语言别名在后端独立排序，不提供翻译配对关系。跨语言搜索直接显示命中的名称原文；选中的别名在
+切换语言后保留原文，不按数组下标猜翻译、不改变实际模型目标，也不重新扫描 Mod。代表名沿原有
+displayNames 语言映射切换。切换 Mod/profile 时清空名称选择和旧预览。
+
+这是展示投影调整，catalog artifact、stable ID、资源路径与安装执行规则均保持原有内容。
+
 ## 路径 Schema
 
 ### Resource Root

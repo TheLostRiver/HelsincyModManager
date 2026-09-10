@@ -61,7 +61,7 @@ export type ReplacementCopy = {
     // 搜索命中了行里没渲染的名字（别名 / 其他语言展示名）时的行内提示（#274）。
     matchedNames: (names: string[]) => string;
     matchedNamesMore: (count: number) => string;
-    // 共用同一模型的其他名称（#274 PR 2）：行内计数药丸 + 选中目标的别名摘要。
+    // 每个武器名称单独可选，同时提示共享模型的影响范围。
     aliasCount: (count: number) => string;
     aliasCountTitle: string;
     selectedAliasesTitle: string;
@@ -337,12 +337,12 @@ export const replacementCopy = {
       noMatches: "没有匹配的替换目标。",
       matchedNames: (names: string[]) => `匹配：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 个`,
-      aliasCount: (count: number) => `+${count} 个名称`,
-      aliasCountTitle: "这些装备与该目标共用同一套模型文件；选中后可查看全部名称。",
-      selectedAliasesTitle: "共用此模型的其他名称",
+      aliasCount: (count: number) => `同模型 · +${count}`,
+      aliasCountTitle: "这些武器共用模型，选择任意一项都会一同改变外观。",
+      selectedAliasesTitle: "同模型影响范围",
       selectedAliasesCount: (count: number) => `${count} 个名称`,
-      selectedAliasesHint: "这些装备与所选目标使用同一套模型文件，替换后外观一同改变。",
-      selectedAliasesAria: "共用此模型的其他名称",
+      selectedAliasesHint: "下列武器与所选项共用模型，替换后外观会一同改变，无法只改变其中一个名称对应的武器。",
+      selectedAliasesAria: "受同模型替换影响的武器名称",
       targetOccupied: (name: string) =>
         `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
       targetOccupiedTag: "已被占用",
@@ -611,14 +611,14 @@ export const replacementCopy = {
       noMatches: "No matching replacement targets.",
       matchedNames: (names: string[]) => `Matches: ${names.join(", ")}`,
       matchedNamesMore: (count: number) => `+${count} more`,
-      aliasCount: (count: number) => `+${count} name${count === 1 ? "" : "s"}`,
+      aliasCount: (count: number) => `Shared model · +${count}`,
       aliasCountTitle:
-        "These items share this target's model files; select the row to see every name.",
-      selectedAliasesTitle: "Other names sharing this model",
+        "These weapons share model files. Choosing any of them changes their appearances together.",
+      selectedAliasesTitle: "Shared model impact",
       selectedAliasesCount: (count: number) => `${count} name${count === 1 ? "" : "s"}`,
       selectedAliasesHint:
-        "They use the same model files as the selected target, so the replacement changes their appearance too.",
-      selectedAliasesAria: "Other names sharing this model",
+        "All weapons listed here share the selected model. The replacement changes them together; it cannot affect just one name.",
+      selectedAliasesAria: "Weapons affected by this shared model replacement",
       targetOccupied: (name: string) =>
         `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
       targetOccupiedTag: "Occupied",
@@ -887,12 +887,12 @@ export const replacementCopy = {
       noMatches: "一致する置換ターゲットがありません。",
       matchedNames: (names: string[]) => `一致：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 件`,
-      aliasCount: (count: number) => `+${count} 件の名称`,
-      aliasCountTitle: "これらの装備はこのターゲットとモデルファイルを共有しています。選択するとすべての名称を表示します。",
-      selectedAliasesTitle: "このモデルを共有する他の名称",
+      aliasCount: (count: number) => `共有モデル · +${count}`,
+      aliasCountTitle: "これらの武器はモデルを共有しているため、どれを選んでも外観が一緒に変わります。",
+      selectedAliasesTitle: "共有モデルの影響範囲",
       selectedAliasesCount: (count: number) => `${count} 件の名称`,
-      selectedAliasesHint: "これらの装備は選択したターゲットと同じモデルファイルを使用しているため、置換後は外観も一緒に変わります。",
-      selectedAliasesAria: "このモデルを共有する他の名称",
+      selectedAliasesHint: "以下の武器は選択したモデルを共有しています。置換後はすべての外観が一緒に変わり、一つの名称の武器だけを変更することはできません。",
+      selectedAliasesAria: "共有モデルの置換で影響を受ける武器名",
       targetOccupied: (name: string) =>
         `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
       targetOccupiedTag: "占有済み",

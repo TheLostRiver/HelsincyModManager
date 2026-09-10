@@ -274,6 +274,15 @@
 
 .replacement-panel__target-name strong {
   font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.replacement-panel__selected-name {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .replacement-panel__target-name small {
@@ -660,8 +669,13 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .replacement-panel__target-row code {
+  .replacement-panel__target-facts {
     grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
   }
 
   .replacement-panel__source-facts div {
