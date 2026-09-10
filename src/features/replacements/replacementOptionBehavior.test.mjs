@@ -7,6 +7,7 @@ import { registerReactTestModules } from "../../shared/testing/reactModuleLoader
 registerReactTestModules({
   "shared/i18n/index.ts": `export { resolveCopy } from "./locales.ts"; export const useI18n = () => ({ locale: globalThis.__weaponOptions.locale });`,
   "shared/feedback/index.ts": `export const useFeedback = () => ({ pushToast: () => {} });`,
+  "app/routing/useAppRoute.ts": `export const useAppRoute = () => ({ navigate: (route) => globalThis.__weaponOptions.routes.push(route) });`,
   "features/replacements/replacementApi.ts": `
     export const analyzeImportedModReplacement = (input) => globalThis.__weaponOptions.request("analysis", input);
     export const listReplacementTargets = (input) => globalThis.__weaponOptions.request("targets", input);
@@ -30,9 +31,9 @@ const weapon = {
 const another = { ...weapon, id: "physical-model-b", internalId: "swo002", displayNames: { zh_cn: "另一把刀", en: "Another Sword", ja: "別の刀" }, aliases: [], aliasesByLocale: {} };
 const text = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children ?? []).map(text).join("");
 
-async function mount(t, { installed = false, occupied = false, targetFailure = false, contextOverride = {}, holdContext = false } = {}) {
+async function mount(t, { installed = false, occupied = false, targetFailure = false, contextOverride = {}, holdContext = false, previewBlocked = false } = {}) {
   const summaryItem = (target) => ({ id: target.id, kind: target.targetType, internalId: target.internalId, displayNames: target.displayNames });
-  const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], listeners: new Set(), holdPreview: false,
+  const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], routes: [], listeners: new Set(), holdPreview: false,
     installedTargets: installed ? [summaryItem(weapon)] : [] };
   api.listen = async (callback) => { api.listeners.add(callback); return () => api.listeners.delete(callback); };
   api.preview = (input) => ({ analysis: { gameId: "mhw", sources: [], warnings: [], retargetable: true, matchedAssetCount: 1 },
@@ -54,6 +55,7 @@ async function mount(t, { installed = false, occupied = false, targetFailure = f
     }
     if (kind === "occupancy") return occupied ? [{ targetId: weapon.id, modId: "other-mod", displayName: "占用者" }] : [];
     if (kind === "preview") {
+      if (previewBlocked) throw { code: "replacement_initial_install_blocked", message: "fixture recovery required" };
       if (api.holdPreview) return new Promise((resolve) => api.previews.push({ input, resolve }));
       return api.preview(input);
     }
@@ -154,6 +156,19 @@ test("default replacement names are shown before preview, install, or HMM retarg
   assert.equal(h.root.root.findAllByProps({ className: "replacement-context__current" }).length, 0);
   assert.equal(h.api.calls.filter((call) => call.kind === "context").length, 1, "StrictMode does not duplicate the read-only context query");
   assert.equal(h.api.calls.filter((call) => ["preview", "start", "switchStart"].includes(call.kind)).length, 0);
+});
+
+test("blocked initial retargeting preserves default equipment names and the recovery center route", options, async (t) => {
+  const h = await mount(t, { previewBlocked: true });
+  await h.choose("最终刀");
+  await act(async () => h.buttons()[0].props.onClick());
+  assert.ok(text(h.root.root.findByProps({ className: "replacement-context__default" })).includes("另一把刀 (swo002)"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+  const recoveryButton = h.root.root.findByProps({ className: "replacement-panel__recovery-link" });
+  assert.ok(text(recoveryButton).includes("恢复中心"));
+  await act(async () => recoveryButton.props.onClick());
+  assert.deepEqual(h.api.routes, ["/recovery"]);
+  assert.equal(h.api.calls.filter((call) => ["start", "switchStart"].includes(call.kind)).length, 0);
 });
 
 test("installed target and original package target remain distinct from a pending selection", options, async (t) => {

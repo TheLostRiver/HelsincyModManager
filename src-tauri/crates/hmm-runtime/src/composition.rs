@@ -886,6 +886,8 @@ impl HmmRuntime {
                 Arc::clone(&game_config_repository),
                 app_data_dir.clone(),
                 Arc::clone(&install_write_locks),
+                Arc::clone(&reinstall_recovery_repository),
+                game_running_detector_for_platform(&game_adapters),
             ));
         // #286：外部来源 MOD 的状态扫描。只做只读判定，结果不进进度事件
         // （契约禁止 payload 携带 target_path）。
@@ -927,6 +929,8 @@ impl HmmRuntime {
                 Arc::clone(&game_config_repository),
                 app_data_dir.clone(),
                 Arc::clone(&reinstall_recovery_repository),
+                Arc::clone(&install_game_running_detector),
+                Arc::clone(&install_manifest_repository),
             ));
         let sandbox_write_admission: Arc<dyn InstallWriteAdmission> =
             match (sandbox_write_admission, sandbox_environment) {
@@ -2024,6 +2028,8 @@ pub struct ConfiguredInstallRecoveryActionPreviewer {
     game_config_repository: Arc<dyn GameConfigRepository>,
     app_data_dir: PathBuf,
     write_locks: Arc<GameProfileWriteLockRegistry>,
+    reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    game_running_detector: Arc<dyn GameRunningDetector>,
 }
 
 impl ConfiguredInstallRecoveryActionPreviewer {
@@ -2031,11 +2037,15 @@ impl ConfiguredInstallRecoveryActionPreviewer {
         game_config_repository: Arc<dyn GameConfigRepository>,
         app_data_dir: PathBuf,
         write_locks: Arc<GameProfileWriteLockRegistry>,
+        reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        game_running_detector: Arc<dyn GameRunningDetector>,
     ) -> Self {
         Self {
             game_config_repository,
             app_data_dir,
             write_locks,
+            reinstall_recovery_repository,
+            game_running_detector,
         }
     }
 
@@ -2056,6 +2066,14 @@ impl ConfiguredInstallRecoveryActionPreviewer {
             .load_game_instance(&game_id)
             .map_err(|_| InstallRecoveryActionPreviewError::GameInstanceUnavailable)?
             .ok_or(InstallRecoveryActionPreviewError::GameInstanceUnavailable)?;
+        let uninstaller = crate::uninstall::configured_uninstall_service(
+            game_instance.root_dir.clone(),
+            &self.app_data_dir,
+            Arc::new(JsonInstallManifestRepository::new(
+                self.app_data_dir.join("install").join("manifests"),
+            )),
+        )
+        .with_game_running_detector(Arc::clone(&self.game_running_detector));
         let service = InstallRecoveryActionPreviewService::new(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
@@ -2066,7 +2084,13 @@ impl ConfiguredInstallRecoveryActionPreviewer {
             )),
         );
 
-        service.preview(request)
+        service
+            .with_missing_target_uninstall(
+                game_id,
+                uninstaller,
+                Arc::clone(&self.reinstall_recovery_repository),
+            )
+            .preview(request)
     }
 }
 
@@ -2074,6 +2098,8 @@ struct ConfiguredInstallRecoveryActionExecutor {
     game_config_repository: Arc<dyn GameConfigRepository>,
     app_data_dir: PathBuf,
     reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+    game_running_detector: Arc<dyn GameRunningDetector>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
 }
 
 impl ConfiguredInstallRecoveryActionExecutor {
@@ -2081,11 +2107,15 @@ impl ConfiguredInstallRecoveryActionExecutor {
         game_config_repository: Arc<dyn GameConfigRepository>,
         app_data_dir: PathBuf,
         reinstall_recovery_repository: Arc<dyn ReinstallRecoveryTransactionRepository>,
+        game_running_detector: Arc<dyn GameRunningDetector>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
     ) -> Self {
         Self {
             game_config_repository,
             app_data_dir,
             reinstall_recovery_repository,
+            game_running_detector,
+            manifest_repository,
         }
     }
 }
@@ -2103,22 +2133,32 @@ impl InstallRecoveryActionExecutor for ConfiguredInstallRecoveryActionExecutor {
         let backup_store = Arc::new(FileSystemInstallBackupStore::new(
             self.app_data_dir.join("install").join("backups"),
         ));
+        let uninstaller = crate::uninstall::configured_uninstall_service(
+            game_instance.root_dir.clone(),
+            &self.app_data_dir,
+            Arc::clone(&self.manifest_repository),
+        )
+        .with_game_running_detector(Arc::clone(&self.game_running_detector));
         let service = InstallRecoveryActionService::new_with_manifest(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             backup_store.clone(),
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
             )),
-            Arc::new(JsonInstallManifestRepository::new(
-                self.app_data_dir.join("install").join("manifests"),
-            )),
+            Arc::clone(&self.manifest_repository),
         )
         .with_reinstall_reconciliation(
             Arc::clone(&self.reinstall_recovery_repository),
             backup_store,
+        )
+        .with_missing_target_uninstall(
+            request.game_id.clone(),
+            uninstaller,
+            Arc::clone(&self.reinstall_recovery_repository),
         );
 
         service.run(InstallRecoveryActionRequest {
+            plan_token: request.plan_token,
             profile_id: request.profile_id,
             mod_id: request.mod_id,
             action_kind: request.action_kind,
@@ -3254,6 +3294,12 @@ mod tests {
             }),
             std::env::temp_dir().join("hmm-recovery-action-preview-lock-test"),
             Arc::clone(&write_locks),
+            Arc::new(JsonReinstallRecoveryTransactionRepository::new(
+                std::env::temp_dir()
+                    .join("hmm-recovery-action-preview-lock-test")
+                    .join("reinstall-recovery"),
+            )),
+            Arc::new(NotRunningGameDetector),
         ));
         let barrier = Arc::new(Barrier::new(2));
         let preview_barrier = Arc::clone(&barrier);
@@ -3323,6 +3369,12 @@ mod tests {
                         .join("install")
                         .join("reinstall-recovery"),
                 )),
+                Arc::new(NotRunningGameDetector),
+                Arc::new(JsonInstallManifestRepository::new(
+                    std::env::temp_dir()
+                        .join("hmm-recovery-action-task-lock-test")
+                        .join("install/manifests"),
+                )),
             )),
             Arc::new(FileSystemAuditLogWriter::new(
                 std::env::temp_dir().join("hmm-recovery-action-task-lock-test"),
@@ -3342,6 +3394,7 @@ mod tests {
             runner_for_thread.run_recovery_action_task(
                 &task_id,
                 hmm_app::StartRecoveryActionTaskRequest {
+                    plan_token: None,
                     game_id: request_game_id,
                     profile_id: request_profile_id,
                     mod_id: ModId::new("mod-a"),

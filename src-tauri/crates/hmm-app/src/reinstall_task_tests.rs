@@ -1539,6 +1539,7 @@ fn uninstall_request() -> crate::StartUninstallTaskRequest {
 
 fn recovery_request() -> crate::StartRecoveryActionTaskRequest {
     crate::StartRecoveryActionTaskRequest {
+        plan_token: None,
         game_id: GameId::mhw(),
         mod_id: ModId::new("mod-a"),
         profile_id: ProfileId::new("default"),

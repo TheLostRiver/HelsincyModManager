@@ -195,6 +195,7 @@ pub struct InstallRecoveryPreviewSnapshot {
     pub remove_file_count: usize,
     pub restore_file_count: usize,
     pub backup_count: usize,
+    pub missing_file_count: usize,
     pub blocking_issue_count: usize,
     pub blocking_reasons: Vec<InstallRecoveryBlockReasonSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -214,6 +215,7 @@ pub struct InstallRecoveryBlockReasonSnapshot {
 pub enum ReadOnlyInstallRecoveryAction {
     RollbackInstall,
     ReconcileReinstall,
+    UninstallMissingTargets,
 }
 
 impl ReadOnlyInstallRecoveryAction {
@@ -221,6 +223,7 @@ impl ReadOnlyInstallRecoveryAction {
         match self {
             Self::RollbackInstall => "rollback_install",
             Self::ReconcileReinstall => "reconcile_reinstall",
+            Self::UninstallMissingTargets => "uninstall_missing_targets",
         }
     }
 }
@@ -230,6 +233,7 @@ impl From<ReadOnlyInstallRecoveryAction> for InstallRecoveryActionKind {
         match value {
             ReadOnlyInstallRecoveryAction::RollbackInstall => Self::RollbackInstall,
             ReadOnlyInstallRecoveryAction::ReconcileReinstall => Self::ReconcileReinstall,
+            ReadOnlyInstallRecoveryAction::UninstallMissingTargets => Self::UninstallMissingTargets,
         }
     }
 }
@@ -1238,6 +1242,7 @@ impl ReadOnlyInstallAutomation {
             remove_file_count: preview.remove_file_count,
             restore_file_count: preview.restore_file_count,
             backup_count: preview.backup_count,
+            missing_file_count: preview.missing_file_count,
             blocking_issue_count: preview.blocking_issue_count,
             blocking_reasons: preview
                 .blocking_reasons
@@ -1279,12 +1284,22 @@ impl ReadOnlyInstallAutomation {
         )?);
         let state_before = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
         let game_instance = self.load_admitted_game_instance(&game_id)?;
+        let uninstaller = crate::uninstall::configured_uninstall_service(
+            game_instance.root_dir.clone(),
+            &self.app_data_dir,
+            Arc::clone(&self.manifest_repository),
+        );
         let service = InstallRecoveryActionPreviewService::new(
             Arc::new(FileSystemInstallGameFileSystem::new(game_instance.root_dir)),
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
             )),
             Arc::clone(&self.install_recovery_repository),
+        )
+        .with_missing_target_uninstall(
+            game_id.clone(),
+            uninstaller,
+            Arc::clone(&self.reinstall_recovery_repository),
         );
         let preview = service
             .preview(InstallRecoveryActionPreviewRequest {
@@ -1646,6 +1661,13 @@ fn recovery_block_reason_code(reason: InstallRecoveryActionBlockReason) -> &'sta
         InstallRecoveryActionBlockReason::TargetReadFailed => "target_read_failed",
         InstallRecoveryActionBlockReason::BackupMissing => "backup_missing",
         InstallRecoveryActionBlockReason::BackupReadFailed => "backup_read_failed",
+        InstallRecoveryActionBlockReason::InstallStateUnavailable => "install_state_unavailable",
+        InstallRecoveryActionBlockReason::TargetStateUnavailable => "target_state_unavailable",
+        InstallRecoveryActionBlockReason::BackupUnavailable => "backup_unavailable",
+        InstallRecoveryActionBlockReason::RecoveryPending => "recovery_pending",
+        InstallRecoveryActionBlockReason::PreviewRequired => "preview_required",
+        InstallRecoveryActionBlockReason::GameRunning => "game_running",
+        InstallRecoveryActionBlockReason::GameRunningUnknown => "game_running_unknown",
     }
 }
 

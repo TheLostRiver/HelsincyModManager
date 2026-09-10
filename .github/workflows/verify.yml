@@ -40,6 +40,10 @@ jobs:
       - name: Install Tauri Linux dependencies
         shell: bash
         run: |
+          # Tauri dependencies come from Ubuntu; the runner's unrelated Chrome
+          # feed can have inconsistent indices while Google publishes an update.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \

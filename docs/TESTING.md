@@ -11,6 +11,9 @@
 
 ## 基础环境
 
+Linux CI 安装 Tauri 系统依赖前会移除 runner 预装的 Chrome apt 软件源配置；这些依赖来自 Ubuntu。
+这样避免无关软件源发布期间的索引不一致阻断验证，Ubuntu 的签名与摘要校验仍按默认规则执行。
+
 当前使用：
 
 - Node.js 24 或更新的 LTS 版本。
@@ -276,7 +279,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-frontend-bou
 
 状态测试必须覆盖 stable event key 合并、不同事件不按文案误合并、队列上限与最旧项淘汰、taskId 保留和定向关闭。逐 feature 迁移时，字段错误、页面加载错误、恢复中心决策面板和全局安全告警继续保持持久语义；长任务进度继续按 taskId 显示，终态成功必须在对应刷新完成后发布。
 
-浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和 `390x844`：确认只有一个 body-level feedback host，Toast 队列不挤压页面且不产生横向溢出，长文本可换行，最多一个可选动作，hover/focus 暂停自动关闭，Escape 关闭最新通知，并验证多个任务的通知仍带稳定来源 key 与 taskId。
+浏览器 smoke 覆盖 `1440x900`、`1366x768`、`960x640` 和 `390x844`：确认只有一个 body-level feedback host，Toast 队列不挤压页面且不产生横向溢出，长文本可换行，最多一个可选动作，Escape 关闭最新通知，并验证多个任务的通知仍带稳定来源 key 与 taskId。
+
+普通 Toast 默认显示 3 秒，再播放 160ms 退场动画。鼠标悬停累计最多延长 2 秒，移出后续用剩余时间；
+反复移入、合并重复事件、切换语言或其他通知重渲染都不能重置计时，退场中的通知不能被重复消息复活。
+键盘焦点在通知按钮内时暂停，焦点离开后续用剩余时间；鼠标移出不能取消仍在进行的键盘操作暂停。
+浏览器时钟测试应验证 30 秒悬停/重复事件的旧行为反例，以及新默认约 3 秒、悬停约 5 秒的实际关闭。
+运行中的 Task Notice 按任务状态更新并在终态清理，独立于普通 Toast 的自动关闭时间。
 
 ### T19 Logging / Diagnostics L3
 
@@ -760,6 +769,32 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 使用临时目录模拟游戏目录。
 - 不直接操作真实 MHW:I 安装目录。
 - 每个测试结束后校验临时目录状态。
+
+### 装后目标缺失恢复（#340）
+
+使用 fake filesystem 和临时人工包执行以下聚焦检查，不依赖真实游戏、存档或第三方 Mod：
+
+```powershell
+cargo test -p hmm-app --lib missing_target
+cargo test -p hmm-runtime --lib missing_target_tests
+cargo test -p hmm-tauri --lib missing_target_recovery
+node --test "src/features/install-recovery/*.test.mjs"
+```
+
+Rust 命令从 `src-tauri` 执行，前端命令从仓库根执行。还需运行 install/recovery 既有回归、CLI contract、
+类型检查、lint 和 build。公共契约及写入路径的 PR 验证遵循完整门禁要求。
+
+- 无备份缺失文件只清 manifest；有备份恢复原文件；混合缺失与存在文件正确卸载且保留其他 Mod/未知文件。
+- 普通卸载仍拒绝缺失；目标变化、读取失败、备份不足、错误 profile/归属、大小写碰撞、不可消费 manifest 都不能写。
+- 预览后更换配置游戏目录、目标重新出现、备份/清单变化、游戏启动或运行状态未知、新增未完成 install/reinstall 事务时拒绝。
+- 缺失目标重读失败不能因 `None` 比较而放行；manifest 保存失败能回滚到原先内容和不存在状态，且不覆盖
+  回滚前被外部替换的新内容。
+- Runtime 走真实任务闭环：安装→外部删除→扫描 repair_required→预览→恢复；核实同实例预热的 Mod 库
+  状态变成 NotInstalled，整个 profile 的首次重定向准入恢复，未修改原门禁。
+- DTO 接受并保留 canonical token，拒绝缺失/非法 token；日志与进度不泄露 token、路径或清单正文。
+- React StrictMode 只启动一次扫描；先显示事实，有限并发补名称；换 profile 后忽略旧预览和迟到名称。
+- 三语浏览器夹具检查预览前后均无写请求，只有确认启动一次；blocked 无确认按钮，事件按 taskId 匹配，
+  完成后刷新。检查窄窗口换行、确认可见性、异常 Mod 名称与 ID，以及重定向错误按钮进入恢复中心。
 
 ### T13 批量生命周期分阶段矩阵
 

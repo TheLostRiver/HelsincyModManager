@@ -384,6 +384,7 @@ fn rollback_action_restores_manifest_when_record_save_fails() {
 
 fn rollback_request(mod_id: &str) -> InstallRecoveryActionRequest {
     InstallRecoveryActionRequest {
+        plan_token: None,
         profile_id: ProfileId::new("default"),
         mod_id: ModId::new(mod_id),
         action_kind: InstallRecoveryActionKind::RollbackInstall,
