@@ -10,56 +10,39 @@
 // 顺带的好处是这里导出的几个回调身份恒定，可以安全地被下游放进 effect 依赖里。
 //
 // 缓存语义（命中不取消请求、按 (配置档, 查询) 分槽、失效倒向重新取数）在
-// `modLibrarySessionCache.ts` 里，纯逻辑可单测；这里只负责持有与派发。
+// `modLibrarySessionCache.ts` 与 `modLibrarySessionStore.ts` 里；这里只持有 store 并订阅任务边界。
 
-import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
-import type { CategoryItem } from "./modCategoryApi";
-import type { ModLibraryPage } from "./modLibraryTypes";
-import {
-  EMPTY_MOD_LIBRARY_SESSION_CACHE,
-  invalidateAllCachedLibraryPages,
-  invalidateCachedLibraryPage,
-  readCachedCategories,
-  readCachedLibraryPage,
-  writeCachedCategories,
-  writeCachedLibraryPage,
-  type ModLibrarySessionCache,
-} from "./modLibrarySessionCache";
+import { listen } from "@tauri-apps/api/event";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
+import { createModLibrarySessionStore, type ModLibrarySessionStore } from "./modLibrarySessionStore";
 
-export type ModLibrarySessionCacheValue = {
-  readPage: (profileKey: string, queryKey: string) => ModLibraryPage | null;
-  writePage: (profileKey: string, queryKey: string, page: ModLibraryPage) => void;
-  invalidatePage: (profileKey: string, queryKey: string) => void;
-  /** 库变了但本页没经手时调用（后台导入完成、写任务开跑）。 */
-  invalidateAllPages: () => void;
-  readCategories: () => readonly CategoryItem[] | null;
-  writeCategories: (categories: readonly CategoryItem[]) => void;
-};
+export type ModLibrarySessionCacheValue = ModLibrarySessionStore;
 
 const ModLibrarySessionCacheContext = createContext<ModLibrarySessionCacheValue | null>(null);
 
 export function ModLibrarySessionCacheProvider({ children }: { children: ReactNode }) {
-  const cacheRef = useRef<ModLibrarySessionCache>(EMPTY_MOD_LIBRARY_SESSION_CACHE);
-  const value = useMemo<ModLibrarySessionCacheValue>(
-    () => ({
-      readPage: (profileKey, queryKey) =>
-        readCachedLibraryPage(cacheRef.current, profileKey, queryKey),
-      writePage: (profileKey, queryKey, page) => {
-        cacheRef.current = writeCachedLibraryPage(cacheRef.current, profileKey, queryKey, page);
-      },
-      invalidatePage: (profileKey, queryKey) => {
-        cacheRef.current = invalidateCachedLibraryPage(cacheRef.current, profileKey, queryKey);
-      },
-      invalidateAllPages: () => {
-        cacheRef.current = invalidateAllCachedLibraryPages(cacheRef.current);
-      },
-      readCategories: () => readCachedCategories(cacheRef.current),
-      writeCategories: (categories) => {
-        cacheRef.current = writeCachedCategories(cacheRef.current, categories);
-      },
-    }),
-    [],
-  );
+  const cacheRef = useRef<ModLibrarySessionStore | null>(null);
+  if (cacheRef.current === null) cacheRef.current = createModLibrarySessionStore();
+  const value = cacheRef.current;
+
+  // Task completion must invalidate snapshots even after the owning page unmounts.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, ({ payload }) => {
+      if (!disposed) value.observeTask(payload);
+    }).then((dispose) => {
+      if (disposed) { dispose(); return; }
+      unlisten = dispose;
+      value.setAvailable(true);
+    }).catch(() => { if (!disposed) value.setAvailable(false); });
+    return () => {
+      disposed = true;
+      unlisten?.();
+      value.setAvailable(false);
+    };
+  }, [value]);
 
   return (
     <ModLibrarySessionCacheContext.Provider value={value}>

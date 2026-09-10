@@ -1,7 +1,9 @@
 import {
   failedMessageKindFrom,
   getModImportFailedMessage,
+  getModImportArchiveKeptMessage,
   type ModImportFailedMessageKind,
+  type ModImportTerminalState,
   // 带 `.ts` 后缀：本模块要能被 node --test 直接跑，而它对**值导入**需要显式扩展名
   // （类型导入会被擦除，所以下面那行不需要）。仓库里已有同样的先例。
 } from "./modImportTaskState.ts";
@@ -76,6 +78,7 @@ export type DropRow = {
   /** 只对 `pending` 行有意义。 */
   selected: boolean;
   phase: DropRowPhase;
+  outcome: ModImportTerminalState | null;
 };
 
 /**
@@ -113,6 +116,7 @@ function rowFromPreview(preview: DroppedArchivePreview): DropRow {
       warningKind: null,
       selected: false,
       phase: "pending",
+      outcome: null,
     };
   }
   // 认不出的警示码**不当成警示**：宁可什么都不说，也不要摆一个空提示语，
@@ -129,6 +133,7 @@ function rowFromPreview(preview: DroppedArchivePreview): DropRow {
     // 警示档默认不勾选——但 toggle 与全选都允许把它勾回来。
     selected: warningKind === null,
     phase: "pending",
+    outcome: null,
   };
 }
 
@@ -239,6 +244,12 @@ export function markDropRowPhase(
   return rows.map((row) => (row.archivePath === archivePath ? { ...row, phase } : row));
 }
 
+export function settleDropRow(rows: readonly DropRow[], archivePath: string, outcome: ModImportTerminalState): DropRow[] {
+  return rows.map((row) => row.archivePath === archivePath
+    ? { ...row, phase: outcome.status === "completed" ? "succeeded" : "failed", outcome }
+    : row);
+}
+
 /**
  * 停止后续：把还没起步的 `queued` 行退回 `pending`。
  *
@@ -293,9 +304,22 @@ export function dropQueueSummary(rows: readonly DropRow[]): DropQueueSummary {
  * 而那句必须说明「仍然可以导入」——否则玩家会以为它和读不了的行是一回事。
  */
 export function getDropRowNote(row: DropRow, copy: ModImportCopy): string | null {
+  if (row.outcome?.status === "failed") return getModImportFailedMessage(row.outcome.messageKind, copy);
+  if (row.outcome?.status === "cancelled") return copy.status.cancelled;
+  if (row.outcome?.status === "completed" && row.outcome.archiveKept !== null) {
+    return getModImportArchiveKeptMessage(row.outcome.archiveKept, copy);
+  }
   if (row.messageKind !== null) return getModImportFailedMessage(row.messageKind, copy);
   if (row.warningKind === "no-game-content") return copy.drop.warnNoGameContent;
   return null;
+}
+
+export function getDropQueueStatus(summary: DropQueueSummary, copy: ModImportCopy): string | null {
+  if (summary.active) return copy.drop.running(summary.succeeded + summary.failed + 1, summary.submitted);
+  if (summary.submitted === 0) return null;
+  if (summary.failed === 0) return copy.drop.doneAllSucceeded(summary.succeeded);
+  if (summary.succeeded === 0) return copy.drop.doneAllFailed(summary.failed);
+  return copy.drop.donePartial(summary.succeeded, summary.failed);
 }
 
 /**

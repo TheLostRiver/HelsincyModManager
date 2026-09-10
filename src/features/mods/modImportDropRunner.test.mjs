@@ -76,7 +76,7 @@ function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
       return { kind: "mod_import", status: "queued", taskId };
     },
     onStarted: (archivePath) => started.push(archivePath),
-    onSettled: (archivePath, outcome) => settled.push([archivePath, outcome]),
+    onSettled: (archivePath, outcome) => settled.push([archivePath, outcome.status === "completed" ? "succeeded" : "failed"]),
   };
 
   let pumpPromise = Promise.resolve();
@@ -115,8 +115,8 @@ test("完成算成功，失败算失败", { timeout: 5_000 }, async () => {
   watcher.handleProgress(progress("t1", "completed"));
   watcher.handleProgress(progress("t2", "failed"));
 
-  assert.equal(await settleWithin(good), "succeeded");
-  assert.equal(await settleWithin(bad), "failed");
+  assert.equal((await settleWithin(good)).status, "completed");
+  assert.equal((await settleWithin(bad)).status, "failed");
 });
 
 test("取消算失败，不算成功", { timeout: 5_000 }, async () => {
@@ -124,7 +124,7 @@ test("取消算失败，不算成功", { timeout: 5_000 }, async () => {
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");
   watcher.handleProgress(progress("t1", "cancelled", "mod_import.cancelled"));
-  assert.equal(await settleWithin(outcome), "failed");
+  assert.equal((await settleWithin(outcome)).status, "cancelled");
 });
 
 test("taskId 已知之前到达的进度事件不会丢", { timeout: 5_000 }, async () => {
@@ -136,7 +136,7 @@ test("taskId 已知之前到达的进度事件不会丢", { timeout: 5_000 }, as
 
   const outcome = watcher.watch("t1");
   watcher.endStart();
-  assert.equal(await settleWithin(outcome), "succeeded", "缓存下来的终态必须在认领时补放");
+  assert.equal((await settleWithin(outcome)).status, "completed", "缓存下来的终态必须在认领时补放");
 });
 
 test("start 结束之后不再缓存，陈旧事件不污染下一次", { timeout: 5_000 }, async () => {
@@ -169,7 +169,7 @@ test("别的任务种类永远不会结掉一个导入", { timeout: 5_000 }, asy
   assert.equal(done, false);
 
   watcher.handleProgress(progress("t1", "completed"));
-  assert.equal(await settleWithin(outcome), "succeeded");
+  assert.equal((await settleWithin(outcome)).status, "completed");
 });
 
 // ---- 泵：串行、可追加 ----

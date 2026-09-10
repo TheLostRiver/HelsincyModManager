@@ -143,6 +143,7 @@ export function useExternalModState(input: {
   const [listenerReady, setListenerReady] = useState(false);
 
   const generationRef = useRef(0);
+  const querySequenceRef = useRef(0);
   const scanFlowRef = useRef<TaskFlow>(newTaskFlow("external_state_scan"));
   const adoptFlowRef = useRef<TaskFlow>(newTaskFlow("external_mod_adopt"));
   const requestRef = useRef({ gameId, profileId, modId });
@@ -159,17 +160,21 @@ export function useExternalModState(input: {
       return;
     }
     const generation = generationRef.current;
+    const querySequence = ++querySequenceRef.current;
+    const isCurrentQuery = () => generationRef.current === generation
+      && querySequenceRef.current === querySequence
+      && requestRef.current.gameId === requestGameId
+      && requestRef.current.profileId === requestProfileId
+      && requestRef.current.modId === requestModId;
     void getExternalModState({
       gameId: requestGameId,
       profileId: requestProfileId,
       modId: requestModId,
     })
       .then((dto) => {
-        // Report even when the dialog moved on to another mod (generation
-        // drift): the (modId -> result) pair itself is still a valid fact for
-        // the session store, only this hook's local state must not change.
-        onResultRef.current?.(requestModId, dto);
-        if (generationRef.current === generation) {
+        // onResult 属于当前配置档；旧查询不能把另一配置档或重扫前的事实写入它。
+        if (isCurrentQuery()) {
+          onResultRef.current?.(requestModId, dto);
           setState(dto);
           setLoaded(true);
         }
@@ -177,7 +182,7 @@ export function useExternalModState(input: {
       .catch(() => {
         // The query is read-only; on transport failure keep whatever we had
         // and let the user retry via the scan action.
-        if (generationRef.current === generation) {
+        if (isCurrentQuery()) {
           setLoaded(true);
         }
       });
@@ -197,6 +202,7 @@ export function useExternalModState(input: {
     if (active && modId !== null && profileId !== null) {
       refresh();
     }
+    return () => { generationRef.current += 1; querySequenceRef.current += 1; };
   }, [active, gameId, profileId, modId, refresh]);
 
   const finishScan = useCallback(

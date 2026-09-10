@@ -10,7 +10,7 @@
 //! 放在 Rust 侧则 CSP 与 Tauri capability **一行都不用改**，且 URL 是编译期常量、
 //! 不接受调用方输入，不存在把请求导向任意地址的可能。
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hmm_core::parse_app_version;
 use hmm_ports::{LatestReleaseVersionError, LatestReleaseVersionSource};
@@ -18,7 +18,9 @@ use serde::Deserialize;
 
 // 编译期固定的端点：不接受任何调用方输入。
 const RELEASE_FEED_URL: &str =
-    "https://api.github.com/repos/TheLostRiver/HelsincyModManager/releases?per_page=10";
+    "https://api.github.com/repos/TheLostRiver/HelsincyModManager/releases";
+const RELEASE_PAGE_SIZE: usize = 100;
+const MAX_RELEASE_PAGES: usize = 10;
 // GitHub API 要求带 User-Agent，否则返回 403。
 const USER_AGENT: &str = "HelsincyModManager-update-check";
 
@@ -37,16 +39,49 @@ impl ReleaseFeedHttpTransport for ReqwestReleaseFeedHttpTransport {
             .build()
             .map_err(|_| ())?;
 
-        client
-            .get(RELEASE_FEED_URL)
-            .header(reqwest::header::USER_AGENT, USER_AGENT)
-            .send()
-            .map_err(|_| ())?
-            .error_for_status()
-            .map_err(|_| ())?
-            .text()
-            .map_err(|_| ())
+        read_complete_release_feed(timeout, |page, remaining| {
+            let mut url = reqwest::Url::parse(RELEASE_FEED_URL).map_err(|_| ())?;
+            url.query_pairs_mut()
+                .append_pair("per_page", &RELEASE_PAGE_SIZE.to_string())
+                .append_pair("page", &page.to_string());
+            client
+                .get(url)
+                .header(reqwest::header::USER_AGENT, USER_AGENT)
+                .timeout(remaining)
+                .send()
+                .map_err(|_| ())?
+                .error_for_status()
+                .map_err(|_| ())?
+                .text()
+                .map_err(|_| ())
+        })
     }
+}
+
+// 不完整的列表不能证明“已是最新”。分页共用同一超时预算，超限返回未知而非部分结论。
+fn read_complete_release_feed(
+    timeout: Duration,
+    mut fetch_page: impl FnMut(usize, Duration) -> Result<String, ()>,
+) -> Result<String, ()> {
+    let started = Instant::now();
+    let mut all = Vec::<serde_json::Value>::new();
+    for page in 1..=MAX_RELEASE_PAGES {
+        let remaining = timeout.checked_sub(started.elapsed()).ok_or(())?;
+        if remaining.is_zero() {
+            return Err(());
+        }
+        let body = fetch_page(page, remaining)?;
+        let entries: Vec<serde_json::Value> = serde_json::from_str(&body).map_err(|_| ())?;
+        if entries.len() > RELEASE_PAGE_SIZE {
+            return Err(());
+        }
+        let complete = entries.len() < RELEASE_PAGE_SIZE;
+        all.extend(entries);
+        if complete {
+            return serde_json::to_string(&all).map_err(|_| ());
+        }
+    }
+    Err(())
 }
 
 pub struct GitHubLatestReleaseSource {
@@ -63,13 +98,14 @@ impl LatestReleaseVersionSource for GitHubLatestReleaseSource {
     fn latest_release_version(
         &self,
         timeout: Duration,
+        include_prereleases: bool,
     ) -> Result<Option<String>, LatestReleaseVersionError> {
         let body = self
             .transport
             .get_release_feed_json(timeout)
             .map_err(|_| LatestReleaseVersionError::Unavailable)?;
 
-        Ok(highest_release_version(&body))
+        highest_release_version(&body, include_prereleases)
     }
 }
 
@@ -88,8 +124,12 @@ struct ReleaseFeedEntry {
 /// 2. **跳过草稿**。未发布的版本不能拿来提示用户。
 /// 3. **解析不了的标签直接忽略**（而不是让整次查询失败）——一个不合规范的
 ///    旧标签不该让「检查更新」整体失效。
-fn highest_release_version(body: &str) -> Option<String> {
-    let entries: Vec<ReleaseFeedEntry> = serde_json::from_str(body).ok()?;
+fn highest_release_version(
+    body: &str,
+    include_prereleases: bool,
+) -> Result<Option<String>, LatestReleaseVersionError> {
+    let entries: Vec<ReleaseFeedEntry> =
+        serde_json::from_str(body).map_err(|_| LatestReleaseVersionError::Unavailable)?;
 
     let mut best: Option<(hmm_core::AppVersion, String)> = None;
     for entry in entries {
@@ -102,13 +142,16 @@ fn highest_release_version(body: &str) -> Option<String> {
         let Ok(version) = parse_app_version(&tag) else {
             continue;
         };
+        if version.is_prerelease() && !include_prereleases {
+            continue;
+        }
         let is_higher = best.as_ref().is_none_or(|(current, _)| &version > current);
         if is_higher {
             best = Some((version, tag));
         }
     }
 
-    best.map(|(_, tag)| tag)
+    Ok(best.map(|(_, tag)| tag))
 }
 
 #[cfg(test)]
@@ -159,7 +202,7 @@ mod tests {
         ]));
         assert_eq!(
             source
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("feed is readable"),
             Some("v0.2.0".to_owned())
         );
@@ -174,7 +217,7 @@ mod tests {
         ]));
         assert_eq!(
             source
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("feed is readable"),
             Some("v0.1.0-alpha.10".to_owned())
         );
@@ -185,7 +228,7 @@ mod tests {
         let source = source_with(&feed(&[("v9.9.9", true), ("v0.1.0", false)]));
         assert_eq!(
             source
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("feed is readable"),
             Some("v0.1.0".to_owned())
         );
@@ -196,7 +239,7 @@ mod tests {
         let source = source_with(&feed(&[("not-a-version", false), ("v0.1.0", false)]));
         assert_eq!(
             source
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("feed is readable"),
             Some("v0.1.0".to_owned())
         );
@@ -206,21 +249,14 @@ mod tests {
     fn empty_and_unusable_feeds_yield_no_version() {
         assert_eq!(
             source_with("[]")
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("empty feed is still readable"),
             None
         );
         assert_eq!(
             source_with(&feed(&[("not-a-version", false)]))
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("feed is readable"),
-            None
-        );
-        // 响应不是数组（例如接口换了形状）也不该 panic。
-        assert_eq!(
-            source_with(r#"{"message": "Not Found"}"#)
-                .latest_release_version(Duration::from_millis(1))
-                .expect("payload is readable"),
             None
         );
     }
@@ -228,7 +264,7 @@ mod tests {
     #[test]
     fn transport_failures_are_reported_as_unavailable() {
         assert_eq!(
-            failing_source().latest_release_version(Duration::from_millis(1)),
+            failing_source().latest_release_version(Duration::from_millis(1), true),
             Err(LatestReleaseVersionError::Unavailable)
         );
     }
@@ -239,9 +275,95 @@ mod tests {
         let source = source_with(r#"[{"name": "no tag here"}]"#);
         assert_eq!(
             source
-                .latest_release_version(Duration::from_millis(1))
+                .latest_release_version(Duration::from_millis(1), true)
                 .expect("payload is readable"),
             None
         );
+    }
+
+    #[test]
+    fn malformed_feed_is_unavailable_not_an_empty_release_list() {
+        assert_eq!(
+            source_with(r#"{"message": "Not Found"}"#)
+                .latest_release_version(Duration::from_millis(1), true),
+            Err(LatestReleaseVersionError::Unavailable)
+        );
+    }
+
+    #[test]
+    fn a_higher_prerelease_does_not_hide_a_stable_update() {
+        let source = source_with(&feed(&[("v2.0.0-alpha.1", false), ("v1.1.0", false)]));
+        let latest = source
+            .latest_release_version(Duration::from_millis(1), false)
+            .expect("readable feed");
+        assert_eq!(latest.as_deref(), Some("v1.1.0"));
+        assert_eq!(
+            hmm_core::decide_update("1.0.0", latest.as_deref()),
+            hmm_core::UpdateDecision::UpdateAvailable {
+                version: "v1.1.0".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn a_preview_channel_can_still_receive_the_highest_prerelease() {
+        assert_eq!(
+            source_with(&feed(&[("v2.0.0-alpha.1", false), ("v1.1.0", false)]))
+                .latest_release_version(Duration::from_millis(1), true)
+                .expect("readable feed"),
+            Some("v2.0.0-alpha.1".to_owned())
+        );
+    }
+
+    #[test]
+    fn later_release_pages_are_included_before_version_selection() {
+        let mut pages = Vec::new();
+        let body = read_complete_release_feed(Duration::from_secs(1), |page, _| {
+            pages.push(page);
+            Ok(if page == 1 {
+                feed(&vec![("v1.0.0", false); RELEASE_PAGE_SIZE])
+            } else {
+                feed(&[("v1.2.0", false)])
+            })
+        })
+        .expect("complete feed");
+        assert_eq!(pages, vec![1, 2]);
+        assert_eq!(
+            highest_release_version(&body, false),
+            Ok(Some("v1.2.0".to_owned()))
+        );
+    }
+
+    #[test]
+    fn failed_later_page_never_yields_a_partial_success() {
+        assert!(
+            read_complete_release_feed(Duration::from_secs(1), |page, _| {
+                if page == 1 {
+                    Ok(feed(&vec![("v1.0.0", false); RELEASE_PAGE_SIZE]))
+                } else {
+                    Err(())
+                }
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn full_page_budget_never_claims_the_feed_is_complete() {
+        let mut count = 0;
+        assert!(read_complete_release_feed(Duration::from_secs(1), |_, _| {
+            count += 1;
+            Ok(feed(&vec![("v1.0.0", false); RELEASE_PAGE_SIZE]))
+        })
+        .is_err());
+        assert_eq!(count, MAX_RELEASE_PAGES);
+    }
+
+    #[test]
+    fn expired_feed_budget_never_starts_a_request() {
+        assert!(read_complete_release_feed(Duration::ZERO, |_, _| {
+            panic!("expired budget must stop before HTTP")
+        })
+        .is_err());
     }
 }

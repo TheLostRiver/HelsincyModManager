@@ -86,7 +86,15 @@ export function buildOnboardingTour(
 ): TourDefinition {
   const routeOrder = rotateRoutesFrom(startRouteId);
   const isPageLocalTour = !ONBOARDING_ROUTE_ORDER.includes(startRouteId);
-  const steps: TourStep[] = includeWelcome ? [buildWelcomeStep(copy)] : [];
+  const steps: TourStep[] = [{
+    id: "language",
+    title: copy.language.title,
+    description: copy.language.description,
+    primaryLabel: copy.builder.continueLabel,
+    interaction: "blocked",
+    advance: { kind: "controls" },
+  }];
+  if (includeWelcome) steps.push(buildWelcomeStep(copy));
 
   routeOrder.forEach((routeId, index) => {
     const guidance = copy.routes[routeId];

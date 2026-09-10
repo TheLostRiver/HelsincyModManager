@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+// Structure only; real hook lifecycle tests live in modLibrarySessionBehavior.test.mjs.
 
 const source = readFileSync("src/features/mods/useModLibraryQuery.ts", "utf8");
 
@@ -31,7 +32,7 @@ test("committed query changes invalidate stale responses before paint", () => {
   // 起步状态的取舍已经抽成 resolveQueryStartExecutionState（纯函数，行为判据在
   // modLibraryQueryState.test.mjs）；这里只钉「两个起点都走同一份取舍」。
   assert.equal(source.match(/resolveQueryStartExecutionState\(/g)?.length, 2);
-  assert.match(source, /resolveQueryStartExecutionState\(current, profileKey, cachedPage\)/);
+  assert.match(source, /profileKey,\s*cachedPage,/);
   assert.match(source, /skippedCommittedQueryEffectKeyRef\.current = clampConsumption\.matches \? queryKey : null/);
 });
 
@@ -63,6 +64,6 @@ test("semantic query keys suppress duplicate effects and profile changes query p
   assert.match(source, /resolveProfileQueryPage\([\s\S]*previousProfileKeyRef\.current,[\s\S]*profileKey,[\s\S]*requestedPage/);
   assert.match(source, /const queryKey = queryInput === null \? null : getQueryKey\(queryInput\)/);
   assert.match(source, /latestRequestRef\.current/);
-  assert.match(source, /\[executeQuery, queryKey\]/);
+  assert.match(source, /\[cacheGeneration, executeQuery, loadPage, queryKey\]/);
   assert.doesNotMatch(source, /\[executeQuery, profileKey, queryInput\]/);
 });

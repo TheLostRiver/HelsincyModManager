@@ -3,10 +3,12 @@ import { resolveCopy, useI18n } from "../../shared/i18n";
 import { useAppRoute } from "../routing/useAppRoute";
 import { TourOverlay } from "../../shared/onboarding/TourOverlay";
 import { saveTourOutcome, shouldAutoStartTour } from "../../shared/onboarding/tourStorage";
-import type { TourDefinition, TourOutcome } from "../../shared/onboarding/tourTypes";
+import type { TourOutcome } from "../../shared/onboarding/tourTypes";
+import type { AppRouteId } from "../routing/routeTypes";
 import { buildOnboardingTour } from "./firstRunTour";
 import { onboardingTourCopy } from "./onboardingTourCopy";
 import { TourContext } from "./TourContext";
+import { TourLanguagePicker } from "./TourLanguagePicker";
 
 type TourProviderProps = {
   children: ReactNode;
@@ -15,20 +17,24 @@ type TourProviderProps = {
 export function TourProvider({ children }: TourProviderProps) {
   const { locale } = useI18n();
   const tourCopy = resolveCopy(onboardingTourCopy, locale);
-  // 自动启动 effect 经 ref 取词：copy 进依赖链会让语言切换重跑自动启动检查。
-  const tourCopyRef = useRef(tourCopy);
-  tourCopyRef.current = tourCopy;
   const { currentRoute } = useAppRoute();
   const autoStartCheckedRef = useRef(false);
   const activatedTargetStepIdRef = useRef<string | null>(null);
-  const [activeTour, setActiveTour] = useState<TourDefinition | null>(null);
+  // 只保存流程身份，步骤文案按当前语言投影，切换语言不重排路线或重置进度。
+  const [activeRun, setActiveRun] = useState<{
+    startRouteId: AppRouteId;
+    includeWelcome: boolean;
+  } | null>(null);
+  const activeTour = useMemo(() => activeRun
+    ? buildOnboardingTour(activeRun.startRouteId, tourCopy, activeRun)
+    : null, [activeRun, tourCopy]);
   const [stepIndex, setStepIndex] = useState(0);
   const activeStep = activeTour?.steps[stepIndex];
 
   useEffect(() => {
     if (autoStartCheckedRef.current || currentRoute.id !== "dashboard") return undefined;
 
-    const firstRunTour = buildOnboardingTour(currentRoute.id, tourCopyRef.current, { includeWelcome: true });
+    const firstRunTour = buildOnboardingTour(currentRoute.id, tourCopy, { includeWelcome: true });
     const storage = getLocalStorage();
     if (!shouldAutoStartTour(firstRunTour, storage)) {
       autoStartCheckedRef.current = true;
@@ -39,10 +45,10 @@ export function TourProvider({ children }: TourProviderProps) {
       if (autoStartCheckedRef.current) return;
       autoStartCheckedRef.current = true;
       setStepIndex(0);
-      setActiveTour(firstRunTour);
+      setActiveRun({ startRouteId: currentRoute.id, includeWelcome: true });
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [currentRoute.id]);
+  }, [currentRoute.id, tourCopy]);
 
   useEffect(() => {
     if (activeStep?.advance.kind !== "route-change") return undefined;
@@ -69,13 +75,13 @@ export function TourProvider({ children }: TourProviderProps) {
     autoStartCheckedRef.current = true;
     activatedTargetStepIdRef.current = null;
     setStepIndex(0);
-    setActiveTour(buildOnboardingTour(currentRoute.id, tourCopy));
-  }, [currentRoute.id, tourCopy]);
+    setActiveRun({ startRouteId: currentRoute.id, includeWelcome: false });
+  }, [currentRoute.id]);
 
   const finishTour = useCallback((outcome: TourOutcome) => {
     if (activeTour) saveTourOutcome(activeTour, outcome, getLocalStorage());
     activatedTargetStepIdRef.current = null;
-    setActiveTour(null);
+    setActiveRun(null);
     setStepIndex(0);
   }, [activeTour]);
 
@@ -94,6 +100,7 @@ export function TourProvider({ children }: TourProviderProps) {
           onStepChange={changeStep}
           onTargetActivate={markTargetActivated}
           onFinish={finishTour}
+          renderStepContent={(step) => step.id === "language" ? <TourLanguagePicker /> : null}
         />
       ) : null}
     </TourContext.Provider>

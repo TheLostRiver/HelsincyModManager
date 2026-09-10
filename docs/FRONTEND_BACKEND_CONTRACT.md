@@ -82,7 +82,7 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - Mod 存储目录（#275）：`get_mod_storage_settings`、`validate_mod_storage_dir`、`set_mod_storage_dir`、`start_mod_storage_migration_task`
 - 取消长任务：`cancel_task`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
-- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
+- ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`get_mod_replacement_summary`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
 - 检查是否有可用更新：`check_app_update`
 
@@ -319,6 +319,11 @@ batch/result 事实或伪造导入失败。
   锁内重验（stat 指纹 vs 扫描记录；以当下清单重算可认领集并与记录比对）→ 提交屏障 → 追加条目 →
   原子保存清单 → 审计。任一重验不通过以 `external_mod_adopt_stale` 失败并要求重扫。支持
   `cancel_task`（`queued` / `running`，提交屏障内不可取消）。
+- 接管只面向持久来源为 `external_import` 且 adapter 为 `hunting_box_directory_v1` 的 Mod。
+  Runtime 在写锁前及锁内复核 logical Mod 的来源；普通文件导入、未知旧来源及其他 adapter 返回
+  `external_mod_adopt_origin_unsupported`。前端等当前 Mod 的权威详情加载后才展示接管按钮、确认弹窗
+  和禁用说明；手动选择与拖拽导入都不展示接管 UI，但仍可执行只读的游戏目录检查。迟到的详情或
+  扫描查询不能把另一 Mod/profile 或旧请求的事实写入当前界面及会话缓存。
 - 可认领集 = 与导入包**一致**（`matched`）且**无主**（清单里没有任何条目引用该路径）的文件；
   `changed` / `missing` 不认领只计数；任一 `unreadable` 阻断整次；可认领集为空拒绝；该 MOD
   在清单里已有条目拒绝（应走重装）；清单 status 非可信（进行中 / 失败态）拒绝。
@@ -336,6 +341,7 @@ batch/result 事实或伪造导入失败。
 - 事件 `resultRef` 只带 opaque `modId`，payload 不承载目标路径、清单内容或第三方 Mod 内容；接管
   没有独立结果 getter。失败事件的 `error` 为下列稳定码之一：
   `external_mod_adopt_game_instance_unavailable`、`external_mod_adopt_mod_unavailable`、
+  `external_mod_adopt_origin_unsupported`、
   `external_mod_adopt_scan_required`、`external_mod_adopt_unreadable_files`、
   `external_mod_adopt_nothing_to_adopt`、`external_mod_adopt_already_installed`、
   `external_mod_adopt_manifest_not_trusted`、`external_mod_adopt_manifest_unavailable`、
@@ -615,12 +621,13 @@ AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
-七个 command 的请求只使用稳定身份：
+替换目标 command 的请求只使用稳定身份：
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
 | `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
+| `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sources, installedTargets }`，供卡片悬浮展示 |
 | `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
@@ -685,6 +692,20 @@ binding、staging、game root 或最终路径。
 `installedTargetId`，仅用于重启后标记“当前已安装”和阻止把当前 target 当成切换候选。manifest 缺失、
 Mod 未安装或状态不可信时省略该字段；binding 歧义时返回稳定的安装状态不可用错误。该字段不包含
 binding identity、revision、internal id、相对/绝对路径、staging 或 manifest 内容。
+
+`analyze_imported_mod_replacement` 的 source 另携带 `displayNames`（locale -> 名称）；目录不可用、
+缺失或匹配歧义时为空表，编号保留。名称投影不改变 support/retargetable 或单目标写流程的门禁。
+
+`get_mod_replacement_summary` 在 blocking worker 内读取 display revision 的受控包清单与可信
+manifest，不执行安装、staging 或写入。`sources` 和 `installedTargets` 的条目均为
+`{ id, kind, internalId, displayNames }`，没有 path-family、路径、二进制、hash 或原始 catalog metadata。
+源名称必须按 game/type/internalId/path-family 精确且唯一匹配；已安装名称还必须匹配 manifest 的
+target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型、编号和 path-family），名称不确定只回空表。`installedTargets: null` 表示没有 profile 或安装事实不可验证，
+不可解释成未重定向；可信空清单为 `[]`。可展示多个绑定，但原有单目标查询仍拒绝多绑定，不放宽
+安装切换能力。`packageId` 是不透明的包身份，用于 hover 校验详情与源摘要来自同一 display revision。
+前端只在实际 hover/键盘焦点后按需查询，不永久缓存这份安装事实；库 generation、Mod/profile 改变或
+离开时抛弃旧响应，查询失败不自动循环。详情可先于源扫描显示；15 秒前端等待上限只结束等待，
+不伪造后端扫描取消。来源 `imported` 只可表述文件导入，不能区分手动选择与拖拽。
 
 同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，且新
 `targetId` 与已安装 target 不同时才允许进入真正重装。当前 target、缺失 binding、不安全 recovery
@@ -1897,6 +1918,8 @@ start_mod_storage_migration_task({ directory: string | null })
 边界：
 
 - `preview_dropped_mod_archives(archivePaths: string[])` 是**只读预检**（T22 / #366）：逐个文件判断「能不能导入」，
+  命令先验证最多 100 条路径及全部路径语法，再将归档 I/O 与 RAR 锁等待派发到 blocking worker，不阻塞 WebView 回调。
+  超限返回稳定码 `mod_import_preview_limit_exceeded`（三语提示分批拖入）；worker 不可用返回既有 `mod_import_prepare_failed`，不暴露底层错误。
   返回 `DroppedArchivePreviewDto[]`，形如 `{ archivePath, fileName, sizeBytes, errorCode, warningCode }`。`errorCode` 为 `null` 表示可导入，
   否则是**与导入失败同一套**的语义码（`mod_import_unsupported_archive_format` / `mod_import_not_an_archive` /
   `mod_import_archive_encrypted` / `mod_import_archive_multi_volume` / `mod_import_prepare_failed`），
@@ -2212,18 +2235,20 @@ type ModDeletionResultDto = {
 
 - `check_app_update` **无参数**、不依赖 `AppState`，返回 `AppUpdateStatusDto`：
   `{ status, currentVersion, latestVersion }`。**它不是 `Result`——这个 command 不会失败**，
-  查不到就是 `status: "unknown"`，没有 `CommandErrorDto` 分支。
-- `status` 的稳定取值只有三个：**`up_to_date`**（已是最新，或当前是正式版而对方是预发布）、
+  查询失败就是 `status: "unknown"`，没有 `CommandErrorDto` 分支。
+- `status` 的稳定取值：**`up_to_date`**（当前通道没有更新的版本）、
   **`update_available`**（有可用更新，此时 `latestVersion` 才有值）、**`unknown`**
-  （拿不到最新版本，或版本号无法解析）。**只有 `update_available` 会带 `latestVersion`**。
+  （查询失败、响应格式不可解析，或当前版本号无法解析）及 **`no_release`**（查询成功，但列表中没有当前通道可用的版本）。**只有 `update_available` 会带 `latestVersion`**。
 - `latestVersion` 是**发布标签原文**（可能带 `v` 前缀），前端**原样展示不解析**。
 - 版本先后按 semver 2.0.0 优先级规则的子集判定，实现在 `hmm-core::app_version`：
   核心版本号逐级数值比较；带预发布标识的版本**小于**同核心版本号的正式版；预发布段逐段比较
   （数字段比数值且小于字母段，前面相等时段多者更大）；`+build` 元数据不参与比较。
   **不可用字符串比较**——`0.1.0-alpha.10` 按字符串排会小于 `0.1.0-alpha.9`。
 - **通道规则**：当前是正式版时**不提示预发布版本**（预览通道只面向已在预览通道的用户）。
+  必须先筛选通道再比较最高版本，不能让一个更高的预发布标签遮住列表中的正式版更新。
   通道划分本身仍是未决问题，见 [应用内更新器规划](release/UPDATER_PLAN.md)。
 - 查询源是 GitHub Releases **列表**端点，URL 为**编译期常量**、不接受调用方输入。
+  每页 100 项、至多 10 页且共用 3 秒请求预算；读取至不足一页才视为完整，后续页失败或上限耗尽返回未知，不能用首屏部分列表宣称最新。
   实现**自己比较出版本号最高的一个**，不依赖接口返回顺序；跳过草稿；解析不了的标签忽略
   （一个不合规范的旧标签不该让整次查询失效）。不用 `/releases/latest`——
   仓库只有草稿发布时它返回 **404**（本仓库当前就是这个状态，实测确认）。
@@ -2232,8 +2257,10 @@ type ModDeletionResultDto = {
   （与 `UPDATER_PLAN.md` 的安全边界一致）。若把这个请求移到前端，就必须给 CSP 的
   `connect-src` 加上 `https://api.github.com`，那是放宽整个前端的网络策略，不被接受。
 - 超时固定 3 秒，走 `tauri::async_runtime::spawn_blocking`，不阻塞异步运行时。
-- **失败一律静默**：断网、超时、接口变动、仓库还没有已发布版本，对普通用户都是常态。
-  前端**不得**因为 `unknown` 弹错误、写失败提示，或让应用进入任何降级状态。
+- 前端在固定状态区显示尚未检查、检查中、有更新、已是最新、无可用发行版或未能完成检查。
+  `unknown`、调用失败、非法 DTO 与前端 10 秒超时只显示无内部细节的失败结果，不弹错误、不使应用降级。
+  失败会撤下旧成功结论，不记录成功检查时刻；超时后的迟到响应不得覆盖新的重试结果。
+  前端超时只结束本次等待，不声称已取消 Rust 网络操作。检查按钮与下载页入口始终保留。
 - 本 command **不下载、不校验签名、不写入任何文件**，因此与 `UPDATER_PLAN.md`
   「Alpha 阶段不引入应用内自动更新」不冲突——它是 updater 的**前置改良**而非替代。
 - 前端负责查询节流（最短间隔）与「是否自动检查」开关。两者都是**前端偏好**

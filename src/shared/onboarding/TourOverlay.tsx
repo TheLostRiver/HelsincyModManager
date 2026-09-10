@@ -35,6 +35,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type RefObject,
+  type ReactNode,
 } from "react";
 import { FeedbackPortal } from "../feedback/FeedbackProvider";
 import { resolveCopy, useI18n } from "../i18n";
@@ -51,6 +52,7 @@ type TourOverlayProps = {
   onStepChange: (index: number) => void;
   onTargetActivate?: (stepId: string) => void;
   onFinish: (outcome: TourOutcome) => void;
+  renderStepContent?: (step: TourStep) => ReactNode;
 };
 
 const EMPTY_TOUR_STEP: TourStep = {
@@ -78,6 +80,7 @@ export function TourOverlay({
   onStepChange,
   onTargetActivate,
   onFinish,
+  renderStepContent,
 }: TourOverlayProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(tourOverlayCopy, locale);
@@ -347,6 +350,7 @@ export function TourOverlay({
                 </p>
 
                 {step.features ? <FeatureList features={step.features} /> : null}
+                {renderStepContent?.(step)}
                 {step.bullets ? (
                   <ul className="tour-panel__bullets">
                     {step.bullets.map((bullet) => (
