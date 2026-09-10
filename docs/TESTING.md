@@ -11,6 +11,9 @@
 
 ## 基础环境
 
+Linux CI 安装 Tauri 系统依赖前会移除 runner 预装的 Chrome apt 软件源配置；这些依赖来自 Ubuntu。
+这样避免无关软件源发布期间的索引不一致阻断验证，Ubuntu 的签名与摘要校验仍按默认规则执行。
+
 当前使用：
 
 - Node.js 24 或更新的 LTS 版本。
@@ -760,6 +763,32 @@ cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored -
 - 使用临时目录模拟游戏目录。
 - 不直接操作真实 MHW:I 安装目录。
 - 每个测试结束后校验临时目录状态。
+
+### 装后目标缺失恢复（#340）
+
+使用 fake filesystem 和临时人工包执行以下聚焦检查，不依赖真实游戏、存档或第三方 Mod：
+
+```powershell
+cargo test -p hmm-app --lib missing_target
+cargo test -p hmm-runtime --lib missing_target_tests
+cargo test -p hmm-tauri --lib missing_target_recovery
+node --test "src/features/install-recovery/*.test.mjs"
+```
+
+Rust 命令从 `src-tauri` 执行，前端命令从仓库根执行。还需运行 install/recovery 既有回归、CLI contract、
+类型检查、lint 和 build。公共契约及写入路径的 PR 验证遵循完整门禁要求。
+
+- 无备份缺失文件只清 manifest；有备份恢复原文件；混合缺失与存在文件正确卸载且保留其他 Mod/未知文件。
+- 普通卸载仍拒绝缺失；目标变化、读取失败、备份不足、错误 profile/归属、大小写碰撞、不可消费 manifest 都不能写。
+- 预览后更换配置游戏目录、目标重新出现、备份/清单变化、游戏启动或运行状态未知、新增未完成 install/reinstall 事务时拒绝。
+- 缺失目标重读失败不能因 `None` 比较而放行；manifest 保存失败能回滚到原先内容和不存在状态，且不覆盖
+  回滚前被外部替换的新内容。
+- Runtime 走真实任务闭环：安装→外部删除→扫描 repair_required→预览→恢复；核实同实例预热的 Mod 库
+  状态变成 NotInstalled，整个 profile 的首次重定向准入恢复，未修改原门禁。
+- DTO 接受并保留 canonical token，拒绝缺失/非法 token；日志与进度不泄露 token、路径或清单正文。
+- React StrictMode 只启动一次扫描；先显示事实，有限并发补名称；换 profile 后忽略旧预览和迟到名称。
+- 三语浏览器夹具检查预览前后均无写请求，只有确认启动一次；blocked 无确认按钮，事件按 taskId 匹配，
+  完成后刷新。检查窄窗口换行、确认可见性、异常 Mod 名称与 ID，以及重定向错误按钮进入恢复中心。
 
 ### T13 批量生命周期分阶段矩阵
 

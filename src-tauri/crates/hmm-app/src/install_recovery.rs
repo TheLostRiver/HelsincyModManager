@@ -15,6 +15,10 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::reinstall_commit::{cleanup_reinstall_transaction, promote_manifest_snapshots};
+use crate::{UninstallModError, UninstallModService};
+
+#[path = "install_recovery_missing_targets.rs"]
+mod missing_targets;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallRecoveryScanRequest {
@@ -67,6 +71,7 @@ pub struct InstallRecoverySummary {
 pub enum InstallRecoveryActionKind {
     RollbackInstall,
     ReconcileReinstall,
+    UninstallMissingTargets,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +89,13 @@ pub enum InstallRecoveryActionBlockReason {
     TargetReadFailed,
     BackupMissing,
     BackupReadFailed,
+    InstallStateUnavailable,
+    TargetStateUnavailable,
+    BackupUnavailable,
+    RecoveryPending,
+    PreviewRequired,
+    GameRunning,
+    GameRunningUnknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +116,7 @@ pub struct InstallRecoveryActionRequest {
     pub profile_id: ProfileId,
     pub mod_id: ModId,
     pub action_kind: InstallRecoveryActionKind,
+    pub plan_token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +130,8 @@ pub struct InstallRecoveryActionPreview {
     pub backup_count: usize,
     pub blocking_issue_count: usize,
     pub blocking_reasons: Vec<InstallRecoveryActionBlockReasonSummary>,
+    pub missing_file_count: usize,
+    pub plan_token: Option<String>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -175,6 +190,8 @@ pub enum InstallRecoveryActionError {
     ReinstallPostCommitFailed,
     #[error("reinstall recovery cleanup remains pending")]
     ReinstallCleanupFailed,
+    #[error("missing-target uninstall recovery failed")]
+    MissingTargetUninstall(UninstallModError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -809,6 +826,8 @@ pub struct InstallRecoveryActionPreviewService {
     game_files: Arc<dyn InstallGameFileSystem>,
     backup_store: Arc<dyn InstallBackupStore>,
     recovery_record_repository: Arc<dyn InstallRecoveryRecordRepository>,
+    missing_target_uninstaller: Option<(hmm_core::GameId, UninstallModService)>,
+    reinstall_recovery_repository: Option<Arc<dyn ReinstallRecoveryTransactionRepository>>,
 }
 
 #[derive(Clone)]
@@ -819,6 +838,7 @@ pub struct InstallRecoveryActionService {
     manifest_repository: Option<Arc<dyn InstallManifestRepository>>,
     reinstall_recovery_repository: Option<Arc<dyn ReinstallRecoveryTransactionRepository>>,
     reinstall_snapshot_store: Option<Arc<dyn ReinstallSnapshotStore>>,
+    missing_target_uninstaller: Option<(hmm_core::GameId, UninstallModService)>,
 }
 
 struct PreparedRecoveryAction {
@@ -854,6 +874,8 @@ impl InstallRecoveryActionPreviewService {
             game_files,
             backup_store,
             recovery_record_repository,
+            missing_target_uninstaller: None,
+            reinstall_recovery_repository: None,
         }
     }
 
@@ -863,6 +885,9 @@ impl InstallRecoveryActionPreviewService {
     ) -> Result<InstallRecoveryActionPreview, InstallRecoveryActionPreviewError> {
         match request.action_kind {
             InstallRecoveryActionKind::RollbackInstall => self.preview_rollback_install(request),
+            InstallRecoveryActionKind::UninstallMissingTargets => {
+                self.preview_missing_target_uninstall(request)
+            }
             InstallRecoveryActionKind::ReconcileReinstall => Ok(blocked_recovery_action_preview(
                 request,
                 0,
@@ -978,6 +1003,8 @@ impl InstallRecoveryActionPreviewService {
             backup_count,
             blocking_issue_count,
             blocking_reasons,
+            missing_file_count: 0,
+            plan_token: None,
         })
     }
 }
@@ -995,6 +1022,7 @@ impl InstallRecoveryActionService {
             manifest_repository: None,
             reinstall_recovery_repository: None,
             reinstall_snapshot_store: None,
+            missing_target_uninstaller: None,
         }
     }
 
@@ -1011,6 +1039,7 @@ impl InstallRecoveryActionService {
             manifest_repository: Some(manifest_repository),
             reinstall_recovery_repository: None,
             reinstall_snapshot_store: None,
+            missing_target_uninstaller: None,
         }
     }
 
@@ -1031,6 +1060,9 @@ impl InstallRecoveryActionService {
         match request.action_kind {
             InstallRecoveryActionKind::RollbackInstall => self.rollback_install(request),
             InstallRecoveryActionKind::ReconcileReinstall => self.reconcile_reinstall(request),
+            InstallRecoveryActionKind::UninstallMissingTargets => {
+                self.uninstall_missing_targets(request)
+            }
         }
     }
 
@@ -1782,6 +1814,8 @@ fn blocked_recovery_action_preview(
         backup_count,
         blocking_issue_count,
         blocking_reasons,
+        missing_file_count: 0,
+        plan_token: None,
     }
 }
 

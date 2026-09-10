@@ -15,6 +15,29 @@ const baseSummary = {
   issues: [],
 };
 
+test("missing target review uses Mod names but never treats the entry point as write authorization", () => {
+  for (const [locale, copy] of Object.entries(recoveryCenterCopy)) {
+    const model = deriveRecoveryCenterViewModel([
+      { ...baseSummary, modId: "missing", status: "repair_required", issues: [{ issue: "target_missing", count: 2 }] },
+      { ...baseSummary, modId: "mixed", status: "repair_required", issues: [{ issue: "target_missing", count: 1 }, { issue: "target_changed", count: 1 }] },
+      { ...baseSummary, modId: "changed", status: "repair_required", issues: [{ issue: "target_changed", count: 1 }] },
+      { ...baseSummary, modId: "unknown", status: "unknown", issues: [{ issue: "target_missing", count: 1 }, { issue: "target_read_failed", count: 1 }] },
+      { ...baseSummary, modId: "rollback", status: "rollback_required", issues: [{ issue: "target_missing", count: 1 }] },
+    ], copy, { missing: "白羽外观 · Fixture Mod" });
+    const mods = new Map(model.mods.map((mod) => [mod.modId, mod]));
+    assert.equal(mods.get("missing").displayName, "白羽外观 · Fixture Mod", locale);
+    assert.equal(mods.get("missing").canReviewMissingTargets, true, locale);
+    assert.equal(mods.get("mixed").canReviewMissingTargets, true, "mixed states can be inspected; the backend decides whether execution is safe");
+    for (const id of ["changed", "unknown", "rollback"]) {
+      assert.equal(mods.get(id).canReviewMissingTargets, false, `${locale}/${id}`);
+      assert.equal(mods.get(id).displayName, id);
+    }
+    assert.equal(mods.get("missing").repairSummary.actionLabel, copy.missingTargets.action);
+    assert.equal(model.overview.manualDecision.description, copy.missingTargets.reviewDescription);
+    assert.deepEqual(model.overview.manualDecision.safeguards, copy.missingTargets.safeguards);
+  }
+});
+
 test("derives profile recovery center overview without path fields", () => {
   const viewModel = derive([
     {

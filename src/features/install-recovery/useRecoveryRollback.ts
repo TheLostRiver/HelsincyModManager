@@ -7,6 +7,7 @@ import {
   startRecoveryActionTask,
 } from "../mods/modInstallPlanApi";
 import type {
+  InstallRecoveryActionKind,
   InstallRecoveryActionPreview,
 } from "../mods/modInstallPlanTypes";
 import {
@@ -25,6 +26,7 @@ export type RecoveryRollbackPhase =
 // failed 只存语义 reason 与后端透传消息，文本在渲染时经 recoveryCenterCopy 取。
 export type RecoveryRollbackFailureReason =
   | "profile_not_ready"
+  | "listener_unavailable"
   | "preview_failed"
   | "start_failed"
   | "task_failed";
@@ -67,9 +69,15 @@ type UseRecoveryRollbackInput = {
 export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
   const { gameId, onCompleted } = input;
   const { activeProfile, activeProfileId } = useActiveProfile();
-  const [state, setState] = useState<RecoveryRollbackState>({ status: "idle" });
+  const [state, setStateValue] = useState<RecoveryRollbackState>({ status: "idle" });
+  const [actionKind, setActionKind] = useState<InstallRecoveryActionKind>("rollback_install");
+  const [listenerReady, setListenerReady] = useState(false);
   const stateRef = useRef(state);
-  stateRef.current = state;
+  const requestSequenceRef = useRef(0);
+  const setState = useCallback((next: RecoveryRollbackState) => {
+    stateRef.current = next;
+    setStateValue(next);
+  }, []);
 
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
@@ -80,29 +88,44 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
     setState({ status: "completed", modId, taskId });
     notifyInstallRecoveryRefresh();
     onCompletedRef.current();
-  }, []);
+  }, [setState]);
 
   const requestRollback = useCallback(
-    (modId: string) => {
+    (modId: string, requestedActionKind: InstallRecoveryActionKind = "rollback_install") => {
       if (stateRef.current.status !== "idle") {
         return;
       }
+      setActionKind(requestedActionKind);
 
       if (activeProfile.status !== "ready" || activeProfileId === null) {
         setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
         return;
       }
 
+      if (!listenerReady) {
+        setState({ status: "failed", modId, reason: "listener_unavailable", backendMessage: null });
+        return;
+      }
+
+      const requestSequence = ++requestSequenceRef.current;
       setState({ status: "previewing", modId });
 
       void previewRecoveryAction({
         gameId,
         profileId: activeProfileId,
         modId,
-        actionKind: "rollback_install",
+        actionKind: requestedActionKind,
       })
         .then((preview) => {
-          if (stateRef.current.status !== "previewing" || stateRef.current.modId !== modId) {
+          if (requestSequence !== requestSequenceRef.current || stateRef.current.status !== "previewing" || stateRef.current.modId !== modId) {
+            return;
+          }
+
+          if (preview.profileId !== activeProfileId || preview.modId !== modId || preview.actionKind !== requestedActionKind
+            || (preview.availability === "available" && requestedActionKind === "uninstall_missing_targets"
+              && (!(typeof preview.planToken === "string" && preview.planToken.length > 0)
+                || !Number.isSafeInteger(preview.missingFileCount) || (preview.missingFileCount ?? 0) < 1))) {
+            setState({ status: "failed", modId, reason: "preview_failed", backendMessage: null });
             return;
           }
 
@@ -113,12 +136,12 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           }
         })
         .catch(() => {
-          if (stateRef.current.status === "previewing" && stateRef.current.modId === modId) {
+          if (requestSequence === requestSequenceRef.current && stateRef.current.status === "previewing" && stateRef.current.modId === modId) {
             setState({ status: "failed", modId, reason: "preview_failed", backendMessage: null });
           }
         });
     },
-    [activeProfile.status, activeProfileId, gameId],
+    [activeProfile.status, activeProfileId, gameId, listenerReady, setState],
   );
 
   const confirmRollback = useCallback(() => {
@@ -128,7 +151,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
     }
 
     const { modId } = current;
-    if (activeProfile.status !== "ready" || activeProfileId === null) {
+    if (activeProfile.status !== "ready" || activeProfileId === null || current.preview.profileId !== activeProfileId) {
       setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
       return;
     }
@@ -139,7 +162,8 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       gameId,
       profileId: activeProfileId,
       modId,
-      actionKind: "rollback_install",
+      actionKind: current.preview.actionKind,
+      ...(current.preview.planToken ? { planToken: current.preview.planToken } : {}),
     })
       .then((result) => {
         if (stateRef.current.status !== "starting" || stateRef.current.modId !== modId) {
@@ -181,11 +205,19 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           setState({ status: "failed", modId, reason: "start_failed", backendMessage: null });
         }
       });
-  }, [activeProfile.status, activeProfileId, gameId, markCompleted]);
+  }, [activeProfile.status, activeProfileId, gameId, markCompleted, setState]);
 
   const dismiss = useCallback(() => {
+    if (stateRef.current.status === "starting" || stateRef.current.status === "running") return;
+    requestSequenceRef.current += 1;
     setState({ status: "idle" });
-  }, []);
+  }, [setState]);
+
+  useEffect(() => {
+    requestSequenceRef.current += 1;
+    if (stateRef.current.status !== "starting" && stateRef.current.status !== "running") setState({ status: "idle" });
+    return () => { requestSequenceRef.current += 1; };
+  }, [activeProfileId, gameId, setState]);
 
   useEffect(() => {
     let disposed = false;
@@ -239,16 +271,19 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
         return;
       }
       unlistenFn = unlisten;
-    });
+      setListenerReady(true);
+    }).catch(() => { if (!disposed) setListenerReady(false); });
 
     return () => {
       disposed = true;
       unlistenFn?.();
     };
-  }, [markCompleted]);
+  }, [markCompleted, setState]);
 
   return {
     state,
+    actionKind,
+    listenerReady,
     requestRollback,
     confirmRollback,
     dismiss,

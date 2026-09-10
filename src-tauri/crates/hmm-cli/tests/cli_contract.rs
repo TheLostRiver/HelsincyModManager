@@ -18,6 +18,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+#[path = "cli_contract/recovery_missing_target.rs"]
+mod missing_target_recovery_contract;
+
 const ARMOR_SOURCE_TARGET: &str = "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3";
 const ARMOR_ALPHA_TARGET: &str = "nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3";
 const ARMOR_BETA_TARGET: &str = "nativePC/pl/f_equip/pl129_0010/arm/mod/f_body.mod3";

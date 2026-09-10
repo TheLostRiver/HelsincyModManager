@@ -189,8 +189,8 @@ pub use game_setup::{
 pub use install::{
     BuildImportedModInstallPlanRequest, BuildInstallPlanRequest, CommitInstallPlanRequest,
     InstallCommitError, InstallCommitPhase, InstallCommitResult, InstallCommitService,
-    InstallPlanFile, InstallPlanningError, InstallPlanningService, UninstallModError,
-    UninstallModRequest, UninstallModResult, UninstallModService,
+    InstallPlanFile, InstallPlanningError, InstallPlanningService, MissingTargetUninstallPreview,
+    UninstallModError, UninstallModRequest, UninstallModResult, UninstallModService,
 };
 pub use install_manifest_query::{
     InstallManifestQueryError, InstallManifestQueryRequest, InstallManifestQueryService,

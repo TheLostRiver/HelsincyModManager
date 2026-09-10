@@ -441,6 +441,18 @@ fn install_recovery_action_preview_request_from_dto(
 fn start_recovery_action_task_request_from_dto(
     request: StartRecoveryActionTaskRequestDto,
 ) -> Result<StartRecoveryActionTaskRequest, CommandErrorDto> {
+    let action_kind = install_recovery_action_kind_from_dto(request.action_kind);
+    if action_kind == InstallRecoveryActionKind::UninstallMissingTargets
+        && !request
+            .plan_token
+            .as_deref()
+            .is_some_and(hmm_app::MissingTargetUninstallPreview::is_plan_token)
+    {
+        return Err(CommandErrorDto {
+            code: "plan_token_invalid".to_owned(),
+            message: "recovery preview token is invalid".to_owned(),
+        });
+    }
     let game_id = GameId::parse(request.game_id).map_err(|_| CommandErrorDto {
         code: "game_id_invalid".to_owned(),
         message: "game id is invalid".to_owned(),
@@ -453,10 +465,11 @@ fn start_recovery_action_task_request_from_dto(
     let mod_id = parse_non_empty_id(request.mod_id, "mod_id_empty", "mod id cannot be empty")?;
 
     Ok(StartRecoveryActionTaskRequest {
+        plan_token: request.plan_token,
         game_id,
         profile_id: ProfileId::new(profile_id),
         mod_id: ModId::new(mod_id),
-        action_kind: install_recovery_action_kind_from_dto(request.action_kind),
+        action_kind,
     })
 }
 
@@ -467,6 +480,9 @@ fn install_recovery_action_kind_from_dto(
         InstallRecoveryActionKindDto::RollbackInstall => InstallRecoveryActionKind::RollbackInstall,
         InstallRecoveryActionKindDto::ReconcileReinstall => {
             InstallRecoveryActionKind::ReconcileReinstall
+        }
+        InstallRecoveryActionKindDto::UninstallMissingTargets => {
+            InstallRecoveryActionKind::UninstallMissingTargets
         }
     }
 }
@@ -854,6 +870,41 @@ mod tests {
             app_request.action_kind,
             hmm_app::InstallRecoveryActionKind::RollbackInstall
         );
+        assert!(app_request.plan_token.is_none());
+    }
+
+    #[test]
+    fn missing_target_recovery_request_requires_and_preserves_the_preview_token() {
+        let token = format!("missing-uninstall-v1:{}", "ab".repeat(32));
+        let request = serde_json::from_value(json!({
+            "gameId": "mhw", "profileId": "default", "modId": "mod-a",
+            "actionKind": "uninstall_missing_targets", "planToken": token,
+        }))
+        .unwrap();
+        let parsed = start_recovery_action_task_request_from_dto(request).unwrap();
+        assert_eq!(
+            parsed.action_kind,
+            InstallRecoveryActionKind::UninstallMissingTargets
+        );
+        assert_eq!(parsed.plan_token.as_deref(), Some(token.as_str()));
+        assert_eq!(parsed.mod_id, ModId::new("mod-a"));
+
+        for invalid in [
+            None,
+            Some(String::new()),
+            Some("missing-uninstall-v1:abc".to_owned()),
+            Some(format!("missing-uninstall-v1:{}", "AB".repeat(32))),
+            Some(format!("{token} ")),
+        ] {
+            let request = serde_json::from_value(json!({
+                "gameId": "mhw", "profileId": "default", "modId": "mod-a",
+                "actionKind": "uninstall_missing_targets", "planToken": invalid,
+            }))
+            .unwrap();
+            let error = start_recovery_action_task_request_from_dto(request).unwrap_err();
+            assert_eq!(error.code, "plan_token_invalid");
+            assert!(!error.message.contains("missing-uninstall-v1:"));
+        }
     }
 
     #[test]
