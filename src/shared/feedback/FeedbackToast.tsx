@@ -3,6 +3,7 @@ import { resolveCopy, useI18n } from "../i18n";
 import { feedbackCopy } from "./feedbackCopy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FeedbackToastItem } from "./feedbackToastState";
+import { useToastLifetime } from "./useToastLifetime";
 
 /*
  * 退场动画时长。纯 CSS 无法为卸载中的节点播放动画（React 移除后节点已不存在），
@@ -14,7 +15,8 @@ const TOAST_EXIT_DURATION_MS = 160;
 export function FeedbackToast({ toast, onDismiss }: { toast: FeedbackToastItem; onDismiss: (id: string) => void }) {
   const { locale } = useI18n();
   const copy = resolveCopy(feedbackCopy, locale);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
 
@@ -37,22 +39,9 @@ export function FeedbackToast({ toast, onDismiss }: { toast: FeedbackToastItem; 
     }, TOAST_EXIT_DURATION_MS);
   }, [onDismiss, toast.id]);
 
-  /*
-   * 同一条 toast 因重复事件被合并重放时（revision 变化），取消进行中的退场，
-   * 否则它会在刚被复用后立刻消失。
-   */
-  useEffect(() => {
-    setExiting(false);
-    clearExitTimer();
-  }, [clearExitTimer, toast.revision]);
-
   useEffect(() => clearExitTimer, [clearExitTimer]);
 
-  useEffect(() => {
-    if (paused || exiting || toast.durationMs <= 0) return undefined;
-    const timer = window.setTimeout(requestDismiss, toast.durationMs);
-    return () => window.clearTimeout(timer);
-  }, [exiting, paused, requestDismiss, toast.durationMs, toast.revision]);
+  useToastLifetime({ durationMs: toast.durationMs, hovered, focused, exiting, onElapsed: requestDismiss });
 
   const icon = toast.tone === "success" ? <CheckCircle2 size={18} />
     : toast.tone === "warning" || toast.tone === "danger" ? <AlertTriangle size={18} /> : <Info size={18} />;
@@ -63,11 +52,11 @@ export function FeedbackToast({ toast, onDismiss }: { toast: FeedbackToastItem; 
       data-event-key={toast.eventKey}
       data-task-id={toast.taskId}
       role={toast.tone === "danger" ? "alert" : "status"}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocusCapture={() => setPaused(true)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
       }}
     >
       <span className="feedback-toast__icon" aria-hidden="true">{icon}</span>
