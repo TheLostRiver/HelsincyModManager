@@ -2,6 +2,31 @@ import type { TaskProgressEventDto } from "../mods/modImportTypes";
 import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
 import type { ReplacementCopy } from "./replacementCopy";
 
+export function installBlockMessage(
+  profileId: string | null,
+  installStatus: InstallManifestStatus | undefined,
+  completedLocally: boolean,
+  block: ReplacementCopy["block"],
+) {
+  if (profileId === null) return block.profileUnavailable;
+  if (completedLocally) return block.completedRefreshing;
+  switch (installStatus) {
+    case "not_installed":
+    case "installed":
+      return null;
+    case "committed_cleanup_pending":
+    case "cleanup_pending":
+      return block.cleanupPending;
+    case "rollback_required":
+      return block.rollbackRequired;
+    case "repair_required":
+      return block.repairRequired;
+    case "unknown":
+    case undefined:
+      return block.statusUnknown;
+  }
+}
+
 export type RetargetInstallTaskPhase =
   | "install.retarget.queued"
   | "install.retarget.plan.building"

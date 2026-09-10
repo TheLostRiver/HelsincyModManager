@@ -132,6 +132,7 @@ pub enum ReplacementWarning {
     UnsupportedSource,
     SourceMatchesTarget,
     WeaponPartialPartSet,
+    UnmappedResourcesKept,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

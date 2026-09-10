@@ -20,6 +20,13 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+#[path = "replacement/equipment.rs"]
+mod equipment;
+pub use equipment::{
+    EquipmentRetargetConfiguration, EquipmentRetargetReinstallRequest,
+    EquipmentSourceConfiguration, PreviewEquipmentRetargetReinstallRequest,
+};
+
 use crate::install::cross_mod_target_conflicts;
 use crate::InstallRecoveryStatus;
 
@@ -136,8 +143,8 @@ pub enum InitialRetargetSlotIntent {
     /// 与 canonical source install 用的是同一套机制）。它不进源路由，所以提交时直接读
     /// 沙箱原包——「不重定向」在字节层面就是「不经 staging」。
     ///
-    /// 源槽位本身必须在 catalog 里能唯一解析成一个目标；解析不出时返回
-    /// `KeepInPlaceUnavailable`，那个槽位只能选「换到 X」或「不装」。
+    /// 源槽位必须由游戏 adapter 解析出唯一的原位身份。MHW 允许名称目录未收录、
+    /// 但资源语法合法的源保持原位；不能安全解析时返回 `KeepInPlaceUnavailable`。
     KeepInPlace { source_id: ReplacementSourceId },
 }
 
@@ -834,31 +841,15 @@ impl ReplacementWorkflowService {
 
     /// 「保持原位」需要的那个目标：源槽位自己。
     ///
-    /// 与 `preview_canonical_source_install_plan` 同一套解析（catalog 里 target_type /
-    /// internal_id / path_family 三者都匹配且**唯一**）。解析不出就明确报错，不猜——
-    /// 猜错会把这个槽位的文件装到别的装备上。
+    /// 由游戏适配器校验资源身份；名称表缺项时也可返回仅限原位的身份，不猜装备名称。
     fn self_target_for(
         &self,
         game_id: &GameId,
         source: &hmm_core::ReplacementSource,
     ) -> Result<ReplacementTarget, ReplacementWorkflowError> {
-        let catalog = self
-            .catalog_for(game_id)?
-            .replacement_catalog()
-            .map_err(map_catalog_error)?;
-        let mut matching = catalog.targets().iter().filter(|target| {
-            target.target_type() == source.source_type()
-                && target.internal_id() == source.internal_id()
-                && target
-                    .metadata()
-                    .get("path_family")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(source.path_family())
-        });
-        match (matching.next(), matching.next()) {
-            (Some(target), None) => Ok(target.clone()),
-            _ => Err(ReplacementWorkflowError::KeepInPlaceUnavailable),
-        }
+        self.catalog_for(game_id)?
+            .original_target_for_source(source)
+            .map_err(|_| ReplacementWorkflowError::KeepInPlaceUnavailable)
     }
 
     /// 初始重定向安装不得覆盖其他 Mod 已管理的目标文件。
@@ -924,10 +915,11 @@ impl ReplacementWorkflowService {
         }
         // staging 落盘之后再重建安装计划：与 `materialize_retarget` 同序（先算计划、再落盘、
         // 计划不变），保证 `plan_hash` 与预览阶段逐字一致。
-        let install_plan = self
+        let mut install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(&planned.retarget_plans, layer, Some(revision_id))
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        install_plan.conflicts = planned.install_plan.conflicts;
         Ok(MaterializedInitialRetargetInstall {
             install_plan,
             source_routing,

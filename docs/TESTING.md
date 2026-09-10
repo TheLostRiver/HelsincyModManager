@@ -1,5 +1,21 @@
 # 测试指南
 
+## MHW 装备资源保留与多源切换
+
+```powershell
+cargo test -p hmm-games-mhw --test retarget_package_preservation
+cargo test -p hmm-core equipment_reinstall
+cargo test -p hmm-app --test replacement_multi_slot
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment
+cargo test -p hmm-tauri equipment_retarget
+node --test "src/features/replacements/*.test.mjs"
+```
+
+新 Windows 工作树运行 `hmm-tauri` 检查前，按下文生成 ignored development sidecars。
+上述用例使用临时目录与人工内容，须断言安装／切换后的全部文件内容和卸载 baseline，不仅检查任务成功。
+同时验证跨 Mod 冲突、stale token、重复／缺失源、未知源原位保留和清单保存故障时的整体回滚。
+详细语义见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
+
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。
 
 ## 目标

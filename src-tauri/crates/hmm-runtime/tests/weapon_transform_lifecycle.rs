@@ -13,8 +13,8 @@ use hmm_core::{
     ReplacementTargetKind, RetargetAction, RetargetPlan,
 };
 use hmm_games_mhw::{
-    analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation,
-    MhwWeaponMrl3TexturePathTransformer, WeaponMainId, WeaponModelPair,
+    analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation, MhwReplacementAdapter,
+    MhwReplacementCatalog, MhwWeaponMrl3TexturePathTransformer, WeaponMainId, WeaponModelPair,
     MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 use hmm_infra::{
@@ -28,7 +28,8 @@ use hmm_ports::{
     ContentTransformer, ContentTransformerRegistry, InstallBackupStore, InstallGameFileSystem,
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
     ModImportResultRepository, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
-    ReplacementAsset, StoredImportPreviewImage, StoredLogicalMod, StoredModOriginProvenance,
+    ReplacementAdapter, ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogProvider,
+    RetargetPlanRequest, StoredImportPreviewImage, StoredLogicalMod, StoredModOriginProvenance,
     StoredModPackageMetadata, StoredModRevision,
 };
 use sha2::{Digest, Sha256};
@@ -46,6 +47,8 @@ const MRL3_MATERIAL_ENTRY_SIZE: usize = 56;
 const ARTIFICIAL_MATERIAL_HASH: u32 = 0xa7f6_8bf8;
 const SOURCE_MOD3_ID: &str = "weapon/model.mod3";
 const SOURCE_MRL3_ID: &str = "weapon/model.mrl3";
+const SOURCE_TEX_ID: &str = "weapon/model.tex";
+const SOURCE_TEX_PATH: &str = "nativePC/wp/one/one001/mod/one001_BML.tex";
 const SOURCE_MOD3_PATH: &str = "nativePC/wp/one/one001/mod/one001.mod3";
 const SOURCE_MRL3_PATH: &str = "nativePC/wp/one/one001/mod/one001.mrl3";
 
@@ -222,6 +225,21 @@ fn weapon_plan(
         )
         .expect("MRL3 action")
         .with_content_transform(invocation),
+        RetargetAction::new(
+            PackageFileId::new(SOURCE_TEX_ID),
+            InstallTargetPath::parse(SOURCE_TEX_PATH, ["nativePC"]).unwrap(),
+            InstallTargetPath::parse(
+                format!("nativePC/wp/one/{target_main}/mod/{target_main}_BML.tex"),
+                ["nativePC"],
+            )
+            .unwrap(),
+            source_id.clone(),
+            "one001",
+            target_main,
+            "wp/one",
+            "wp/one",
+        )
+        .unwrap(),
     ];
     let source = ReplacementSource::new(
         source_id.clone(),
@@ -276,6 +294,51 @@ fn registry() -> Arc<ContentTransformerRegistry> {
     )
 }
 
+fn preserved_weapon_plan(
+    mod_id: &ModId,
+    profile_id: &ProfileId,
+    target_main: &str,
+) -> RetargetPlan {
+    let assets = [
+        ReplacementAsset::new(PackageFileId::new(SOURCE_MOD3_ID), SOURCE_MOD3_PATH),
+        ReplacementAsset::new(PackageFileId::new(SOURCE_MRL3_ID), SOURCE_MRL3_PATH),
+        ReplacementAsset::new(PackageFileId::new(SOURCE_TEX_ID), SOURCE_TEX_PATH),
+    ]
+    .to_vec();
+    let analysis = MhwReplacementAdapter
+        .analyze_replacement_assets(ReplacementAnalysisRequest {
+            game_id: GameId::mhw(),
+            assets: assets.clone(),
+        })
+        .unwrap();
+    let target = MhwReplacementCatalog
+        .replacement_catalog()
+        .unwrap()
+        .targets()
+        .iter()
+        .find(|target| target.internal_id() == target_main)
+        .unwrap()
+        .id()
+        .clone();
+    let binding = ReplacementBinding::new(
+        ReplacementBindingId::parse("binding-weapon").unwrap(),
+        mod_id.clone(),
+        profile_id.clone(),
+        analysis.single_source().unwrap().id().clone(),
+        target,
+        1,
+    )
+    .unwrap();
+    MhwReplacementAdapter
+        .build_retarget_plan(RetargetPlanRequest {
+            game_id: GameId::mhw(),
+            binding,
+            assets,
+            carries_package_companions: true,
+        })
+        .unwrap()
+}
+
 fn materialize(
     source_root: &Path,
     staging_root: &Path,
@@ -328,6 +391,15 @@ fn snapshot_tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
 
 #[test]
 fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline() {
+    exercise_weapon_lifecycle(false);
+}
+
+#[test]
+fn legacy_material_install_switches_to_resource_preservation_and_restores_both_texture_locations() {
+    exercise_weapon_lifecycle(true);
+}
+
+fn exercise_weapon_lifecycle(switch_to_path_only: bool) {
     let temp = tempfile::tempdir().expect("temp root");
     let app_data = temp.path().join("app-data");
     let game_root = temp.path().join("game");
@@ -337,12 +409,28 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     let mrl3 = artificial_mrl3();
     fs::write(source_root.join(SOURCE_MOD3_ID), &mod3).expect("source MOD3");
     fs::write(source_root.join(SOURCE_MRL3_ID), &mrl3).expect("source MRL3");
+    fs::write(source_root.join(SOURCE_TEX_ID), b"synthetic texture").unwrap();
 
     let switch_mod3 = game_root.join("nativePC/wp/one/one003/mod/one003.mod3");
     let switch_mrl3 = game_root.join("nativePC/wp/one/one003/mod/one003.mrl3");
     fs::create_dir_all(switch_mod3.parent().expect("switch parent")).expect("game root");
     fs::write(&switch_mod3, b"baseline-mod3").expect("baseline MOD3");
     fs::write(&switch_mrl3, b"baseline-mrl3").expect("baseline MRL3");
+    for (path, bytes) in [
+        (SOURCE_TEX_PATH, b"baseline-source-texture".as_slice()),
+        (
+            "nativePC/wp/one/one002/mod/one002_BML.tex",
+            b"baseline-old-target-texture".as_slice(),
+        ),
+        (
+            "nativePC/wp/one/one003/mod/one003_BML.tex",
+            b"baseline-new-target-texture".as_slice(),
+        ),
+    ] {
+        let path = game_root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
     let baseline = snapshot_tree(&game_root);
 
     let mod_id = ModId::new("mod-weapon");
@@ -428,7 +516,12 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
         revision_id.clone(),
     )
     .expect("initial install");
-    assert_eq!(installed.manifest.entries.len(), 2);
+    assert_eq!(installed.manifest.entries.len(), 3);
+    assert_ne!(
+        fs::read(game_root.join("nativePC/wp/one/one002/mod/one002.mrl3")).unwrap(),
+        mrl3,
+        "the initial install must actually use the legacy material transformation"
+    );
     assert!(installed.manifest.replacement_bindings[0]
         .adapter_facts()
         .is_some());
@@ -436,7 +529,7 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
         .adapter_facts()
         .expect("installed adapter facts");
     assert_eq!(installed_facts.part_count(), 1);
-    assert_eq!(installed_facts.file_count(), 2);
+    assert_eq!(installed_facts.file_count(), 3);
     assert_eq!(
         installed_facts.transformer_identities()[0].transformer_id(),
         MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID
@@ -457,9 +550,9 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     assert_eq!(restarted_manifest, installed.manifest);
 
     let switch_staging = temp.path().join("switch-staging");
-    let switch_plan = materialize(
-        &source_root,
-        &switch_staging,
+    let candidate = if switch_to_path_only {
+        preserved_weapon_plan(&mod_id, &profile_id, "one003")
+    } else {
         weapon_plan(
             &mod_id,
             &profile_id,
@@ -468,10 +561,10 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
             1,
             &mod3,
             &mrl3,
-        ),
-        &revision_id,
-    )
-    .expect("materialize switch target");
+        )
+    };
+    let switch_plan = materialize(&source_root, &switch_staging, candidate, &revision_id)
+        .expect("materialize switch target");
     let switch_source = Arc::new(StagedCandidateSource {
         reader: RetargetStagingInstallSourceFileReader::from_install_plan(
             switch_staging.clone(),
@@ -527,7 +620,27 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     let switched = executor
         .commit(*prepared, &plan_token)
         .expect("true reinstall switch");
-    assert_eq!(switched.manifest.entries.len(), 2);
+    assert_eq!(switched.manifest.entries.len(), 3);
+    assert_eq!(
+        fs::read(game_root.join("nativePC/wp/one/one002/mod/one002_BML.tex")).unwrap(),
+        b"baseline-old-target-texture"
+    );
+    if switch_to_path_only {
+        assert_eq!(fs::read(&switch_mrl3).unwrap(), mrl3);
+        assert_eq!(
+            fs::read(game_root.join(SOURCE_TEX_PATH)).unwrap(),
+            b"synthetic texture"
+        );
+        assert_eq!(
+            fs::read(game_root.join("nativePC/wp/one/one003/mod/one003_BML.tex")).unwrap(),
+            b"baseline-new-target-texture"
+        );
+        let facts = switched.manifest.replacement_bindings[0]
+            .adapter_facts()
+            .unwrap();
+        assert_eq!(facts.strategy_id(), "path-only-resource-preserving");
+        assert!(facts.transformer_identities().is_empty());
+    }
     assert_eq!(
         switched.manifest.replacement_bindings[0].target_internal_id(),
         "one003"
@@ -583,7 +696,7 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
     )
     .expect("manifest uninstall");
     assert_eq!(uninstalled.removed_file_count, 0);
-    assert_eq!(uninstalled.restored_file_count, 2);
+    assert_eq!(uninstalled.restored_file_count, 3);
     assert!(uninstalled.manifest.entries.is_empty());
     assert!(uninstalled.manifest.replacement_bindings.is_empty());
     assert_eq!(snapshot_tree(&game_root), baseline);

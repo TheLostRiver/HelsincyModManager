@@ -265,7 +265,7 @@ fn queued_event(task: &TaskStarted) -> TaskProgressEvent {
     )
 }
 
-fn analyze_request_from_dto(
+pub(crate) fn analyze_request_from_dto(
     request: AnalyzeImportedModReplacementRequestDto,
 ) -> Result<(AnalyzeImportedReplacementRequest, Option<ProfileId>), CommandErrorDto> {
     let profile_id = request
@@ -417,21 +417,21 @@ fn start_retarget_reinstall_request_from_dto(
     })
 }
 
-fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
+pub(crate) fn parse_game_id(value: String) -> Result<GameId, CommandErrorDto> {
     GameId::parse(value).map_err(|_| CommandErrorDto {
         code: "replacement_unsupported_game".to_owned(),
         message: "replacement is unsupported for this game".to_owned(),
     })
 }
 
-fn parse_target_id(value: String) -> Result<ReplacementTargetId, CommandErrorDto> {
+pub(crate) fn parse_target_id(value: String) -> Result<ReplacementTargetId, CommandErrorDto> {
     ReplacementTargetId::parse(value).map_err(|_| CommandErrorDto {
         code: "replacement_target_id_invalid".to_owned(),
         message: "replacement target id is invalid".to_owned(),
     })
 }
 
-fn required_id(
+pub(crate) fn required_id(
     value: String,
     code: &'static str,
     message: &'static str,
@@ -457,7 +457,9 @@ fn replacement_analysis_to_dto(
     response
 }
 
-fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) -> CommandErrorDto {
+pub(crate) fn replacement_workflow_error_to_command_error(
+    error: ReplacementWorkflowError,
+) -> CommandErrorDto {
     let (code, message) = match error {
         ReplacementWorkflowError::UnsupportedGame => (
             "replacement_unsupported_game",
@@ -535,7 +537,7 @@ fn replacement_workflow_error_to_command_error(error: ReplacementWorkflowError) 
     }
 }
 
-fn retarget_reinstall_error_to_command_error(
+pub(crate) fn retarget_reinstall_error_to_command_error(
     error: ConfiguredRetargetReinstallError,
 ) -> CommandErrorDto {
     match error {
@@ -582,8 +584,16 @@ impl From<ReplacementTarget> for ReplacementTargetDto {
     fn from(target: ReplacementTarget) -> Self {
         // I18N-08：不再按固定 locale 投影，DTO 携带全语言名称表。
         // LocalizedText 构造时已拒绝空表（EmptyLocalizedText），此处必然非空。
-        let display_names: std::collections::BTreeMap<String, String> =
-            target.display_name().clone().into();
+        let display_names: std::collections::BTreeMap<String, String> = if target
+            .metadata()
+            .get("identity_only")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            std::collections::BTreeMap::new()
+        } else {
+            target.display_name().clone().into()
+        };
         Self {
             id: target.id().as_str().to_owned(),
             game_id: target.game_id().as_str().to_owned(),
@@ -632,6 +642,7 @@ impl From<ReplacementWarning> for ReplacementWarningDto {
             ReplacementWarning::UnsupportedSource => Self::UnsupportedSource,
             ReplacementWarning::SourceMatchesTarget => Self::SourceMatchesTarget,
             ReplacementWarning::WeaponPartialPartSet => Self::WeaponPartialPartSet,
+            ReplacementWarning::UnmappedResourcesKept => Self::UnmappedResourcesKept,
         }
     }
 }

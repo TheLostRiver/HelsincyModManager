@@ -120,10 +120,11 @@ export const replacementCopy = {
   zh_cn: {
     warnings: {
       no_supported_assets: "未检测到受支持的外观资源",
-      multiple_sources: "检测到多个源槽位，当前版本不会自动拆分",
+      multiple_sources: "检测到多件装备，可分别选择替换目标",
       unsupported_source: "包内包含当前版本不支持的源槽位",
       source_matches_target: "源槽位与目标槽位相同",
       weapon_partial_part_set: "武器包只包含部分可选部件，将仅处理已检测到的完整文件对",
+      unmapped_resources_kept: "部分资源无法明确改名，将保留原路径并一起安装。",
     },
     block: {
       profileUnavailable: "当前 Profile 不可用。",
@@ -190,6 +191,10 @@ export const replacementCopy = {
           message: "该 Mod 中没有找到可识别的武器资源。",
           hint: "请确认它是 nativePC/wp 结构的 MHW:I 武器 Mod。",
         },
+        weapon_no_relocatable_resources: {
+          message: "该源装备没有可明确改名的资源。",
+          hint: "可按 Mod 默认目标安装；如果需要换目标，请检查其文件命名。",
+        },
         weapon_multiple_source_roots: {
           message: "该压缩包包含多套武器资源，当前版本无法自动重定向。",
           hint: "请拆分成单套武器后分别导入。",
@@ -255,11 +260,12 @@ export const replacementCopy = {
         replacement_mod_not_found: { message: "未找到已导入的 Mod。" },
         replacement_package_unavailable: { message: "导入包当前不可用。" },
         replacement_source_not_retargetable: {
-          message: "该 Mod 不是当前可自动处理的单源外观包。",
+          message: "无法为当前选择找到可处理的装备源。",
+          hint: "请刷新包信息后重新选择替换目标。",
         },
         replacement_source_has_no_targets: {
           message: "这件装备暂时没有可替换的目标。",
-          hint: "目前只支持把女性防具换到女性防具外观，男性防具的目标列表还没有做。这个包本身没有问题。",
+          hint: "当前没有与这件装备类型匹配的目标，可先按作者设定的替换对象安装。",
         },
         replacement_target_catalog_unavailable: { message: "替换目标目录暂不可用。" },
         replacement_analysis_unavailable: { message: "替换分析暂不可用。" },
@@ -277,8 +283,8 @@ export const replacementCopy = {
           hint: "请把其中一件换成别的目标，或者选择「不安装」。",
         },
         replacement_keep_in_place_unavailable: {
-          message: "这件装备无法「保持原位」——它的原始槽位不在可替换目标清单里。",
-          hint: "请为它选一个替换目标，或者选择「不安装」。",
+          message: "无法确认这件装备的原始替换对象。",
+          hint: "请刷新包信息后重试，或为它选择已知的替换目标。",
         },
         replacement_install_state_unavailable: { message: "无法确认当前安装状态。" },
         replacement_initial_install_blocked: {
@@ -403,10 +409,11 @@ export const replacementCopy = {
   en: {
     warnings: {
       no_supported_assets: "No supported appearance assets detected",
-      multiple_sources: "Multiple source slots detected; this version will not split them automatically",
+      multiple_sources: "Multiple equipment sources detected; choose a target for each item",
       unsupported_source: "The package contains source slots not supported by this version",
       source_matches_target: "Source slot is the same as the target slot",
       weapon_partial_part_set: "This weapon package contains only some optional parts; only detected complete file pairs will be processed",
+      unmapped_resources_kept: "Some resources cannot be renamed with confidence. They will be installed at their original paths.",
     },
     block: {
       profileUnavailable: "The current profile is unavailable.",
@@ -473,6 +480,10 @@ export const replacementCopy = {
           message: "No recognizable weapon assets were found in this mod.",
           hint: "Confirm it is an MHW:I weapon mod with a nativePC/wp structure.",
         },
+        weapon_no_relocatable_resources: {
+          message: "This source has no resources with a clear target name.",
+          hint: "You can install it at the mod's default target. Check its file names before changing targets.",
+        },
         weapon_multiple_source_roots: {
           message: "This archive contains multiple weapon asset sets; this version cannot retarget them automatically.",
           hint: "Split it into single weapon sets and import them separately.",
@@ -538,11 +549,12 @@ export const replacementCopy = {
         replacement_mod_not_found: { message: "The imported mod was not found." },
         replacement_package_unavailable: { message: "The import package is currently unavailable." },
         replacement_source_not_retargetable: {
-          message: "This mod is not a single-source appearance package that can be handled automatically.",
+          message: "No usable equipment source matches the current selection.",
+          hint: "Refresh the package information and select the targets again.",
         },
         replacement_source_has_no_targets: {
           message: "This piece has no replacement targets yet.",
-          hint: "Only female armour can be retargeted onto female armour appearances right now; the target list for male armour has not been built. Nothing is wrong with this package.",
+          hint: "No target currently matches this equipment type. You can install it at the author's original target.",
         },
         replacement_target_catalog_unavailable: { message: "The replacement target catalog is temporarily unavailable." },
         replacement_analysis_unavailable: { message: "Replacement analysis is temporarily unavailable." },
@@ -561,8 +573,8 @@ export const replacementCopy = {
         },
         replacement_keep_in_place_unavailable: {
           message:
-            "This piece of gear cannot stay in place — its original slot is not a replaceable target.",
-          hint: "Pick a replacement target for it, or leave it out of the install.",
+            "The original replacement target of this equipment could not be confirmed.",
+          hint: "Refresh the package information and try again, or choose a known target.",
         },
         replacement_install_state_unavailable: { message: "The current install status could not be confirmed." },
         replacement_initial_install_blocked: {
@@ -690,10 +702,11 @@ export const replacementCopy = {
   ja: {
     warnings: {
       no_supported_assets: "対応する外観アセットが検出されませんでした",
-      multiple_sources: "複数のソーススロットを検出しました。現在のバージョンでは自動分割されません",
+      multiple_sources: "複数の装備を検出しました。装備ごとに置換先を選択できます",
       unsupported_source: "パッケージに現在のバージョンが対応していないソーススロットが含まれています",
       source_matches_target: "ソーススロットとターゲットスロットが同一です",
       weapon_partial_part_set: "この武器パッケージには一部のオプションパーツのみが含まれています。検出済みの完全なファイルペアのみ処理します",
+      unmapped_resources_kept: "一部のリソースは改名先を確定できないため、元のパスのままインストールします。",
     },
     block: {
       profileUnavailable: "現在のプロファイルは利用できません。",
@@ -760,6 +773,10 @@ export const replacementCopy = {
           message: "この Mod 内に認識可能な武器アセットが見つかりませんでした。",
           hint: "nativePC/wp 構造の MHW:I 武器 Mod であることを確認してください。",
         },
+        weapon_no_relocatable_resources: {
+          message: "この元装備には改名先を確定できるリソースがありません。",
+          hint: "Mod 本来の対象へインストールできます。対象を変える場合はファイル名を確認してください。",
+        },
         weapon_multiple_source_roots: {
           message: "このアーカイブには複数の武器アセット一式が含まれており、現在のバージョンでは自動リターゲットできません。",
           hint: "武器一式ごとに分割してから個別にインポートしてください。",
@@ -825,11 +842,12 @@ export const replacementCopy = {
         replacement_mod_not_found: { message: "インポート済みの Mod が見つかりませんでした。" },
         replacement_package_unavailable: { message: "インポートパッケージは現在利用できません。" },
         replacement_source_not_retargetable: {
-          message: "この Mod は現在自動処理できる単一ソースの外観パッケージではありません。",
+          message: "現在の選択に対応する装備ソースが見つかりません。",
+          hint: "パッケージ情報を更新し、置換先を選び直してください。",
         },
         replacement_source_has_no_targets: {
           message: "この装備には置き換え先がまだありません。",
-          hint: "現在は女性防具を女性防具の外観に置き換える場合のみ対応しており、男性防具の置き換え先一覧は未整備です。このパッケージ自体に問題はありません。",
+          hint: "現在、この装備タイプに対応する置換先がありません。作者が設定した元の置換先にインストールできます。",
         },
         replacement_target_catalog_unavailable: { message: "置換ターゲットのカタログは一時的に利用できません。" },
         replacement_analysis_unavailable: { message: "置換分析は一時的に利用できません。" },
@@ -847,8 +865,8 @@ export const replacementCopy = {
           hint: "どちらかを別のターゲットに変更するか、インストール対象から外してください。",
         },
         replacement_keep_in_place_unavailable: {
-          message: "この装備は「元の位置に残す」ことができません。元のスロットが置換ターゲットに含まれていません。",
-          hint: "置換ターゲットを選ぶか、インストール対象から外してください。",
+          message: "この装備の元の置換先を確認できません。",
+          hint: "パッケージ情報を更新して再試行するか、既知の置換先を選んでください。",
         },
         replacement_install_state_unavailable: { message: "現在のインストール状態を確認できません。" },
         replacement_initial_install_blocked: {

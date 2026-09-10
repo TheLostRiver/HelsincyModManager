@@ -4,12 +4,12 @@ use crate::{
     InstallPlanningService,
 };
 use hmm_core::{
-    classify_reinstall_targets, is_same_revision_replacement_target_switch,
-    resolve_installed_revision, FileLayer, GameId, InstallFileProvider, InstallManifest,
-    InstallManifestEntry, InstallManifestStatusConsumption, InstallManifestValidationError,
-    InstallPlan, InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId, PackageFileId,
-    ProfileId, ReinstallClassificationError, ReinstallManifestError, ReinstallTargetClass,
-    ReinstallTargetState, ReplacementBindingSnapshot,
+    classify_reinstall_targets, is_same_revision_equipment_target_switch,
+    is_same_revision_replacement_target_switch, resolve_installed_revision, FileLayer, GameId,
+    InstallFileProvider, InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption,
+    InstallManifestValidationError, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
+    ModRevisionId, PackageFileId, ProfileId, ReinstallClassificationError, ReinstallManifestError,
+    ReinstallTargetClass, ReinstallTargetState, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -130,6 +130,18 @@ pub enum InstalledReplacementReinstallResolution {
     Blocked(ReinstallPlanPreview),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledEquipmentReinstallContext {
+    pub installed_revision_id: ModRevisionId,
+    pub installed_bindings: Vec<ReplacementBindingSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstalledEquipmentReinstallResolution {
+    Ready(Box<InstalledEquipmentReinstallContext>),
+    Blocked(ReinstallPlanPreview),
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReinstallCandidatePlanError {
     #[error("candidate revision is not ready")]
@@ -203,6 +215,13 @@ pub enum ReinstallPreviewError {
     CandidatePlanUnavailable,
 }
 
+#[derive(Clone, Copy)]
+enum ReplacementSwitchMode {
+    Disabled,
+    SingleSource,
+    Equipment,
+}
+
 #[derive(Clone)]
 pub struct ReinstallPreviewService {
     prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
@@ -257,6 +276,45 @@ impl ReinstallPreviewService {
         profile_id: &ProfileId,
         mod_id: &ModId,
     ) -> Result<InstalledReplacementReinstallResolution, ReinstallPreviewError> {
+        Ok(
+            match self.resolve_replacement_context(game_id, profile_id, mod_id, false)? {
+                InstalledEquipmentReinstallResolution::Blocked(preview) => {
+                    InstalledReplacementReinstallResolution::Blocked(preview)
+                }
+                InstalledEquipmentReinstallResolution::Ready(context) => {
+                    let InstalledEquipmentReinstallContext {
+                        installed_revision_id,
+                        mut installed_bindings,
+                    } = *context;
+                    InstalledReplacementReinstallResolution::Ready(Box::new(
+                        InstalledReplacementReinstallContext {
+                            installed_revision_id,
+                            installed_binding: installed_bindings
+                                .pop()
+                                .expect("single context validates exactly one binding"),
+                        },
+                    ))
+                }
+            },
+        )
+    }
+
+    pub fn resolve_installed_equipment_context(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+    ) -> Result<InstalledEquipmentReinstallResolution, ReinstallPreviewError> {
+        self.resolve_replacement_context(game_id, profile_id, mod_id, true)
+    }
+
+    fn resolve_replacement_context(
+        &self,
+        game_id: &GameId,
+        profile_id: &ProfileId,
+        mod_id: &ModId,
+        multiple: bool,
+    ) -> Result<InstalledEquipmentReinstallResolution, ReinstallPreviewError> {
         let prerequisite_decision = self.prerequisite_decision(game_id);
         let blocked_preview = |installed_revision, candidate_revision, reason| {
             ReinstallPlanPreview::blocked_preview(
@@ -267,7 +325,7 @@ impl ReinstallPreviewService {
             )
         };
         if prerequisite_decision.is_blocked() {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(None, None, ReinstallBlockingReason::PrerequisitesBlocked),
             ));
         }
@@ -280,17 +338,17 @@ impl ReinstallPreviewService {
             .load_manifest(profile_id)
             .map_err(|_| ReinstallPreviewError::ManifestUnavailable)?;
         let Some(manifest) = manifest else {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(None, None, ReinstallBlockingReason::NotInstalled),
             ));
         };
         if manifest.profile_id != *profile_id {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(None, None, ReinstallBlockingReason::ManifestStateUnsafe),
             ));
         }
         if let Err(error) = manifest.validate() {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(None, None, manifest_validation_blocking_reason(error)),
             ));
         }
@@ -301,7 +359,7 @@ impl ReinstallPreviewService {
         if !active_recovery.is_empty()
             || manifest.status.consumption() != InstallManifestStatusConsumption::TrustEntries
         {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(None, None, ReinstallBlockingReason::ManifestStateUnsafe),
             ));
         }
@@ -314,12 +372,12 @@ impl ReinstallPreviewService {
             match resolve_installed_revision(&manifest, mod_id, &legacy_provenance) {
                 Ok(revision_id) => revision_id,
                 Err(ReinstallManifestError::ModNotInstalled) => {
-                    return Ok(InstalledReplacementReinstallResolution::Blocked(
+                    return Ok(InstalledEquipmentReinstallResolution::Blocked(
                         blocked_preview(None, None, ReinstallBlockingReason::NotInstalled),
                     ));
                 }
                 Err(_) => {
-                    return Ok(InstalledReplacementReinstallResolution::Blocked(
+                    return Ok(InstalledEquipmentReinstallResolution::Blocked(
                         blocked_preview(
                             None,
                             None,
@@ -336,7 +394,7 @@ impl ReinstallPreviewService {
             .as_ref()
             .is_none_or(|revision| revision.mod_id != *mod_id)
         {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(
                     Some(installed_revision_id),
                     None,
@@ -344,24 +402,26 @@ impl ReinstallPreviewService {
                 ),
             ));
         }
-        let mut bindings = manifest
+        let installed_bindings = manifest
             .replacement_bindings
             .iter()
-            .filter(|snapshot| snapshot.mod_id() == mod_id);
-        let (Some(installed_binding), None) = (bindings.next(), bindings.next()) else {
-            return Ok(InstalledReplacementReinstallResolution::Blocked(
+            .filter(|snapshot| snapshot.mod_id() == mod_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        if installed_bindings.is_empty() || (!multiple && installed_bindings.len() != 1) {
+            return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(
                     Some(installed_revision_id.clone()),
                     Some(installed_revision_id),
                     ReinstallBlockingReason::CandidateNotReady,
                 ),
             ));
-        };
+        }
 
-        Ok(InstalledReplacementReinstallResolution::Ready(Box::new(
-            InstalledReplacementReinstallContext {
+        Ok(InstalledEquipmentReinstallResolution::Ready(Box::new(
+            InstalledEquipmentReinstallContext {
                 installed_revision_id,
-                installed_binding: installed_binding.clone(),
+                installed_bindings,
             },
         )))
     }
@@ -370,7 +430,7 @@ impl ReinstallPreviewService {
         &self,
         request: ReinstallPreviewRequest,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
-        self.prepare_with_candidate_plan(request, None, false)
+        self.prepare_with_candidate_plan(request, None, ReplacementSwitchMode::Disabled)
     }
 
     pub fn prepare_replacement_target_switch(
@@ -378,14 +438,30 @@ impl ReinstallPreviewService {
         request: ReinstallPreviewRequest,
         candidate_plan: InstallPlan,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
-        self.prepare_with_candidate_plan(request, Some(candidate_plan), true)
+        self.prepare_with_candidate_plan(
+            request,
+            Some(candidate_plan),
+            ReplacementSwitchMode::SingleSource,
+        )
+    }
+
+    pub fn prepare_equipment_target_switch(
+        &self,
+        request: ReinstallPreviewRequest,
+        candidate_plan: InstallPlan,
+    ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
+        self.prepare_with_candidate_plan(
+            request,
+            Some(candidate_plan),
+            ReplacementSwitchMode::Equipment,
+        )
     }
 
     fn prepare_with_candidate_plan(
         &self,
         request: ReinstallPreviewRequest,
         candidate_plan: Option<InstallPlan>,
-        allow_same_revision_target_switch: bool,
+        switch_mode: ReplacementSwitchMode,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         let prerequisite_decision = self.prerequisite_decision(&request.game_id);
         let blocked = |installed_revision, candidate_revision, reason| {
@@ -522,7 +598,9 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::InstalledRevisionUnknown,
             ));
         }
-        if installed_revision_id == candidate_revision_id && !allow_same_revision_target_switch {
+        if installed_revision_id == candidate_revision_id
+            && matches!(switch_mode, ReplacementSwitchMode::Disabled)
+        {
             return Ok(blocked(
                 Some(installed_revision_id),
                 Some(candidate_revision_id),
@@ -588,7 +666,9 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateNotReady,
             ));
         }
-        if allow_same_revision_target_switch && installed_revision_id != candidate_revision_id {
+        if !matches!(switch_mode, ReplacementSwitchMode::Disabled)
+            && installed_revision_id != candidate_revision_id
+        {
             return Ok(blocked(
                 installed_summary,
                 candidate_summary,
@@ -602,6 +682,13 @@ impl ReinstallPreviewService {
                 &candidate_revision_id,
                 &plan.replacement_bindings,
             )
+            && !(matches!(switch_mode, ReplacementSwitchMode::Equipment)
+                && is_same_revision_equipment_target_switch(
+                    &manifest,
+                    &request.mod_id,
+                    &candidate_revision_id,
+                    &plan.replacement_bindings,
+                ))
         {
             return Ok(blocked(
                 installed_summary,
