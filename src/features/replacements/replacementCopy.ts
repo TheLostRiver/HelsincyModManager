@@ -48,6 +48,15 @@ export type ReplacementCopy = {
     analyzing: string;
     retry: string;
     detectionTitle: string;
+    defaultTargetsTitle: string;
+    defaultTargetsHint: string;
+    currentTargetsTitle: string;
+    currentTargetsHint: string;
+    currentTargetsUnknown: string;
+    contextLoading: string;
+    contextUnavailable: string;
+    contextNameUnknown: string;
+    contextSharedNames: string;
     resourceCount: (count: number) => string;
     noSources: string;
     warningsAria: string;
@@ -61,7 +70,7 @@ export type ReplacementCopy = {
     // 搜索命中了行里没渲染的名字（别名 / 其他语言展示名）时的行内提示（#274）。
     matchedNames: (names: string[]) => string;
     matchedNamesMore: (count: number) => string;
-    // 共用同一模型的其他名称（#274 PR 2）：行内计数药丸 + 选中目标的别名摘要。
+    // 每个武器名称单独可选，同时提示共享模型的影响范围。
     aliasCount: (count: number) => string;
     aliasCountTitle: string;
     selectedAliasesTitle: string;
@@ -326,6 +335,15 @@ export const replacementCopy = {
       analyzing: "正在分析替换资源",
       retry: "重试",
       detectionTitle: "检测结果",
+      defaultTargetsTitle: "Mod 默认替换对象",
+      defaultTargetsHint: "按作者提供的 Mod 文件识别。安装或启用原包后，在游戏中装备对应的武器或防具即可查看效果。",
+      currentTargetsTitle: "当前安装替换对象",
+      currentTargetsHint: "根据当前配置档的 HMM 安装记录显示。",
+      currentTargetsUnknown: "当前安装对象暂不可确认；下面显示的是 Mod 原包的默认对象。",
+      contextLoading: "正在读取 Mod 的替换对象…",
+      contextUnavailable: "暂时无法读取 Mod 的替换对象，请重试。",
+      contextNameUnknown: "已识别资源编号，但目录没有可确认的装备名称。",
+      contextSharedNames: "共用该模型、也会受到影响的其他名称：",
       resourceCount: (count: number) => `${count} 个资源`,
       noSources: "未检测到可替换的外观槽位。",
       warningsAria: "分析警告",
@@ -338,12 +356,12 @@ export const replacementCopy = {
       noMatches: "没有匹配的替换目标。",
       matchedNames: (names: string[]) => `匹配：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 个`,
-      aliasCount: (count: number) => `+${count} 个名称`,
-      aliasCountTitle: "这些装备与该目标共用同一套模型文件；选中后可查看全部名称。",
-      selectedAliasesTitle: "共用此模型的其他名称",
+      aliasCount: (count: number) => `同模型 · +${count}`,
+      aliasCountTitle: "这些武器共用模型，选择任意一项都会一同改变外观。",
+      selectedAliasesTitle: "同模型影响范围",
       selectedAliasesCount: (count: number) => `${count} 个名称`,
-      selectedAliasesHint: "这些装备与所选目标使用同一套模型文件，替换后外观一同改变。",
-      selectedAliasesAria: "共用此模型的其他名称",
+      selectedAliasesHint: "下列武器与所选项共用模型，替换后外观会一同改变，无法只改变其中一个名称对应的武器。",
+      selectedAliasesAria: "受同模型替换影响的武器名称",
       targetOccupied: (name: string) =>
         `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
       targetOccupiedTag: "已被占用",
@@ -601,6 +619,15 @@ export const replacementCopy = {
       analyzing: "Analyzing replacement assets",
       retry: "Retry",
       detectionTitle: "Detection Result",
+      defaultTargetsTitle: "Mod's default replacements",
+      defaultTargetsHint: "Identified from the author's mod files. After installing or enabling the original package, equip these weapons or armor to see the mod.",
+      currentTargetsTitle: "Currently installed replacements",
+      currentTargetsHint: "From HMM's installation records for the current profile.",
+      currentTargetsUnknown: "Current installed replacements cannot be verified. The original package's defaults are shown below.",
+      contextLoading: "Reading the mod's replacements…",
+      contextUnavailable: "The mod's replacements could not be read. Please retry.",
+      contextNameUnknown: "The resource ID was detected, but its equipment name is not verified in the catalog.",
+      contextSharedNames: "Other names sharing this model and affected by the replacement:",
       resourceCount: (count: number) => `${count} asset${count === 1 ? "" : "s"}`,
       noSources: "No replaceable appearance slots detected.",
       warningsAria: "Analysis warnings",
@@ -613,14 +640,14 @@ export const replacementCopy = {
       noMatches: "No matching replacement targets.",
       matchedNames: (names: string[]) => `Matches: ${names.join(", ")}`,
       matchedNamesMore: (count: number) => `+${count} more`,
-      aliasCount: (count: number) => `+${count} name${count === 1 ? "" : "s"}`,
+      aliasCount: (count: number) => `Shared model · +${count}`,
       aliasCountTitle:
-        "These items share this target's model files; select the row to see every name.",
-      selectedAliasesTitle: "Other names sharing this model",
+        "These weapons share model files. Choosing any of them changes their appearances together.",
+      selectedAliasesTitle: "Shared model impact",
       selectedAliasesCount: (count: number) => `${count} name${count === 1 ? "" : "s"}`,
       selectedAliasesHint:
-        "They use the same model files as the selected target, so the replacement changes their appearance too.",
-      selectedAliasesAria: "Other names sharing this model",
+        "All weapons listed here share the selected model. The replacement changes them together; it cannot affect just one name.",
+      selectedAliasesAria: "Weapons affected by this shared model replacement",
       targetOccupied: (name: string) =>
         `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
       targetOccupiedTag: "Occupied",
@@ -878,6 +905,15 @@ export const replacementCopy = {
       analyzing: "置換アセットを分析中",
       retry: "再試行",
       detectionTitle: "検出結果",
+      defaultTargetsTitle: "Mod 本来の置換対象",
+      defaultTargetsHint: "作者の Mod ファイルから識別しています。元のパッケージをインストールまたは有効にした後、該当の武器・防具を装備すると変更を確認できます。",
+      currentTargetsTitle: "現在インストール済みの置換対象",
+      currentTargetsHint: "現在のプロファイルの HMM インストール記録に基づきます。",
+      currentTargetsUnknown: "現在のインストール対象を確認できません。以下は元のパッケージの対象です。",
+      contextLoading: "Mod の置換対象を読み込み中…",
+      contextUnavailable: "Mod の置換対象を読み取れません。再試行してください。",
+      contextNameUnknown: "リソース番号は検出されましたが、対応する装備名を確認できません。",
+      contextSharedNames: "このモデルを共有し、一緒に変更される他の名称：",
       resourceCount: (count: number) => `${count} 件のアセット`,
       noSources: "置換可能な外観スロットは検出されませんでした。",
       warningsAria: "分析の警告",
@@ -890,12 +926,12 @@ export const replacementCopy = {
       noMatches: "一致する置換ターゲットがありません。",
       matchedNames: (names: string[]) => `一致：${names.join("、")}`,
       matchedNamesMore: (count: number) => `+${count} 件`,
-      aliasCount: (count: number) => `+${count} 件の名称`,
-      aliasCountTitle: "これらの装備はこのターゲットとモデルファイルを共有しています。選択するとすべての名称を表示します。",
-      selectedAliasesTitle: "このモデルを共有する他の名称",
+      aliasCount: (count: number) => `共有モデル · +${count}`,
+      aliasCountTitle: "これらの武器はモデルを共有しているため、どれを選んでも外観が一緒に変わります。",
+      selectedAliasesTitle: "共有モデルの影響範囲",
       selectedAliasesCount: (count: number) => `${count} 件の名称`,
-      selectedAliasesHint: "これらの装備は選択したターゲットと同じモデルファイルを使用しているため、置換後は外観も一緒に変わります。",
-      selectedAliasesAria: "このモデルを共有する他の名称",
+      selectedAliasesHint: "以下の武器は選択したモデルを共有しています。置換後はすべての外観が一緒に変わり、一つの名称の武器だけを変更することはできません。",
+      selectedAliasesAria: "共有モデルの置換で影響を受ける武器名",
       targetOccupied: (name: string) =>
         `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
       targetOccupiedTag: "占有済み",
