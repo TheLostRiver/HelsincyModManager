@@ -111,6 +111,51 @@ pub struct ReplacementSourceDto {
     pub source_type: String,
     pub internal_id: String,
     pub supported: bool,
+    pub display_names: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplacementSummaryItemDto {
+    pub id: String,
+    pub kind: String,
+    pub internal_id: String,
+    pub display_names: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModReplacementSummaryDto {
+    pub game_id: String,
+    pub mod_id: String,
+    pub package_id: String,
+    pub sources: Vec<ReplacementSummaryItemDto>,
+    pub installed_targets: Option<Vec<ReplacementSummaryItemDto>>,
+}
+
+impl From<hmm_app::ReplacementSummaryItem> for ReplacementSummaryItemDto {
+    fn from(item: hmm_app::ReplacementSummaryItem) -> Self {
+        Self {
+            id: item.id,
+            kind: item.kind,
+            internal_id: item.internal_id,
+            display_names: item.display_names,
+        }
+    }
+}
+
+impl From<hmm_app::ModReplacementSummary> for ModReplacementSummaryDto {
+    fn from(summary: hmm_app::ModReplacementSummary) -> Self {
+        Self {
+            game_id: summary.game_id.as_str().to_owned(),
+            mod_id: summary.mod_id.as_str().to_owned(),
+            package_id: summary.package_id,
+            sources: summary.sources.into_iter().map(Into::into).collect(),
+            installed_targets: summary
+                .installed_targets
+                .map(|items| items.into_iter().map(Into::into).collect()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -158,6 +203,41 @@ mod replacement_dto_tests {
     use super::*;
     use crate::dto::{GamePrerequisiteDecisionCodeDto, GamePrerequisiteDecisionStatusDto};
     use serde_json::json;
+
+    #[test]
+    fn display_summary_serializes_names_identity_and_unknown_install_facts() {
+        let summary = hmm_app::ModReplacementSummary {
+            game_id: hmm_core::GameId::mhw(),
+            mod_id: hmm_core::ModId::new("mod-a"),
+            package_id: "package-a".to_owned(),
+            sources: vec![hmm_app::ReplacementSummaryItem {
+                id: "source-a".to_owned(),
+                kind: "weapon".to_owned(),
+                internal_id: "001".to_owned(),
+                display_names: std::collections::BTreeMap::from([
+                    ("zh_cn".to_owned(), "测试武器".to_owned()),
+                    ("en".to_owned(), "Fixture weapon".to_owned()),
+                ]),
+            }],
+            installed_targets: None,
+        };
+        let dto = ModReplacementSummaryDto::from(summary);
+        let mut actual = serde_json::to_value(&dto).unwrap();
+        assert_eq!(
+            actual,
+            json!({
+                "gameId": "mhw", "modId": "mod-a", "packageId": "package-a",
+                "sources": [{ "id": "source-a", "kind": "weapon", "internalId": "001", "displayNames": { "zh_cn": "测试武器", "en": "Fixture weapon" } }],
+                "installedTargets": null,
+            })
+        );
+        let empty = ModReplacementSummaryDto {
+            installed_targets: Some(vec![]),
+            ..dto
+        };
+        actual["installedTargets"] = json!([]);
+        assert_eq!(serde_json::to_value(empty).unwrap(), actual);
+    }
 
     #[test]
     fn target_list_request_requires_mod_identity_and_rejects_backend_paths() {
@@ -352,6 +432,7 @@ mod replacement_dto_tests {
                 source_type: "armor".to_owned(),
                 internal_id: "pl121_0000".to_owned(),
                 supported: true,
+                display_names: std::collections::BTreeMap::new(),
             }],
             warnings: vec![ReplacementWarningDto::SourceMatchesTarget],
         };

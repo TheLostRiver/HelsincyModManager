@@ -94,7 +94,7 @@ test("import and delete entry points take the freeze reason from the shared snap
 
 test("gate codes returned by import / delete / external import commands have specific copy", () => {
   const importCopy = readSource("src/features/mods/modImportCopy.ts");
-  const importAction = readSource("src/features/mods/ModImportAction.tsx");
+  const importAction = readSource("src/features/mods/modImportTaskState.ts");
   const deleteCopy = readSource("src/features/mods/modDeleteCopy.ts");
   const externalCopy = readSource("src/features/mods/external-import/externalImportCopy.ts");
 

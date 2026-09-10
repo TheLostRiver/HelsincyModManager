@@ -26,6 +26,7 @@ import type { ExternalStatusBadgeCopy } from "./externalInstallStatusView";
 export type ExternalAdoptErrorCode =
   | "external_mod_adopt_game_instance_unavailable"
   | "external_mod_adopt_mod_unavailable"
+  | "external_mod_adopt_origin_unsupported"
   | "external_mod_adopt_scan_required"
   | "external_mod_adopt_unreadable_files"
   | "external_mod_adopt_nothing_to_adopt"
@@ -182,6 +183,7 @@ export const externalStateCopy = {
       errors: {
         external_mod_adopt_game_instance_unavailable: "游戏目录不可用，请先在设置中配置游戏目录。",
         external_mod_adopt_mod_unavailable: "找不到该 MOD 的导入记录，无法接管。",
+        external_mod_adopt_origin_unsupported: "仅支持接管从狩技盒子迁移的 Mod。",
         external_mod_adopt_scan_required: "请先「检查游戏目录」，接管以那次检查结果为准。",
         external_mod_adopt_unreadable_files:
           "有文件读不到（可能正被游戏或其他程序占用），关闭它们并重新检查后再试。",
@@ -310,6 +312,7 @@ export const externalStateCopy = {
         external_mod_adopt_game_instance_unavailable:
           "The game directory is unavailable. Configure it in settings first.",
         external_mod_adopt_mod_unavailable: "No import record exists for this mod, so it cannot be adopted.",
+        external_mod_adopt_origin_unsupported: "Only mods migrated from Hunting Box can be adopted.",
         external_mod_adopt_scan_required:
           "Run “Check game directory” first — adoption uses that check result.",
         external_mod_adopt_unreadable_files:
@@ -448,6 +451,7 @@ export const externalStateCopy = {
         external_mod_adopt_game_instance_unavailable:
           "ゲームディレクトリが利用できません。先に設定で構成してください。",
         external_mod_adopt_mod_unavailable: "この MOD のインポート記録が見つからないため、引き継げません。",
+        external_mod_adopt_origin_unsupported: "引き継ぎは Hunting Box から移行した Mod のみ対応しています。",
         external_mod_adopt_scan_required:
           "先に「ゲームディレクトリを確認」を実行してください。引き継ぎはその確認結果に基づきます。",
         external_mod_adopt_unreadable_files:

@@ -23,6 +23,10 @@ use uuid::Uuid;
 use crate::install::cross_mod_target_conflicts;
 use crate::InstallRecoveryStatus;
 
+#[path = "replacement_display.rs"]
+mod display;
+pub use display::{ModReplacementSummary, ReplacementSummaryItem};
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReplacementServiceError {
     #[error("replacement is unsupported for the requested game")]

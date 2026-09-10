@@ -16,6 +16,7 @@ export type ModImportCopy = {
     notAnArchive: string;
     archiveEncrypted: string;
     archiveMultiVolume: string;
+    previewLimitExceeded: string;
   };
   dialog: {
     revisionTitle: string;
@@ -116,6 +117,7 @@ export const modImportCopy = {
       notAnArchive: "这个文件不是压缩包，请选择 Mod 的压缩包",
       archiveEncrypted: "这个压缩包有密码，HMM 无法解开。请先解压去掉密码，再重新打包导入",
       archiveMultiVolume: "这是分卷压缩包，HMM 只拿到了其中一卷。请先在本地解压合并，再重新打包导入",
+      previewLimitExceeded: "一次最多检查 100 个压缩包，请分批拖入。",
     },
     dialog: {
       revisionTitle: "选择新版本压缩包",
@@ -221,6 +223,7 @@ export const modImportCopy = {
         "This archive is password protected and HMM cannot open it. Extract it, remove the password, repack and import again.",
       archiveMultiVolume:
         "This is a multi-volume archive and HMM only received one volume. Extract it locally, repack it as a single archive and import again.",
+      previewLimitExceeded: "Check up to 100 archives at a time. Drop them in smaller batches.",
     },
     dialog: {
       revisionTitle: "Choose the new version's archive",
@@ -327,6 +330,7 @@ export const modImportCopy = {
         "このアーカイブにはパスワードが設定されており、HMM では開けません。展開してパスワードを解除し、再圧縮してからインポートしてください",
       archiveMultiVolume:
         "これは分割アーカイブで、HMM は 1 巻しか受け取っていません。ローカルで展開・結合し、単一のアーカイブに再圧縮してからインポートしてください",
+      previewLimitExceeded: "一度に確認できる書庫は 100 件までです。分けてドロップしてください。",
     },
     dialog: {
       revisionTitle: "新バージョンのアーカイブを選択",

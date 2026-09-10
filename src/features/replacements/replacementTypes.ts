@@ -81,6 +81,22 @@ export type ReplacementSource = {
   sourceType: string;
   internalId: string;
   supported: boolean;
+  displayNames?: Record<string, string>;
+};
+
+export type ReplacementSummaryItem = {
+  id: string;
+  kind: string;
+  internalId: string;
+  displayNames: Record<string, string>;
+};
+
+export type ModReplacementSummary = {
+  gameId: string;
+  modId: string;
+  packageId: string;
+  sources: ReplacementSummaryItem[];
+  installedTargets: ReplacementSummaryItem[] | null;
 };
 
 export type ReplacementWarning =

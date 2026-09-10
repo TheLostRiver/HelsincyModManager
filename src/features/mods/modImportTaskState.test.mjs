@@ -9,7 +9,22 @@ import {
   getModImportTaskPhaseLabel,
   isModImportTaskPhase,
   nextModImportTaskStateFromProgress,
+  modImportStartFailureKind,
 } from "./modImportTaskState.ts";
+
+test("import start failures use stable codes and never raw error text", () => {
+  assert.equal(modImportStartFailureKind({ code: "mod_storage_migration_in_progress" }), "storage-frozen-migration");
+  assert.equal(modImportStartFailureKind({ code: "mod_storage_restart_required" }), "storage-frozen-restart");
+  assert.equal(modImportStartFailureKind({ code: "mod_import_preview_limit_exceeded" }), "preview-limit");
+  assert.equal(modImportStartFailureKind({ message: "mod_storage_restart_required" }), "start-failed");
+});
+
+test("preview limit errors have nonempty messages in all supported locales", async () => {
+  const { modImportCopy } = await import("./modImportCopy.ts");
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    assert.ok(getModImportFailedMessage("preview-limit", modImportCopy[locale]).trim().length > 0, locale);
+  }
+});
 
 test("reconnect requests are consumed exactly once after the listener is ready", () => {
   let requested = true;

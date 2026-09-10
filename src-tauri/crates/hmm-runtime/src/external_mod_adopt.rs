@@ -35,10 +35,11 @@ use hmm_app::{
     GameProfileWriteLockRegistry, InstallWriteAdmission, InstallWriteAdmissionError, TaskManager,
 };
 use hmm_core::{ExternalFileState, FileLayer, GameId, InstallTargetPath, ModId, ProfileId};
+use hmm_infra::HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID;
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, CancellationToken,
     CrossProcessWriteAdmissionError, GameConfigRepository, InstallGameFileInspector,
-    InstallManifestRepository, ModImportResultRepository,
+    InstallManifestRepository, ModImportResultRepository, StoredModOriginProvenance,
 };
 
 use crate::external_state_scan::{
@@ -54,6 +55,8 @@ pub enum ConfiguredExternalModAdoptError {
     GameInstanceUnavailable,
     /// 该 `mod_id` 的导入记录不存在（扫描之后 MOD 被删了）。
     ModUnavailable,
+    /// 接管只支持来源已确认的狩技盒子迁移 Mod。
+    OriginUnsupported,
     /// 本会话没有这个 MOD 的成功扫描记录：先「检查游戏目录」再接管。
     ScanRequired,
     /// 记录里有读不到的文件（规则 3）：残缺事实上不建清单。
@@ -87,6 +90,7 @@ impl ConfiguredExternalModAdoptError {
         match self {
             Self::GameInstanceUnavailable => "external_mod_adopt_game_instance_unavailable",
             Self::ModUnavailable => "external_mod_adopt_mod_unavailable",
+            Self::OriginUnsupported => "external_mod_adopt_origin_unsupported",
             Self::ScanRequired => "external_mod_adopt_scan_required",
             Self::UnreadableFiles => "external_mod_adopt_unreadable_files",
             Self::NothingToAdopt => "external_mod_adopt_nothing_to_adopt",
@@ -196,10 +200,7 @@ impl ConfiguredExternalModAdopter {
         request: &ConfiguredExternalModAdoptRequest<'_>,
     ) -> Result<(ExternalAdoptPlan, bool), ConfiguredExternalModAdoptError> {
         // ---- 锁外：零副作用的前置拒绝 ----
-        self.mod_import_result_repository
-            .get_analysis(request.mod_id.as_str())
-            .map_err(|_| ConfiguredExternalModAdoptError::ModUnavailable)?
-            .ok_or(ConfiguredExternalModAdoptError::ModUnavailable)?;
+        self.ensure_supported_origin(request.mod_id)?;
 
         let record = self
             .scan_cache
@@ -239,6 +240,7 @@ impl ConfiguredExternalModAdopter {
         self.write_admission
             .ensure_write_allowed(request.game_id, request.profile_id)
             .map_err(ConfiguredExternalModAdoptError::WriteNotAllowed)?;
+        self.ensure_supported_origin(request.mod_id)?;
 
         // 重验 1：磁盘事实。锁内重新加载游戏目录——目录改了就会 stat 到别处而与记录指纹不一致。
         let game_instance = self
@@ -298,6 +300,27 @@ impl ConfiguredExternalModAdopter {
 
         let audit_ok = self.record_audit(request, "success", Some(&plan), None);
         Ok((plan, !audit_ok))
+    }
+
+    fn ensure_supported_origin(
+        &self,
+        mod_id: &ModId,
+    ) -> Result<(), ConfiguredExternalModAdoptError> {
+        let logical_mod = self
+            .mod_import_result_repository
+            .get_mod(mod_id)
+            .map_err(|_| ConfiguredExternalModAdoptError::ModUnavailable)?
+            .filter(|logical_mod| logical_mod.mod_id == *mod_id)
+            .ok_or(ConfiguredExternalModAdoptError::ModUnavailable)?;
+        match logical_mod.origin_provenance {
+            StoredModOriginProvenance::ExternalImport { provenance }
+                if provenance.adapter_id.as_str() == HUNTING_BOX_DIRECTORY_V1_ADAPTER_ID
+                    && provenance.validate().is_ok() =>
+            {
+                Ok(())
+            }
+            _ => Err(ConfiguredExternalModAdoptError::OriginUnsupported),
+        }
     }
 
     fn manifest_timestamp(&self) -> String {

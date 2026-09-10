@@ -306,11 +306,11 @@ pub use replacement::{
     is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
     InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
     InitialRetargetSelection, InitialRetargetSlotIntent, MaterializeRetargetRequest,
-    MaterializedInitialRetargetInstall, MaterializedRetarget, PlannedInitialRetargetInstall,
-    PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    MaterializedInitialRetargetInstall, MaterializedRetarget, ModReplacementSummary,
+    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
-    ReplacementWorkflowError, ReplacementWorkflowService, RetargetMaterializeError,
-    RetargetReinstallRequest, RetargetStagingMaterializerFactory,
+    ReplacementSummaryItem, ReplacementWorkflowError, ReplacementWorkflowService,
+    RetargetMaterializeError, RetargetReinstallRequest, RetargetStagingMaterializerFactory,
 };
 pub use replacement_audit::ReplacementAdapterAuditFacts;
 pub use replacement_occupancy::{ReplacementOccupancyService, ReplacementTargetOccupancy};

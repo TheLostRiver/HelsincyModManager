@@ -12,8 +12,12 @@ import { projectExternalCardBadge } from "./externalCardBadge";
 import type { ExternalModStateDto } from "./externalStateApi";
 import { externalStateCopy } from "./externalStateCopy";
 import "./ModPosterCard.css";
+import type { GameId } from "../game-setup/gameSetupTypes";
+import { ModCardHover } from "./ModCardHover";
 
 type ModPosterCardProps = {
+  gameId: GameId;
+  profileId: string | null;
   item: ModLibraryItem;
   selected: boolean;
   selectionMode: ModSelectionMode;
@@ -76,6 +80,8 @@ function statusLabelForItem(item: ModLibraryItem, card: ModLibraryCopy["card"]) 
 }
 
 export function ModPosterCard({
+  gameId,
+  profileId,
   item,
   selected,
   selectionMode,
@@ -124,7 +130,7 @@ export function ModPosterCard({
   const isList = viewMode === "list";
   const isGrid = viewMode === "grid";
   const isClassic = viewMode === "classic";
-  const versionLabel = item.versionLabel ?? "v1.0.0";
+  const versionLabel = item.versionLabel?.trim() || null;
   /*
    * 作者只来自真实数据。原实现在 grid / list 视图硬编码 "NexusUser123"、
    * 在 list 视图硬编码一整段中文描述，导致整屏卡片显示同一个作者和同一段文案；
@@ -191,6 +197,7 @@ export function ModPosterCard({
   }, [previewThumbnail?.thumbnailUrl]);
 
   return (
+    <ModCardHover item={item} gameId={gameId} profileId={profileId}>
     <div
       role={batchSelectionActive ? "checkbox" : "button"}
       tabIndex={0}
@@ -311,7 +318,7 @@ export function ModPosterCard({
           <div className="mod-card__meta-row">
             <span className="mod-card__meta-lead">
               {authorLabel ? <span className="mod-card__author">{authorLabel}</span> : null}
-              <span className="mod-card__version-badge">{versionLabel}</span>
+              {versionLabel ? <span className="mod-card__version-badge">{versionLabel}</span> : null}
             </span>
             <span className="mod-card__size">{item.sizeLabel}</span>
           </div>
@@ -329,7 +336,7 @@ export function ModPosterCard({
             {categoryStrip}
           </div>
           <div className="mod-card__footer-list">
-            <span>{card.versionLabel}{versionLabel}</span>
+            {versionLabel ? <span>{card.versionLabel}{versionLabel}</span> : null}
             <span>{card.sizeLabel}{item.sizeLabel}</span>
           </div>
         </div>
@@ -346,7 +353,7 @@ export function ModPosterCard({
             {categoryStrip}
           </div>
           <div className="mod-card__tech-footer">
-            <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span>
+            {versionLabel ? <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span> : null}
             <span className="mod-card__tech-size" data-label="Size">{item.sizeLabel || "Unknown"}</span>
           </div>
           <div
@@ -365,5 +372,6 @@ export function ModPosterCard({
         </div>
       )}
     </div>
+    </ModCardHover>
   );
 }
