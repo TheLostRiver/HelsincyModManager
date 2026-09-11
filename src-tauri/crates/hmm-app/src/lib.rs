@@ -305,7 +305,7 @@ pub use reinstall_task::{
     StartReinstallTaskRequest, StartRetargetReinstallTaskRequest,
 };
 pub use replacement::{
-    is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
+    is_identity_replacement_binding, AnalyzeImportedReplacementRequest, CanonicalReinstallPlanner,
     EquipmentRetargetConfiguration, EquipmentRetargetReinstallRequest,
     EquipmentSourceConfiguration, InitialRetargetInstallStatusError,
     InitialRetargetInstallStatusReader, InitialRetargetSelection, InitialRetargetSlotIntent,

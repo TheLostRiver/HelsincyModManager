@@ -20,6 +20,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[path = "reinstall_target_paths.rs"]
+mod target_paths;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReinstallPreviewRequest {
     pub game_id: GameId,
@@ -608,7 +611,7 @@ impl ReinstallPreviewService {
             ));
         }
 
-        let plan = match candidate_plan {
+        let mut plan = match candidate_plan {
             Some(plan) => plan,
             None => match self
                 .planner
@@ -707,15 +710,25 @@ impl ReinstallPreviewService {
             ));
         }
 
+        if let Err(reason) =
+            target_paths::preserve_installed_spelling(&request.mod_id, &manifest, &mut plan)
+        {
+            return Ok(blocked(installed_summary, candidate_summary, reason));
+        }
         let protected_targets = manifest
             .entries
             .iter()
             .filter(|entry| entry.mod_id == request.mod_id)
-            .map(|entry| entry.target_path.clone())
-            .chain(plan.actions.iter().map(|action| action.target_path.clone()))
+            .map(|entry| entry.target_path.windows_key())
+            .chain(
+                plan.actions
+                    .iter()
+                    .map(|action| action.target_path.windows_key()),
+            )
             .collect::<BTreeSet<_>>();
         if manifest.entries.iter().any(|entry| {
-            entry.mod_id != request.mod_id && protected_targets.contains(&entry.target_path)
+            entry.mod_id != request.mod_id
+                && protected_targets.contains(&entry.target_path.windows_key())
         }) {
             return Ok(blocked(
                 installed_summary,

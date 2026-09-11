@@ -356,6 +356,7 @@ pub struct InstallTaskRunner {
     write_locks: Arc<GameProfileWriteLockRegistry>,
     write_admission: Arc<dyn InstallWriteAdmission>,
     selections: Arc<dyn ReplacementSelectionRepository>,
+    canonical_sources: Option<Arc<crate::ReplacementWorkflowService>>,
 }
 
 pub struct UninstallTaskRunner {
@@ -476,7 +477,16 @@ impl InstallTaskRunner {
             write_locks,
             write_admission,
             selections,
+            canonical_sources: None,
         }
+    }
+
+    pub fn with_canonical_source_bindings(
+        mut self,
+        workflow: Arc<crate::ReplacementWorkflowService>,
+    ) -> Self {
+        self.canonical_sources = Some(workflow);
+        self
     }
 
     /// 批量安装执行器的阻断预检：该 Mod 是否持有未完成的重定向选择意图。
@@ -589,6 +599,18 @@ impl InstallTaskRunner {
                 ));
             }
         }
+        let ordinary_install = revision_id.is_none();
+        let revision_id = match (revision_id, &self.canonical_sources) {
+            (None, Some(workflow)) => match workflow.current_install_revision(&request.mod_id) {
+                Ok(revision) => Some(revision),
+                Err(_) => {
+                    return Err(
+                        self.fail_with_audit(task_id, &request, events, observer, "planning", 0)
+                    )
+                }
+            },
+            (revision, _) => revision,
+        };
         let preflight = match revision_id.as_ref() {
             Some(revision_id) => self.planner.build_imported_mod_revision_install_plan(
                 &request.game_id,
@@ -617,9 +639,7 @@ impl InstallTaskRunner {
                 // （retarget / 重装）沿用 `planning`——`reinstall.rs` 已把合集包在
                 // revision 语境下归为候选未就绪，不该被这里抢先改写错误分类。
                 let phase = match error {
-                    InstallPlanningError::ImportedModAmbiguousContentRoot
-                        if revision_id.is_none() =>
-                    {
+                    InstallPlanningError::ImportedModAmbiguousContentRoot if ordinary_install => {
                         "ambiguous_content_root"
                     }
                     _ => "planning",
@@ -640,7 +660,42 @@ impl InstallTaskRunner {
         }
         let prerequisite_decision = preflight.prerequisite_decision;
         let mut plan = preflight.plan;
-        if let Some(binding) = replacement_binding_snapshot {
+        if let (Some(workflow), Some(revision)) = (&self.canonical_sources, revision_id.as_ref()) {
+            plan = match workflow.bind_canonical_install_sources(
+                &request.game_id,
+                &request.profile_id,
+                &request.mod_id,
+                revision,
+                plan,
+            ) {
+                Ok(plan) => plan,
+                Err(_) => {
+                    return Err(self.fail_with_audit(
+                        task_id,
+                        &request,
+                        events,
+                        observer,
+                        "planning",
+                        action_count,
+                    ))
+                }
+            };
+            if replacement_binding_snapshot
+                .as_ref()
+                .is_some_and(|binding| {
+                    plan.replacement_bindings.as_slice() != std::slice::from_ref(binding)
+                })
+            {
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    "planning",
+                    action_count,
+                ));
+            }
+        } else if let Some(binding) = replacement_binding_snapshot {
             let binding_is_valid = revision_id.as_ref() == binding.revision_id()
                 && binding.mod_id() == &request.mod_id
                 && binding.profile_id() == &request.profile_id
@@ -685,7 +740,7 @@ impl InstallTaskRunner {
         //
         // 位置也刻意选在跨进程锁、写锁、写入准入检查、recovery 记录之前：拒绝空计划
         // 不产生安装副作用，仅把任务置为 failed 并写一条失败审计。
-        if action_count == 0 && revision_id.is_none() {
+        if action_count == 0 && ordinary_install {
             return Err(self.fail_with_audit(
                 task_id,
                 &request,
