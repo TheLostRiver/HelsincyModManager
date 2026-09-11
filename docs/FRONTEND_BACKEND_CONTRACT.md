@@ -656,6 +656,8 @@ target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 `sources` 每项为 `{ source, originalTargetId, targets }`；`source` 使用既有 `ReplacementSourceDto`。
 `installedTargets` 为 source ID 到实际 target ID 的映射，`null` 表示事实不可确认，空对象表示没有绑定。
 名称表缺项但源语法合法时，后端可以提供仅限原位的身份；它不加入可选目标目录，也不伪造 displayNames。
+普通安装和普通新版本重装从实际安装计划生成全部可识别源的原位绑定，不需要前端提交路径或绑定。
+批量安装将完整来源集合纳入后端 facts digest，自动生成的原位记录不能绕过未完成的重定向选择意图。
 
 新的首次预览响应为 `{ analysis, targets, warnings, installPlan, prerequisiteDecision }`，不再用第一个
 目标代替整组目标。配置和预览在 blocking worker 中执行，界面只在打开替换 Tab 后查询。多源重装必须
@@ -699,7 +701,8 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 失败/取消时保留以引导玩家回到面板重试；预览不落意图。持有未完成选择意图的 Mod 走普通安装会装出
 未重定向的原始 Mod（清单里的绑定与实际写入不符），因此标准安装与批量安装都 fail closed：标准安装
 返回 `install_failed:replacement_selection_pending`，批量安装该项以 `replacement_selection_pending`
-阻断。携带显式 `replacementBindingSnapshot` 的 target switch / 同版本重装不受影响。
+阻断。批量普通安装自动生成的 `replacementBindingSnapshot` 同样受此屏障约束；目标切换／同版本重装
+继续使用各自的可信绑定与预览协议。
 
 `preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 只用于 recovery status 严格为 `installed`
 的同 revision target switch。后端从 manifest 解析 installed revision，再由 repository 和 adapter 重建

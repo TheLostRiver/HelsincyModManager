@@ -30,6 +30,10 @@ pub use equipment::{
 use crate::install::cross_mod_target_conflicts;
 use crate::InstallRecoveryStatus;
 
+#[path = "replacement/canonical.rs"]
+mod canonical;
+pub use canonical::CanonicalReinstallPlanner;
+
 #[path = "replacement_display.rs"]
 mod display;
 pub use display::{ModReplacementSummary, ReplacementSummaryItem};
@@ -622,69 +626,6 @@ impl ReplacementWorkflowService {
     ) -> Result<ReplacementAnalysis, ReplacementWorkflowError> {
         self.resolve_imported_replacement(&request.game_id, &request.mod_id)
             .map(|resolved| resolved.analysis)
-    }
-
-    pub fn preview_canonical_source_install_plan(
-        &self,
-        game_id: &GameId,
-        profile_id: &ProfileId,
-        mod_id: &ModId,
-        revision_id: &ModRevisionId,
-        layer: &FileLayer,
-    ) -> Result<Option<InstallPlan>, ReplacementWorkflowError> {
-        let resolved = self.resolve_imported_revision(game_id, mod_id, revision_id)?;
-        let Some(source) = resolved.analysis.single_source().cloned() else {
-            return Ok(None);
-        };
-        let catalog = self
-            .catalog_for(game_id)?
-            .replacement_catalog()
-            .map_err(map_catalog_error)?;
-        let mut matching_targets = catalog.targets().iter().filter(|target| {
-            target.target_type() == source.source_type()
-                && target.internal_id() == source.internal_id()
-                && target
-                    .metadata()
-                    .get("path_family")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(source.path_family())
-        });
-        let (Some(target), None) = (matching_targets.next(), matching_targets.next()) else {
-            return Ok(None);
-        };
-        let binding = ReplacementBinding::new(
-            canonical_source_binding_id(game_id, profile_id, mod_id, source.id(), target.id())?,
-            mod_id.clone(),
-            profile_id.clone(),
-            source.id().clone(),
-            target.id().clone(),
-            0,
-        )
-        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
-        let content_reader = ImportedReplacementContentReader {
-            reader: self.file_reader.as_ref(),
-            package_id: &resolved.package_id,
-            sandbox_root: &resolved.sandbox_root,
-        };
-        let retarget_plan = self
-            .replacement
-            .build_retarget_plan_with_content(
-                RetargetPlanRequest {
-                    game_id: game_id.clone(),
-                    binding,
-                    assets: resolved.assets,
-                    // 一次只提交一个绑定，所以它就是包级随行资源的唯一承载者。
-                    // 多绑定提交（`#349` 切片③b-3）会在 N 个绑定里指定恰好一个。
-                    carries_package_companions: true,
-                },
-                &content_reader,
-            )
-            .map_err(ReplacementWorkflowError::Analysis)?;
-        let install_plan = self
-            .replacement
-            .build_retarget_install_plan(&retarget_plan, layer.clone(), Some(revision_id.clone()))
-            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(Some(install_plan))
     }
 
     pub fn preview_initial_install(

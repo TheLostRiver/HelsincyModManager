@@ -953,16 +953,19 @@ impl HmmRuntime {
             Arc::new(JsonReplacementSelectionRepository::new(
                 app_data_dir.join("install").join("replacement-selections"),
             ));
-        let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
-            Arc::clone(&task_manager),
-            install_preflight.clone(),
-            Arc::clone(&install_committer),
-            Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
-            Arc::clone(&install_write_locks),
-            Arc::clone(&lifecycle_write_admission),
-            Arc::clone(&replacement_selections),
-        ));
+        let install_task_runner = Arc::new(
+            InstallTaskRunner::with_write_coordination(
+                Arc::clone(&task_manager),
+                install_preflight.clone(),
+                Arc::clone(&install_committer),
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+                Arc::clone(&install_write_locks),
+                Arc::clone(&lifecycle_write_admission),
+                Arc::clone(&replacement_selections),
+            )
+            .with_canonical_source_bindings(Arc::clone(&replacement_workflow)),
+        );
         let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
             Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
                 Arc::clone(&replacement_workflow),
@@ -1753,7 +1756,10 @@ impl ConfiguredReinstallExecutor {
         let preview = Arc::new(ReinstallPreviewService::new(
             Arc::clone(&self.prerequisites),
             Arc::clone(&self.catalog),
-            self.planner.clone(),
+            Arc::new(hmm_app::CanonicalReinstallPlanner::new(
+                self.planner.clone(),
+                Arc::clone(&self.replacement_workflow),
+            )),
             Arc::clone(&source),
             Arc::clone(&game_files),
             backup_store.clone(),

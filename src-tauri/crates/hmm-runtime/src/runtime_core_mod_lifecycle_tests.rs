@@ -1182,7 +1182,7 @@ fn headless_composition_reinstalls_v1_to_v2_and_restores_baseline() {
     let profile_id = ProfileId::new("default");
     let install_task_id = install_fixture_revision(&state, &mod_id, &profile_id);
     let v1_manifest = read_fixture_manifest(&app_data_dir);
-    assert_manifest_entries(&v1_manifest, &mod_id, None, V1_FILES);
+    assert_manifest_entries(&v1_manifest, &mod_id, Some(&v1_revision_id), V1_FILES);
     let original_backup_ref = original_overwrite_backup_ref(&v1_manifest, &mod_id);
     assert_no_recovery_records(&app_data_dir);
 
@@ -1480,7 +1480,7 @@ fn headless_composition_rolls_back_v1_when_reinstall_manifest_save_fails() {
     );
     assert_eq!(snapshot_file_tree(&game_root), v1_game_snapshot);
     assert_eq!(read_fixture_manifest(&app_data_dir), v1_manifest);
-    assert_manifest_entries(&v1_manifest, &mod_id, None, V1_FILES);
+    assert_manifest_entries(&v1_manifest, &mod_id, Some(&v1_revision_id), V1_FILES);
     assert_no_recovery_records(&app_data_dir);
     assert!(state
         .reinstall_recovery_repository

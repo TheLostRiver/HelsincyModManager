@@ -580,3 +580,31 @@ fn a_retarget_competing_with_a_kept_file_produces_a_blocked_preview() {
     assert!(preview.install_plan().actions.is_empty());
     assert_eq!(preview.install_plan().conflicts[0].providers.len(), 2);
 }
+
+#[test]
+fn unavailable_original_target_metadata_does_not_block_or_filter_plain_installation() {
+    let workflow = workflow();
+    let mod_id = ModId::new("mod-a");
+    let revision = workflow.current_install_revision(&mod_id).unwrap();
+    let plain = hmm_core::InstallPlan::from_providers([SLOT_ONE, SLOT_TWO].map(|source| {
+        hmm_core::InstallFileProvider::new(
+            mod_id.clone(),
+            hmm_core::PackageFileId::new(source_path(source)),
+            InstallTargetPath::parse(source_path(source), ["nativePC"]).unwrap(),
+            FileLayer::new("base", 0),
+        )
+    }));
+    let bound = workflow
+        .bind_canonical_install_sources(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &mod_id,
+            &revision,
+            plain.clone(),
+        )
+        .expect("optional source metadata must not make a valid plain package un-installable");
+    assert_eq!(bound.actions, plain.actions);
+    assert_eq!(bound.conflicts, plain.conflicts);
+    assert_eq!(bound.replacement_bindings.len(), 1);
+    assert_eq!(bound.replacement_bindings[0].source_internal_id(), SLOT_ONE);
+}
