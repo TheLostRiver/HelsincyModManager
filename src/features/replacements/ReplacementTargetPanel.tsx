@@ -382,7 +382,6 @@ export function ReplacementTargetPanel({
       !selectedTarget ||
       profileId === null ||
       blockMessage !== null ||
-      selectedOccupancy !== null ||
       isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId)
     ) {
       return;
@@ -451,7 +450,6 @@ export function ReplacementTargetPanel({
       selectedTarget === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
-      selectedOccupancy !== null ||
       !canStart
     ) {
       return;
@@ -961,7 +959,7 @@ export function ReplacementTargetPanel({
       ) : null}
 
       {selectedOccupancy ? (
-        <div className="replacement-panel__notice is-blocked" role="status">
+        <div className="replacement-panel__notice" role="status">
           <ShieldAlert size={18} aria-hidden="true" />
           <span>{rCopy.panel.targetOccupied(selectedOccupancy.displayName)}</span>
           <button
@@ -984,7 +982,6 @@ export function ReplacementTargetPanel({
           disabled={
             selectedTarget === null ||
             isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId) ||
-            selectedOccupancy !== null ||
             !analysis?.retargetable ||
             blockMessage !== null ||
             previewState.status === "loading" ||
@@ -1001,7 +998,6 @@ export function ReplacementTargetPanel({
           disabled={
             previewState.status !== "ready" ||
             blockMessage !== null ||
-            selectedOccupancy !== null ||
             (previewState.mode === "switch"
               ? !canStartRetargetReinstall({
                   installStatus,

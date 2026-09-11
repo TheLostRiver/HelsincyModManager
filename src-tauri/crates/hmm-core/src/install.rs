@@ -2,6 +2,7 @@ use crate::{ReplacementBindingId, ReplacementBindingSnapshot, ReplacementSourceI
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
+use unicode_normalization::UnicodeNormalization;
 
 macro_rules! string_id {
     ($name:ident) => {
@@ -73,6 +74,18 @@ impl InstallTargetPath {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Windows 目标比较使用保守的等价键；原始路径拼写仍用于展示和文件动作。
+    pub fn windows_key(&self) -> String {
+        self.0
+            .nfkc()
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+            .split('/')
+            .map(|segment| segment.trim_end_matches(['.', ' ']))
+            .collect::<Vec<_>>()
+            .join("/")
     }
 }
 
@@ -155,12 +168,11 @@ pub enum InstallPlanValidationError {
 
 impl InstallPlan {
     pub fn from_providers(providers: impl IntoIterator<Item = InstallFileProvider>) -> Self {
-        let mut providers_by_target: BTreeMap<InstallTargetPath, Vec<InstallFileProvider>> =
-            BTreeMap::new();
+        let mut providers_by_target: BTreeMap<String, Vec<InstallFileProvider>> = BTreeMap::new();
 
         for provider in providers {
             providers_by_target
-                .entry(provider.target_path.clone())
+                .entry(provider.target_path.windows_key())
                 .or_default()
                 .push(provider);
         }
@@ -168,7 +180,7 @@ impl InstallPlan {
         let mut actions = Vec::new();
         let mut conflicts = Vec::new();
 
-        for (target_path, mut target_providers) in providers_by_target {
+        for mut target_providers in providers_by_target.into_values() {
             target_providers.sort_by(|left, right| {
                 left.layer
                     .priority
@@ -177,9 +189,13 @@ impl InstallPlan {
                     .then_with(|| left.package_file_id.cmp(&right.package_file_id))
             });
 
-            if has_duplicate_priorities(&target_providers) {
+            if has_duplicate_priorities(&target_providers)
+                || target_providers
+                    .iter()
+                    .any(|provider| provider.target_path != target_providers[0].target_path)
+            {
                 conflicts.push(InstallConflict {
-                    target_path,
+                    target_path: target_providers[0].target_path.clone(),
                     providers: target_providers,
                 });
                 continue;
@@ -212,10 +228,17 @@ impl InstallPlan {
     }
 
     pub fn validate_replacement_bindings(&self) -> Result<(), InstallPlanValidationError> {
+        // 被阻断的 provider 仍属于预览。执行器先拒绝冲突；持久清单的归属校验仍要求实际条目。
         let provider_mods = self
             .actions
             .iter()
-            .map(|action| action.provider.mod_id.clone())
+            .map(|action| &action.provider)
+            .chain(
+                self.conflicts
+                    .iter()
+                    .flat_map(|conflict| &conflict.providers),
+            )
+            .map(|provider| provider.mod_id.clone())
             .collect::<BTreeSet<_>>();
         let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
         /*
@@ -1220,6 +1243,65 @@ mod tests {
             result,
             Err(InstallPlanValidationError::ReplacementBindingOwnerMissing)
         );
+    }
+
+    #[test]
+    fn conflicted_providers_keep_binding_facts_for_a_blocked_preview() {
+        let destination = InstallTargetPath::parse("nativePC/shared.mod3", ["nativePC"])
+            .expect("synthetic target");
+        let plan = InstallPlan::from_providers(["first", "second"].map(|file| {
+            InstallFileProvider::new(
+                ModId::new("mod-a"),
+                PackageFileId::new(file),
+                destination.clone(),
+                FileLayer::new("base", 0),
+            )
+        }));
+        assert!(plan.actions.is_empty());
+        assert_eq!(plan.conflicts.len(), 1);
+        let blocked = plan
+            .clone()
+            .with_replacement_bindings(vec![
+                binding_snapshot_for("binding-a", "mod-a", "source-a"),
+                binding_snapshot_for("binding-b", "mod-a", "source-b"),
+            ])
+            .expect("conflicts still describe the binding owners");
+        assert!(blocked.has_blocking_conflicts());
+        assert_eq!(blocked.replacement_bindings.len(), 2);
+        assert_eq!(
+            plan.with_replacement_bindings(vec![binding_snapshot_for(
+                "unrelated",
+                "mod-without-files",
+                "source-a",
+            )]),
+            Err(InstallPlanValidationError::ReplacementBindingOwnerMissing)
+        );
+    }
+
+    #[test]
+    fn equivalent_windows_targets_conflict_without_rewriting_the_original_paths() {
+        for alias in ["MODEL.mod3", "ｍodel.mod3", "model.mod3. "] {
+            let paths = [
+                "nativePC/model.mod3".to_owned(),
+                format!("nativePC/{alias}"),
+            ];
+            let plan =
+                InstallPlan::from_providers(paths.iter().enumerate().map(|(index, path)| {
+                    InstallFileProvider::new(
+                        ModId::new("mod-a"),
+                        PackageFileId::new(index.to_string()),
+                        InstallTargetPath::parse(path.clone(), ["nativePC"]).unwrap(),
+                        FileLayer::new("base", 0),
+                    )
+                }));
+            assert!(plan.has_blocking_conflicts(), "alias was accepted: {alias}");
+            assert!(plan.actions.is_empty());
+            assert_eq!(plan.conflicts[0].providers.len(), 2);
+            assert_eq!(
+                plan.conflicts[0].providers[1].target_path.as_str(),
+                paths[1].trim()
+            );
+        }
     }
 
     #[test]

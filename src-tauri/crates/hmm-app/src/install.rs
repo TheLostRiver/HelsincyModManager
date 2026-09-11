@@ -1187,26 +1187,32 @@ pub(crate) fn cross_mod_target_conflicts(
     let Some(manifest) = existing_manifest else {
         return Vec::new();
     };
-    let mut conflicts = BTreeMap::<InstallTargetPath, InstallConflict>::new();
+    let mut requested = BTreeMap::<String, BTreeSet<&ModId>>::new();
+    for action in &plan.actions {
+        requested
+            .entry(action.target_path.windows_key())
+            .or_default()
+            .insert(&action.provider.mod_id);
+    }
+    let mut conflicts = BTreeMap::<String, InstallConflict>::new();
     for entry in &manifest.entries {
-        let occupied_by_other_mod = plan.actions.iter().any(|action| {
-            action.target_path == entry.target_path && action.provider.mod_id != entry.mod_id
-        });
+        let key = entry.target_path.windows_key();
+        let occupied_by_other_mod = requested
+            .get(&key)
+            .is_some_and(|owners| owners.iter().any(|owner| *owner != &entry.mod_id));
         if !occupied_by_other_mod {
             continue;
         }
         // 同一路径只报一次；冲突里带上占用者的 provider，前端据此提示先卸载谁。
-        conflicts
-            .entry(entry.target_path.clone())
-            .or_insert_with(|| InstallConflict {
-                target_path: entry.target_path.clone(),
-                providers: vec![InstallFileProvider::new(
-                    entry.mod_id.clone(),
-                    entry.package_file_id.clone(),
-                    entry.target_path.clone(),
-                    entry.layer.clone(),
-                )],
-            });
+        conflicts.entry(key).or_insert_with(|| InstallConflict {
+            target_path: entry.target_path.clone(),
+            providers: vec![InstallFileProvider::new(
+                entry.mod_id.clone(),
+                entry.package_file_id.clone(),
+                entry.target_path.clone(),
+                entry.layer.clone(),
+            )],
+        });
     }
 
     conflicts.into_values().collect()

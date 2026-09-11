@@ -106,12 +106,7 @@ pub enum ReplacementWorkflowError {
     /// 同一个源槽位在一次提交里被给了两条意图。谁生效都可能是错的，所以拒绝。
     #[error("one replacement source carries two slot intents")]
     DuplicateSlotIntent,
-    /// 一次提交里两个源槽位指向了同一个目标。
-    ///
-    /// 不拦的话它照样装不上（两个 provider 撞同一个 `target_path`，动作全进 `conflicts`、
-    /// `actions` 为空，绑定校验随后报 `ReplacementBindingOwnerMissing`），但报出来的是
-    /// 「计划不可用」——玩家看不出是自己把两件装备指到了一处。这里提前具名拒绝，
-    /// 让 `#349` 切片④ 的文案有准确的根因可讲。
+    /// 保留旧错误映射；新计划允许多个源共用目标，由最终文件路径判断冲突。
     #[error("two replacement sources aim at one target")]
     DuplicateSlotTarget,
     /// 「保持原位」要求源槽位本身在 catalog 里能唯一解析成一个目标（`#349` D2）。
@@ -807,15 +802,6 @@ impl ReplacementWorkflowService {
                 .map_err(ReplacementWorkflowError::Analysis)?;
             targets.push(target);
             retarget_plans.push(retarget_plan);
-        }
-
-        // 「保持原位」的自身目标与别的槽位的重定向目标同样可能撞（把 A 换到 B 的位置、
-        // 同时让 B 保持原位），所以检查放在**全部**目标解析完之后，而不是只看 Retarget。
-        let mut claimed_targets = BTreeSet::new();
-        for target in &targets {
-            if !claimed_targets.insert(target.id().clone()) {
-                return Err(ReplacementWorkflowError::DuplicateSlotTarget);
-            }
         }
 
         let install_plan = self

@@ -31,14 +31,14 @@ const weapon = {
 const another = { ...weapon, id: "physical-model-b", internalId: "swo002", displayNames: { zh_cn: "另一把刀", en: "Another Sword", ja: "別の刀" }, aliases: [], aliasesByLocale: {} };
 const text = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children ?? []).map(text).join("");
 
-async function mount(t, { installed = false, occupied = false, targetFailure = false, contextOverride = {}, holdContext = false, previewBlocked = false } = {}) {
+async function mount(t, { installed = false, occupied = false, fileConflict = false, targetFailure = false, contextOverride = {}, holdContext = false, previewBlocked = false } = {}) {
   const summaryItem = (target) => ({ id: target.id, kind: target.targetType, internalId: target.internalId, displayNames: target.displayNames });
   const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], routes: [], listeners: new Set(), holdPreview: false,
     installedTargets: installed ? [summaryItem(weapon)] : [] };
   api.listen = async (callback) => { api.listeners.add(callback); return () => api.listeners.delete(callback); };
   api.preview = (input) => ({ analysis: { gameId: "mhw", sources: [], warnings: [], retargetable: true, matchedAssetCount: 1 },
     target: input.targetId === weapon.id ? weapon : another, actions: [{ sourceInternalId: "swo099", targetInternalId: "bs_swo001" }], warnings: [],
-    installPlan: { hasBlockingConflicts: false, actions: [], conflicts: [] }, prerequisiteDecision: { status: "ready", codes: [] } });
+    installPlan: { hasBlockingConflicts: fileConflict, actions: [], conflicts: [] }, prerequisiteDecision: { status: "ready", codes: [] } });
   api.request = async (kind, input) => {
     api.calls.push({ kind, input });
     if (kind === "analysis") return { gameId: "mhw", installedTargetId: installed ? weapon.id : undefined,
@@ -114,14 +114,27 @@ test("another name on the installed model cannot bypass the same-target switch g
   assert.equal(h.api.calls.find((call) => call.kind === "switchStart").input.planToken, "fixture-plan");
 });
 
-test("all names of an occupied model inherit the occupancy guard", options, async (t) => {
+test("all names of a used model show occupancy while a conflict-free preview can install", options, async (t) => {
   const h = await mount(t, { occupied: true });
   assert.equal(h.root.root.findAll((node) => node.type === "label" && node.props["data-occupied"] === "true").length, 3);
   await h.choose("升级刀");
-  assert.equal(h.buttons()[0].props.disabled, true);
+  assert.equal(h.buttons()[0].props.disabled, false);
   assert.equal(h.buttons()[1].props.disabled, true);
   await act(async () => h.buttons()[0].props.onClick());
-  assert.equal(h.api.calls.filter((call) => call.kind === "preview").length, 0);
+  assert.equal(h.api.calls.filter((call) => call.kind === "preview").length, 1);
+  assert.equal(h.buttons()[1].props.disabled, false);
+  await act(async () => h.buttons()[1].props.onClick());
+  assert.equal(h.api.calls.filter((call) => call.kind === "start").length, 1);
+});
+
+test("an occupied model with a real file conflict remains blocked after preview", options, async (t) => {
+  const h = await mount(t, { occupied: true, fileConflict: true });
+  await h.choose("升级刀");
+  assert.equal(h.buttons()[0].props.disabled, false);
+  await act(async () => h.buttons()[0].props.onClick());
+  assert.equal(h.buttons()[1].props.disabled, true);
+  await act(async () => h.buttons()[1].props.onClick());
+  assert.equal(h.api.calls.filter((call) => call.kind === "start").length, 0);
 });
 
 test("locale change preserves the selected model and proven alias instead of guessing a translation", options, async (t) => {

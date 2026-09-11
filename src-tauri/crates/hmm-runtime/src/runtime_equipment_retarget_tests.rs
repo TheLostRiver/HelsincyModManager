@@ -6,6 +6,9 @@ use hmm_app::{
 };
 use hmm_games_mhw::MhwReplacementCatalog;
 
+#[path = "runtime_equipment_composition_tests.rs"]
+mod composition;
+
 const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     (
         "nativePC/wp/one/one001/mod/one001.mod3",

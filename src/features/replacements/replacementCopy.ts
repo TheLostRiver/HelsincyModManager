@@ -369,8 +369,8 @@ export const replacementCopy = {
       selectedAliasesHint: "下列武器与所选项共用模型，替换后外观会一同改变，无法只改变其中一个名称对应的武器。",
       selectedAliasesAria: "受同模型替换影响的武器名称",
       targetOccupied: (name: string) =>
-        `该目标已被其他 Mod 安装占用：${name}。想安装这个重定向目标，只能先卸载占用它的 Mod。`,
-      targetOccupiedTag: "已被占用",
+        `其他 Mod 正在使用该目标：${name}。请生成预览检查文件是否冲突；没有文件冲突时可以一起安装。`,
+      targetOccupiedTag: "其他 Mod 使用中",
       copyOccupantName: "复制占用方名称",
       occupantNameCopiedTitle: "已复制占用方 Mod 名称",
       occupantNameCopyFailedTitle: "复制失败",
@@ -661,8 +661,8 @@ export const replacementCopy = {
         "All weapons listed here share the selected model. The replacement changes them together; it cannot affect just one name.",
       selectedAliasesAria: "Weapons affected by this shared model replacement",
       targetOccupied: (name: string) =>
-        `This target is already installed and occupied by another mod: ${name}. To install to this replacement target, you must first uninstall the mod that occupies it.`,
-      targetOccupiedTag: "Occupied",
+        `Another mod uses this target: ${name}. Generate a preview to check file conflicts; both mods can be installed when their files do not conflict.`,
+      targetOccupiedTag: "Used by another mod",
       copyOccupantName: "Copy occupant name",
       occupantNameCopiedTitle: "Occupant mod name copied",
       occupantNameCopyFailedTitle: "Copy failed",
@@ -951,8 +951,8 @@ export const replacementCopy = {
       selectedAliasesHint: "以下の武器は選択したモデルを共有しています。置換後はすべての外観が一緒に変わり、一つの名称の武器だけを変更することはできません。",
       selectedAliasesAria: "共有モデルの置換で影響を受ける武器名",
       targetOccupied: (name: string) =>
-        `このターゲットは他の Mod にインストール済みで占有されています：${name}。この置換ターゲットにインストールするには、占有している Mod を先にアンインストールする必要があります。`,
-      targetOccupiedTag: "占有済み",
+        `他の Mod がこのターゲットを使用しています：${name}。プレビューでファイルの競合を確認してください。競合がなければ併用できます。`,
+      targetOccupiedTag: "他の Mod が使用中",
       copyOccupantName: "占有元の名前をコピー",
       occupantNameCopiedTitle: "占有元 Mod 名をコピーしました",
       occupantNameCopyFailedTitle: "コピーに失敗",
