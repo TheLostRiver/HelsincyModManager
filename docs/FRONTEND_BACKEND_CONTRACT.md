@@ -633,17 +633,38 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
 | `preview_retarget_reinstall` | `gameId`、`profileId`、`modId`、`targetId`、layer | `ReinstallPlanPreviewDto` 与 plan token |
 | `start_retarget_reinstall_task` | 与 preview 相同，另加 `planToken` | `TaskStartedDto` |
+| `get_equipment_retarget_configuration` | `gameId`、可选 `profileId`、`modId` | 每个源的名称、编号、原位身份、兼容目标及已安装目标映射 |
+| `preview_equipment_retarget_install` | `gameId`、`profileId`、`modId`、`slots`、layer | 全部选择的 targets、warnings、InstallPlan 摘要与 prerequisite |
+| `start_equipment_retarget_install_task` | 与多源首次预览相同 | `TaskStartedDto` |
+| `preview_equipment_retarget_reinstall` | `gameId`、`profileId`、`modId`、`slots`、layer | 整组 `ReinstallPlanPreviewDto` 与 plan token |
+| `start_equipment_retarget_reinstall_task` | `{ selection: 多源预览请求, planToken }` | `TaskStartedDto` |
 
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
-`sourceId`、`bindingId`、`internalId` 或最终 target path。前四个 AR4 command 从当前 display revision
-重建包事实，重新扫描并分析唯一受支持 source，按 `targetId` 查询 catalog，生成 binding、
-`RetargetPlan`、staging 和 `InstallPlan`。WR-04 Weapon preview 会由受限 content reader 从同一受控
-revision sandbox 读取 MOD3/MRL3 bytes 并生成 sealed transform invocation；前端不接触 bytes、digest、
-transformer 参数或路径。两个 AR5/WR-04 target-switch command 的 revision 来源见下文，不得复用
-display revision。target DTO 只返回展示名、alias、稳定 id/internal id、target type 与 `catalogScope`，
+`bindingId`、`internalId` 或最终 target path。`sourceId` 仅允许出现在新的多源 `slots` 中；旧单源
+command 仍由后端推断唯一源。后端按稳定身份重建包事实、解析目标、生成 binding、`RetargetPlan`、
+staging 和 `InstallPlan`。默认 MHW 策略保留材质内容和贴图位置，不需要二进制解析；旧显式材质转换
+能力保留受限 content reader 和 sealed transform invocation。前端不接触 bytes、digest、transformer
+参数或路径。已安装目标切换的 revision 来源见下文，不得复用 display revision。
+target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 不返回原始 catalog metadata。source/action DTO 只投影稳定 type/id/internal id、support 与动作事实，
 不返回 source/target relative path 或 path-family；UI preview 只显示 resource type、internal id、动作数、
 冲突与 prerequisite。
+
+多源 `slots` 为 `[{ action: "keep", sourceId } | { action: "retarget", sourceId, targetId }]`。
+`keep` 表示作者设定的原位目标；已安装包的界面默认按每个源实际目标生成完整选择，因此修改一件装备
+不会将其他装备改回原位。配置响应为 `{ gameId, modId, sources, installedTargets, warnings }`，其中
+`sources` 每项为 `{ source, originalTargetId, targets }`；`source` 使用既有 `ReplacementSourceDto`。
+`installedTargets` 为 source ID 到实际 target ID 的映射，`null` 表示事实不可确认，空对象表示没有绑定。
+名称表缺项但源语法合法时，后端可以提供仅限原位的身份；它不加入可选目标目录，也不伪造 displayNames。
+普通安装和普通新版本重装从实际安装计划生成全部可识别源的原位绑定，不需要前端提交路径或绑定。
+批量安装将完整来源集合纳入后端 facts digest，自动生成的原位记录不能绕过未完成的重定向选择意图。
+
+新的首次预览响应为 `{ analysis, targets, warnings, installPlan, prerequisiteDecision }`，不再用第一个
+目标代替整组目标。配置和预览在 blocking worker 中执行，界面只在打开替换 Tab 后查询。多源重装必须
+覆盖已安装 revision 重新分析出的全部源，保留所有已有绑定的来源；重复源、缺失或失效身份会被拒绝。
+不同来源允许共用同一 target ID，独立保存绑定；最终文件路径重叠仍形成阻断冲突。
+同版本多源切换使用独立校验，旧单源入口遇到多绑定仍拒绝。新增任务复用 `install.retarget.*`、
+`install.reinstall.*` 和现有取消屏障；更改任何选择后旧 preview/token 均作废。
 
 `preview_initial_retarget_install` 与 `start_retarget_install_task` 只允许目标 Mod 在当前 profile 的恢复
 状态严格为 `not_installed`。`installed`、`committed_cleanup_pending`、`cleanup_pending`、
@@ -671,16 +692,17 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 占用方 `displayName`，返回 `[{ targetId, modId, displayName }]`。自身 binding 不算占用（重选自己
 已安装的目标属于 target switch）；同一目标被多个 Mod 占用时只保留先出现的一条。清单状态不可信
 （TrustEntries 之外）、校验失败或读取失败一律**返回空列表**（fail-open）；占用方展示名解析失败时
-退回稳定 `modId`，不丢掉这条占用。前端据此在目标列表打「已被占用」标记，并在选中被占用目标时
-禁用「生成预览」与「安装到此目标」，同时展示可复制的占用方名称 —— 前端展示层 fail-open 是有意
-设计：少一条提示不会放过冲突写入，硬门禁仍在上一段描述的预览/任务/commit 三层。
+退回稳定 `modId`，不丢掉这条占用。前端据此在目标列表打「其他 Mod 使用中」标记，并展示可复制的
+使用方名称。目标 ID 相同仍允许生成预览；安装按钮根据后端最终文件冲突和前置条件决定是否可用。
+前端展示层 fail-open 是有意设计：少一条提示不会放过冲突写入，硬门禁仍在上述预览/任务/commit 三层。
 
 替换目标面板发起的 retarget 安装会为该 (profile, Mod) 落一份**选择意图**（`install/replacement-selections/`
 下的 per-(profile,mod) JSON）。任务承接安装（计划构建成功且无阻断冲突）时写入，commit 成功后清除，
 失败/取消时保留以引导玩家回到面板重试；预览不落意图。持有未完成选择意图的 Mod 走普通安装会装出
 未重定向的原始 Mod（清单里的绑定与实际写入不符），因此标准安装与批量安装都 fail closed：标准安装
 返回 `install_failed:replacement_selection_pending`，批量安装该项以 `replacement_selection_pending`
-阻断。携带显式 `replacementBindingSnapshot` 的 target switch / 同版本重装不受影响。
+阻断。批量普通安装自动生成的 `replacementBindingSnapshot` 同样受此屏障约束；目标切换／同版本重装
+继续使用各自的可信绑定与预览协议。
 
 `preview_retarget_reinstall` 与 `start_retarget_reinstall_task` 只用于 recovery status 严格为 `installed`
 的同 revision target switch。后端从 manifest 解析 installed revision，再由 repository 和 adapter 重建
@@ -729,10 +751,8 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 - `weapon_source_content_unavailable`
 - `weapon_cross_family_target`
 
-完整 Weapon catalog 仍受 WR-02B provenance/licensing 门禁。`catalogScope=developer_sandbox` 的人工
-weapon target 只有在 GUI runtime 从显式 `HMM_SANDBOX_DATA_DIR` 构造有效 Sandbox environment 时才会
-注册；同一 environment 同时启用生命周期 root admission。Production composition 保持 Armor-only，
-不能仅通过前端输入或普通 feature flag 打开人工 weapon target 或 Production 写入。
+Production 与 Sandbox 使用已入册的武器／防具目标数据；目标 DTO 不携带 `catalogScope`。
+默认资源归属、原位保留和多源事务边界见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
 
 `start_retarget_install_task` 继续使用 `TaskKind::Install`、`hmm://task-progress` 和既有
 game/profile 写锁。新增 phase 为 `install.retarget.queued`、`install.retarget.plan.building`、

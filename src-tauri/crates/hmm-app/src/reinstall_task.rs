@@ -1,6 +1,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+#[path = "reinstall_task/equipment.rs"]
+mod equipment;
+pub use equipment::{
+    EquipmentRetargetReinstallTaskExecutor, StartEquipmentRetargetReinstallTaskRequest,
+};
+
 use hmm_core::{FileLayer, GameId, ModId, ModRevisionId, ProfileId, ReplacementTargetId};
 use hmm_ports::{AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy};
 

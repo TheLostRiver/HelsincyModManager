@@ -72,8 +72,7 @@ test("Mod detail unified panel owns the replacement target tab", () => {
     /completionReloadPendingRef\.current = false;[\s\S]*setRefreshState\(\{ status: "ready" \}\);[\s\S]*setTrackedTaskState\(\{ status: "idle" \}\)/,
   );
   assert.match(panel, /rCopy\.panel\.retryRefresh/);
-  // 跨 Mod 同目标占用：面板加载占用数据，选中被占用目标时禁用预览与安装，
-  // 并给出可复制的占用方名称。
+  // 目标使用信息用于提示并提供可复制的名称；实际文件冲突由后端预览决定。
   assert.match(panel, /listReplacementTargetOccupancy/);
   assert.match(panel, /loadOccupancy\(gameId, profileId, modId\)/);
   assert.match(panel, /occupancyByTarget/);
@@ -84,15 +83,6 @@ test("Mod detail unified panel owns the replacement target tab", () => {
   assert.match(panel, /navigator\.clipboard[\s\S]*writeText\(occupancy\.displayName\)/);
   assert.match(panel, /rCopy\.panel\.occupantNameCopiedTitle/);
   assert.match(panel, /rCopy\.panel\.occupantNameCopyFailedTitle/);
-  // 预览与安装两个写入入口都必须因占用而禁用，只挡安装等于没挡。
-  assert.ok(
-    panel.match(/onClick=\{createPreview\}[\s\S]*?selectedOccupancy !== null/),
-    "生成预览按钮必须因目标被占用而禁用",
-  );
-  assert.ok(
-    panel.match(/onClick=\{startInstall\}[\s\S]*?selectedOccupancy !== null/),
-    "安装到此目标按钮必须因目标被占用而禁用",
-  );
   assert.match(
     readSource("src/features/replacements/replacementCopy.ts"),
     /weapon_partial_part_set/,

@@ -557,27 +557,54 @@ fn a_slot_that_the_package_does_not_contain_is_rejected() {
     assert_eq!(error, ReplacementWorkflowError::SourceNotRetargetable);
 }
 
-/// 两个槽位指向**同一个**目标：具名拒绝，而不是「计划不可用」。
-///
-/// 不拦也装不上（两个 provider 撞同一个 `target_path`，动作全进 `conflicts`、`actions`
-/// 为空，绑定校验随后报 `ReplacementBindingOwnerMissing`），但报出来的是通用的
-/// `PlanUnavailable`——玩家看不出是自己把两件装备指到了一处。
+/// 两个源竞争同一文件时，预览保留冲突与来源事实，不能成为可执行计划。
 #[test]
-fn two_slots_aimed_at_one_target_are_rejected_by_name() {
-    let error = preview(vec![
+fn two_sources_competing_for_one_file_produce_a_blocked_preview() {
+    let preview = preview(vec![
         retarget(SLOT_ONE, TARGET_ONE),
         retarget(SLOT_TWO, TARGET_ONE),
     ])
-    .expect_err("两个槽位指向同一个目标必须被拒");
-
-    assert_eq!(error, ReplacementWorkflowError::DuplicateSlotTarget);
+    .expect("真实文件冲突应在预览中可见");
+    assert!(preview.install_plan().has_blocking_conflicts());
+    assert!(preview.install_plan().actions.is_empty());
+    assert_eq!(preview.install_plan().conflicts[0].providers.len(), 2);
+    assert_eq!(preview.install_plan().replacement_bindings.len(), 2);
 }
 
 /// 「把 A 换到 B 的位置」同时「让 B 保持原位」同样是撞车——检查不能只看 Retarget 意图。
 #[test]
-fn a_retarget_onto_a_slot_that_stays_in_place_is_rejected_by_name() {
-    let error = preview(vec![retarget(SLOT_TWO, SLOT_ONE), keep_in_place(SLOT_ONE)])
-        .expect_err("重定向到一个保持原位的槽位必须被拒");
+fn a_retarget_competing_with_a_kept_file_produces_a_blocked_preview() {
+    let preview = preview(vec![retarget(SLOT_TWO, SLOT_ONE), keep_in_place(SLOT_ONE)])
+        .expect("保持原位的文件同样参与真实路径冲突检查");
+    assert!(preview.install_plan().has_blocking_conflicts());
+    assert!(preview.install_plan().actions.is_empty());
+    assert_eq!(preview.install_plan().conflicts[0].providers.len(), 2);
+}
 
-    assert_eq!(error, ReplacementWorkflowError::DuplicateSlotTarget);
+#[test]
+fn unavailable_original_target_metadata_does_not_block_or_filter_plain_installation() {
+    let workflow = workflow();
+    let mod_id = ModId::new("mod-a");
+    let revision = workflow.current_install_revision(&mod_id).unwrap();
+    let plain = hmm_core::InstallPlan::from_providers([SLOT_ONE, SLOT_TWO].map(|source| {
+        hmm_core::InstallFileProvider::new(
+            mod_id.clone(),
+            hmm_core::PackageFileId::new(source_path(source)),
+            InstallTargetPath::parse(source_path(source), ["nativePC"]).unwrap(),
+            FileLayer::new("base", 0),
+        )
+    }));
+    let bound = workflow
+        .bind_canonical_install_sources(
+            &GameId::mhw(),
+            &ProfileId::new("default"),
+            &mod_id,
+            &revision,
+            plain.clone(),
+        )
+        .expect("optional source metadata must not make a valid plain package un-installable");
+    assert_eq!(bound.actions, plain.actions);
+    assert_eq!(bound.conflicts, plain.conflicts);
+    assert_eq!(bound.replacement_bindings.len(), 1);
+    assert_eq!(bound.replacement_bindings[0].source_internal_id(), SLOT_ONE);
 }

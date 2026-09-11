@@ -17,10 +17,10 @@ use hmm_app::{
     GameSetupService, ImportedModInstallCommitRequest, ImportedModInstallPreflightService,
     InitialRetargetInstallPlan, InitialRetargetInstallPlanner,
     InitialRetargetInstallPreflightService, InitialRetargetInstallStatusError,
-    InitialRetargetInstallStatusReader, InitialRetargetSelection, InstallCommitError,
-    InstallCommitPhase, InstallCommitResult, InstallCommitService, InstallManifestQueryService,
-    InstallPlanCommitter, InstallPlanningService, InstallRecoveryActionError,
-    InstallRecoveryActionExecutor, InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
+    InitialRetargetInstallStatusReader, InstallCommitError, InstallCommitPhase,
+    InstallCommitResult, InstallCommitService, InstallManifestQueryService, InstallPlanCommitter,
+    InstallPlanningService, InstallRecoveryActionError, InstallRecoveryActionExecutor,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewError,
     InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService,
     InstallRecoveryActionRequest, InstallRecoveryActionResult, InstallRecoveryActionService,
     InstallRecoveryScanError, InstallRecoveryScanRequest, InstallRecoveryScanService,
@@ -953,16 +953,19 @@ impl HmmRuntime {
             Arc::new(JsonReplacementSelectionRepository::new(
                 app_data_dir.join("install").join("replacement-selections"),
             ));
-        let install_task_runner = Arc::new(InstallTaskRunner::with_write_coordination(
-            Arc::clone(&task_manager),
-            install_preflight.clone(),
-            Arc::clone(&install_committer),
-            Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
-            Arc::clone(&install_write_locks),
-            Arc::clone(&lifecycle_write_admission),
-            Arc::clone(&replacement_selections),
-        ));
+        let install_task_runner = Arc::new(
+            InstallTaskRunner::with_write_coordination(
+                Arc::clone(&task_manager),
+                install_preflight.clone(),
+                Arc::clone(&install_committer),
+                Arc::clone(&audit_log_writer),
+                Arc::new(SystemClock),
+                Arc::clone(&install_write_locks),
+                Arc::clone(&lifecycle_write_admission),
+                Arc::clone(&replacement_selections),
+            )
+            .with_canonical_source_bindings(Arc::clone(&replacement_workflow)),
+        );
         let retarget_install_planner: Arc<dyn InitialRetargetInstallPlanner> =
             Arc::new(ConfiguredInitialRetargetInstallPlanner::new(
                 Arc::clone(&replacement_workflow),
@@ -1529,6 +1532,9 @@ impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
     }
 }
 
+#[path = "composition/equipment_reinstall.rs"]
+mod equipment_reinstall;
+
 pub struct ConfiguredReinstallExecutor {
     game_config_repository: Arc<dyn GameConfigRepository>,
     prerequisites: Arc<dyn GamePrerequisiteDecisionProvider>,
@@ -1750,7 +1756,10 @@ impl ConfiguredReinstallExecutor {
         let preview = Arc::new(ReinstallPreviewService::new(
             Arc::clone(&self.prerequisites),
             Arc::clone(&self.catalog),
-            self.planner.clone(),
+            Arc::new(hmm_app::CanonicalReinstallPlanner::new(
+                self.planner.clone(),
+                Arc::clone(&self.replacement_workflow),
+            )),
             Arc::clone(&source),
             Arc::clone(&game_files),
             backup_store.clone(),
@@ -2265,19 +2274,14 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
         &self,
         request: StartRetargetInstallTaskRequest,
     ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
-        let planned =
-            self.workflow
-                .preview_initial_install(PreviewInitialRetargetInstallRequest {
-                    game_id: request.game_id,
-                    profile_id: request.profile_id,
-                    mod_id: request.mod_id,
-                    // 任务请求目前只携带一个目标，源由分析推断——与切片③b 之前逐字相同。
-                    // 逐槽位意图（D2 三态）要等前端能发出来（`#349` 切片④）。
-                    selection: InitialRetargetSelection::SoleSource {
-                        target_id: request.target_id,
-                    },
-                    layer: request.layer,
-                })?;
+        self.build_equipment_retarget_install_plan(request.into())
+    }
+
+    fn build_equipment_retarget_install_plan(
+        &self,
+        request: PreviewInitialRetargetInstallRequest,
+    ) -> Result<InitialRetargetInstallPlan, ReplacementWorkflowError> {
+        let planned = self.workflow.preview_initial_install(request)?;
         let factory = self.staging_factory_for(&planned)?;
         let revision_id = planned.revision_id().clone();
         // 中途失败时已建好的 staging 目录要清掉。这份清单在 materialize 之前取，
@@ -2307,6 +2311,13 @@ impl InitialRetargetInstallPlanner for ConfiguredInitialRetargetInstallPlanner {
     fn revalidate_initial_install(
         &self,
         request: &StartRetargetInstallTaskRequest,
+    ) -> Result<(), ReplacementWorkflowError> {
+        self.revalidate_equipment_install(&request.clone().into())
+    }
+
+    fn revalidate_equipment_install(
+        &self,
+        request: &PreviewInitialRetargetInstallRequest,
     ) -> Result<(), ReplacementWorkflowError> {
         let summaries = self
             .install_recovery_scanner

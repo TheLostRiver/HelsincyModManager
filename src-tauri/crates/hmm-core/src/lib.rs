@@ -1,6 +1,7 @@
 mod app_version;
 mod batch;
 mod category;
+mod equipment_reinstall;
 mod external_import;
 mod external_install_state;
 mod game;
@@ -31,6 +32,7 @@ pub use batch::{
     DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
 };
 pub use category::{Category, CategoryLabel};
+pub use equipment_reinstall::is_same_revision_equipment_target_switch;
 pub use external_import::{
     ExternalImportAdapterId, ExternalImportBatch, ExternalImportBatchId,
     ExternalImportBatchImportStatus, ExternalImportCandidate, ExternalImportCandidateId,

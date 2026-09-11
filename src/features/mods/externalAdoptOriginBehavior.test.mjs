@@ -9,7 +9,7 @@ registerReactTestModules({
   "features/mods/modCategoryApi.ts": "export const listCategories = async () => []; export const getModCategories = async () => []; export const setModCategories = async () => {};",
   "features/mods/modMetadataApi.ts": "export const updateModMetadata = async () => {};",
   "features/mods/useExternalModState.ts": "export const useExternalModState = () => globalThis.__adoptOrigin.workflow;",
-  "features/replacements/ReplacementTargetPanel.tsx": "export const ReplacementTargetPanel = () => null;",
+  "features/replacements/EquipmentRetargetPanel.tsx": "export const EquipmentRetargetPanel = () => null;",
   "shared/feedback/useModalFocusTrap.ts": "export const useModalFocusTrap = () => {};",
   "shared/feedback/index.ts": `import React from "react"; export const Dialog = ({ open, children, footer }) => open ? React.createElement("section", { role: "alertdialog" }, children, footer) : null;`,
 }, { "react-dom": "export const createPortal = (children) => children;" });

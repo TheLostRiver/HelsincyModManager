@@ -1,6 +1,6 @@
 use hmm_core::{
     GameId, PackageFileId, ReplacementAnalysis, ReplacementBinding, ReplacementCatalog,
-    ReplacementTarget, ReplacementTargetId, RetargetPlan,
+    ReplacementSource, ReplacementTarget, ReplacementTargetId, RetargetPlan,
 };
 use thiserror::Error;
 
@@ -22,6 +22,28 @@ pub trait ReplacementCatalogProvider: Send + Sync {
     fn game_id(&self) -> GameId;
 
     fn replacement_catalog(&self) -> ReplacementCatalogResult<ReplacementCatalog>;
+
+    /// 原位安装的身份。游戏适配器可为语法合法但未收录名称的源提供仅限原位的身份。
+    fn original_target_for_source(
+        &self,
+        source: &ReplacementSource,
+    ) -> ReplacementCatalogResult<ReplacementTarget> {
+        let catalog = self.replacement_catalog()?;
+        let mut matching = catalog.targets().iter().filter(|target| {
+            target.game_id() == source.game_id()
+                && target.target_type() == source.source_type()
+                && target.internal_id() == source.internal_id()
+                && target
+                    .metadata()
+                    .get("path_family")
+                    .and_then(|value| value.as_str())
+                    == Some(source.path_family())
+        });
+        match (matching.next(), matching.next()) {
+            (Some(target), None) => Ok(target.clone()),
+            _ => Err(ReplacementCatalogError::CatalogInvalid),
+        }
+    }
 
     fn find_replacement_target(
         &self,

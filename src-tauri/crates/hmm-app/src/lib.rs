@@ -286,6 +286,7 @@ pub use profile::{
     UpdateProfileRequest,
 };
 pub use reinstall::{
+    InstalledEquipmentReinstallContext, InstalledEquipmentReinstallResolution,
     InstalledReplacementReinstallContext, InstalledReplacementReinstallResolution,
     PreparedReinstall, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
     ReinstallCandidatePlanError, ReinstallCandidatePlanRequest, ReinstallCandidatePlanner,
@@ -297,17 +298,20 @@ pub use reinstall_commit::{
     ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService,
 };
 pub use reinstall_task::{
-    ReinstallTaskAuditContext, ReinstallTaskExecutor, ReinstallTaskExecutorService,
-    ReinstallTaskPrepareError, ReinstallTaskPrepared, ReinstallTaskRunError, ReinstallTaskRunner,
-    ReinstallTaskService, RetargetReinstallTaskExecutor, StartReinstallTaskRequest,
-    StartRetargetReinstallTaskRequest,
+    EquipmentRetargetReinstallTaskExecutor, ReinstallTaskAuditContext, ReinstallTaskExecutor,
+    ReinstallTaskExecutorService, ReinstallTaskPrepareError, ReinstallTaskPrepared,
+    ReinstallTaskRunError, ReinstallTaskRunner, ReinstallTaskService,
+    RetargetReinstallTaskExecutor, StartEquipmentRetargetReinstallTaskRequest,
+    StartReinstallTaskRequest, StartRetargetReinstallTaskRequest,
 };
 pub use replacement::{
-    is_identity_replacement_binding, AnalyzeImportedReplacementRequest,
-    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    InitialRetargetSelection, InitialRetargetSlotIntent, MaterializeRetargetRequest,
-    MaterializedInitialRetargetInstall, MaterializedRetarget, ModReplacementSummary,
-    PlannedInitialRetargetInstall, PlannedRetargetReinstall, PreviewInitialRetargetInstallRequest,
+    is_identity_replacement_binding, AnalyzeImportedReplacementRequest, CanonicalReinstallPlanner,
+    EquipmentRetargetConfiguration, EquipmentRetargetReinstallRequest,
+    EquipmentSourceConfiguration, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, InitialRetargetSelection, InitialRetargetSlotIntent,
+    MaterializeRetargetRequest, MaterializedInitialRetargetInstall, MaterializedRetarget,
+    ModReplacementSummary, PlannedInitialRetargetInstall, PlannedRetargetReinstall,
+    PreviewEquipmentRetargetReinstallRequest, PreviewInitialRetargetInstallRequest,
     PreviewRetargetReinstallRequest, ReplacementService, ReplacementServiceError,
     ReplacementSummaryItem, ReplacementWorkflowError, ReplacementWorkflowService,
     RetargetMaterializeError, RetargetReinstallRequest, RetargetStagingMaterializerFactory,

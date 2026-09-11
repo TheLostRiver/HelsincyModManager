@@ -311,10 +311,9 @@ fn an_armor_package_plans_identically_under_every_root_spelling() {
 }
 
 #[test]
-fn only_the_root_segment_is_case_normalized() {
+fn known_equipment_root_segments_are_normalized_without_changing_filename_case() {
     /*
-     * 放宽的**只有游戏根这一段**。往下的段不能跟着归一化：族名与部件 ID 的大小写是语法的
-     * 一部分，文件名的大小写更要逐字带到目标路径上（真实包里有 `two003_BML.PNG` 这种）。
+     * 规范化游戏识别的装备目录段，文件名和作者目录保留原拼写。
      */
     let paths = spell(&["{root}/wp/two/two003/mod/two003_BML.PNG"], "nativepc");
     let mut all = spell(WEAPON_PACKAGE, "nativepc");
@@ -330,30 +329,20 @@ fn only_the_root_segment_is_case_normalized() {
         "文件名的大小写必须逐字保留，实际 {shape:?}"
     );
 
-    /*
-     * 大写的族段不是合法语法，不能因为根段放宽了就跟着放宽。
-     *
-     * 这里给的是**完整的模型对**：若 `WP` 被误当成 `wp`，分析会成功并产出一个源。所以
-     * 判据必须是「恰好 0 个源」，不能写成 `is_err() || sources().is_empty()`——那样
-     * 「缺 .mrl3 导致的 IncompleteBinaryPair」也会让断言通过，两种情况都过等于没测。
-     */
-    let bogus_family = spell(
+    let upper_family = spell(
         &[
             "{root}/WP/two/two003/mod/two003.mod3",
             "{root}/WP/two/two003/mod/two003.mrl3",
         ],
         "nativePC",
     );
-    let analysis = MhwReplacementAdapter
-        .analyze_replacement_assets(ReplacementAnalysisRequest {
-            game_id: GameId::mhw(),
-            assets: assets(&bogus_family),
-        })
-        .expect("与武器树无关的文件应被忽略，而不是报错");
-    assert!(
-        analysis.sources().is_empty(),
-        "`WP` 不是 `wp`，不得被当成武器树，实际 {:?}",
-        analysis.sources()
+    let lower_family = upper_family
+        .iter()
+        .map(|path| path.replace("/WP/", "/wp/"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        plan_shape(&plan_for(&upper_family, "two019")),
+        plan_shape(&plan_for(&lower_family, "two019"))
     );
 }
 
@@ -374,12 +363,7 @@ fn mixed_case_duplicates_are_still_rejected_instead_of_silently_merged() {
         .expect_err("大小写碰撞必须失败关闭");
 
     assert!(
-        matches!(
-            error,
-            ReplacementAdapterError::AnalysisRejected {
-                code: "weapon_duplicate_asset_path" | "weapon_case_insensitive_path_collision"
-            }
-        ),
+        matches!(error, ReplacementAdapterError::UnsafeRetargetPath),
         "实际是 {error:?}"
     );
 }

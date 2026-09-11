@@ -20,8 +20,19 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+#[path = "replacement/equipment.rs"]
+mod equipment;
+pub use equipment::{
+    EquipmentRetargetConfiguration, EquipmentRetargetReinstallRequest,
+    EquipmentSourceConfiguration, PreviewEquipmentRetargetReinstallRequest,
+};
+
 use crate::install::cross_mod_target_conflicts;
 use crate::InstallRecoveryStatus;
+
+#[path = "replacement/canonical.rs"]
+mod canonical;
+pub use canonical::CanonicalReinstallPlanner;
 
 #[path = "replacement_display.rs"]
 mod display;
@@ -99,12 +110,7 @@ pub enum ReplacementWorkflowError {
     /// 同一个源槽位在一次提交里被给了两条意图。谁生效都可能是错的，所以拒绝。
     #[error("one replacement source carries two slot intents")]
     DuplicateSlotIntent,
-    /// 一次提交里两个源槽位指向了同一个目标。
-    ///
-    /// 不拦的话它照样装不上（两个 provider 撞同一个 `target_path`，动作全进 `conflicts`、
-    /// `actions` 为空，绑定校验随后报 `ReplacementBindingOwnerMissing`），但报出来的是
-    /// 「计划不可用」——玩家看不出是自己把两件装备指到了一处。这里提前具名拒绝，
-    /// 让 `#349` 切片④ 的文案有准确的根因可讲。
+    /// 保留旧错误映射；新计划允许多个源共用目标，由最终文件路径判断冲突。
     #[error("two replacement sources aim at one target")]
     DuplicateSlotTarget,
     /// 「保持原位」要求源槽位本身在 catalog 里能唯一解析成一个目标（`#349` D2）。
@@ -136,8 +142,8 @@ pub enum InitialRetargetSlotIntent {
     /// 与 canonical source install 用的是同一套机制）。它不进源路由，所以提交时直接读
     /// 沙箱原包——「不重定向」在字节层面就是「不经 staging」。
     ///
-    /// 源槽位本身必须在 catalog 里能唯一解析成一个目标；解析不出时返回
-    /// `KeepInPlaceUnavailable`，那个槽位只能选「换到 X」或「不装」。
+    /// 源槽位必须由游戏 adapter 解析出唯一的原位身份。MHW 允许名称目录未收录、
+    /// 但资源语法合法的源保持原位；不能安全解析时返回 `KeepInPlaceUnavailable`。
     KeepInPlace { source_id: ReplacementSourceId },
 }
 
@@ -622,69 +628,6 @@ impl ReplacementWorkflowService {
             .map(|resolved| resolved.analysis)
     }
 
-    pub fn preview_canonical_source_install_plan(
-        &self,
-        game_id: &GameId,
-        profile_id: &ProfileId,
-        mod_id: &ModId,
-        revision_id: &ModRevisionId,
-        layer: &FileLayer,
-    ) -> Result<Option<InstallPlan>, ReplacementWorkflowError> {
-        let resolved = self.resolve_imported_revision(game_id, mod_id, revision_id)?;
-        let Some(source) = resolved.analysis.single_source().cloned() else {
-            return Ok(None);
-        };
-        let catalog = self
-            .catalog_for(game_id)?
-            .replacement_catalog()
-            .map_err(map_catalog_error)?;
-        let mut matching_targets = catalog.targets().iter().filter(|target| {
-            target.target_type() == source.source_type()
-                && target.internal_id() == source.internal_id()
-                && target
-                    .metadata()
-                    .get("path_family")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(source.path_family())
-        });
-        let (Some(target), None) = (matching_targets.next(), matching_targets.next()) else {
-            return Ok(None);
-        };
-        let binding = ReplacementBinding::new(
-            canonical_source_binding_id(game_id, profile_id, mod_id, source.id(), target.id())?,
-            mod_id.clone(),
-            profile_id.clone(),
-            source.id().clone(),
-            target.id().clone(),
-            0,
-        )
-        .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
-        let content_reader = ImportedReplacementContentReader {
-            reader: self.file_reader.as_ref(),
-            package_id: &resolved.package_id,
-            sandbox_root: &resolved.sandbox_root,
-        };
-        let retarget_plan = self
-            .replacement
-            .build_retarget_plan_with_content(
-                RetargetPlanRequest {
-                    game_id: game_id.clone(),
-                    binding,
-                    assets: resolved.assets,
-                    // 一次只提交一个绑定，所以它就是包级随行资源的唯一承载者。
-                    // 多绑定提交（`#349` 切片③b-3）会在 N 个绑定里指定恰好一个。
-                    carries_package_companions: true,
-                },
-                &content_reader,
-            )
-            .map_err(ReplacementWorkflowError::Analysis)?;
-        let install_plan = self
-            .replacement
-            .build_retarget_install_plan(&retarget_plan, layer.clone(), Some(revision_id.clone()))
-            .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(Some(install_plan))
-    }
-
     pub fn preview_initial_install(
         &self,
         request: PreviewInitialRetargetInstallRequest,
@@ -802,15 +745,6 @@ impl ReplacementWorkflowService {
             retarget_plans.push(retarget_plan);
         }
 
-        // 「保持原位」的自身目标与别的槽位的重定向目标同样可能撞（把 A 换到 B 的位置、
-        // 同时让 B 保持原位），所以检查放在**全部**目标解析完之后，而不是只看 Retarget。
-        let mut claimed_targets = BTreeSet::new();
-        for target in &targets {
-            if !claimed_targets.insert(target.id().clone()) {
-                return Err(ReplacementWorkflowError::DuplicateSlotTarget);
-            }
-        }
-
         let install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(
@@ -834,31 +768,15 @@ impl ReplacementWorkflowService {
 
     /// 「保持原位」需要的那个目标：源槽位自己。
     ///
-    /// 与 `preview_canonical_source_install_plan` 同一套解析（catalog 里 target_type /
-    /// internal_id / path_family 三者都匹配且**唯一**）。解析不出就明确报错，不猜——
-    /// 猜错会把这个槽位的文件装到别的装备上。
+    /// 由游戏适配器校验资源身份；名称表缺项时也可返回仅限原位的身份，不猜装备名称。
     fn self_target_for(
         &self,
         game_id: &GameId,
         source: &hmm_core::ReplacementSource,
     ) -> Result<ReplacementTarget, ReplacementWorkflowError> {
-        let catalog = self
-            .catalog_for(game_id)?
-            .replacement_catalog()
-            .map_err(map_catalog_error)?;
-        let mut matching = catalog.targets().iter().filter(|target| {
-            target.target_type() == source.source_type()
-                && target.internal_id() == source.internal_id()
-                && target
-                    .metadata()
-                    .get("path_family")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(source.path_family())
-        });
-        match (matching.next(), matching.next()) {
-            (Some(target), None) => Ok(target.clone()),
-            _ => Err(ReplacementWorkflowError::KeepInPlaceUnavailable),
-        }
+        self.catalog_for(game_id)?
+            .original_target_for_source(source)
+            .map_err(|_| ReplacementWorkflowError::KeepInPlaceUnavailable)
     }
 
     /// 初始重定向安装不得覆盖其他 Mod 已管理的目标文件。
@@ -924,10 +842,11 @@ impl ReplacementWorkflowService {
         }
         // staging 落盘之后再重建安装计划：与 `materialize_retarget` 同序（先算计划、再落盘、
         // 计划不变），保证 `plan_hash` 与预览阶段逐字一致。
-        let install_plan = self
+        let mut install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(&planned.retarget_plans, layer, Some(revision_id))
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        install_plan.conflicts = planned.install_plan.conflicts;
         Ok(MaterializedInitialRetargetInstall {
             install_plan,
             source_routing,
