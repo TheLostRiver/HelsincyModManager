@@ -25,6 +25,7 @@ export function listReplacementTargets(
       gameId: input.gameId,
       modId: input.modId,
       query: input.query,
+      ...(input.profileId !== undefined ? { profileId: input.profileId } : {}),
     },
   });
 }

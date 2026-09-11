@@ -44,7 +44,7 @@ const configuration = {
 async function mount(t, overrides = {}) {
   const api = { locale: "zh_cn", calls: [], listeners: new Set(), pending: [], completed: 0, failListen: false, earlyComplete: false, failRefresh: false,
     config: structuredClone(configuration), ...overrides };
-  if (api.installed) api.config.installedTargets = { "source-weapon": "weapon-b", "source-armor": "armor-b" };
+  if (api.installed && !api.legacy) api.config.installedTargets = { "source-weapon": "weapon-b", "source-armor": "armor-b" };
   api.listen = async (callback) => {
     if (api.failListen) throw new Error("fixture listener failure");
     api.listeners.add(callback); return () => api.listeners.delete(callback);
@@ -59,7 +59,8 @@ async function mount(t, overrides = {}) {
     api.calls.push({ kind, input });
     if (kind === "configuration") return api.config;
     if (kind === "preview") return api.holdPreview ? new Promise((resolve) => api.pending.push(resolve)) : api.preview();
-    if (kind === "switchPreview") return { status: "ready", planToken: "equipment-plan", counts: { retained: 2, replaced: 0, added: 1, stale: 1 }, blockingReasons: [], prerequisiteDecision: { status: "ready", codes: [] } };
+    if (kind === "switchPreview") return { status: api.blocked ? "blocked" : "ready", planToken: api.blocked ? null : "equipment-plan", counts: { retained: 2, replaced: 0, added: 1, stale: 1 },
+      blockingReasons: api.blocked ? [{ code: "original_install_unverified", count: 1 }] : [], prerequisiteDecision: { status: "ready", codes: [] } };
     if (kind === "cancel") return { taskId: input.taskId, kind: "install", status: "cancelled" };
     if (kind === "start" || kind === "switchStart") {
       if (api.earlyComplete) {
@@ -116,6 +117,17 @@ test("switching one source preserves the other installed target and carries the 
     { action: "retarget", sourceId: "source-weapon", targetId: "weapon-c" },
     { action: "retarget", sourceId: "source-armor", targetId: "armor-b" },
   ]);
+});
+
+test("legacy equipment verification is explained and a failed proof never enables writing", options, async (t) => {
+  const h = await mount(t, { installed: true, legacy: true, blocked: true });
+  assert.ok(text(h.root.toJSON()).includes("预览会核对原包和已安装文件"));
+  await h.choose(0, "weapon-b");
+  await h.click(0);
+  assert.ok(text(h.root.toJSON()).includes("无法证明旧安装与原包一致"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+  await h.click(1);
+  assert.equal(h.api.calls.filter((call) => call.kind === "switchStart").length, 0);
 });
 
 test("changed selection and changed Mod both discard pending previews", options, async (t) => {
