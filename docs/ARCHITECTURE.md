@@ -57,6 +57,13 @@ Game Adapters 游戏适配器
 
 ## Rust Workspace 规划
 
+MHW 默认装备重定向的文件盘点和路径规则位于 `hmm-games-mhw/equipment_retarget`，资源身份保持、
+整组选择和 staging 编排分别留在 core、app 与 runtime。Tauri 只接收稳定源／目标 ID；多源 UI 不参与
+路径推导。旧单源请求与新的整组请求使用独立校验，提交、回滚和恢复共用既有安装基础设施。
+普通安装的来源记录由 app 从最终 InstallPlan 的实际文件生成，普通重装和批量入口复用同一规则；
+不为生成记录调用重定向改名或排除流程。源绑定可以共用目标，文件冲突使用 core 的 Windows 比较键。
+详见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
+
 ```text
 src-tauri/              # Tauri 应用 crate，包名 hmm-tauri
   src/                  # Tauri commands、state、events、应用启动

@@ -176,22 +176,17 @@ fn facts_for_install_batch(
                 &input.layer,
             )
             .map_err(|error| anyhow::anyhow!(error.code()))?;
-        /*
-         * `_` 分支目前**不可达**，留作防御：`build_install_plan_for_revision` 产出的绑定
-         * 数上界就是 1——普通安装计划本身无绑定，它只会从
-         * `preview_canonical_source_install_plan` 附加**一个** canonical source binding
-         * （那条路径仍走 `single_source()`，多槽位包在那里返回 `None`）。
-         *
-         * 也就是说批量安装看到的多槽位包是「无绑定的普通安装」，全部文件按原路径装——
-         * 等价于 D2 三态的「全部保持原位」，行为正确，只是没有逐槽位的 canonical 记录。
-         * 要让它带上记录，得先把 `preview_canonical_source_install_plan` 多槽位化
-         * （复用 `#349` 切片③b-3 的 `KeepInPlace` 那套自身目标解析），那是独立的一步，
-         * 不阻塞「多槽位包能装」。
-         */
+        // 多源原位记录由后端从实际计划重建，完整集合进入下方 facts digest。
+        // 旧单绑定字段只表达恰好一个源的情形，不用第一项冒充整组记录。
+        anyhow::ensure!(
+            plan.replacement_bindings
+                .iter()
+                .all(hmm_app::is_identity_replacement_binding),
+            "batch install requires canonical source bindings"
+        );
         let current_binding = match plan.replacement_bindings.as_slice() {
-            [] => None,
             [binding] => Some(binding),
-            _ => anyhow::bail!("batch install plan has multiple replacement bindings"),
+            _ => None,
         };
         anyhow::ensure!(
             current_binding == input.replacement_binding_snapshot.as_ref(),
@@ -888,12 +883,11 @@ fn resolve_batch_plan_request(
                         &input.layer,
                     )
                     .map_err(|_| BatchAutomationError::new(unavailable_code))?;
-                // 同上：`_` 分支不可达，绑定数上界由 `build_install_plan_for_revision` 决定。
+                // 多源集合由 facts digest 封存，执行时由同一普通安装规则重建。
                 input.replacement_binding_snapshot =
                     match install_plan.replacement_bindings.as_slice() {
-                        [] => None,
                         [binding] => Some(binding.clone()),
-                        _ => return Err(BatchAutomationError::new(unavailable_code)),
+                        _ => None,
                     };
             }
             BatchItemInput::Reinstall(input) => {
@@ -1229,6 +1223,10 @@ fn map_retry_error(error: BatchInstallRetryError) -> BatchAutomationError {
     };
     BatchAutomationError::new(code)
 }
+
+#[cfg(test)]
+#[path = "runtime_equipment_batch_tests.rs"]
+mod equipment_tests;
 
 #[cfg(test)]
 mod tests {

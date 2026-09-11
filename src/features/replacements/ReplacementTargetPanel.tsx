@@ -53,6 +53,7 @@ import {
   canStartInitialRetargetInstall,
   canStartRetargetReinstall,
   isCurrentInstalledReplacementTarget,
+  installBlockMessage,
   isRetargetInstallTaskPhase,
   nextRetargetInstallTaskState,
   refreshRetargetInstallState,
@@ -67,7 +68,7 @@ import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 
-type ReplacementTargetPanelProps = {
+export type ReplacementTargetPanelProps = {
   gameId: GameId;
   modId: string;
   profileId: string | null;
@@ -102,35 +103,6 @@ type CancellationState =
   | { status: "idle" }
   | { status: "requesting"; taskId: string }
   | { status: "error"; taskId: string; message: string };
-
-function installBlockMessage(
-  profileId: string | null,
-  installStatus: InstallManifestStatus | undefined,
-  completedLocally: boolean,
-  block: ReplacementCopy["block"],
-) {
-  if (profileId === null) {
-    return block.profileUnavailable;
-  }
-  if (completedLocally) {
-    return block.completedRefreshing;
-  }
-  switch (installStatus) {
-    case "not_installed":
-    case "installed":
-      return null;
-    case "committed_cleanup_pending":
-    case "cleanup_pending":
-      return block.cleanupPending;
-    case "rollback_required":
-      return block.rollbackRequired;
-    case "repair_required":
-      return block.repairRequired;
-    case "unknown":
-    case undefined:
-      return block.statusUnknown;
-  }
-}
 
 function targetSwitchBlockingLabel(
   code: ReinstallPlanPreview["blockingReasons"][number]["code"],
@@ -410,7 +382,6 @@ export function ReplacementTargetPanel({
       !selectedTarget ||
       profileId === null ||
       blockMessage !== null ||
-      selectedOccupancy !== null ||
       isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId)
     ) {
       return;
@@ -479,7 +450,6 @@ export function ReplacementTargetPanel({
       selectedTarget === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
-      selectedOccupancy !== null ||
       !canStart
     ) {
       return;
@@ -989,7 +959,7 @@ export function ReplacementTargetPanel({
       ) : null}
 
       {selectedOccupancy ? (
-        <div className="replacement-panel__notice is-blocked" role="status">
+        <div className="replacement-panel__notice" role="status">
           <ShieldAlert size={18} aria-hidden="true" />
           <span>{rCopy.panel.targetOccupied(selectedOccupancy.displayName)}</span>
           <button
@@ -1012,7 +982,6 @@ export function ReplacementTargetPanel({
           disabled={
             selectedTarget === null ||
             isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId) ||
-            selectedOccupancy !== null ||
             !analysis?.retargetable ||
             blockMessage !== null ||
             previewState.status === "loading" ||
@@ -1029,7 +998,6 @@ export function ReplacementTargetPanel({
           disabled={
             previewState.status !== "ready" ||
             blockMessage !== null ||
-            selectedOccupancy !== null ||
             (previewState.mode === "switch"
               ? !canStartRetargetReinstall({
                   installStatus,

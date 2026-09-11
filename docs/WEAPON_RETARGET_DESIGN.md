@@ -1,5 +1,9 @@
 # MHW:I 武器重定向设计
 
+> 当前默认入口使用[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)：完整盘点包资源，只修改可明确
+> 映射的非贴图路径，保留材质内容、贴图位置和未映射资源。下文的二进制配对、MRL3 转换与封装事实
+> 描述保留的显式材质迁移能力，不再是默认重定向的前置门槛。多源安装、切换和回滚边界以该文档为准。
+
 > 状态（2026-08-23）：WR-01 `design-complete`，WR-02A、WR-02B、WR-03A 与 WR-03B `completed`，
 > WR-04 `certified`，WR-05 `in-progress`（catalog 已接线，门禁已翻转，许可已签核）。14 类
 > family/part registry、source/target/model path parser、source closure、有界 MOD3/MRL3

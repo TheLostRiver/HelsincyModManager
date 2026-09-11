@@ -19,8 +19,8 @@ use hmm_core::{
 };
 use hmm_games_mhw::{
     analyze_mhw_weapon_assets, is_rejected_executable_file_name,
-    transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter, MhwReplacementCatalog,
-    WeaponMainId, MHW_EXECUTABLE_REJECT_EXTENSIONS,
+    transform_mhw_weapon_mrl3_texture_paths, MhwMaterialReplacementAdapter, MhwReplacementAdapter,
+    MhwReplacementCatalog, WeaponMainId, MHW_EXECUTABLE_REJECT_EXTENSIONS,
 };
 use hmm_ports::{
     ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
@@ -286,7 +286,33 @@ fn plan_for(
     target_internal_id: &str,
     mrl3_references: &[&str],
 ) -> Result<RetargetPlan, ReplacementAdapterError> {
-    let adapter = MhwReplacementAdapter;
+    plan_with_adapter(
+        &MhwReplacementAdapter,
+        paths,
+        target_internal_id,
+        mrl3_references,
+    )
+}
+
+fn material_plan_for(
+    paths: &[&str],
+    target_internal_id: &str,
+    mrl3_references: &[&str],
+) -> Result<RetargetPlan, ReplacementAdapterError> {
+    plan_with_adapter(
+        &MhwMaterialReplacementAdapter,
+        paths,
+        target_internal_id,
+        mrl3_references,
+    )
+}
+
+fn plan_with_adapter(
+    adapter: &dyn ReplacementAdapter,
+    paths: &[&str],
+    target_internal_id: &str,
+    mrl3_references: &[&str],
+) -> Result<RetargetPlan, ReplacementAdapterError> {
     let assets = assets(paths);
     let analysis = adapter.analyze_replacement_assets(ReplacementAnalysisRequest {
         game_id: GameId::mhw(),
@@ -396,7 +422,7 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
         target_of(&plan, path);
     }
 
-    // 模型对：部件 ID 改名 + 换槽位段，只有 MRL3 带 content_transform。
+    // 模型和材质只改路径；材质字节与贴图原位置一起保留。
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003.mod3"),
         "nativePC/wp/two/two019/mod/two019.mod3"
@@ -410,18 +436,18 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
             .iter()
             .filter(|action| action.content_transform().is_some())
             .count(),
-        1,
-        "随行文件的字节与槽位无关，只有 MRL3 需要改写"
+        0,
+        "默认策略不改写任何文件内容"
     );
 
     // 随行 · 需重定位：名字带部件 ID 的按前缀改名，不带的只换槽位段。
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003_BML.tex"),
-        "nativePC/wp/two/two019/mod/two019_BML.tex"
+        "nativePC/wp/two/two003/mod/two003_BML.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003_XM.tex"),
-        "nativePC/wp/two/two019/mod/two019_XM.tex"
+        "nativePC/wp/two/two003/mod/two003_XM.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003.evwp"),
@@ -438,22 +464,18 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
             &plan,
             "nativePC/wp/two/two003/mod/131072_2599467785140006031 BML.dds"
         ),
-        "nativePC/wp/two/two019/mod/131072_2599467785140006031 BML.dds",
-        "名字不含部件 ID（且含空格）的作者中间产物只换槽位段"
+        "nativePC/wp/two/two003/mod/131072_2599467785140006031 BML.dds",
+        "无法明确映射的作者附加资源保留原路径"
     );
 
     let facts = plan.adapter_facts().expect("sealed adapter facts");
     assert_eq!(
         facts.strategy_version(),
-        4,
-        "action 集合每次变化（② 加随行文件、③ 去掉被拒绝的文件、#343 改名规则）都必须由 strategy_version 标记"
+        1,
+        "资源保留策略使用独立身份和版本"
     );
-    assert_eq!(facts.part_count(), 1);
-    assert_eq!(
-        facts.file_count(),
-        (BLACK_KNIGHT_TWO003.len() - 1) as u32,
-        "file_count 含随行文件，但不含被拒绝的文件"
-    );
+    assert_eq!(facts.adapter_id(), "mhw.equipment");
+    assert_eq!(facts.strategy_id(), "path-only-resource-preserving");
     assert_eq!(
         facts.excluded_file_count(),
         1,
@@ -479,7 +501,7 @@ fn companion_filenames_drop_the_bs_prefix_when_the_target_slot_has_none() {
     assert_eq!(plan.actions().len(), BLACK_KNIGHT_BS_TWO012.len() - 1);
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/bs_two012_XM.tex"),
-        "nativePC/wp/two/two020/mod/two020_XM.tex"
+        "nativePC/wp/two/bs_two012/mod/bs_two012_XM.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/bs_two012_BML.dds"),
@@ -491,8 +513,8 @@ fn companion_filenames_drop_the_bs_prefix_when_the_target_slot_has_none() {
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/1 RMT.dds"),
-        "nativePC/wp/two/two020/mod/1 RMT.dds",
-        "名字不含部件 ID 的只换槽位段"
+        "nativePC/wp/two/bs_two012/mod/1 RMT.dds",
+        "名字不含源编号的附加资源保留原路径"
     );
 }
 
@@ -564,7 +586,8 @@ fn rewritten_references_land_on_files_the_plan_actually_produces() {
         r"wp\two\DARKMOON\DARKMOON_BML",
         r"Assets\default_tex\CM\country_road_hor[1]_CM-00",
     ];
-    let plan = plan_for(BLACK_KNIGHT_TWO003, "two019", &references).expect("计划");
+    let plan =
+        material_plan_for(BLACK_KNIGHT_TWO003, "two019", &references).expect("显式材质迁移计划");
 
     let pair_closure = analyze_mhw_weapon_assets(&assets(BLACK_KNIGHT_TWO003))
         .expect("closure")
@@ -656,13 +679,13 @@ fn a_part_variant_suffix_travels_with_the_model_instead_of_failing_the_package()
         plan.actions().len(),
         "目标路径必须两两不同，后缀丢失会在这里撞车"
     );
-    // 三个模型对（swo035 主件、saya035 鞘、saya035ol 变体）都要带上 MRL3 改写。
+    // 所有模型和变体的材质内容保持不变。
     assert_eq!(
         plan.actions()
             .iter()
             .filter(|action| action.content_transform().is_some())
             .count(),
-        3
+        0
     );
 }
 
@@ -687,7 +710,7 @@ fn a_variant_parts_rewritten_references_land_on_files_the_plan_actually_produces
         "nativePC/wp/swo/swo035/mod/saya035ol_BML.tex",
         "nativePC/wp/swo/swo035/mod/saya035ol_NM.tex",
     ]);
-    let plan = plan_for(&paths, "swo019", &references).expect("计划");
+    let plan = material_plan_for(&paths, "swo019", &references).expect("显式材质迁移计划");
 
     let closure = analyze_mhw_weapon_assets(&assets(&paths))
         .expect("closure")
@@ -761,7 +784,6 @@ fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package
         ("bow013.mod3", "bow019.mod3"),
         ("ya013.mod3", "ya019.mod3"),
         ("ya013.mrl3", "ya019.mrl3"),
-        ("ya013_BML.tex", "ya019_BML.tex"),
     ] {
         assert_eq!(
             target_of(&plan, &format!("nativePC/wp/bow/bow013/mod/{source}")),
@@ -769,13 +791,15 @@ fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package
             "{source} 的前缀必须逐字保留，只换槽位数字"
         );
     }
-    // 两个模型对都要带上 MRL3 改写。
+    assert_eq!(target_of(&plan, paths[2]), paths[2]);
+    assert_eq!(target_of(&plan, paths[5]), paths[5]);
+    // 未登记前缀的模型可改路径，材质仍保持原字节。
     assert_eq!(
         plan.actions()
             .iter()
             .filter(|action| action.content_transform().is_some())
             .count(),
-        2
+        0
     );
 }
 
@@ -886,10 +910,10 @@ fn a_digit_or_nested_part_id_after_the_part_prefix_is_not_treated_as_a_variant()
 }
 
 #[test]
-fn files_outside_the_weapon_tree_never_enter_the_plan() {
+fn package_resources_outside_the_weapon_tree_are_kept_separate_from_other_equipment() {
     /*
-     * 第二遍分类的「无关」档：`nativePC/wp/` 之外的东西与本武器无关，忽略即可。
-     * 真实包几乎必然带 readme 与预览图，过去这类文件曾把整包判成混合包。
+     * 游戏根内的共享声音作为包级资源保留，另一件防具仍属于独立装备源。
+     * 包外说明和预览图不进入安装计划。
      */
     let mut paths = BLACK_KNIGHT_TWO003.to_vec();
     paths.extend([
@@ -899,13 +923,26 @@ fn files_outside_the_weapon_tree_never_enter_the_plan() {
         "nativePC/sound/wwise/Windows/pl_act_vo_f_07_m.nbnk",
     ]);
 
-    let plan = plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"]).expect("计划");
+    let plan = plan_for_source(
+        &paths,
+        "two003",
+        "two019",
+        &[r"wp\two\two003\mod\two003_BML"],
+        true,
+    )
+    .expect("计划");
 
     assert_eq!(
         plan.actions().len(),
-        BLACK_KNIGHT_TWO003.len() - 1,
-        "武器树之外的文件不产出动作（减掉的 1 是拒绝清单命中的 .exe）"
+        BLACK_KNIGHT_TWO003.len(),
+        "保留原武器资源和共享声音，排除可执行文件"
     );
+    let sound = "nativePC/sound/wwise/Windows/pl_act_vo_f_07_m.nbnk";
+    assert_eq!(target_of(&plan, sound), sound);
+    assert!(!has_action_for(
+        &plan,
+        "nativePC/pl/f_equip/pl078_0000/arm/mod/f_arm078_0000.mod3"
+    ));
     for ignored in ["readme.txt", "预览图.png"] {
         assert!(
             !plan
@@ -918,32 +955,18 @@ fn files_outside_the_weapon_tree_never_enter_the_plan() {
 }
 
 #[test]
-fn a_companion_filename_that_cannot_be_renamed_safely_fails_closed() {
-    /*
-     * 守卫②：部件 ID 在文件名里出现两次，无法判断作者意图。
-     *
-     * 这里刻意**不**降级（留在源路径）：降级的完整语义要求 MRL3 那一侧同步不改写并计入
-     * 告警，而告警变体在切片⑤。只做磁盘侧降级会静默产出「引用指向目标槽位、文件却留在
-     * 源槽位」的安装——静默产出坏结果比失败关闭更糟。
-     *
-     * 报的是引用侧的码而非 `weapon_unsupported_resource`（「只支持 .mod3 与 .mrl3」）：
-     * 磁盘改名与引用改写共用同一张对照表和同两条守卫，是同一个根因的两个出口。
-     */
+fn an_ambiguous_companion_filename_is_kept_with_unchanged_material_contents() {
     let mut paths = BLACK_KNIGHT_TWO003.to_vec();
     paths.push("nativePC/wp/two/two003/mod/two003_two003_BML.tex");
 
-    let error = plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"])
-        .expect_err("重复部件 ID 的文件名不得被猜");
-
-    assert!(
-        matches!(
-            error,
-            ReplacementAdapterError::AnalysisRejected {
-                code: "weapon_binary_reference_ambiguous"
-            }
-        ),
-        "实际是 {error:?}"
-    );
+    let plan =
+        plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"]).expect("歧义资源保留");
+    let ambiguous = "nativePC/wp/two/two003/mod/two003_two003_BML.tex";
+    assert_eq!(target_of(&plan, ambiguous), ambiguous);
+    assert!(plan
+        .actions()
+        .iter()
+        .all(|action| action.content_transform().is_none()));
 }
 
 #[test]
@@ -959,8 +982,8 @@ fn a_longer_digit_run_in_a_companion_filename_is_not_mistaken_for_the_part_id() 
 
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two0031_x.tex"),
-        "nativePC/wp/two/two019/mod/two0031_x.tex",
-        "槽位段照常改写，但文件名段不得被误替换"
+        "nativePC/wp/two/two003/mod/two0031_x.tex",
+        "贴图整体保留原路径，不猜测数字含义"
     );
 }
 
@@ -1117,12 +1140,7 @@ fn a_trailing_space_filename_fails_closed_before_classification() {
         .expect_err("尾随空格的路径必须失败关闭");
 
     assert!(
-        matches!(
-            error,
-            ReplacementAdapterError::AnalysisRejected {
-                code: "weapon_unsafe_path"
-            }
-        ),
+        matches!(error, ReplacementAdapterError::UnsafeRetargetPath),
         "实际是 {error:?}"
     );
 }

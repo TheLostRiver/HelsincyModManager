@@ -1,5 +1,9 @@
 # MHW:I 外观套装重定向设计
 
+> 默认武器／防具共用[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。同包多个防具源或混合武器
+> 不再路由到单源流程；各源分别选择后形成一次安装计划。贴图位置和材质内容保持，名称缺失不会阻止
+> 合法源原位安装。原有单源 API 的拒绝条件继续保留。
+
 > 本文档已吸收 [`ARMOR_RETARGET_REVIEW.md`](ARMOR_RETARGET_REVIEW.md) 的 P0/P1/P2 评审意见（catalog 主键分层、Unicode 归一化、结构化分段替换、m/f_equip 区分、变体建模、核心层边界等）。
 >
 > 实施状态（2026-07-16）：阶段 1-5 / AR1-AR5 的代码、自动化与受控 UI 已完成，Gate B 已标记为

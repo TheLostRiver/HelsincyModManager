@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 mod armor_retarget;
 mod equipment_catalog_candidate;
+mod equipment_retarget;
 mod executable_reject_list;
 mod package_path;
 mod prerequisites;
@@ -29,6 +30,7 @@ pub use equipment_catalog_candidate::{
     EquipmentCandidateValidationIssue, EquipmentCandidateValidationReport,
     MHW_EQUIPMENT_CANDIDATE_JSON_SCHEMA, MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION,
 };
+pub use equipment_retarget::MhwReplacementAdapter;
 // 拒绝清单不是武器专属概念：防具侧（#336 切片⑥）落地时应复用同一份，
 // 所以放在 crate 级而不是 weapon_retarget 里。
 pub use executable_reject_list::{
@@ -38,7 +40,7 @@ pub use save_directory::MonsterHunterWorldSaveDirectoryRule;
 pub use weapon_retarget::{
     analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation,
     preflight_mhw_weapon_mod3, preflight_mhw_weapon_model_pair, preflight_mhw_weapon_mrl3,
-    transform_mhw_weapon_mrl3_texture_paths, MhwReplacementAdapter, MhwReplacementCatalog,
+    transform_mhw_weapon_mrl3_texture_paths, MhwMaterialReplacementAdapter, MhwReplacementCatalog,
     MhwWeaponCatalogSource, MhwWeaponMrl3TexturePathTransformer, WeaponAnalysisError,
     WeaponAnalysisWarning, WeaponBinaryError, WeaponCatalogSourceError, WeaponCompanionAsset,
     WeaponCompanionPlacement, WeaponExcludedAsset, WeaponFamily, WeaponFamilyError, WeaponMainId,

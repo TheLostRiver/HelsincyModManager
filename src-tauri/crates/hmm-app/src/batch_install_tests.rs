@@ -2497,6 +2497,36 @@ fn canonical_source_snapshot_is_persisted_by_plain_batch_install() {
 }
 
 #[test]
+fn canonical_source_records_cannot_bypass_a_pending_retarget_selection() {
+    let (mut batch, _, _) = batch();
+    let hmm_core::BatchItemInput::Install(input) = &mut batch.plan.items[0].input_snapshot else {
+        panic!("install input");
+    };
+    input.replacement_binding_snapshot = Some(canonical_source_snapshot("a"));
+    let task_manager = Arc::new(TaskManager::new());
+    let parent_task_id = start_parent_task(&task_manager);
+    let selections = crate::replacement_selection_test_support::in_memory_selection_repository();
+    selections
+        .save_selection(&replacement_snapshot("a"))
+        .unwrap();
+    let (executor, game_files, recovery, _) = transaction_item_executor_with_selections(
+        task_manager,
+        false,
+        false,
+        Arc::new(RecordingAuditLogWriter::default()),
+        selections,
+    );
+    assert_eq!(
+        executor.execute(first_item_request(&batch, parent_task_id)),
+        BatchInstallItemExecution::Blocked {
+            reason_code: "replacement_selection_pending".to_owned()
+        }
+    );
+    assert_eq!(game_files.file_bytes("nativepc/a"), None);
+    assert!(recovery.history().is_empty());
+}
+
+#[test]
 fn explicit_uninstall_runner_and_retry_route_the_same_control_plane() {
     let (batch, attempt, token) = uninstall_batch();
     let repository = Arc::new(FakeRepository::default());

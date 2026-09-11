@@ -282,7 +282,7 @@ pub struct BatchTargetClaim {
 
 impl BatchTargetClaim {
     pub fn windows_key(&self) -> String {
-        self.target_path.as_str().to_ascii_lowercase()
+        self.target_path.windows_key()
     }
 }
 

@@ -28,6 +28,7 @@ export const WEAPON_REPLACEMENT_ERROR_CODES = [
   "weapon_duplicate_asset_path",
   "weapon_case_insensitive_path_collision",
   "weapon_source_not_found",
+  "weapon_no_relocatable_resources",
   "weapon_multiple_source_roots",
   "weapon_mixed_family",
   "weapon_unknown_family",

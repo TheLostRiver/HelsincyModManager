@@ -1307,10 +1307,9 @@ impl BatchInstallItemExecutor for InstallTaskBatchItemExecutor {
         }
         // 持有未完成选择意图的 Mod 必须从替换目标面板完成安装；普通安装会
         // 装出未重定向的原始 Mod（绑定与实际写入不符）。
-        if input.replacement_binding_snapshot.is_none()
-            && self
-                .runner
-                .has_pending_replacement_selection(&request.plan.profile_id, &input.mod_id)
+        if self
+            .runner
+            .has_pending_replacement_selection(&request.plan.profile_id, &input.mod_id)
         {
             return BatchInstallItemExecution::Blocked {
                 reason_code: "replacement_selection_pending".to_owned(),

@@ -175,6 +175,12 @@ impl ReinstallRecoveryTransaction {
                 &self.candidate_revision_id,
                 &self.candidate_replacement_bindings,
             )
+            && !crate::is_same_revision_equipment_target_switch(
+                &self.pre_reinstall_manifest,
+                &self.mod_id,
+                &self.candidate_revision_id,
+                &self.candidate_replacement_bindings,
+            )
         {
             return Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged);
         }
@@ -195,13 +201,16 @@ impl ReinstallRecoveryTransaction {
             return Err(ReinstallRecoveryTransactionValidationError::OldEntrySetEmpty);
         }
         let mut candidate_binding_ids = BTreeSet::new();
-        let mut candidate_binding_mods = BTreeSet::new();
+        let mut candidate_binding_sources = BTreeSet::new();
         for snapshot in &self.candidate_replacement_bindings {
             if snapshot.mod_id() != &self.mod_id
                 || snapshot.profile_id() != &self.profile_id
                 || snapshot.revision_id() != Some(&self.candidate_revision_id)
                 || !candidate_binding_ids.insert(snapshot.binding_id().clone())
-                || !candidate_binding_mods.insert(snapshot.mod_id().clone())
+                || !candidate_binding_sources.insert((
+                    snapshot.mod_id().clone(),
+                    snapshot.binding().source_id().clone(),
+                ))
             {
                 return Err(
                     ReinstallRecoveryTransactionValidationError::InvalidCandidateReplacementBinding,
