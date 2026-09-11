@@ -63,6 +63,8 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
   return <section className="replacement-panel equipment-retarget" aria-label={groupCopy.title}>
     <div className="replacement-panel__section-heading"><h3>{groupCopy.title}</h3></div>
     <p className="equipment-retarget__hint">{groupCopy.hint}</p>
+    {switching && configuration.installedTargets !== null && Object.keys(configuration.installedTargets).length === 0
+      && <p className="replacement-panel__notice" role="status">{copy.panel.originRecoveryHint}</p>}
     {configuration.sources.map((item) => <EquipmentSourcePicker key={item.source.id} item={item}
       choice={workflow.choices[item.source.id] ?? null} installedTargetId={configuration.installedTargets?.[item.source.id]}
       installed={switching} disabled={workflow.busy || task.status === "completed"}

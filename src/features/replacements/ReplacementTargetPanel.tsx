@@ -206,7 +206,7 @@ export function ReplacementTargetPanel({
 
     void Promise.all([
       analyzeImportedModReplacement({ gameId, profileId, modId }),
-      listReplacementTargets({ gameId, modId }),
+      listReplacementTargets({ gameId, modId, profileId }),
       loadOccupancy(gameId, profileId, modId),
     ])
       .then(([analysis, targets, occupancy]) => {
@@ -582,6 +582,8 @@ export function ReplacementTargetPanel({
   return (
     <div className="replacement-panel">
       {contextPanel}
+      {installStatus === "installed" && analysis?.retargetable && !installedTargetId
+        ? <p className="replacement-panel__notice" role="status">{rCopy.panel.originRecoveryHint}</p> : null}
       {blockMessage ? (
         <div className="replacement-panel__notice is-blocked" role="status">
           <ShieldAlert size={18} aria-hidden="true" />
