@@ -171,6 +171,8 @@ mod tests {
             "bindingId",
             "revisionId",
             "packageId",
+            "originalInstallEvidence",
+            "original_install_evidence",
         ] {
             let mut injected = request.clone();
             injected[key] = json!("not-accepted");
@@ -178,6 +180,25 @@ mod tests {
                 serde_json::from_value::<EquipmentRetargetSelectionRequestDto>(injected).is_err(),
                 "accepted {key}"
             );
+        }
+        let start = json!({"selection": request, "planToken": "fixture-preview"});
+        serde_json::from_value::<StartEquipmentRetargetReinstallRequestDto>(start.clone()).unwrap();
+        for field in ["originalInstallEvidence", "original_install_evidence"] {
+            for nested in [false, true] {
+                let mut injected = start.clone();
+                let object = if nested {
+                    &mut injected["selection"]
+                } else {
+                    &mut injected
+                };
+                object[field] = json!({"forged": true});
+                assert!(
+                    serde_json::from_value::<StartEquipmentRetargetReinstallRequestDto>(injected)
+                        .unwrap_err()
+                        .to_string()
+                        .contains("unknown field")
+                );
+            }
         }
     }
 

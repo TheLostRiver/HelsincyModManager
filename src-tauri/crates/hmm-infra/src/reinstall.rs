@@ -329,6 +329,7 @@ mod tests {
                     adopted: false,
                 }],
             ),
+            original_install_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 ReinstallRecoveryTarget {
