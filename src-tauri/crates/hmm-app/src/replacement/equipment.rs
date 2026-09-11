@@ -200,7 +200,6 @@ impl ReplacementWorkflowService {
             sandbox_root: &resolved.sandbox_root,
         };
         let mut seen_sources = BTreeSet::new();
-        let mut seen_targets = BTreeSet::new();
         let mut targets = Vec::new();
         let mut plans = Vec::new();
         let mut changed = false;
@@ -222,9 +221,6 @@ impl ReplacementWorkflowService {
                     self.self_target_for(&selection.game_id, source)?
                 }
             };
-            if !seen_targets.insert(target.id().clone()) {
-                return Err(ReplacementWorkflowError::DuplicateSlotTarget);
-            }
             let previous = installed.get(source.id());
             changed |=
                 previous.is_none_or(|binding| binding.target_internal_id() != target.internal_id());

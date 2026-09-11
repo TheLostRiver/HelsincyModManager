@@ -659,7 +659,8 @@ target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 
 新的首次预览响应为 `{ analysis, targets, warnings, installPlan, prerequisiteDecision }`，不再用第一个
 目标代替整组目标。配置和预览在 blocking worker 中执行，界面只在打开替换 Tab 后查询。多源重装必须
-覆盖已安装 revision 重新分析出的全部源，保留所有已有绑定的来源；重复、缺失或失效身份会被拒绝。
+覆盖已安装 revision 重新分析出的全部源，保留所有已有绑定的来源；重复源、缺失或失效身份会被拒绝。
+不同来源允许共用同一 target ID，独立保存绑定；最终文件路径重叠仍形成阻断冲突。
 同版本多源切换使用独立校验，旧单源入口遇到多绑定仍拒绝。新增任务复用 `install.retarget.*`、
 `install.reinstall.*` 和现有取消屏障；更改任何选择后旧 preview/token 均作废。
 
@@ -689,9 +690,9 @@ target switch 属于 AR5，AR4 不得退化为普通 install 覆盖。
 占用方 `displayName`，返回 `[{ targetId, modId, displayName }]`。自身 binding 不算占用（重选自己
 已安装的目标属于 target switch）；同一目标被多个 Mod 占用时只保留先出现的一条。清单状态不可信
 （TrustEntries 之外）、校验失败或读取失败一律**返回空列表**（fail-open）；占用方展示名解析失败时
-退回稳定 `modId`，不丢掉这条占用。前端据此在目标列表打「已被占用」标记，并在选中被占用目标时
-禁用「生成预览」与「安装到此目标」，同时展示可复制的占用方名称 —— 前端展示层 fail-open 是有意
-设计：少一条提示不会放过冲突写入，硬门禁仍在上一段描述的预览/任务/commit 三层。
+退回稳定 `modId`，不丢掉这条占用。前端据此在目标列表打「其他 Mod 使用中」标记，并展示可复制的
+使用方名称。目标 ID 相同仍允许生成预览；安装按钮根据后端最终文件冲突和前置条件决定是否可用。
+前端展示层 fail-open 是有意设计：少一条提示不会放过冲突写入，硬门禁仍在上述预览/任务/commit 三层。
 
 替换目标面板发起的 retarget 安装会为该 (profile, Mod) 落一份**选择意图**（`install/replacement-selections/`
 下的 per-(profile,mod) JSON）。任务承接安装（计划构建成功且无阻断冲突）时写入，commit 成功后清除，

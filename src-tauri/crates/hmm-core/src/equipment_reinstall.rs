@@ -34,7 +34,6 @@ pub fn is_same_revision_equipment_target_switch(
     }
     let mut sources = BTreeSet::new();
     let mut bindings = BTreeSet::new();
-    let mut targets = BTreeSet::new();
     let mut changed = false;
     for candidate in candidates {
         if candidate.mod_id() != mod_id
@@ -43,11 +42,6 @@ pub fn is_same_revision_equipment_target_switch(
             || candidate.source_path_family() != candidate.target_path_family()
             || !sources.insert(candidate.binding().source_id())
             || !bindings.insert(candidate.binding_id())
-            || !targets.insert((
-                candidate.retarget_kind(),
-                candidate.target_path_family(),
-                candidate.target_internal_id(),
-            ))
         {
             return false;
         }
@@ -159,12 +153,21 @@ mod tests {
         ));
         assert!(!accepts(
             &manifest,
-            &[snapshot("a", "c"), snapshot("b", "c")]
-        ));
-        assert!(!accepts(
-            &manifest,
             &[snapshot("a", "c"), snapshot("other", "d")]
         ));
+    }
+
+    #[test]
+    fn distinct_sources_may_share_a_target_and_later_separate() {
+        let mut manifest = manifest();
+        let combined = vec![snapshot("a", "c"), snapshot("b", "c")];
+        assert!(accepts(&manifest, &combined));
+        manifest.replacement_bindings = combined;
+        assert!(accepts(
+            &manifest,
+            &[snapshot("a", "d"), snapshot("b", "c")]
+        ));
+        assert!(!accepts(&manifest, &manifest.replacement_bindings));
     }
 
     #[test]

@@ -47,6 +47,25 @@ impl ConfiguredReinstallExecutor {
                 installed_bindings: context.installed_bindings,
             })
             .map_err(ConfiguredRetargetReinstallError::Replacement)?;
+        let preview_request = ReinstallPreviewRequest {
+            game_id: request.game_id,
+            profile_id: request.profile_id,
+            mod_id: request.mod_id,
+            candidate_revision_id: context.installed_revision_id,
+            layer: request.layer,
+        };
+        if planned.install_plan().has_blocking_conflicts() {
+            let preparation = services
+                .preview
+                .prepare_equipment_target_switch(preview_request, planned.install_plan().clone())
+                .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
+            return Ok(ConfiguredRetargetReinstallPreparation {
+                preparation,
+                game_instance: services.game_instance,
+                source: Arc::clone(&self.source),
+                staging_cleanup: RetargetStagingCleanup::default(),
+            });
+        }
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
@@ -80,16 +99,7 @@ impl ConfiguredReinstallExecutor {
                 Arc::clone(&source),
             )
             .preview
-            .prepare_equipment_target_switch(
-                ReinstallPreviewRequest {
-                    game_id: request.game_id,
-                    profile_id: request.profile_id,
-                    mod_id: request.mod_id,
-                    candidate_revision_id: context.installed_revision_id,
-                    layer: request.layer,
-                },
-                plan,
-            )
+            .prepare_equipment_target_switch(preview_request, plan)
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,
