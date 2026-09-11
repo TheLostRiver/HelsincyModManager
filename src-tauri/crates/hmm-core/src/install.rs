@@ -207,6 +207,10 @@ impl InstallPlan {
             }));
         }
 
+        // 等价键只参与冲突分组，输出仍按原路径排序，保持既有计划与校验摘要的稳定性。
+        actions.sort_by(|left, right| left.target_path.cmp(&right.target_path));
+        conflicts.sort_by(|left, right| left.target_path.cmp(&right.target_path));
+
         Self {
             actions,
             conflicts,
