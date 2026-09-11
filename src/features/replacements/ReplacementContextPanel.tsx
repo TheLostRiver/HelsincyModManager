@@ -14,12 +14,13 @@ type ContextState =
   | { status: "ready"; scope: string; summary: ModReplacementSummary }
   | { status: "failed"; scope: string };
 
-export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, targets, onRetry }: {
+export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, targets, sourceItems, onRetry }: {
   gameId: GameId;
   modId: string;
   profileId: string | null;
   reloadKey: number;
   targets: readonly ReplacementTarget[];
+  sourceItems?: readonly ReplacementSummaryItem[];
   onRetry: () => void;
 }) {
   const { locale } = useI18n();
@@ -56,7 +57,7 @@ export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, t
     </section>;
   }
 
-  const renderItems = (items: ReplacementSummaryItem[]) => items.length === 0
+  const renderItems = (items: readonly ReplacementSummaryItem[]) => items.length === 0
     ? <p className="replacement-panel__empty">{copy.noSources}</p>
     : <dl className="replacement-context__items">{items.map((item) => {
       // 只按后端提供的同一 ID 补充共享名称，不在前端猜编号、path family 或默认对象。
@@ -78,7 +79,8 @@ export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, t
         </dd>
       </div>;
     })}</dl>;
-  const { sources, installedTargets } = state.summary;
+  const { installedTargets } = state.summary;
+  const sources = sourceItems ?? state.summary.sources;
   return <section className="replacement-context">
     {installedTargets !== null && installedTargets.length > 0 ? (
       <div className="replacement-context__current">

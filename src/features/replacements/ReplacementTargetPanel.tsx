@@ -549,6 +549,9 @@ export function ReplacementTargetPanel({
   };
 
   const contextPanel = <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId}
+    sourceItems={installStatus === "installed" ? analysis?.sources.map((source) => ({
+      id: source.id, kind: source.sourceType, internalId: source.internalId, displayNames: source.displayNames ?? {},
+    })) : undefined}
     reloadKey={retryToken} targets={targets} onRetry={() => setRetryToken((value) => value + 1)} />;
 
   if (loadState.status === "loading") {

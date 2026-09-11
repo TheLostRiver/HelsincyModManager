@@ -31,7 +31,7 @@ const weapon = {
 const another = { ...weapon, id: "physical-model-b", internalId: "swo002", displayNames: { zh_cn: "另一把刀", en: "Another Sword", ja: "別の刀" }, aliases: [], aliasesByLocale: {} };
 const text = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children ?? []).map(text).join("");
 
-async function mount(t, { installed = false, legacy = false, occupied = false, fileConflict = false, targetFailure = false, contextOverride = {}, holdContext = false, previewBlocked = false } = {}) {
+async function mount(t, { installed = false, legacy = false, occupied = false, fileConflict = false, targetFailure = false, analysisSources, contextOverride = {}, holdContext = false, previewBlocked = false } = {}) {
   const summaryItem = (target) => ({ id: target.id, kind: target.targetType, internalId: target.internalId, displayNames: target.displayNames });
   const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], routes: [], listeners: new Set(), holdPreview: false,
     installedTargets: installed && !legacy ? [summaryItem(weapon)] : [] };
@@ -42,7 +42,7 @@ async function mount(t, { installed = false, legacy = false, occupied = false, f
   api.request = async (kind, input) => {
     api.calls.push({ kind, input });
     if (kind === "analysis") return { gameId: "mhw", installedTargetId: installed && !legacy ? weapon.id : undefined,
-      retargetable: true, matchedAssetCount: 1, sources: [{ id: "source", sourceType: "weapon", internalId: "swo099", supported: true }], warnings: [] };
+      retargetable: true, matchedAssetCount: 1, sources: analysisSources ?? [{ id: "source", sourceType: "weapon", internalId: another.internalId, supported: true, displayNames: another.displayNames }], warnings: [] };
     if (kind === "targets") {
       if (targetFailure) throw { code: "replacement_source_not_retargetable", message: "fixture multiple sources" };
       return [weapon, another];
@@ -125,6 +125,16 @@ test("legacy single-source installation explains verification and scopes targets
   assert.equal(h.api.calls.filter((call) => call.kind === "switchStart").length, 0);
   await act(async () => h.buttons()[1].props.onClick());
   assert.equal(h.api.calls.find((call) => call.kind === "switchStart").input.planToken, "fixture-plan");
+});
+
+test("installed source names use the profile analysis even when the library summary describes a newer revision", options, async (t) => {
+  const h = await mount(t, { installed: true, legacy: true, analysisSources: [
+    { id: "installed-source", sourceType: "weapon", internalId: "one001", supported: true, displayNames: { zh_cn: "已安装版本原武器" } },
+  ] });
+  const defaults = text(h.root.root.findByProps({ className: "replacement-context__default" }));
+  assert.ok(defaults.includes("已安装版本原武器 (one001)"));
+  assert.ok(!defaults.includes("另一把刀 (swo002)"));
+  assert.equal(h.api.calls.filter((call) => ["preview", "switchPreview", "start", "switchStart"].includes(call.kind)).length, 0);
 });
 
 test("all names of a used model show occupancy while a conflict-free preview can install", options, async (t) => {

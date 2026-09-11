@@ -735,6 +735,7 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 只有一个可确认的导入版本。`original_install_unverified` 表示原位布局无法证明，不能凭前端确认放行。
 恢复证据不接收自 DTO，也不返回原路径或摘要；预览只读，确认后随目标切换事务一起保存，失败恢复
 原来的无绑定清单。启动与卡片 hover 不触发回填。
+已安装 Mod 的替换面板顶部名称也采用同一份 profile 分析结果，避免卡片摘要中的新导入版本覆盖旧版本来源。
 
 当前 target、不安全 recovery 状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
 `install.reinstall.*` phase、game/profile 写锁和 cancellation barrier；前端严格按 `taskId` 匹配事件，
