@@ -8,8 +8,8 @@ use hmm_core::{
     is_same_revision_replacement_target_switch, resolve_installed_revision, FileLayer, GameId,
     InstallFileProvider, InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption,
     InstallManifestValidationError, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
-    ModRevisionId, PackageFileId, ProfileId, ReinstallClassificationError, ReinstallManifestError,
-    ReinstallTargetClass, ReinstallTargetState, ReplacementBindingSnapshot,
+    ModRevisionId, OriginalInstallEvidence, PackageFileId, ProfileId, ReinstallClassificationError,
+    ReinstallManifestError, ReinstallTargetClass, ReinstallTargetState, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
     InstallBackupStore, InstallGameFileSystem, InstallManifestRepository,
@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[path = "reinstall_origin.rs"]
+mod origin;
 #[path = "reinstall_target_paths.rs"]
 mod target_paths;
 
@@ -57,6 +59,7 @@ pub enum ReinstallBlockingReason {
     NotInstalled,
     CandidateNotFound,
     CandidateNotReady,
+    OriginalInstallUnverified,
     CandidateOwnerMismatch,
     CandidateAlreadyInstalled,
     ManifestStateUnsafe,
@@ -125,6 +128,7 @@ impl ReinstallPlanPreview {
 pub struct InstalledReplacementReinstallContext {
     pub installed_revision_id: ModRevisionId,
     pub installed_binding: ReplacementBindingSnapshot,
+    pub original_install_evidence: Option<OriginalInstallEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +141,7 @@ pub enum InstalledReplacementReinstallResolution {
 pub struct InstalledEquipmentReinstallContext {
     pub installed_revision_id: ModRevisionId,
     pub installed_bindings: Vec<ReplacementBindingSnapshot>,
+    pub original_install_evidence: Option<OriginalInstallEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,6 +236,7 @@ pub struct ReinstallPreviewService {
     catalog: Arc<dyn ModImportResultRepository>,
     planner: Arc<dyn ReinstallCandidatePlanner>,
     source: Arc<dyn ReinstallCandidateSourceReader>,
+    original_source: Arc<dyn ReinstallCandidateSourceReader>,
     game: Arc<dyn InstallGameFileSystem>,
     backups: Arc<dyn InstallBackupStore>,
     manifests: Arc<dyn InstallManifestRepository>,
@@ -253,6 +259,7 @@ impl ReinstallPreviewService {
             prerequisites,
             catalog,
             planner,
+            original_source: Arc::clone(&source),
             source,
             game,
             backups,
@@ -288,10 +295,12 @@ impl ReinstallPreviewService {
                     let InstalledEquipmentReinstallContext {
                         installed_revision_id,
                         mut installed_bindings,
+                        original_install_evidence,
                     } = *context;
                     InstalledReplacementReinstallResolution::Ready(Box::new(
                         InstalledReplacementReinstallContext {
                             installed_revision_id,
+                            original_install_evidence,
                             installed_binding: installed_bindings
                                 .pop()
                                 .expect("single context validates exactly one binding"),
@@ -405,13 +414,37 @@ impl ReinstallPreviewService {
                 ),
             ));
         }
-        let installed_bindings = manifest
+        let mut installed_bindings = manifest
             .replacement_bindings
             .iter()
             .filter(|snapshot| snapshot.mod_id() == mod_id)
             .cloned()
             .collect::<Vec<_>>();
-        if installed_bindings.is_empty() || (!multiple && installed_bindings.len() != 1) {
+        let original_install_evidence = if installed_bindings.is_empty() {
+            match self.verify_original_install(
+                game_id,
+                mod_id,
+                installed_revision.as_ref().expect("validated revision"),
+                &manifest,
+            ) {
+                Ok(evidence) => {
+                    installed_bindings = evidence.bindings().to_vec();
+                    Some(evidence)
+                }
+                Err(reason) => {
+                    return Ok(InstalledEquipmentReinstallResolution::Blocked(
+                        blocked_preview(
+                            Some(installed_revision_id.clone()),
+                            Some(installed_revision_id),
+                            reason,
+                        ),
+                    ))
+                }
+            }
+        } else {
+            None
+        };
+        if !multiple && installed_bindings.len() != 1 {
             return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(
                     Some(installed_revision_id.clone()),
@@ -425,6 +458,7 @@ impl ReinstallPreviewService {
             InstalledEquipmentReinstallContext {
                 installed_revision_id,
                 installed_bindings,
+                original_install_evidence,
             },
         )))
     }
@@ -433,7 +467,7 @@ impl ReinstallPreviewService {
         &self,
         request: ReinstallPreviewRequest,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
-        self.prepare_with_candidate_plan(request, None, ReplacementSwitchMode::Disabled)
+        self.prepare_with_candidate_plan(request, None, ReplacementSwitchMode::Disabled, None)
     }
 
     pub fn prepare_replacement_target_switch(
@@ -445,6 +479,7 @@ impl ReinstallPreviewService {
             request,
             Some(candidate_plan),
             ReplacementSwitchMode::SingleSource,
+            None,
         )
     }
 
@@ -457,6 +492,7 @@ impl ReinstallPreviewService {
             request,
             Some(candidate_plan),
             ReplacementSwitchMode::Equipment,
+            None,
         )
     }
 
@@ -465,6 +501,7 @@ impl ReinstallPreviewService {
         request: ReinstallPreviewRequest,
         candidate_plan: Option<InstallPlan>,
         switch_mode: ReplacementSwitchMode,
+        mut original_install_evidence: Option<OriginalInstallEvidence>,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         let prerequisite_decision = self.prerequisite_decision(&request.game_id);
         let blocked = |installed_revision, candidate_revision, reason| {
@@ -636,6 +673,43 @@ impl ReinstallPreviewService {
             },
         };
 
+        if !matches!(switch_mode, ReplacementSwitchMode::Disabled)
+            && installed_revision_id == candidate_revision_id
+            && manifest
+                .replacement_bindings
+                .iter()
+                .all(|binding| binding.mod_id() != &request.mod_id)
+            && original_install_evidence.is_none()
+        {
+            original_install_evidence = match self.verify_original_install(
+                &request.game_id,
+                &request.mod_id,
+                &candidate,
+                &manifest,
+            ) {
+                Ok(evidence) => Some(evidence),
+                Err(reason) => {
+                    return Ok(blocked(
+                        Some(installed_revision_id),
+                        Some(candidate_revision_id),
+                        reason,
+                    ))
+                }
+            };
+        }
+        if original_install_evidence.as_ref().is_some_and(|evidence| {
+            evidence.mod_id() != &request.mod_id
+                || evidence.revision_id() != &installed_revision_id
+                || installed_revision_id != candidate_revision_id
+                || evidence.validate(&manifest).is_err()
+        }) {
+            return Ok(blocked(
+                Some(installed_revision_id),
+                Some(candidate_revision_id),
+                ReinstallBlockingReason::OriginalInstallUnverified,
+            ));
+        }
+
         let candidate_summary = Some(candidate_revision_id.clone());
         let installed_summary = Some(installed_revision_id.clone());
         if plan.has_blocking_conflicts() {
@@ -678,21 +752,25 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateNotReady,
             ));
         }
-        if installed_revision_id == candidate_revision_id
-            && !is_same_revision_replacement_target_switch(
+        let same_revision_switch_allowed =
+            original_install_evidence.as_ref().is_some_and(|evidence| {
+                evidence.allows_single_target_switch(&manifest, &plan.replacement_bindings)
+                    || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
+                        && evidence
+                            .allows_equipment_target_switch(&manifest, &plan.replacement_bindings))
+            }) || is_same_revision_replacement_target_switch(
                 &manifest,
                 &request.mod_id,
                 &candidate_revision_id,
                 &plan.replacement_bindings,
-            )
-            && !(matches!(switch_mode, ReplacementSwitchMode::Equipment)
+            ) || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
                 && is_same_revision_equipment_target_switch(
                     &manifest,
                     &request.mod_id,
                     &candidate_revision_id,
                     &plan.replacement_bindings,
-                ))
-        {
+                ));
+        if installed_revision_id == candidate_revision_id && !same_revision_switch_allowed {
             return Ok(blocked(
                 installed_summary,
                 candidate_summary,
@@ -755,6 +833,26 @@ impl ReinstallPreviewService {
             }
         };
 
+        if original_install_evidence.as_ref().is_some_and(|evidence| {
+            let original_files = evidence
+                .files()
+                .iter()
+                .map(|file| (file.package_file_id(), file.summary()))
+                .collect::<BTreeMap<_, _>>();
+            source_facts.iter().any(|source| {
+                original_files
+                    .get(&source.provider.package_file_id)
+                    .copied()
+                    != Some(&source.summary)
+            })
+        }) {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::OriginalInstallUnverified,
+            ));
+        }
+
         let classifications =
             match classify_reinstall_targets(&request.mod_id, installed_states, candidate_states) {
                 Ok(classifications) => classifications,
@@ -790,6 +888,7 @@ impl ReinstallPreviewService {
                 target_files: &target_facts,
                 backup_files: &backup_facts,
                 replacement_bindings: &plan.replacement_bindings,
+                original_install_evidence: original_install_evidence.as_ref(),
             },
         );
         let targets = build_prepared_targets(
@@ -805,6 +904,7 @@ impl ReinstallPreviewService {
             installed_revision_id,
             legacy_provenance,
             old_manifest: manifest,
+            original_install_evidence,
             candidate_replacement_bindings: plan.replacement_bindings,
             source_files: source_facts,
             backup_files: backup_facts,
@@ -1009,6 +1109,7 @@ pub struct PreparedReinstall {
     pub(crate) installed_revision_id: ModRevisionId,
     pub(crate) legacy_provenance: Vec<ModRevisionId>,
     pub(crate) old_manifest: InstallManifest,
+    pub(crate) original_install_evidence: Option<OriginalInstallEvidence>,
     pub(crate) candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     pub(crate) source_files: Vec<PreparedSourceFile>,
     pub(crate) backup_files: BTreeMap<String, PreparedFile>,
@@ -1133,6 +1234,7 @@ struct CandidatePlanTokenFacts<'a> {
     target_files: &'a BTreeMap<InstallTargetPath, Option<PreparedFile>>,
     backup_files: &'a BTreeMap<String, PreparedFile>,
     replacement_bindings: &'a [ReplacementBindingSnapshot],
+    original_install_evidence: Option<&'a OriginalInstallEvidence>,
 }
 
 fn canonical_plan_token(
@@ -1227,6 +1329,13 @@ fn canonical_plan_token(
         hash_summary(&mut hasher, &summary.summary);
     }
     hash_replacement_snapshots(&mut hasher, candidate.replacement_bindings);
+    if let Some(evidence) = candidate.original_install_evidence {
+        hash_field(&mut hasher, "original-install-evidence-v1");
+        hash_field(
+            &mut hasher,
+            &serde_json::to_string(evidence).expect("serializable original install facts"),
+        );
+    }
 
     format!("reinstall-preview-v1:{:x}", hasher.finalize())
 }

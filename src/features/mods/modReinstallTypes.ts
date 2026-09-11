@@ -31,6 +31,7 @@ export type ReinstallBlockingReason =
   | "not_installed"
   | "candidate_not_found"
   | "candidate_not_ready"
+  | "original_install_unverified"
   | "candidate_owner_mismatch"
   | "candidate_already_installed"
   | "manifest_state_unsafe"

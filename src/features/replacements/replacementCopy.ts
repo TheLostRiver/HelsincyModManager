@@ -53,6 +53,7 @@ export type ReplacementCopy = {
     currentTargetsTitle: string;
     currentTargetsHint: string;
     currentTargetsUnknown: string;
+    originRecoveryHint: string;
     contextLoading: string;
     contextUnavailable: string;
     contextNameUnknown: string;
@@ -346,6 +347,7 @@ export const replacementCopy = {
       currentTargetsTitle: "当前安装替换对象",
       currentTargetsHint: "根据当前配置档的 HMM 安装记录显示。",
       currentTargetsUnknown: "当前安装对象暂不可确认；下面显示的是 Mod 原包的默认对象。",
+      originRecoveryHint: "旧安装没有装备来源记录。预览会核对原包和已安装文件，通过后将在确认切换时补齐记录。",
       contextLoading: "正在读取 Mod 的替换对象…",
       contextUnavailable: "暂时无法读取 Mod 的替换对象，请重试。",
       contextNameUnknown: "已识别资源编号，但目录没有可确认的装备名称。",
@@ -636,6 +638,7 @@ export const replacementCopy = {
       currentTargetsTitle: "Currently installed replacements",
       currentTargetsHint: "From HMM's installation records for the current profile.",
       currentTargetsUnknown: "Current installed replacements cannot be verified. The original package's defaults are shown below.",
+      originRecoveryHint: "This installation has no equipment source records. Preview verifies the original package and installed files; confirming the switch saves the verified records.",
       contextLoading: "Reading the mod's replacements…",
       contextUnavailable: "The mod's replacements could not be read. Please retry.",
       contextNameUnknown: "The resource ID was detected, but its equipment name is not verified in the catalog.",
@@ -928,6 +931,7 @@ export const replacementCopy = {
       currentTargetsTitle: "現在インストール済みの置換対象",
       currentTargetsHint: "現在のプロファイルの HMM インストール記録に基づきます。",
       currentTargetsUnknown: "現在のインストール対象を確認できません。以下は元のパッケージの対象です。",
+      originRecoveryHint: "以前のインストールには装備の元データ記録がありません。プレビューで元パッケージとインストール済みファイルを照合し、切り替えの確定時に検証済みの記録を保存します。",
       contextLoading: "Mod の置換対象を読み込み中…",
       contextUnavailable: "Mod の置換対象を読み取れません。再試行してください。",
       contextNameUnknown: "リソース番号は検出されましたが、対応する装備名を確認できません。",

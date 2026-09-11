@@ -5,6 +5,7 @@
 ```powershell
 cargo test -p hmm-games-mhw --test retarget_package_preservation
 cargo test -p hmm-core equipment_reinstall
+cargo test -p hmm-core original_install
 cargo test -p hmm-app --test replacement_multi_slot
 cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment
 cargo test -p hmm-runtime batch_automation::equipment_tests
@@ -19,6 +20,10 @@ node --test "src/features/replacements/*.test.mjs"
 不同 Mod 提供互不重叠的文件。真实同文件冲突必须在首次安装和重装预览中阻断，不写游戏或留下暂存。
 普通安装／新版本重装／批量安装须保存所有实际来源，保持原安装文件政策；新版本导入后改目标仍读取
 已安装 revision。批量来源事实变化使预览失效，自动生成的原位绑定不能绕过未完成选择意图。
+旧原位安装恢复覆盖单源／多源、已记录 revision／唯一旧版本、源与目标内容篡改、缺失文件／摘要、
+接管记录和布局不一致；多版本且无 revision 时拒绝猜测。验证预览不写清单、确认切换后补齐来源、
+清单失败恢复原无绑定状态、暂存后原包变化使提交失效，以及中断后经重装恢复还原原清单。准备完成后
+取消与提交屏障前取消均须保留原清单字节和游戏文件；DTO 拒绝调用方提交恢复证据，旧查询可省略 profile。
 详细语义见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
 
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。

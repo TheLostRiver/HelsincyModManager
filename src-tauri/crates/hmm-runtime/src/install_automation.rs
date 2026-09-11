@@ -1582,6 +1582,7 @@ fn reinstall_blocking_reason_code(reason: ReinstallBlockingReason) -> &'static s
         ReinstallBlockingReason::NotInstalled => "not_installed",
         ReinstallBlockingReason::CandidateNotFound => "candidate_not_found",
         ReinstallBlockingReason::CandidateNotReady => "candidate_not_ready",
+        ReinstallBlockingReason::OriginalInstallUnverified => "original_install_unverified",
         ReinstallBlockingReason::CandidateOwnerMismatch => "candidate_owner_mismatch",
         ReinstallBlockingReason::CandidateAlreadyInstalled => "candidate_already_installed",
         ReinstallBlockingReason::ManifestStateUnsafe => "manifest_state_unsafe",

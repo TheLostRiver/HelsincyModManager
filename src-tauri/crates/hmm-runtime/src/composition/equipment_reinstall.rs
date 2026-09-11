@@ -57,7 +57,11 @@ impl ConfiguredReinstallExecutor {
         if planned.install_plan().has_blocking_conflicts() {
             let preparation = services
                 .preview
-                .prepare_equipment_target_switch(preview_request, planned.install_plan().clone())
+                .prepare_equipment_target_switch_with_origin(
+                    preview_request,
+                    planned.install_plan().clone(),
+                    context.original_install_evidence,
+                )
                 .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
             return Ok(ConfiguredRetargetReinstallPreparation {
                 preparation,
@@ -99,7 +103,11 @@ impl ConfiguredReinstallExecutor {
                 Arc::clone(&source),
             )
             .preview
-            .prepare_equipment_target_switch(preview_request, plan)
+            .prepare_equipment_target_switch_with_origin(
+                preview_request,
+                plan,
+                context.original_install_evidence,
+            )
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,

@@ -496,7 +496,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                 profileId: profileContext.profileId,
                 modId,
               }),
-              listReplacementTargets({ gameId: DEFAULT_INSTALL_GAME_ID, modId }),
+              listReplacementTargets({ gameId: DEFAULT_INSTALL_GAME_ID, modId, profileId: profileContext.profileId }),
             ]);
             return {
               modId,
