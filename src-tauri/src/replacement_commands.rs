@@ -42,9 +42,25 @@ pub fn list_replacement_targets(
         "replacement_mod_id_invalid",
         "Mod id is required",
     )?);
+    let profile_id = request
+        .profile_id
+        .map(|profile| {
+            required_id(
+                profile,
+                "replacement_profile_id_invalid",
+                "profile id is required",
+            )
+            .map(ProfileId::new)
+        })
+        .transpose()?;
     state
         .replacement_workflow
-        .list_compatible_targets(&game_id, &mod_id, request.query.as_deref())
+        .list_compatible_targets_in_profile(
+            &game_id,
+            &mod_id,
+            profile_id.as_ref(),
+            request.query.as_deref(),
+        )
         .map(|targets| targets.into_iter().map(Into::into).collect())
         .map_err(replacement_workflow_error_to_command_error)
 }
@@ -58,7 +74,7 @@ pub fn analyze_imported_mod_replacement(
     let mod_id = request.mod_id.clone();
     let analysis = state
         .replacement_workflow
-        .analyze_imported_mod(request)
+        .analyze_imported_mod_in_profile(request, profile_id.as_ref())
         .map_err(replacement_workflow_error_to_command_error)?;
     let source_names = state.replacement_workflow.describe_sources(&analysis);
     let installed_target_id = profile_id

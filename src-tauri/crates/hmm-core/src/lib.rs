@@ -7,6 +7,7 @@ mod external_install_state;
 mod game;
 mod install;
 mod mod_metadata;
+mod original_install;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -76,6 +77,9 @@ pub use mod_metadata::{
     deduplicate_mod_display_name, mod_display_name_from_archive_path, normalize_mod_display_name,
     sanitize_mod_metadata_text, ModMetadataOverlay, MOD_DISPLAY_NAME_MAX_ORDINAL,
     MOD_METADATA_MAX_DISPLAY_NAME_CHARS,
+};
+pub use original_install::{
+    OriginalInstallEvidence, OriginalInstallEvidenceError, OriginalInstallFileEvidence,
 };
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,

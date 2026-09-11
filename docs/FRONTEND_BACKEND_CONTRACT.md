@@ -625,7 +625,7 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 
 | command | 请求 | 返回 |
 | --- | --- | --- |
-| `list_replacement_targets` | `gameId`、`modId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表 |
+| `list_replacement_targets` | `gameId`、`modId`、可选 `profileId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表；提供 profile 时优先采用已记录安装版本 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
 | `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sources, installedTargets }`，供卡片悬浮展示 |
 | `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
@@ -729,9 +729,15 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 离开时抛弃旧响应，查询失败不自动循环。详情可先于源扫描显示；15 秒前端等待上限只结束等待，
 不伪造后端扫描取消。来源 `imported` 只可表述文件导入，不能区分手动选择与拖拽。
 
-同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，且新
-`targetId` 与已安装 target 不同时才允许进入真正重装。当前 target、缺失 binding、不安全 recovery
-状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
+同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，或后端的
+原位证据通过完整核验，且新 `targetId` 与已安装 target 不同时才允许进入真正重装。缺失 binding 的旧
+安装只在原包、清单与实际文件的完整集合、身份和摘要一致时恢复；旧记录未写 revision 时还要求该 Mod
+只有一个可确认的导入版本。`original_install_unverified` 表示原位布局无法证明，不能凭前端确认放行。
+恢复证据不接收自 DTO，也不返回原路径或摘要；预览只读，确认后随目标切换事务一起保存，失败恢复
+原来的无绑定清单。启动与卡片 hover 不触发回填。
+已安装 Mod 的替换面板顶部名称也采用同一份 profile 分析结果，避免卡片摘要中的新导入版本覆盖旧版本来源。
+
+当前 target、不安全 recovery 状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
 `install.reinstall.*` phase、game/profile 写锁和 cancellation barrier；前端严格按 `taskId` 匹配事件，
 取消入口只在 queued/plan/preflight 安全阶段可见。
 
@@ -1027,7 +1033,7 @@ type GamePrerequisiteDecisionDto = {
 首批 command：
 
 ```text
-list_replacement_targets({ gameId, modId, query? })
+list_replacement_targets({ gameId, modId, profileId?, query? })
 analyze_imported_mod_replacement({ gameId, profileId?, modId })
 preview_initial_retarget_install({ gameId, profileId, modId, targetId, layerName, layerPriority })
 start_retarget_install_task({ gameId, profileId, modId, targetId, layerName, layerPriority })

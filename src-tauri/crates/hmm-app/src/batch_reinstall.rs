@@ -174,7 +174,7 @@ impl PreparedReinstall {
             .collect::<Vec<_>>();
         prerequisite_codes.sort();
 
-        let canonical = serde_json::json!({
+        let mut canonical = serde_json::json!({
             "schema": "hmm-batch-reinstall-item-v1",
             "gameId": self.request.game_id.as_str(),
             "profileId": self.request.profile_id.as_str(),
@@ -204,6 +204,10 @@ impl PreparedReinstall {
                 "codes": prerequisite_codes,
             },
         });
+        if let Some(evidence) = &self.original_install_evidence {
+            canonical["originalInstallEvidence"] =
+                serde_json::to_value(evidence).expect("serializable original install evidence");
+        }
         sha256_prefixed(
             &serde_json::to_vec(&canonical)
                 .expect("validated reinstall batch facts are serializable"),
@@ -711,6 +715,9 @@ fn reinstall_blocking_code(reason: ReinstallBlockingReason) -> &'static str {
         ReinstallBlockingReason::NotInstalled => "mod_not_installed",
         ReinstallBlockingReason::CandidateNotFound => "reinstall_candidate_not_found",
         ReinstallBlockingReason::CandidateNotReady => "reinstall_candidate_not_ready",
+        ReinstallBlockingReason::OriginalInstallUnverified => {
+            "reinstall_original_install_unverified"
+        }
         ReinstallBlockingReason::CandidateOwnerMismatch => "reinstall_candidate_owner_mismatch",
         ReinstallBlockingReason::CandidateAlreadyInstalled => {
             "reinstall_candidate_already_installed"

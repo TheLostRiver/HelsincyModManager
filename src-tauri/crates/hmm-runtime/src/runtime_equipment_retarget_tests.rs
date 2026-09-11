@@ -10,6 +10,8 @@ use hmm_games_mhw::MhwReplacementCatalog;
 mod canonical;
 #[path = "runtime_equipment_composition_tests.rs"]
 mod composition;
+#[path = "runtime_equipment_origin_tests.rs"]
+mod origin;
 
 const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     (

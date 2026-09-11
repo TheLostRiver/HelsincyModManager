@@ -206,7 +206,7 @@ export function ReplacementTargetPanel({
 
     void Promise.all([
       analyzeImportedModReplacement({ gameId, profileId, modId }),
-      listReplacementTargets({ gameId, modId }),
+      listReplacementTargets({ gameId, modId, profileId }),
       loadOccupancy(gameId, profileId, modId),
     ])
       .then(([analysis, targets, occupancy]) => {
@@ -549,6 +549,9 @@ export function ReplacementTargetPanel({
   };
 
   const contextPanel = <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId}
+    sourceItems={installStatus === "installed" ? analysis?.sources.map((source) => ({
+      id: source.id, kind: source.sourceType, internalId: source.internalId, displayNames: source.displayNames ?? {},
+    })) : undefined}
     reloadKey={retryToken} targets={targets} onRetry={() => setRetryToken((value) => value + 1)} />;
 
   if (loadState.status === "loading") {
@@ -582,6 +585,8 @@ export function ReplacementTargetPanel({
   return (
     <div className="replacement-panel">
       {contextPanel}
+      {installStatus === "installed" && analysis?.retargetable && !installedTargetId
+        ? <p className="replacement-panel__notice" role="status">{rCopy.panel.originRecoveryHint}</p> : null}
       {blockMessage ? (
         <div className="replacement-panel__notice is-blocked" role="status">
           <ShieldAlert size={18} aria-hidden="true" />

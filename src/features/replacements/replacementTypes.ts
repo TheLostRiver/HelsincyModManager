@@ -7,6 +7,7 @@ import type {
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 
 export type ListReplacementTargetsInput = {
+  profileId?: string | null;
   gameId: GameId;
   modId: string;
   query?: string;

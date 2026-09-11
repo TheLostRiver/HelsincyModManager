@@ -7,6 +7,8 @@ pub struct ListReplacementTargetsRequestDto {
     pub game_id: String,
     pub mod_id: String,
     #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
     pub query: Option<String>,
 }
 
@@ -249,6 +251,14 @@ mod replacement_dto_tests {
         }))
         .expect("deserialize target list request");
         assert_eq!(request.mod_id, "weapon-mod");
+        assert_eq!(request.profile_id, None);
+        for profile in [json!("profile-a"), json!(null)] {
+            let scoped: ListReplacementTargetsRequestDto = serde_json::from_value(json!({
+                "gameId": "mhw", "modId": "weapon-mod", "profileId": profile
+            }))
+            .unwrap();
+            assert_eq!(scoped.profile_id.as_deref(), profile.as_str());
+        }
 
         assert!(
             serde_json::from_value::<ListReplacementTargetsRequestDto>(json!({
@@ -388,6 +398,7 @@ mod replacement_dto_tests {
         .expect("deserialize start request");
 
         assert_eq!(preview.target_id, "mhw:armor:fatalis-alpha");
+        let serialized_preview = serde_json::to_value(preview).expect("serialize preview shape");
         let serialized = serde_json::to_value(start).expect("serialize request shape");
         for forbidden in [
             "packageId",
@@ -397,10 +408,28 @@ mod replacement_dto_tests {
             "sandboxPath",
             "stagingPath",
             "targetPath",
+            "originalInstallEvidence",
+            "original_install_evidence",
         ] {
             assert!(
                 serialized.get(forbidden).is_none(),
                 "forbidden field: {forbidden}"
+            );
+            let mut injected = serialized.clone();
+            injected[forbidden] = json!({"forged": true});
+            assert!(
+                serde_json::from_value::<StartRetargetReinstallTaskRequestDto>(injected)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unknown field")
+            );
+            let mut injected = serialized_preview.clone();
+            injected[forbidden] = json!({"forged": true});
+            assert!(
+                serde_json::from_value::<PreviewRetargetReinstallRequestDto>(injected)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unknown field")
             );
         }
         assert!(serialized["planToken"]
