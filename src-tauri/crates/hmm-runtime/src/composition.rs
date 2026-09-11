@@ -1713,7 +1713,11 @@ impl ConfiguredReinstallExecutor {
         );
         let preparation = candidate_services
             .preview
-            .prepare_replacement_target_switch(candidate_request, plan)
+            .prepare_replacement_target_switch_with_origin(
+                candidate_request,
+                plan,
+                context.original_install_evidence,
+            )
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,
@@ -1753,28 +1757,34 @@ impl ConfiguredReinstallExecutor {
         let backup_store = Arc::new(FileSystemInstallBackupStore::new(
             self.app_data_dir.join("install").join("backups"),
         ));
-        let preview = Arc::new(ReinstallPreviewService::new(
-            Arc::clone(&self.prerequisites),
-            Arc::clone(&self.catalog),
-            Arc::new(hmm_app::CanonicalReinstallPlanner::new(
-                self.planner.clone(),
-                Arc::clone(&self.replacement_workflow),
-            )),
-            Arc::clone(&source),
-            Arc::clone(&game_files),
-            backup_store.clone(),
-            Arc::clone(&self.manifest_repository),
-            Arc::clone(&self.recovery_repository),
-        ));
-        let commit = Arc::new(ReinstallCommitService::new(
-            Arc::clone(&self.catalog),
-            source,
-            game_files,
-            backup_store.clone(),
-            Arc::clone(&self.manifest_repository),
-            Arc::clone(&self.recovery_repository),
-            backup_store,
-        ));
+        let preview = Arc::new(
+            ReinstallPreviewService::new(
+                Arc::clone(&self.prerequisites),
+                Arc::clone(&self.catalog),
+                Arc::new(hmm_app::CanonicalReinstallPlanner::new(
+                    self.planner.clone(),
+                    Arc::clone(&self.replacement_workflow),
+                )),
+                Arc::clone(&source),
+                Arc::clone(&game_files),
+                backup_store.clone(),
+                Arc::clone(&self.manifest_repository),
+                Arc::clone(&self.recovery_repository),
+            )
+            .with_original_install_source(Arc::clone(&self.source)),
+        );
+        let commit = Arc::new(
+            ReinstallCommitService::new(
+                Arc::clone(&self.catalog),
+                source,
+                game_files,
+                backup_store.clone(),
+                Arc::clone(&self.manifest_repository),
+                Arc::clone(&self.recovery_repository),
+                backup_store,
+            )
+            .with_original_install_source(Arc::clone(&self.source)),
+        );
         let executor = ReinstallTaskExecutorService::new(Arc::clone(&preview), commit);
 
         ConfiguredReinstallServices {

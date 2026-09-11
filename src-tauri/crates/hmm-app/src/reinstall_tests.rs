@@ -1707,6 +1707,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
                 plan_hash: "active-plan-hash".to_owned(),
                 status: ReinstallRecoveryTransactionStatus::Planned,
                 pre_reinstall_manifest: installed_manifest(),
+                original_install_evidence: None,
                 candidate_replacement_bindings: Vec::new(),
                 targets: Vec::new(),
             }));
@@ -1739,6 +1740,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
             plan_hash: "active-plan-hash".to_owned(),
             status: ReinstallRecoveryTransactionStatus::Planned,
             pre_reinstall_manifest: installed_manifest(),
+            original_install_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             targets: Vec::new(),
         }])

@@ -48,21 +48,7 @@ impl ReplacementWorkflowService {
                 .query_installed_replacement_bindings_for_display(profile, mod_id)
                 .ok()
         });
-        let revisions = bindings
-            .as_ref()
-            .into_iter()
-            .flatten()
-            .filter_map(|binding| binding.revision_id().cloned())
-            .collect::<BTreeSet<_>>();
-        let resolved = if revisions.len() == 1 {
-            self.resolve_imported_revision(
-                game_id,
-                mod_id,
-                revisions.first().expect("one revision"),
-            )?
-        } else {
-            self.resolve_imported_replacement(game_id, mod_id)?
-        };
+        let resolved = self.resolve_profiled_replacement(game_id, mod_id, profile_id)?;
         let catalog = self.catalog_for(game_id)?;
         let all_targets = self.list_targets(game_id, None)?;
         let names = self

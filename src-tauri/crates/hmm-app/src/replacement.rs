@@ -32,6 +32,8 @@ use crate::InstallRecoveryStatus;
 
 #[path = "replacement/canonical.rs"]
 mod canonical;
+#[path = "replacement/profile.rs"]
+mod profile;
 pub use canonical::CanonicalReinstallPlanner;
 
 #[path = "replacement_display.rs"]
@@ -601,7 +603,17 @@ impl ReplacementWorkflowService {
         mod_id: &ModId,
         query: Option<&str>,
     ) -> Result<Vec<ReplacementTarget>, ReplacementWorkflowError> {
-        let resolved = self.resolve_imported_replacement(game_id, mod_id)?;
+        self.list_compatible_targets_in_profile(game_id, mod_id, None, query)
+    }
+
+    pub fn list_compatible_targets_in_profile(
+        &self,
+        game_id: &GameId,
+        mod_id: &ModId,
+        profile_id: Option<&ProfileId>,
+        query: Option<&str>,
+    ) -> Result<Vec<ReplacementTarget>, ReplacementWorkflowError> {
+        let resolved = self.resolve_profiled_replacement(game_id, mod_id, profile_id)?;
         let source = resolved
             .analysis
             .single_source()

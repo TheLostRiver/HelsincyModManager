@@ -134,6 +134,8 @@ pub struct ReinstallRecoveryTransaction {
     pub plan_hash: String,
     pub status: ReinstallRecoveryTransactionStatus,
     pub pre_reinstall_manifest: InstallManifest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_install_evidence: Option<crate::OriginalInstallEvidence>,
     #[serde(default)]
     pub candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     pub targets: Vec<ReinstallRecoveryTarget>,
@@ -141,6 +143,8 @@ pub struct ReinstallRecoveryTransaction {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReinstallRecoveryTransactionValidationError {
+    #[error("reinstall transaction original installation evidence is invalid")]
+    InvalidOriginalInstallEvidence,
     #[error("reinstall transaction profile does not match its pre-reinstall manifest")]
     ProfileMismatch,
     #[error("reinstall transaction old and candidate revisions must differ")]
@@ -168,7 +172,33 @@ impl ReinstallRecoveryTransaction {
         if self.profile_id != self.pre_reinstall_manifest.profile_id {
             return Err(ReinstallRecoveryTransactionValidationError::ProfileMismatch);
         }
+        if self
+            .original_install_evidence
+            .as_ref()
+            .is_some_and(|evidence| {
+                evidence.mod_id() != &self.mod_id
+                    || evidence.revision_id() != &self.old_revision_id
+                    || self.old_revision_id != self.candidate_revision_id
+                    || evidence.validate(&self.pre_reinstall_manifest).is_err()
+            })
+        {
+            return Err(
+                ReinstallRecoveryTransactionValidationError::InvalidOriginalInstallEvidence,
+            );
+        }
         if self.old_revision_id == self.candidate_revision_id
+            && !self
+                .original_install_evidence
+                .as_ref()
+                .is_some_and(|evidence| {
+                    evidence.allows_single_target_switch(
+                        &self.pre_reinstall_manifest,
+                        &self.candidate_replacement_bindings,
+                    ) || evidence.allows_equipment_target_switch(
+                        &self.pre_reinstall_manifest,
+                        &self.candidate_replacement_bindings,
+                    )
+                })
             && !is_same_revision_replacement_target_switch(
                 &self.pre_reinstall_manifest,
                 &self.mod_id,
@@ -1523,6 +1553,7 @@ mod tests {
             plan_hash: "sha256:plan".to_owned(),
             status,
             pre_reinstall_manifest: old_manifest,
+            original_install_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 target(

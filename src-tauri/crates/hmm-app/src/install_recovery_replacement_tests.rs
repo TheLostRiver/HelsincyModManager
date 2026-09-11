@@ -102,6 +102,7 @@ pub(super) fn reinstall_recovery_fixture() -> (
         plan_hash: "candidate-plan-hash".to_owned(),
         status: ReinstallRecoveryTransactionStatus::Committing,
         pre_reinstall_manifest: old_manifest.clone(),
+        original_install_evidence: None,
         candidate_replacement_bindings,
         targets: vec![ReinstallRecoveryTarget {
             target_path: target.clone(),
