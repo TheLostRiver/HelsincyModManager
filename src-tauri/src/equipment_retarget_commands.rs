@@ -110,6 +110,61 @@ pub fn start_equipment_retarget_reinstall_task(
         selection: reinstall_selection_from_dto(request.selection)?,
         plan_token: parse_plan_token(request.plan_token)?,
     };
+    queue_equipment_reinstall(request, &state, app_handle)
+}
+
+#[tauri::command]
+pub async fn preview_equipment_reapply(
+    request: EquipmentReapplyRequestDto,
+    state: State<'_, AppState>,
+) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
+    let request = reapply_selection_from_dto(request)?;
+    let executor = Arc::clone(&state.reinstall_executor);
+    let preview = tauri::async_runtime::spawn_blocking(move || {
+        executor.preview_equipment_retarget_reinstall(request)
+    })
+    .await
+    .map_err(|_| unavailable())?
+    .map_err(retarget_reinstall_error_to_command_error)?;
+    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| unavailable())
+}
+
+#[tauri::command]
+pub fn start_equipment_reapply_task(
+    request: StartEquipmentReapplyRequestDto,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
+    let request = StartEquipmentRetargetReinstallTaskRequest {
+        selection: reapply_selection_from_dto(request.selection)?,
+        plan_token: parse_plan_token(request.plan_token)?,
+    };
+    queue_equipment_reinstall(request, &state, app_handle)
+}
+
+fn reapply_selection_from_dto(
+    request: EquipmentReapplyRequestDto,
+) -> Result<EquipmentRetargetReinstallRequest, CommandErrorDto> {
+    Ok(EquipmentRetargetReinstallRequest::reapply(
+        parse_game_id(request.game_id)?,
+        ProfileId::new(required_id(
+            request.profile_id,
+            "replacement_profile_id_invalid",
+            "profile id is required",
+        )?),
+        ModId::new(required_id(
+            request.mod_id,
+            "replacement_mod_id_invalid",
+            "Mod id is required",
+        )?),
+    ))
+}
+
+fn queue_equipment_reinstall(
+    request: StartEquipmentRetargetReinstallTaskRequest,
+    state: &AppState,
+    app_handle: AppHandle,
+) -> Result<TaskStartedDto, CommandErrorDto> {
     let task = state
         .reinstall_tasks
         .start_equipment_retarget_reinstall_task(request.clone())
@@ -192,6 +247,7 @@ fn reinstall_selection_from_dto(
         return Err(unavailable());
     };
     Ok(EquipmentRetargetReinstallRequest {
+        intent: Default::default(),
         game_id: request.game_id,
         profile_id: request.profile_id,
         mod_id: request.mod_id,

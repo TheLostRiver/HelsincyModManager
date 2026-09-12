@@ -22,11 +22,25 @@ pub struct EquipmentRetargetConfiguration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EquipmentRetargetReinstallRequest {
+    pub intent: hmm_core::ReinstallIntent,
     pub game_id: GameId,
     pub profile_id: ProfileId,
     pub mod_id: ModId,
     pub slots: Vec<InitialRetargetSlotIntent>,
     pub layer: FileLayer,
+}
+
+impl EquipmentRetargetReinstallRequest {
+    pub fn reapply(game_id: GameId, profile_id: ProfileId, mod_id: ModId) -> Self {
+        Self {
+            intent: hmm_core::ReinstallIntent::ReapplyEquipmentTargets,
+            game_id,
+            profile_id,
+            mod_id,
+            slots: Vec::new(),
+            layer: FileLayer::new("base", 0),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -142,13 +156,17 @@ impl ReplacementWorkflowService {
         &self,
         request: PreviewEquipmentRetargetReinstallRequest,
     ) -> Result<PlannedInitialRetargetInstall, ReplacementWorkflowError> {
-        let selection = request.selection;
+        let mut selection = request.selection;
+        let reapply = selection.intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets;
         let resolved = self.resolve_imported_revision(
             &selection.game_id,
             &selection.mod_id,
             &request.installed_revision_id,
         )?;
-        if selection.slots.len() != resolved.analysis.sources().len() || selection.slots.is_empty()
+        if (!reapply
+            && (selection.slots.len() != resolved.analysis.sources().len()
+                || selection.slots.is_empty()))
+            || (reapply && !selection.slots.is_empty())
         {
             return Err(ReplacementWorkflowError::SourceNotRetargetable);
         }
@@ -180,6 +198,66 @@ impl ReplacementWorkflowService {
             return Err(ReplacementWorkflowError::InstalledBindingUnavailable);
         }
         let catalog = self.catalog_for(&selection.game_id)?;
+        if reapply {
+            if installed.len() != resolved.analysis.sources().len() {
+                return Err(ReplacementWorkflowError::InstalledBindingUnavailable);
+            }
+            let manifest = self
+                .install_manifests
+                .load_manifest(&selection.profile_id)
+                .map_err(|_| ReplacementWorkflowError::InstalledBindingUnavailable)?
+                .ok_or(ReplacementWorkflowError::InstalledBindingUnavailable)?;
+            selection.layer = manifest
+                .entries
+                .iter()
+                .find(|entry| entry.mod_id == selection.mod_id)
+                .ok_or(ReplacementWorkflowError::InstalledBindingUnavailable)?
+                .layer
+                .clone();
+            selection.slots = resolved
+                .analysis
+                .sources()
+                .iter()
+                .map(|source| {
+                    let previous = installed
+                        .get(source.id())
+                        .ok_or(ReplacementWorkflowError::InstalledBindingUnavailable)?;
+                    let target = catalog
+                        .find_replacement_target(previous.binding().target_id())
+                        .or_else(|error| {
+                            catalog
+                                .original_target_for_source(source)
+                                .and_then(|target| {
+                                    if target.id() == previous.binding().target_id() {
+                                        Ok(target)
+                                    } else {
+                                        Err(error)
+                                    }
+                                })
+                        })
+                        .map_err(map_catalog_error)?;
+                    if target.internal_id() != previous.target_internal_id()
+                        || target.target_type() != previous.retarget_kind()
+                        || target
+                            .metadata()
+                            .get("path_family")
+                            .and_then(serde_json::Value::as_str)
+                            != Some(previous.target_path_family())
+                    {
+                        return Err(ReplacementWorkflowError::InstalledBindingUnavailable);
+                    }
+                    if target.internal_id() == source.internal_id() {
+                        return Ok(InitialRetargetSlotIntent::KeepInPlace {
+                            source_id: source.id().clone(),
+                        });
+                    }
+                    Ok(InitialRetargetSlotIntent::Retarget {
+                        source_id: source.id().clone(),
+                        target_id: target.id().clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, ReplacementWorkflowError>>()?;
+        }
         let reader = ImportedReplacementContentReader {
             reader: self.file_reader.as_ref(),
             package_id: &resolved.package_id,
@@ -244,7 +322,7 @@ impl ReplacementWorkflowService {
             targets.push(target);
             plans.push(plan);
         }
-        if !changed {
+        if !changed && !reapply {
             return Err(ReplacementWorkflowError::TargetAlreadySelected);
         }
         let install_plan = self

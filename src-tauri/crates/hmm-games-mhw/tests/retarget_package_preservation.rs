@@ -97,6 +97,67 @@ fn output<'a>(plan: &'a RetargetPlan, input: &str) -> &'a str {
 }
 
 #[test]
+fn file_effects_cover_mapping_original_resources_companions_and_exclusions() {
+    use hmm_core::{RetargetFileDisposition as Disposition, RetargetFileReason as Reason};
+    let paths = [
+        "nativePC/wp/two/two028/mod/two028.mod3",
+        "nativePC/wp/two/two028/mod/two028_BML.tex",
+        "nativePC/wp/two/two028/mod/custom.mod3",
+        "nativePC/sound/author/resources.bin",
+        "nativePC/plugins/author.dll",
+        "nativePC/wp/two/two028/mod/author_tool.exe",
+    ];
+    let expected = [
+        (Disposition::Relocated, Reason::TargetMapping),
+        (Disposition::KeptInPlace, Reason::TextureReference),
+        (Disposition::KeptInPlace, Reason::UnmappedResource),
+        (Disposition::PackageCompanion, Reason::PackageResource),
+        (Disposition::PluginCandidate, Reason::PluginNotIncluded),
+        (Disposition::PolicyExcluded, Reason::ExecutablePolicy),
+    ];
+    let planned = plan(&paths, "two028", "two029", true);
+    assert_eq!(planned.file_effects().len(), paths.len());
+    for (path, (disposition, reason)) in paths.into_iter().zip(expected) {
+        let effect = planned
+            .file_effects()
+            .iter()
+            .find(|effect| effect.source_path.as_str() == path)
+            .unwrap();
+        assert_eq!((effect.disposition, effect.reason), (disposition, reason));
+        assert_eq!(
+            effect.target_path.is_some(),
+            !matches!(
+                disposition,
+                Disposition::PluginCandidate | Disposition::PolicyExcluded
+            )
+        );
+        assert_eq!(
+            effect.source_id.is_none(),
+            matches!(
+                disposition,
+                Disposition::PackageCompanion | Disposition::PluginCandidate
+            )
+        );
+    }
+    let mut reversed = paths;
+    reversed.reverse();
+    assert_eq!(
+        plan(&reversed, "two028", "two029", true).file_effects(),
+        planned.file_effects()
+    );
+    let mut missing = planned.file_effects().to_vec();
+    missing.pop();
+    assert!(planned.clone().with_file_effects(missing).is_err());
+    let mut duplicate = planned.file_effects().to_vec();
+    duplicate[0] = duplicate[1].clone();
+    assert!(planned.clone().with_file_effects(duplicate).is_err());
+    assert!(planned.clone().with_policy_exclusions(Vec::new()).is_err());
+    let serialized = serde_json::to_string(&planned).unwrap();
+    assert!(!serialized.contains("file_effects"));
+    assert!(!serialized.contains("author.dll"));
+}
+
+#[test]
 fn weapon_retarget_keeps_texture_locations_and_material_contents() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028.mod3",

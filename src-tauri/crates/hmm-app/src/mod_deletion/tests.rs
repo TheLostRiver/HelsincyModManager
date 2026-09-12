@@ -608,6 +608,7 @@ fn delete_fails_closed_when_reinstall_recovery_transaction_exists() {
         .service
         .reinstall_recovery
         .save_transaction(&ReinstallRecoveryTransaction {
+            intent: Default::default(),
             profile_id: ProfileId::new("p1"),
             mod_id: mod_id.clone(),
             old_revision_id: hmm_core::ModRevisionId::new("package-r1"),

@@ -6,6 +6,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EquipmentReapplyRequestDto {
+    pub game_id: String,
+    pub profile_id: String,
+    pub mod_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartEquipmentReapplyRequestDto {
+    pub selection: EquipmentReapplyRequestDto,
+    pub plan_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EquipmentSlotIntentDto {
     Keep {
@@ -100,6 +115,8 @@ impl From<hmm_app::EquipmentRetargetConfiguration> for EquipmentRetargetConfigur
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EquipmentRetargetInstallPreviewDto {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_effects: Vec<crate::retarget_file_dto::RetargetFilePreviewDto>,
     pub analysis: ReplacementAnalysisDto,
     pub targets: Vec<ReplacementTargetDto>,
     pub warnings: Vec<ReplacementWarningDto>,
@@ -110,6 +127,12 @@ pub struct EquipmentRetargetInstallPreviewDto {
 impl From<hmm_app::InitialRetargetInstallPreflight> for EquipmentRetargetInstallPreviewDto {
     fn from(preflight: hmm_app::InitialRetargetInstallPreflight) -> Self {
         Self {
+            file_effects: preflight
+                .planned
+                .file_effects()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             analysis: preflight.planned.analysis().clone().into(),
             targets: preflight
                 .planned
@@ -136,6 +159,43 @@ impl From<hmm_app::InitialRetargetInstallPreflight> for EquipmentRetargetInstall
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn reapply_requests_accept_only_scope_and_a_start_token() {
+        let scope = json!({"gameId":"mhw", "profileId":"default", "modId":"fixture-mod"});
+        serde_json::from_value::<EquipmentReapplyRequestDto>(scope.clone()).unwrap();
+        for field in [
+            "slots",
+            "targetId",
+            "revisionId",
+            "layer",
+            "layerName",
+            "intent",
+            "originalInstallEvidence",
+            "fileEffects",
+            "gameRoot",
+        ] {
+            let mut value = scope.clone();
+            value[field] = json!("caller-supplied");
+            assert!(
+                serde_json::from_value::<EquipmentReapplyRequestDto>(value).is_err(),
+                "accepted {field}"
+            );
+            for nested in [false, true] {
+                let mut start = json!({"selection":scope, "planToken":"fixture-token"});
+                if nested {
+                    start["selection"][field] = json!("caller-supplied");
+                } else {
+                    start[field] = json!("caller-supplied");
+                }
+                assert!(serde_json::from_value::<StartEquipmentReapplyRequestDto>(start).is_err());
+            }
+        }
+        serde_json::from_value::<StartEquipmentReapplyRequestDto>(
+            json!({"selection":scope, "planToken":"fixture-token"}),
+        )
+        .unwrap();
+    }
 
     #[test]
     fn slots_accept_only_stable_ids_and_an_explicit_action() {

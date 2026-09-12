@@ -194,6 +194,8 @@ pub struct RetargetActionPreviewDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InitialRetargetInstallPreviewDto {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub file_effects: Vec<crate::retarget_file_dto::RetargetFilePreviewDto>,
     pub analysis: ReplacementAnalysisDto,
     pub target: ReplacementTargetDto,
     pub actions: Vec<RetargetActionPreviewDto>,
@@ -577,6 +579,7 @@ mod replacement_dto_tests {
     #[test]
     fn initial_retarget_preview_serializes_prerequisite_decision_at_the_preflight_boundary() {
         let dto = InitialRetargetInstallPreviewDto {
+            file_effects: Vec::new(),
             analysis: ReplacementAnalysisDto {
                 game_id: "mhw".to_owned(),
                 installed_target_id: None,

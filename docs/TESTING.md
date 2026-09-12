@@ -29,6 +29,20 @@ node --test "src/features/replacements/*.test.mjs"
 内容变化、接管、清单故障、取消、中断恢复和同版本批量切换。版本升级仍须移除新包不再提供的条目。
 详细语义见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
 
+当前目标重新应用与处置明细的聚焦回归：
+
+```powershell
+cargo test -p hmm-core --test equipment_reapply_recovery
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment::attachments::reapply
+node --test src/features/replacements/equipmentReapplyApi.test.mjs src/features/replacements/retargetFileDetailsBehavior.test.mjs
+```
+
+覆盖单源／多源、原位旧记录、无差异不写也不回填、保留层级／附件、批量意图与摘要一致、普通同目标
+切换继续拒绝。暂存后的源变化／缺失、游戏文件变化和旧 token 必须在写入前拒绝；提交前取消、清单
+失败和模拟中断重启须恢复原布局与清单。恢复过程中已恢复目标可以从事务中逐项移除。
+UI 验证三语、窄屏、展开／搜索／分页、无变化禁止提交、重复点击和迟到响应；接口拒绝调用方提交
+目标、层、路径、处置或保留证据。人工浏览器夹具须明确标注，不能作为真实游戏内效果证据。
+
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。
 
 ## 目标

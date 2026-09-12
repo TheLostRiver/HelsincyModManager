@@ -236,11 +236,13 @@ fn parse_batch_plan_request(
                 )?),
             }),
             BatchModLifecycleItemInputDto::Reinstall {
+                intent,
                 mod_id,
                 installed_revision_id,
                 candidate_revision_id,
                 layer,
             } => BatchItemInput::Reinstall(hmm_core::ReinstallBatchItemInput {
+                intent,
                 mod_id: ModId::new(parse_opaque_id(&mod_id)?),
                 installed_revision_id: ModRevisionId::new(parse_opaque_id(&installed_revision_id)?),
                 candidate_revision_id: ModRevisionId::new(parse_opaque_id(&candidate_revision_id)?),

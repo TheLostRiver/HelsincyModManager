@@ -79,6 +79,7 @@ fn assert_normal_install_tracks_all_sources(files: &[(&str, &[u8])], source_coun
         })
         .collect();
     let selection = EquipmentRetargetReinstallRequest {
+        intent: Default::default(),
         game_id: GameId::mhw(),
         profile_id: ProfileId::new("default"),
         mod_id: mod_id.clone(),
