@@ -212,7 +212,7 @@ export function canStartInitialRetargetInstall(input: InitialRetargetInstallAvai
 
 type RetargetReinstallAvailability = {
   installStatus: InstallManifestStatus | undefined;
-  previewStatus: "ready" | "blocked" | undefined;
+  previewStatus: "ready" | "blocked" | "no_changes" | undefined;
   taskActive: boolean;
   listenerReady: boolean;
 };

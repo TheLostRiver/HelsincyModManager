@@ -66,6 +66,10 @@ import "./ReplacementTargetPanel.css";
 import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
+import { RetargetFileDetails } from "./RetargetFileDetails";
+import { retargetFileCopy } from "./retargetFileCopy";
+import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetargetApi";
+import type { RetargetInstallTaskStarted } from "./replacementTypes";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 
@@ -93,7 +97,7 @@ type PreviewState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; mode: "initial"; preview: InitialRetargetInstallPreview }
-  | { status: "ready"; mode: "switch"; preview: ReinstallPlanPreview }
+  | { status: "ready"; mode: "switch" | "reapply"; preview: ReinstallPlanPreview }
   | { status: "error"; message: string; recoveryBlocked?: boolean };
 
 type TaskStateUpdate =
@@ -144,6 +148,7 @@ export function ReplacementTargetPanel({
   const { locale } = useI18n();
   const { pushToast } = useFeedback();
   const rCopy = resolveCopy(replacementCopy, locale);
+  const fileCopy = resolveCopy(retargetFileCopy, locale);
   const reinstallTask = resolveCopy(modReinstallCopy, locale).task;
   const prerequisite = resolveCopy(modLifecycleCopy, locale).prerequisite;
   // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
@@ -426,13 +431,24 @@ export function ReplacementTargetPanel({
       });
   };
 
+  const createReapplyPreview = () => {
+    if (profileId === null || installStatus !== "installed" || blockMessage !== null || taskActive) return;
+    const generation = ++previewRequestGenerationRef.current;
+    setPreviewState({ status: "loading" });
+    void previewEquipmentReapply({ gameId, profileId, modId }).then((preview) => {
+      if (previewRequestGenerationRef.current === generation) setPreviewState({ status: "ready", mode: "reapply", preview });
+    }).catch((error: unknown) => {
+      if (previewRequestGenerationRef.current === generation) setPreviewState({ status: "error", message: replacementErrorMessage(error, rCopyRef.current.events.previewFallback, rCopyRef.current.errors) });
+    });
+  };
+
   const startInstall = () => {
     const switchPreviewStatus =
-      previewState.status === "ready" && previewState.mode === "switch"
+      previewState.status === "ready" && previewState.mode !== "initial"
         ? previewState.preview.status
         : undefined;
     const canStart =
-      previewState.status === "ready" && previewState.mode === "switch"
+      previewState.status === "ready" && previewState.mode !== "initial"
         ? canStartRetargetReinstall({
             installStatus,
             previewStatus: switchPreviewStatus,
@@ -452,7 +468,6 @@ export function ReplacementTargetPanel({
           : false;
     if (
       profileId === null ||
-      selectedTarget === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
       !canStart
@@ -460,27 +475,24 @@ export function ReplacementTargetPanel({
       return;
     }
 
+    if (taskStateRef.current.status === "starting" || taskStateRef.current.status === "running") return;
+    let launch: () => Promise<RetargetInstallTaskStarted>;
+    if (previewState.mode === "reapply" && previewState.preview.status === "ready") {
+      const token = previewState.preview.planToken;
+      launch = () => startEquipmentReapply({ gameId, profileId, modId }, token);
+    } else {
+      if (!selectedTarget) return;
+      const request = { gameId, profileId, modId, targetId: selectedTarget.id, layerName: "base", layerPriority: 0 };
+      const token = previewState.mode === "switch" && previewState.preview.status === "ready" ? previewState.preview.planToken : null;
+      launch = token ? () => startRetargetReinstallTask({ ...request, planToken: token }) : () => startRetargetInstallTask(request);
+    }
     pendingEventsRef.current.clear();
     setTrackedTaskState({ status: "starting" });
-    const request = {
-      gameId,
-      profileId,
-      modId,
-      targetId: selectedTarget.id,
-      layerName: "base",
-      layerPriority: 0,
-    };
-    const start =
-      previewState.mode === "switch" && previewState.preview.status === "ready"
-        ? startRetargetReinstallTask({
-            ...request,
-            planToken: previewState.preview.planToken,
-          })
-        : startRetargetInstallTask(request);
+    const start = launch();
     const queuedPhase =
-      previewState.mode === "switch" ? "install.reinstall.queued" : "install.retarget.queued";
+      previewState.mode !== "initial" ? "install.reinstall.queued" : "install.retarget.queued";
     const failedPhase =
-      previewState.mode === "switch" ? "install.reinstall.failed" : "install.retarget.failed";
+      previewState.mode !== "initial" ? "install.reinstall.failed" : "install.retarget.failed";
     void start
       .then((task) => {
         if (task.kind !== "install" || task.status !== "queued") {
@@ -746,7 +758,7 @@ export function ReplacementTargetPanel({
               <div className="replacement-panel__section-heading">
                 <Eye size={17} aria-hidden="true" />
                 <h3>
-                  {previewState.mode === "switch"
+                  {previewState.mode === "reapply" ? fileCopy.reapplyTitle : previewState.mode === "switch"
                     ? rCopy.panel.switchPreviewTitle
                     : rCopy.panel.initialPreviewTitle}
                 </h3>
@@ -754,6 +766,7 @@ export function ReplacementTargetPanel({
                   <span>{rCopy.panel.actionCount(previewState.preview.actions.length)}</span>
                 ) : null}
               </div>
+              {previewState.mode === "reapply" && <p className="retarget-reapply-hint">{fileCopy.reapplyHint}</p>}
               {previewState.mode === "switch" && selectedTarget && selectedOption ? (
                 <p className="replacement-panel__selected-name">
                   {replacementIdentityLabel(selectedTarget, locale, selectedOption.displayName)}
@@ -835,6 +848,7 @@ export function ReplacementTargetPanel({
               ) : (
                 <>
                   <RetargetAttachmentNotice counts={previewState.preview.attachmentCounts} />
+                  {previewState.preview.status === "no_changes" && <div className="replacement-panel__inline-state is-success" role="status">{fileCopy.noChanges}</div>}
                   <dl className="replacement-panel__counts">
                     <div data-kind="retained">
                       <dt>{rCopy.panel.countRetained}</dt>
@@ -871,6 +885,7 @@ export function ReplacementTargetPanel({
                   )}
                 </>
               )}
+              <RetargetFileDetails files={previewState.preview.fileEffects} sourceLabels={Object.fromEntries((analysis?.sources ?? []).map((source) => [source.id, replacementIdentityLabel(source, locale)]))} />
             </>
           ) : null}
         </section>
@@ -1009,7 +1024,7 @@ export function ReplacementTargetPanel({
           disabled={
             previewState.status !== "ready" ||
             blockMessage !== null ||
-            (previewState.mode === "switch"
+            (previewState.mode !== "initial"
               ? !canStartRetargetReinstall({
                   installStatus,
                   previewStatus: previewState.preview.status,
@@ -1032,8 +1047,11 @@ export function ReplacementTargetPanel({
           ) : (
             <Target size={16} aria-hidden="true" />
           )}
-          {targetSwitch ? rCopy.panel.confirmSwitch : rCopy.panel.installToTarget}
+          {previewState.status === "ready" && previewState.mode === "reapply" ? fileCopy.confirmReapply : targetSwitch ? rCopy.panel.confirmSwitch : rCopy.panel.installToTarget}
         </button>
+        {targetSwitch && <button type="button" className="is-secondary" onClick={createReapplyPreview} disabled={profileId === null || blockMessage !== null || previewState.status === "loading" || taskActive}>
+          <RotateCcw size={16} aria-hidden="true" />{fileCopy.previewReapply}
+        </button>}
       </div>
     </div>
   );

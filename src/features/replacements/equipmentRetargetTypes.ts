@@ -28,6 +28,8 @@ export type EquipmentRetargetSelection = {
   layerPriority: number;
 };
 
+export type EquipmentReapplyInput = Pick<EquipmentRetargetSelection, "gameId" | "profileId" | "modId">;
+
 export type EquipmentRetargetInstallPreview = Omit<InitialRetargetInstallPreview, "target" | "actions"> & {
   targets: ReplacementTarget[];
 };

@@ -12,6 +12,8 @@ registerReactTestModules({
     export const getEquipmentRetargetConfiguration = (input) => globalThis.__equipment.request("configuration", input);
     export const previewEquipmentRetargetInstall = (input) => globalThis.__equipment.request("preview", input);
     export const previewEquipmentRetargetReinstall = (input) => globalThis.__equipment.request("switchPreview", input);
+    export const previewEquipmentReapply = (input) => globalThis.__equipment.request("reapplyPreview", input);
+    export const startEquipmentReapply = (input, token) => globalThis.__equipment.request("reapplyStart", { ...input, token });
     export const startEquipmentRetargetInstall = (input) => globalThis.__equipment.request("start", input);
     export const startEquipmentRetargetReinstall = (input, token) => globalThis.__equipment.request("switchStart", { ...input, token });`,
   "features/replacements/replacementApi.ts": `
@@ -55,15 +57,19 @@ async function mount(t, overrides = {}) {
   api.preview = () => ({ analysis: { sources: [], warnings: [] }, targets: [], warnings: [],
     installPlan: { actions: [{}, {}], conflicts: api.blocked ? [{}] : [], hasBlockingConflicts: Boolean(api.blocked) },
     prerequisiteDecision: { status: "ready", codes: [] } });
+  api.reapplyPreview = () => ({ status: api.noChanges ? "no_changes" : api.blocked ? "blocked" : "ready", planToken: api.noChanges || api.blocked ? null : "reapply-plan",
+    counts: { retained: 2, replaced: 0, added: api.noChanges ? 0 : 1, stale: api.noChanges ? 0 : 1 }, blockingReasons: api.blocked ? [{ code: "target_changed", count: 1 }] : [],
+    prerequisiteDecision: { status: "ready", codes: [] }, fileEffects: api.fileEffects });
   api.request = async (kind, input) => {
     api.calls.push({ kind, input });
     if (kind === "configuration") return api.config;
+    if (kind === "reapplyPreview") return api.holdReapply ? new Promise((resolve) => api.pending.push(resolve)) : api.reapplyPreview();
     if (kind === "preview") return api.holdPreview ? new Promise((resolve) => api.pending.push(resolve)) : api.preview();
     if (kind === "switchPreview") return { status: api.blocked ? "blocked" : "ready", planToken: api.blocked ? null : "equipment-plan", counts: { retained: 2, replaced: 0, added: 1, stale: 1 },
       attachmentCounts: api.attachmentCounts,
       blockingReasons: api.blocked ? [{ code: "original_install_unverified", count: 1 }] : [], prerequisiteDecision: { status: "ready", codes: [] } };
     if (kind === "cancel") return { taskId: input.taskId, kind: "install", status: "cancelled" };
-    if (kind === "start" || kind === "switchStart") {
+    if (kind === "start" || kind === "switchStart" || kind === "reapplyStart") {
       if (api.earlyComplete) {
         for (let index = 0; index < (api.noise ?? 0); index += 1) api.emit("completed", "install.retarget.completed", `unrelated-${index}`);
         api.emit("completed", "install.retarget.completed");
@@ -78,7 +84,7 @@ async function mount(t, overrides = {}) {
   let props = { gameId: "mhw", modId: "mod-a", profileId: "default", installStatus: api.installed ? "installed" : "not_installed",
     completedLocally: false, initialConfiguration: api.config, onBusyChange: (busy) => { api.busy = busy; },
     onInstallCompleted: async () => { api.completed += 1; if (api.failRefresh) throw new Error("fixture refresh failure"); } };
-  const tree = () => React.createElement(React.StrictMode, null, React.createElement(EquipmentRetargetGroup, { ...props, key: props.modId }));
+  const tree = () => React.createElement(React.StrictMode, null, React.createElement(EquipmentRetargetGroup, { ...props, key: JSON.stringify([props.gameId, props.profileId, props.modId]) }));
   await act(async () => { root = TestRenderer.create(tree()); });
   t.after(async () => { await act(async () => root.unmount()); delete globalThis.__equipment; });
   const buttons = () => root.root.findByProps({ className: "replacement-panel__actions" }).findAllByType("button");
@@ -88,6 +94,36 @@ async function mount(t, overrides = {}) {
     update: async (next = {}) => act(async () => { props = { ...props, ...next }; root.update(tree()); }),
   };
 }
+
+test("group reapply submits no edited target choices and no-changes stays read-only", options, async (t) => {
+  const h = await mount(t, { installed: true, noChanges: true });
+  await h.choose(0, "weapon-c");
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  assert.deepEqual(h.api.calls.find((call) => call.kind === "reapplyPreview").input, { gameId: "mhw", profileId: "default", modId: "mod-a" });
+  assert.ok(text(h.root.toJSON()).includes("文件已符合当前规则，无需更新"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+  await h.click(1);
+  assert.equal(h.api.calls.filter((call) => call.kind.endsWith("Start") || call.kind === "start").length, 0);
+});
+
+test("group reapply requires a ready preview and uses the same task completion lifecycle", options, async (t) => {
+  const h = await mount(t, { installed: true });
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  await h.click(1);
+  assert.deepEqual(h.api.calls.find((call) => call.kind === "reapplyStart").input, { gameId: "mhw", profileId: "default", modId: "mod-a", token: "reapply-plan" });
+  await act(async () => h.api.emit("completed", "install.reinstall.completed"));
+  assert.equal(h.api.completed, 1);
+});
+
+test("changing profile discards an in-flight group reapply preview", options, async (t) => {
+  const h = await mount(t, { installed: true, holdReapply: true });
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  assert.equal(h.api.pending.length, 1);
+  await h.update({ profileId: "other-profile" });
+  await act(async () => h.api.pending[0](h.api.reapplyPreview()));
+  assert.ok(!text(h.root.toJSON()).includes("重新应用预览"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+});
 
 test("equipment preview shows attachment retention and discards its notice on a new selection", options, async (t) => {
   const h = await mount(t, { installed: true, attachmentCounts: { retained: 1, excluded: 2 } });
