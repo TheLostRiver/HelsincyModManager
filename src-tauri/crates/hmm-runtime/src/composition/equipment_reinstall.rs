@@ -54,6 +54,7 @@ impl ConfiguredReinstallExecutor {
             candidate_revision_id: context.installed_revision_id,
             layer: request.layer,
         };
+        let policy_exclusions = planned.policy_exclusions();
         if planned.install_plan().has_blocking_conflicts() {
             let preparation = services
                 .preview
@@ -61,6 +62,7 @@ impl ConfiguredReinstallExecutor {
                     preview_request,
                     planned.install_plan().clone(),
                     context.original_install_evidence,
+                    policy_exclusions,
                 )
                 .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
             return Ok(ConfiguredRetargetReinstallPreparation {
@@ -96,7 +98,15 @@ impl ConfiguredReinstallExecutor {
                 )
             })?;
         let source: Arc<dyn ReinstallCandidateSourceReader> =
-            Arc::new(RetargetStagingReinstallCandidateSourceReader { reader });
+            Arc::new(RetargetStagingReinstallCandidateSourceReader {
+                reader,
+                original_source: Arc::clone(&self.source),
+                policy_exclusions: policy_exclusions
+                    .iter()
+                    .flatten()
+                    .map(|file| file.package_file_id().clone())
+                    .collect(),
+            });
         let preparation = self
             .services_for_game_instance_with_source(
                 services.game_instance.clone(),
@@ -107,6 +117,7 @@ impl ConfiguredReinstallExecutor {
                 preview_request,
                 plan,
                 context.original_install_evidence,
+                policy_exclusions,
             )
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {

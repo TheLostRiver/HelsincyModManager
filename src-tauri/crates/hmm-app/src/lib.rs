@@ -288,10 +288,10 @@ pub use profile::{
 pub use reinstall::{
     InstalledEquipmentReinstallContext, InstalledEquipmentReinstallResolution,
     InstalledReplacementReinstallContext, InstalledReplacementReinstallResolution,
-    PreparedReinstall, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
-    ReinstallCandidatePlanError, ReinstallCandidatePlanRequest, ReinstallCandidatePlanner,
-    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
-    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    PreparedReinstall, ReinstallAttachmentCounts, ReinstallBlockingReason,
+    ReinstallBlockingReasonSummary, ReinstallCandidatePlanError, ReinstallCandidatePlanRequest,
+    ReinstallCandidatePlanner, ReinstallCandidateSourceReader, ReinstallPlanPreview,
+    ReinstallPreparation, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
     ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
 };
 pub use reinstall_commit::{

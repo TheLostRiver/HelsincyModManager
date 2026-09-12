@@ -232,6 +232,11 @@ pub struct PlannedRetargetReinstall {
 }
 
 impl PlannedRetargetReinstall {
+    pub fn policy_exclusions(&self) -> Option<Vec<hmm_core::RetargetPolicyExcludedFile>> {
+        self.retarget_plan
+            .has_complete_policy_inventory()
+            .then(|| self.retarget_plan.policy_exclusions().to_vec())
+    }
     pub fn package_id(&self) -> &str {
         &self.package_id
     }
@@ -256,6 +261,17 @@ impl PlannedRetargetReinstall {
 }
 
 impl PlannedInitialRetargetInstall {
+    pub fn policy_exclusions(&self) -> Option<Vec<hmm_core::RetargetPolicyExcludedFile>> {
+        self.retarget_plans
+            .iter()
+            .all(RetargetPlan::has_complete_policy_inventory)
+            .then(|| {
+                self.retarget_plans
+                    .iter()
+                    .flat_map(|plan| plan.policy_exclusions().iter().cloned())
+                    .collect()
+            })
+    }
     pub fn package_id(&self) -> &str {
         &self.package_id
     }

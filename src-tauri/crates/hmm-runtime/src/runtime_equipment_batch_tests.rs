@@ -205,6 +205,10 @@ fn multi_source_batch_install_records_all_sources_and_can_switch_after_restart()
         EXTRA_FILES[1].1
     );
     assert_eq!(
+        fs::read(game.join(EXTRA_FILES[2].0)).unwrap(),
+        EXTRA_FILES[2].1
+    );
+    assert_eq!(
         fs::read(game.join("nativePC/models/player.mod3")).unwrap(),
         b"fixture"
     );

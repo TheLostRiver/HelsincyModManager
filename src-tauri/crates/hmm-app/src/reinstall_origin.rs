@@ -96,12 +96,14 @@ impl ReinstallPreviewService {
         request: ReinstallPreviewRequest,
         plan: InstallPlan,
         origin: Option<OriginalInstallEvidence>,
+        policy_exclusions: Option<Vec<hmm_core::RetargetPolicyExcludedFile>>,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         self.prepare_with_candidate_plan(
             request,
             Some(plan),
             ReplacementSwitchMode::SingleSource,
             origin,
+            policy_exclusions.as_deref(),
         )
     }
 
@@ -110,12 +112,14 @@ impl ReinstallPreviewService {
         request: ReinstallPreviewRequest,
         plan: InstallPlan,
         origin: Option<OriginalInstallEvidence>,
+        policy_exclusions: Option<Vec<hmm_core::RetargetPolicyExcludedFile>>,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         self.prepare_with_candidate_plan(
             request,
             Some(plan),
             ReplacementSwitchMode::Equipment,
             origin,
+            policy_exclusions.as_deref(),
         )
     }
 }

@@ -133,6 +133,7 @@ pub enum ReplacementWarning {
     SourceMatchesTarget,
     WeaponPartialPartSet,
     UnmappedResourcesKept,
+    PolicyExcludedResources,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -319,6 +320,10 @@ pub struct RetargetPlan {
     warnings: Vec<ReplacementWarning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     adapter_facts: Option<ReplacementAdapterFacts>,
+    #[serde(skip)]
+    policy_exclusions: Vec<crate::RetargetPolicyExcludedFile>,
+    #[serde(skip)]
+    policy_inventory_complete: bool,
 }
 
 impl RetargetPlan {
@@ -372,6 +377,8 @@ impl RetargetPlan {
             actions,
             warnings,
             adapter_facts: None,
+            policy_exclusions: Vec::new(),
+            policy_inventory_complete: false,
         })
     }
 
@@ -382,6 +389,45 @@ impl RetargetPlan {
         self.adapter_facts = Some(adapter_facts);
         self.validate_transform_facts()?;
         Ok(self)
+    }
+
+    pub fn with_policy_exclusions(
+        mut self,
+        exclusions: Vec<crate::RetargetPolicyExcludedFile>,
+    ) -> Result<Self, RetargetError> {
+        let mut ids = self
+            .actions
+            .iter()
+            .map(|action| action.package_file_id().clone())
+            .collect::<BTreeSet<_>>();
+        let mut paths = self
+            .actions
+            .iter()
+            .map(|action| action.source_relative_path().windows_key())
+            .collect::<BTreeSet<_>>();
+        for file in &exclusions {
+            if !ids.insert(file.package_file_id().clone()) {
+                return Err(RetargetError::DuplicateRetargetPackageFile {
+                    package_file_id: file.package_file_id().as_str().to_owned(),
+                });
+            }
+            if !paths.insert(file.original_path().windows_key()) {
+                return Err(RetargetError::DuplicateRetargetTargetPath {
+                    target_path: file.original_path().as_str().to_owned(),
+                });
+            }
+        }
+        self.policy_exclusions = exclusions;
+        self.policy_inventory_complete = true;
+        Ok(self)
+    }
+
+    pub fn policy_exclusions(&self) -> &[crate::RetargetPolicyExcludedFile] {
+        &self.policy_exclusions
+    }
+
+    pub fn has_complete_policy_inventory(&self) -> bool {
+        self.policy_inventory_complete
     }
 
     pub fn validate_transform_facts(&self) -> Result<(), RetargetError> {

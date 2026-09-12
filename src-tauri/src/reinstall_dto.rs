@@ -109,6 +109,7 @@ pub enum ReinstallBlockingReasonDto {
     CandidateNotFound,
     CandidateNotReady,
     OriginalInstallUnverified,
+    InstalledAttachmentUnverified,
     CandidateOwnerMismatch,
     CandidateAlreadyInstalled,
     ManifestStateUnsafe,
@@ -136,6 +137,9 @@ impl From<ReinstallBlockingReason> for ReinstallBlockingReasonDto {
             ReinstallBlockingReason::CandidateNotFound => Self::CandidateNotFound,
             ReinstallBlockingReason::CandidateNotReady => Self::CandidateNotReady,
             ReinstallBlockingReason::OriginalInstallUnverified => Self::OriginalInstallUnverified,
+            ReinstallBlockingReason::InstalledAttachmentUnverified => {
+                Self::InstalledAttachmentUnverified
+            }
             ReinstallBlockingReason::CandidateOwnerMismatch => Self::CandidateOwnerMismatch,
             ReinstallBlockingReason::CandidateAlreadyInstalled => Self::CandidateAlreadyInstalled,
             ReinstallBlockingReason::ManifestStateUnsafe => Self::ManifestStateUnsafe,
@@ -169,6 +173,12 @@ impl From<ReinstallBlockingReasonSummary> for ReinstallBlockingReasonSummaryDto 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReinstallAttachmentCountsDto {
+    pub retained: u32,
+    pub excluded: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(
     tag = "status",
     rename_all = "snake_case",
@@ -181,6 +191,8 @@ pub enum ReinstallPlanPreviewDto {
         installed_revision: ModRevisionSummaryDto,
         candidate_revision: ModRevisionSummaryDto,
         counts: ReinstallTargetCountsDto,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment_counts: Option<ReinstallAttachmentCountsDto>,
         blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
     },
     Blocked {
@@ -189,6 +201,8 @@ pub enum ReinstallPlanPreviewDto {
         installed_revision: Option<ModRevisionSummaryDto>,
         candidate_revision: Option<ModRevisionSummaryDto>,
         counts: ReinstallTargetCountsDto,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment_counts: Option<ReinstallAttachmentCountsDto>,
         blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
     },
 }
@@ -206,6 +220,11 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
 
     fn try_from(preview: ReinstallPlanPreview) -> Result<Self, Self::Error> {
         let prerequisite_decision = preview.prerequisite_decision.clone().into();
+        let attachment_counts =
+            (!preview.attachment_counts.is_empty()).then_some(ReinstallAttachmentCountsDto {
+                retained: preview.attachment_counts.retained,
+                excluded: preview.attachment_counts.excluded,
+            });
         match preview.status {
             ReinstallPreviewStatus::Ready => {
                 if !preview.blocking_reasons.is_empty() {
@@ -227,6 +246,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     installed_revision: installed_revision.into(),
                     candidate_revision: candidate_revision.into(),
                     counts: preview.counts.into(),
+                    attachment_counts,
                     blocking_reasons: Vec::new(),
                 })
             }
@@ -248,6 +268,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     installed_revision: preview.installed_revision.map(Into::into),
                     candidate_revision: preview.candidate_revision.map(Into::into),
                     counts: preview.counts.into(),
+                    attachment_counts,
                     blocking_reasons: preview
                         .blocking_reasons
                         .into_iter()
@@ -433,6 +454,7 @@ mod tests {
     #[test]
     fn ready_preview_serializes_as_strict_discriminated_union() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            attachment_counts: hmm_app::ReinstallAttachmentCounts { retained: 1, excluded: 2 },
             status: ReinstallPreviewStatus::Ready,
             prerequisite_decision: warning_prerequisite_decision(),
             installed_revision: Some(revision("revision-v1")),
@@ -450,6 +472,10 @@ mod tests {
         let value: Value = serde_json::to_value(dto).expect("serialize ready preview");
 
         assert_eq!(value["status"], "ready");
+        assert_eq!(
+            value["attachmentCounts"],
+            json!({"retained": 1, "excluded": 2})
+        );
         assert_eq!(value["installedRevision"]["revisionId"], "revision-v1");
         assert_eq!(value["candidateRevision"]["revisionId"], "revision-v2");
         assert_eq!(
@@ -477,6 +503,7 @@ mod tests {
     #[test]
     fn candidate_not_found_serializes_null_candidate_and_token() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
             status: ReinstallPreviewStatus::Blocked,
             prerequisite_decision: ready_prerequisite_decision(),
             installed_revision: None,
@@ -492,6 +519,7 @@ mod tests {
         let value: Value = serde_json::to_value(dto).expect("serialize blocked preview");
 
         assert_eq!(value["status"], "blocked");
+        assert!(value.get("attachmentCounts").is_none());
         assert!(value["planToken"].is_null());
         assert!(value["installedRevision"].is_null());
         assert!(value["candidateRevision"].is_null());
@@ -508,6 +536,7 @@ mod tests {
     #[test]
     fn incomplete_ready_preview_is_rejected_before_serialization() {
         let result = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
             status: ReinstallPreviewStatus::Ready,
             prerequisite_decision: ready_prerequisite_decision(),
             installed_revision: Some(revision("revision-v1")),

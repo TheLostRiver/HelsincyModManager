@@ -115,8 +115,6 @@ fn assert_normal_install_tracks_all_sources(files: &[(&str, &[u8])], source_coun
             "nativePC/wp/one/one001/mod/one001.mrl3" => "nativePC/wp/one/one002/mod/one002.mrl3",
             "nativePC/wp/one/one001/mod/ya001.mod3" => "nativePC/wp/one/one002/mod/ya002.mod3",
             ARMOR_SOURCE_TARGET if !moving_weapon => ARMOR_RETARGETED_TARGET,
-            // 重定向保留既有排除政策；初始普通安装已在上面验证完整包含此文件。
-            "nativePC/plugins/fixture_support.dll" => continue,
             path => path,
         };
         switched.insert(destination.to_owned(), bytes.to_vec());
