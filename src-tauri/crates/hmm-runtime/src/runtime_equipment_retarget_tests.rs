@@ -112,6 +112,7 @@ fn selection(
         })
         .collect();
     EquipmentRetargetReinstallRequest {
+        intent: Default::default(),
         game_id: GameId::mhw(),
         profile_id,
         mod_id: mod_id.clone(),

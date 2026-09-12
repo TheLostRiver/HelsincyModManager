@@ -84,6 +84,8 @@ pub enum BatchModLifecycleItemInputDto {
         expected_installed_revision_id: String,
     },
     Reinstall {
+        #[serde(default)]
+        intent: hmm_core::ReinstallIntent,
         mod_id: String,
         installed_revision_id: String,
         candidate_revision_id: String,

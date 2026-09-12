@@ -52,6 +52,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MAX_QUERY_MOD_IDS: usize = 256;
+#[path = "batch_equipment_reapply.rs"]
+mod equipment_reapply;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -414,6 +416,9 @@ impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
         &self,
         request: &BatchReinstallItemFactsRequest,
     ) -> anyhow::Result<BatchItemFacts> {
+        if request.input.intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets {
+            return self.read_reapply_facts(request);
+        }
         if request.input.installed_revision_id != request.input.candidate_revision_id {
             return ReinstallPreviewBatchItemFactsReader::new(Arc::clone(&self.preview))
                 .read_item_facts(request);
@@ -474,18 +479,21 @@ impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
                 );
             }
         };
-        let preparation = self.preview.prepare_replacement_target_switch_with_origin(
-            ReinstallPreviewRequest {
-                game_id: request.game_id.clone(),
-                profile_id: request.profile_id.clone(),
-                mod_id: request.input.mod_id.clone(),
-                candidate_revision_id: context.installed_revision_id,
-                layer: request.input.layer.clone(),
-            },
-            planned.install_plan().clone(),
-            context.original_install_evidence,
-            planned.policy_exclusions(),
-        )?;
+        let preparation = self
+            .preview
+            .prepare_replacement_target_switch_with_origin(
+                ReinstallPreviewRequest {
+                    game_id: request.game_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    mod_id: request.input.mod_id.clone(),
+                    candidate_revision_id: context.installed_revision_id,
+                    layer: request.input.layer.clone(),
+                },
+                planned.install_plan().clone(),
+                context.original_install_evidence,
+                planned.policy_exclusions(),
+            )?
+            .with_file_effects(planned.file_effects())?;
         ReinstallPreviewBatchItemFactsReader::facts_from_preparation(request, preparation)
     }
 }
@@ -494,8 +502,9 @@ fn blocked_reinstall_preview(
     preview: &ReinstallPreviewService,
     request: &BatchReinstallItemFactsRequest,
     reason: ReinstallBlockingReason,
-) -> ReinstallPlanPreview {
-    ReinstallPlanPreview {
+) -> Box<ReinstallPlanPreview> {
+    Box::new(ReinstallPlanPreview {
+        file_effects: Vec::new(),
         status: ReinstallPreviewStatus::Blocked,
         prerequisite_decision: preview.prerequisite_decision(&request.game_id),
         installed_revision: Some(ReinstallRevisionSummary {
@@ -508,7 +517,7 @@ fn blocked_reinstall_preview(
         attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
         blocking_reasons: vec![ReinstallBlockingReasonSummary { reason, count: 1 }],
         plan_token: None,
-    }
+    })
 }
 
 impl ReadOnlyInstallAutomation {
@@ -1576,6 +1585,7 @@ fn reinstall_preview_status_code(status: ReinstallPreviewStatus) -> &'static str
     match status {
         ReinstallPreviewStatus::Ready => "ready",
         ReinstallPreviewStatus::Blocked => "blocked",
+        ReinstallPreviewStatus::NoChanges => "no_changes",
     }
 }
 

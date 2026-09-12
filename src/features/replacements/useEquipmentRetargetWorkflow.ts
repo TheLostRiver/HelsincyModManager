@@ -4,8 +4,10 @@ import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/mod
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import { getEquipmentRetargetConfiguration, previewEquipmentRetargetInstall, previewEquipmentRetargetReinstall,
   startEquipmentRetargetInstall, startEquipmentRetargetReinstall } from "./equipmentRetargetApi";
+import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetargetApi";
 import { equipmentSlotIntents, initialEquipmentChoices } from "./equipmentRetargetTypes";
 import type { EquipmentRetargetConfiguration, EquipmentRetargetInstallPreview, EquipmentRetargetSelection, EquipmentTargetChoice } from "./equipmentRetargetTypes";
+import type { EquipmentReapplyInput } from "./equipmentRetargetTypes";
 import { cancelRetargetInstallTask } from "./replacementApi";
 import type { ReplacementCopy } from "./replacementCopy";
 import { replacementErrorMessage } from "./replacementErrorText";
@@ -16,7 +18,8 @@ type Preview =
   | { status: "idle" | "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; mode: "initial"; request: EquipmentRetargetSelection; value: EquipmentRetargetInstallPreview }
-  | { status: "ready"; mode: "switch"; request: EquipmentRetargetSelection; value: ReinstallPlanPreview };
+  | { status: "ready"; mode: "switch"; request: EquipmentRetargetSelection; value: ReinstallPlanPreview }
+  | { status: "ready"; mode: "reapply"; request: EquipmentReapplyInput; value: ReinstallPlanPreview };
 
 export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps, initial: EquipmentRetargetConfiguration, copy: ReplacementCopy) {
   const [configuration, setConfiguration] = useState(initial);
@@ -101,7 +104,8 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     return choice ? targets.some((target) => target.id === choice.targetId) : originalTargetId !== null;
   });
   const canPreview = !busy && block === null && validChoices;
-  const canStart = canPreview && listener === "ready" && preview.status === "ready"
+  const canReapply = !busy && block === null && props.profileId !== null && props.installStatus === "installed";
+  const canStart = (preview.status === "ready" && preview.mode === "reapply" ? canReapply : canPreview) && listener === "ready" && preview.status === "ready"
     && (preview.mode === "initial"
       ? props.installStatus === "not_installed" && !preview.value.installPlan.hasBlockingConflicts && preview.value.prerequisiteDecision.status !== "blocked"
       : props.installStatus === "installed" && preview.value.status === "ready");
@@ -134,20 +138,36 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     }
   };
 
+  const createReapplyPreview = async () => {
+    if (!canReapply || props.profileId === null) return;
+    const generation = ++previewGeneration.current;
+    const request = { gameId: props.gameId, profileId: props.profileId, modId: props.modId };
+    setPreview({ status: "loading" });
+    trackTask({ status: "idle" });
+    try {
+      const value = await previewEquipmentReapply(request);
+      if (previewGeneration.current === generation) setPreview({ status: "ready", mode: "reapply", request, value });
+    } catch (error) {
+      if (previewGeneration.current === generation) setPreview({ status: "error", message: replacementErrorMessage(error, latest.current.copy.events.previewFallback, latest.current.copy.errors) });
+    }
+  };
+
   const start = async () => {
     if (!canStart || preview.status !== "ready" || taskRef.current.status === "starting" || taskRef.current.status === "running") return;
     const generation = lifetime.current;
-    const switching = preview.mode === "switch";
+    const switching = preview.mode !== "initial";
     const failedPhase = switching ? "install.reinstall.failed" : "install.retarget.failed";
     pendingEvents.current.clear();
     setCancelError(null);
     trackTask({ status: "starting" });
     try {
-      const started = preview.mode === "switch" && preview.value.status === "ready"
+      const started = preview.mode === "reapply" && preview.value.status === "ready"
+        ? await startEquipmentReapply(preview.request, preview.value.planToken)
+        : preview.mode === "switch" && preview.value.status === "ready"
         ? await startEquipmentRetargetReinstall(preview.request, preview.value.planToken)
-        : await startEquipmentRetargetInstall(preview.request);
+        : preview.mode === "initial" ? await startEquipmentRetargetInstall(preview.request) : null;
       if (lifetime.current !== generation) return;
-      if (started.kind !== "install" || started.status !== "queued") throw { code: "invalid_task_type" };
+      if (!started || started.kind !== "install" || started.status !== "queued") throw { code: "invalid_task_type" };
       const running: RetargetInstallTaskState = { status: "running", taskId: started.taskId, phase: switching ? "install.reinstall.queued" : "install.retarget.queued" };
       const early = pendingEvents.current.get(started.taskId);
       pendingEvents.current.clear();
@@ -180,6 +200,6 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     }
   };
 
-  return { configuration, choices, choose, preview, task, busy, block, canPreview, canStart, createPreview, start,
+  return { configuration, choices, choose, preview, task, busy, block, canPreview, canReapply, canStart, createPreview, createReapplyPreview, start,
     listener, retryListener: () => setListenerAttempt((value) => value + 1), refresh, refreshCompleted, cancel, cancelError, cancelTask };
 }

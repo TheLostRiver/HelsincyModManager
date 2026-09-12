@@ -7,6 +7,9 @@ import { registerReactTestModules } from "../../shared/testing/reactModuleLoader
 registerReactTestModules({
   "shared/i18n/index.ts": `export { resolveCopy } from "./locales.ts"; export const useI18n = () => ({ locale: globalThis.__weaponOptions.locale });`,
   "shared/feedback/index.ts": `export const useFeedback = () => ({ pushToast: () => {} });`,
+  "features/replacements/equipmentRetargetApi.ts": `
+    export const previewEquipmentReapply = (input) => globalThis.__weaponOptions.request("reapplyPreview", input);
+    export const startEquipmentReapply = (input, planToken) => globalThis.__weaponOptions.request("reapplyStart", { ...input, planToken });`,
   "app/routing/useAppRoute.ts": `export const useAppRoute = () => ({ navigate: (route) => globalThis.__weaponOptions.routes.push(route) });`,
   "features/replacements/replacementApi.ts": `
     export const analyzeImportedModReplacement = (input) => globalThis.__weaponOptions.request("analysis", input);
@@ -31,7 +34,7 @@ const weapon = {
 const another = { ...weapon, id: "physical-model-b", internalId: "swo002", displayNames: { zh_cn: "另一把刀", en: "Another Sword", ja: "別の刀" }, aliases: [], aliasesByLocale: {} };
 const text = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children ?? []).map(text).join("");
 
-async function mount(t, { installed = false, legacy = false, occupied = false, fileConflict = false, targetFailure = false, analysisSources, contextOverride = {}, holdContext = false, previewBlocked = false, attachmentCounts, policyExcluded = false } = {}) {
+async function mount(t, { installed = false, legacy = false, occupied = false, fileConflict = false, targetFailure = false, analysisSources, contextOverride = {}, holdContext = false, previewBlocked = false, attachmentCounts, policyExcluded = false, reapplyStatus = "ready", fileEffects, holdReapply = false } = {}) {
   const summaryItem = (target) => ({ id: target.id, kind: target.targetType, internalId: target.internalId, displayNames: target.displayNames });
   const api = { locale: "zh_cn", calls: [], previews: [], contexts: [], routes: [], listeners: new Set(), holdPreview: false,
     installedTargets: installed && !legacy ? [summaryItem(weapon)] : [] };
@@ -39,6 +42,9 @@ async function mount(t, { installed = false, legacy = false, occupied = false, f
   api.preview = (input) => ({ analysis: { gameId: "mhw", sources: [], warnings: [], retargetable: true, matchedAssetCount: 1 },
     target: input.targetId === weapon.id ? weapon : another, actions: [{ sourceInternalId: "swo099", targetInternalId: "bs_swo001" }], warnings: policyExcluded ? ["policy_excluded_resources"] : [],
     installPlan: { hasBlockingConflicts: fileConflict, actions: [], conflicts: [] }, prerequisiteDecision: { status: "ready", codes: [] } });
+  api.reapplyPreview = () => ({ status: reapplyStatus, planToken: reapplyStatus === "ready" ? "fixture-reapply" : null,
+    counts: { retained: 1, replaced: 0, added: reapplyStatus === "ready" ? 1 : 0, stale: reapplyStatus === "ready" ? 1 : 0 },
+    blockingReasons: reapplyStatus === "blocked" ? [{ code: "target_changed", count: 1 }] : [], prerequisiteDecision: { status: "ready", codes: [] }, fileEffects });
   api.request = async (kind, input) => {
     api.calls.push({ kind, input });
     if (kind === "analysis") return { gameId: "mhw", installedTargetId: installed && !legacy ? weapon.id : undefined,
@@ -60,7 +66,8 @@ async function mount(t, { installed = false, legacy = false, occupied = false, f
       return api.preview(input);
     }
     if (kind === "switchPreview") return { status: "ready", counts: { retained: 1 + (attachmentCounts?.retained ?? 0), replaced: 0, added: 0, stale: 0 }, attachmentCounts, blockingReasons: [], planToken: "fixture-plan" };
-    if (kind === "start" || kind === "switchStart") return { kind: "install", taskId: "task-fixture", status: "queued" };
+    if (kind === "reapplyPreview") return holdReapply ? new Promise((resolve) => api.previews.push({ input, resolve })) : api.reapplyPreview();
+    if (kind === "start" || kind === "switchStart" || kind === "reapplyStart") return { kind: "install", taskId: "task-fixture", status: "queued" };
     throw new Error("Unexpected fixture call: " + kind);
   };
   globalThis.__weaponOptions = api;
@@ -80,6 +87,37 @@ async function mount(t, { installed = false, legacy = false, occupied = false, f
     update: async (nextProps = {}) => { props = { ...props, ...nextProps }; await act(async () => root.update(tree())); },
   };
 }
+
+test("single-source reapply uses current backend targets and no-changes cannot start a write", options, async (t) => {
+  const h = await mount(t, { installed: true, reapplyStatus: "no_changes" });
+  await h.choose(null, another.id);
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  assert.deepEqual(h.api.calls.find((call) => call.kind === "reapplyPreview").input, { gameId: "mhw", profileId: "profile-a", modId: "mod-a" });
+  assert.ok(text(h.root.toJSON()).includes("文件已符合当前规则，无需更新"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+  await act(async () => h.buttons()[1].props.onClick());
+  assert.equal(h.api.calls.filter((call) => call.kind.endsWith("Start") || call.kind === "start").length, 0);
+});
+
+test("single-source reapply starts once with scope and token even without choosing a new target", options, async (t) => {
+  const h = await mount(t, { installed: true });
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  assert.equal(h.buttons()[1].props.disabled, false);
+  await act(async () => { h.buttons()[1].props.onClick(); h.buttons()[1].props.onClick(); });
+  const starts = h.api.calls.filter((call) => call.kind === "reapplyStart");
+  assert.equal(starts.length, 1);
+  assert.deepEqual(starts[0].input, { gameId: "mhw", profileId: "profile-a", modId: "mod-a", planToken: "fixture-reapply" });
+});
+
+test("a single-source reapply response from the previous profile is discarded", options, async (t) => {
+  const h = await mount(t, { installed: true, holdReapply: true });
+  await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+  assert.equal(h.api.previews.length, 1);
+  await h.update({ profileId: "profile-b" });
+  await act(async () => h.api.previews[0].resolve(h.api.reapplyPreview()));
+  assert.ok(!text(h.root.toJSON()).includes("重新应用预览"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+});
 
 test("switch preview distinguishes retained installed companions from excluded package files", options, async (t) => {
   const h = await mount(t, { installed: true, attachmentCounts: { retained: 2, excluded: 1 } });

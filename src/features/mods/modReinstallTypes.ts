@@ -1,6 +1,7 @@
 import type { GameId } from "../game-setup/gameSetupTypes";
 import type { GamePrerequisiteDecision } from "./modInstallPlanTypes";
 import type { ModRevisionSummary } from "./modLibraryTypes";
+import type { RetargetFilePreview } from "../replacements/retargetFileTypes";
 
 export type ReinstallFileLayer = {
   name: string;
@@ -57,6 +58,7 @@ export type ReinstallAttachmentCounts = { retained: number; excluded: number };
 export type ReinstallPlanPreview =
   | {
       status: "ready";
+      fileEffects?: RetargetFilePreview[];
       prerequisiteDecision: GamePrerequisiteDecision;
       planToken: string;
       installedRevision: ModRevisionSummary;
@@ -67,6 +69,7 @@ export type ReinstallPlanPreview =
     }
   | {
       status: "blocked";
+      fileEffects?: RetargetFilePreview[];
       prerequisiteDecision: GamePrerequisiteDecision;
       planToken: null;
       installedRevision: ModRevisionSummary | null;
@@ -74,4 +77,15 @@ export type ReinstallPlanPreview =
       counts: ReinstallTargetCounts;
       attachmentCounts?: ReinstallAttachmentCounts;
       blockingReasons: ReinstallBlockingReasonSummary[];
+    }
+  | {
+      status: "no_changes";
+      fileEffects?: RetargetFilePreview[];
+      prerequisiteDecision: GamePrerequisiteDecision;
+      planToken: null;
+      installedRevision: ModRevisionSummary;
+      candidateRevision: ModRevisionSummary;
+      counts: ReinstallTargetCounts;
+      attachmentCounts?: ReinstallAttachmentCounts;
+      blockingReasons: [];
     };

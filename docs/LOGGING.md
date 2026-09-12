@@ -370,6 +370,9 @@ export path，也不构造 diagnostic exporter 或写 Audit Log。Sandbox 日志
 同版本目标切换保留的附件计入既有 `retained` 目标数量，不增加路径类日志字段。
 `excluded_file_count` 仍表示 adapter 政策筛出的文件数，不等于本次删除数；界面的附件保留／未包含
 数量是额外的只读投影。候选中的保留条目和旧 manifest 通过现有重装事务保存，不能用日志替代恢复事实。
+当前目标重新应用沿用 `reinstall_mod` 和已有 task id／phase；明确意图保存在事务与预览／批量摘要中。
+`fileEffects` 的相对路径、文件身份及原包摘要只用于受控预览和提交核验，不写入 Task／Audit 日志。
+无变化的单项预览不启动重装任务；批量无变化项保留已有批次 journal，不创建单项重装事务。
 - `adopt_external_mod`（#286 接管，category `install`）事件只允许 `task_id`、`game_id`、`mod_id`、`profile_id`、`claimed_file_count`、`skipped_claimed_count`、`skipped_changed_count`、`skipped_missing_count`，以及失败时与 task event 一致的稳定 `error_code`；取消不写审计。清单已写成而审计写入失败时不伪造 `failure`，任务仍 completed，事件携带 `external_mod_adopt_audit_unavailable`。不记录目标路径、清单正文、hash 列表或第三方 Mod 内容。
 - 手动存档备份任务会写入最小存档备份审计事件。成功事件只记录 `task_id`、`game_id`、`profile_id`、`backup_id`、`trigger`、`file_count` 和 `archive_size_bytes` 等短 id/计数；失败事件只记录稳定 `error_code`，不记录完整存档目录、备份目录、Steam ID、manifest 正文、存档内容或 hash 列表。
 - SAVE-05 retention 的物理清理完成后，若 retention Audit 写入失败，显式维护报告的

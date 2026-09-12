@@ -4,6 +4,8 @@ use hmm_app::{
 };
 use hmm_core::{InstallTargetPath, PackageFileId};
 
+#[path = "runtime_equipment_reapply_tests.rs"]
+mod reapply;
 #[path = "runtime_equipment_attachment_recovery_tests.rs"]
 mod recovery;
 
@@ -494,6 +496,7 @@ fn batch_retarget_preview_and_commit_share_attachment_retention_facts() {
             profile_id: ProfileId::new("default"),
             execution_policy: BatchExecutionPolicy::StopOnFailure,
             items: vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                intent: Default::default(),
                 mod_id: fixture.mod_id.clone(),
                 installed_revision_id: revision.clone(),
                 candidate_revision_id: revision,

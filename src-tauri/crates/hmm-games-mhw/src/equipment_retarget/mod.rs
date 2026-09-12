@@ -1,4 +1,5 @@
 //! MHW 默认重定向：只改资源路径，保留材质字节、贴图位置和未映射的资源。
+mod file_effects;
 mod identity;
 mod inventory;
 mod path_strategy;

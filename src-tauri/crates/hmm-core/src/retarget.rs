@@ -10,6 +10,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RetargetError {
+    #[error("file effects do not match the complete retarget plan")]
+    InvalidFileEffects,
     #[error("replacement source internal id cannot be empty")]
     EmptySourceInternalId,
     #[error("replacement source path family cannot be empty")]
@@ -324,6 +326,8 @@ pub struct RetargetPlan {
     policy_exclusions: Vec<crate::RetargetPolicyExcludedFile>,
     #[serde(skip)]
     policy_inventory_complete: bool,
+    #[serde(skip)]
+    file_effects: Vec<crate::RetargetFileEffect>,
 }
 
 impl RetargetPlan {
@@ -379,6 +383,7 @@ impl RetargetPlan {
             adapter_facts: None,
             policy_exclusions: Vec::new(),
             policy_inventory_complete: false,
+            file_effects: Vec::new(),
         })
     }
 
@@ -417,6 +422,13 @@ impl RetargetPlan {
                 });
             }
         }
+        if !self.file_effects.is_empty() {
+            crate::retarget_files::validate_file_effects(
+                &self.actions,
+                &exclusions,
+                &self.file_effects,
+            )?;
+        }
         self.policy_exclusions = exclusions;
         self.policy_inventory_complete = true;
         Ok(self)
@@ -428,6 +440,28 @@ impl RetargetPlan {
 
     pub fn has_complete_policy_inventory(&self) -> bool {
         self.policy_inventory_complete
+    }
+
+    pub fn with_file_effects(
+        mut self,
+        mut effects: Vec<crate::RetargetFileEffect>,
+    ) -> Result<Self, RetargetError> {
+        crate::retarget_files::validate_file_effects(
+            &self.actions,
+            &self.policy_exclusions,
+            &effects,
+        )?;
+        effects.sort_by(|left, right| {
+            left.source_path
+                .cmp(&right.source_path)
+                .then_with(|| left.package_file_id.cmp(&right.package_file_id))
+        });
+        self.file_effects = effects;
+        Ok(self)
+    }
+
+    pub fn file_effects(&self) -> &[crate::RetargetFileEffect] {
+        &self.file_effects
     }
 
     pub fn validate_transform_facts(&self) -> Result<(), RetargetError> {

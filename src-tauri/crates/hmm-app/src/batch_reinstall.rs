@@ -204,6 +204,15 @@ impl PreparedReinstall {
                 "codes": prerequisite_codes,
             },
         });
+        if !self.intent.is_standard() {
+            canonical["intent"] = serde_json::json!(self.intent);
+        }
+        if !self.file_effects.is_empty() {
+            canonical["fileEffects"] = serde_json::json!(self.file_effects);
+        }
+        if !self.reapply_source_fingerprints.is_empty() {
+            canonical["reapplySources"] = serde_json::json!(self.reapply_source_fingerprints);
+        }
         if let Some(evidence) = &self.original_install_evidence {
             canonical["originalInstallEvidence"] =
                 serde_json::to_value(evidence).expect("serializable original install evidence");
@@ -229,17 +238,27 @@ impl PreparedReinstall {
                 .cloned()
                 .collect::<Vec<_>>(),
         );
-        let blocking_reasons = if actual_bindings == expected_bindings {
+        let binding_matches = if !input.intent.is_standard() {
+            self.intent == input.intent && input.replacement_binding_snapshot.is_none()
+        } else {
+            self.intent.is_standard() && actual_bindings == expected_bindings
+        };
+        let blocking_reasons = if binding_matches {
             Vec::new()
         } else {
             vec!["replacement_binding_changed".to_owned()]
         };
         let prerequisite = batch_prerequisite(&self.prerequisite_decision);
-        let warning_codes = if prerequisite.status == BatchPreflightStatus::Warning {
+        let mut warning_codes = if prerequisite.status == BatchPreflightStatus::Warning {
             prerequisite.codes.clone()
         } else {
             Vec::new()
         };
+        if self.is_noop_reapply() {
+            warning_codes.push("reapply_no_changes".to_owned());
+        }
+        warning_codes.sort();
+        warning_codes.dedup();
         let target_claims = self
             .targets
             .iter()
@@ -410,7 +429,9 @@ impl BatchPlanFactsProvider for BatchReinstallPlanFactsProvider {
 
 pub struct ReinstallTaskBatchItemExecutor<E>
 where
-    E: ReinstallTaskExecutor + RetargetReinstallTaskExecutor,
+    E: ReinstallTaskExecutor
+        + RetargetReinstallTaskExecutor
+        + crate::EquipmentRetargetReinstallTaskExecutor,
 {
     runner: Arc<ReinstallTaskRunner<E>>,
     task_manager: Arc<TaskManager>,
@@ -418,7 +439,9 @@ where
 
 impl<E> ReinstallTaskBatchItemExecutor<E>
 where
-    E: ReinstallTaskExecutor + RetargetReinstallTaskExecutor,
+    E: ReinstallTaskExecutor
+        + RetargetReinstallTaskExecutor
+        + crate::EquipmentRetargetReinstallTaskExecutor,
 {
     pub fn new(runner: Arc<ReinstallTaskRunner<E>>, task_manager: Arc<TaskManager>) -> Self {
         Self {
@@ -430,7 +453,10 @@ where
 
 impl<E> BatchInstallItemExecutor for ReinstallTaskBatchItemExecutor<E>
 where
-    E: ReinstallTaskExecutor + RetargetReinstallTaskExecutor + 'static,
+    E: ReinstallTaskExecutor
+        + RetargetReinstallTaskExecutor
+        + crate::EquipmentRetargetReinstallTaskExecutor
+        + 'static,
 {
     fn execute(&self, request: BatchInstallItemRequest) -> BatchInstallItemExecution {
         let plan_item = match request
@@ -455,12 +481,35 @@ where
             };
         }
         let same_revision = input.installed_revision_id == input.candidate_revision_id;
-        if same_revision && input.replacement_binding_snapshot.is_none() {
+        let reapply = input.intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets;
+        if same_revision && input.replacement_binding_snapshot.is_none() && !reapply {
             return BatchInstallItemExecution::Blocked {
                 reason_code: "batch_retarget_binding_required".to_owned(),
             };
         }
 
+        if reapply
+            && plan_item.action_summary.added == 0
+            && plan_item.action_summary.replaced == 0
+            && plan_item.action_summary.stale == 0
+        {
+            return if self.runner.verify_equipment_reapply_noop(
+                crate::EquipmentRetargetReinstallRequest::reapply(
+                    request.plan.game_id.clone(),
+                    request.plan.profile_id.clone(),
+                    input.mod_id.clone(),
+                ),
+                &plan_item.single_plan_digest,
+            ) {
+                BatchInstallItemExecution::Succeeded {
+                    evidence_health_degraded: false,
+                }
+            } else {
+                BatchInstallItemExecution::Blocked {
+                    reason_code: "reinstall_plan_stale".to_owned(),
+                }
+            };
+        }
         let child = match self.task_manager.create_task(TaskKind::Install) {
             Ok(task) => task,
             Err(_) => {
@@ -476,7 +525,22 @@ where
             request.parent_task_id,
             child.task_id.clone(),
         );
-        let result = if same_revision {
+        let result = if reapply {
+            self.runner
+                .run_equipment_retarget_reinstall_task_for_orchestration_with_observer(
+                    &child.task_id,
+                    crate::StartEquipmentRetargetReinstallTaskRequest {
+                        selection: crate::EquipmentRetargetReinstallRequest::reapply(
+                            request.plan.game_id.clone(),
+                            request.plan.profile_id.clone(),
+                            input.mod_id.clone(),
+                        ),
+                        plan_token: String::new(),
+                    },
+                    &plan_item.single_plan_digest,
+                    &observer,
+                )
+        } else if same_revision {
             let binding = input
                 .replacement_binding_snapshot
                 .as_ref()

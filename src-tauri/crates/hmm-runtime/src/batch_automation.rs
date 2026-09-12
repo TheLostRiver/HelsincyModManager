@@ -891,7 +891,19 @@ fn resolve_batch_plan_request(
                     };
             }
             BatchItemInput::Reinstall(input) => {
-                if input.installed_revision_id == input.candidate_revision_id {
+                if !input.intent.is_standard() {
+                    if input.installed_revision_id != input.candidate_revision_id
+                        || input.replacement_binding_snapshot.is_some()
+                        || replacement_targets.contains_key(&input.mod_id)
+                    {
+                        return Err(BatchAutomationError::new("batch_input_invalid"));
+                    }
+                    input.layer = read_only
+                        .as_ref()
+                        .expect("reapply initialized read-only automation")
+                        .resolve_batch_equipment_reapply(&plan.game_id, &plan.profile_id, input)
+                        .map_err(|_| BatchAutomationError::new(unavailable_code))?;
+                } else if input.installed_revision_id == input.candidate_revision_id {
                     if input.replacement_binding_snapshot.is_some() {
                         return Err(BatchAutomationError::new("batch_input_invalid"));
                     }
@@ -1356,6 +1368,7 @@ mod tests {
                 profile_id: ProfileId::new("default"),
                 execution_policy: BatchExecutionPolicy::StopOnFailure,
                 items: vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                    intent: Default::default(),
                     mod_id: ModId::new("mod-armor"),
                     installed_revision_id: ModRevisionId::new("package-armor"),
                     candidate_revision_id: ModRevisionId::new("package-armor"),

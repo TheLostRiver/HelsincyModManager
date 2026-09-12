@@ -22,8 +22,13 @@ use thiserror::Error;
 
 #[path = "reinstall_attachments.rs"]
 mod attachments;
+#[path = "reinstall_files.rs"]
+mod files;
+pub use files::RetargetFilePreview;
 #[path = "reinstall_origin.rs"]
 mod origin;
+#[path = "reinstall_reapply.rs"]
+mod reapply;
 #[path = "reinstall_target_paths.rs"]
 mod target_paths;
 
@@ -40,6 +45,7 @@ pub struct ReinstallPreviewRequest {
 pub enum ReinstallPreviewStatus {
     Ready,
     Blocked,
+    NoChanges,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,6 +103,7 @@ pub struct ReinstallBlockingReasonSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReinstallPlanPreview {
+    pub file_effects: Vec<RetargetFilePreview>,
     pub status: ReinstallPreviewStatus,
     pub prerequisite_decision: GamePrerequisiteDecision,
     pub installed_revision: Option<ReinstallRevisionSummary>,
@@ -116,6 +123,7 @@ impl ReinstallPlanPreview {
     ) -> Self {
         Self {
             status: ReinstallPreviewStatus::Blocked,
+            file_effects: Vec::new(),
             prerequisite_decision,
             installed_revision: installed_revision.map(revision_summary),
             candidate_revision: candidate_revision.map(revision_summary),
@@ -132,12 +140,12 @@ impl ReinstallPlanPreview {
         reason: ReinstallBlockingReason,
         prerequisite_decision: GamePrerequisiteDecision,
     ) -> ReinstallPreparation {
-        ReinstallPreparation::Blocked(Self::blocked_preview(
+        ReinstallPreparation::Blocked(Box::new(Self::blocked_preview(
             installed_revision,
             candidate_revision,
             reason,
             prerequisite_decision,
-        ))
+        )))
     }
 }
 
@@ -151,7 +159,7 @@ pub struct InstalledReplacementReinstallContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstalledReplacementReinstallResolution {
     Ready(Box<InstalledReplacementReinstallContext>),
-    Blocked(ReinstallPlanPreview),
+    Blocked(Box<ReinstallPlanPreview>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,7 +172,7 @@ pub struct InstalledEquipmentReinstallContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstalledEquipmentReinstallResolution {
     Ready(Box<InstalledEquipmentReinstallContext>),
-    Blocked(ReinstallPlanPreview),
+    Blocked(Box<ReinstallPlanPreview>),
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -245,6 +253,7 @@ enum ReplacementSwitchMode {
     Disabled,
     SingleSource,
     Equipment,
+    Reapply,
 }
 
 #[derive(Clone)]
@@ -346,12 +355,12 @@ impl ReinstallPreviewService {
     ) -> Result<InstalledEquipmentReinstallResolution, ReinstallPreviewError> {
         let prerequisite_decision = self.prerequisite_decision(game_id);
         let blocked_preview = |installed_revision, candidate_revision, reason| {
-            ReinstallPlanPreview::blocked_preview(
+            Box::new(ReinstallPlanPreview::blocked_preview(
                 installed_revision,
                 candidate_revision,
                 reason,
                 prerequisite_decision.clone(),
-            )
+            ))
         };
         if prerequisite_decision.is_blocked() {
             return Ok(InstalledEquipmentReinstallResolution::Blocked(
@@ -517,7 +526,7 @@ impl ReinstallPreviewService {
 
     fn prepare_with_candidate_plan(
         &self,
-        request: ReinstallPreviewRequest,
+        mut request: ReinstallPreviewRequest,
         candidate_plan: Option<InstallPlan>,
         switch_mode: ReplacementSwitchMode,
         mut original_install_evidence: Option<OriginalInstallEvidence>,
@@ -772,7 +781,17 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateNotReady,
             ));
         }
-        let same_revision_switch_allowed =
+        let reapply = matches!(switch_mode, ReplacementSwitchMode::Reapply);
+        let same_revision_switch_allowed = if reapply {
+            hmm_core::is_same_revision_equipment_reapply(
+                &manifest,
+                &request.mod_id,
+                &candidate_revision_id,
+                &plan.replacement_bindings,
+            ) || original_install_evidence.as_ref().is_some_and(|evidence| {
+                evidence.allows_equipment_reapply(&manifest, &plan.replacement_bindings)
+            })
+        } else {
             original_install_evidence.as_ref().is_some_and(|evidence| {
                 evidence.allows_single_target_switch(&manifest, &plan.replacement_bindings)
                     || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
@@ -789,13 +808,21 @@ impl ReinstallPreviewService {
                     &request.mod_id,
                     &candidate_revision_id,
                     &plan.replacement_bindings,
-                ));
+                ))
+        };
         if installed_revision_id == candidate_revision_id && !same_revision_switch_allowed {
             return Ok(blocked(
                 installed_summary,
                 candidate_summary,
                 ReinstallBlockingReason::CandidateAlreadyInstalled,
             ));
+        }
+        if reapply {
+            if let Err(reason) =
+                reapply::preserve_installed_layers(&mut request, &manifest, &mut plan)
+            {
+                return Ok(blocked(installed_summary, candidate_summary, reason));
+            }
         }
         if policy_exclusions.is_some()
             && (matches!(switch_mode, ReplacementSwitchMode::Disabled)
@@ -945,6 +972,11 @@ impl ReinstallPreviewService {
             &installed_revision_id,
             &prerequisite_decision,
             CandidatePlanTokenFacts {
+                intent: if reapply {
+                    hmm_core::ReinstallIntent::ReapplyEquipmentTargets
+                } else {
+                    hmm_core::ReinstallIntent::Standard
+                },
                 revision: &candidate,
                 source_files: &source_facts,
                 target_files: &target_facts,
@@ -962,6 +994,13 @@ impl ReinstallPreviewService {
             &backup_facts,
         );
         Ok(ReinstallPreparation::Ready(Box::new(PreparedReinstall {
+            reapply_source_fingerprints: BTreeMap::new(),
+            file_effects: Vec::new(),
+            intent: if reapply {
+                hmm_core::ReinstallIntent::ReapplyEquipmentTargets
+            } else {
+                hmm_core::ReinstallIntent::Standard
+            },
             request,
             candidate,
             installed_revision_id,
@@ -1168,6 +1207,9 @@ pub(crate) struct PreparedReinstallTarget {
 
 #[derive(Clone)]
 pub struct PreparedReinstall {
+    pub(crate) reapply_source_fingerprints: BTreeMap<PackageFileId, InstalledFileSummary>,
+    pub(crate) file_effects: Vec<RetargetFilePreview>,
+    pub(crate) intent: hmm_core::ReinstallIntent,
     pub(crate) request: ReinstallPreviewRequest,
     pub(crate) candidate: StoredModRevision,
     pub(crate) installed_revision_id: ModRevisionId,
@@ -1186,6 +1228,14 @@ pub struct PreparedReinstall {
 }
 
 impl PreparedReinstall {
+    pub fn is_noop_reapply(&self) -> bool {
+        self.intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets
+            && self
+                .targets
+                .iter()
+                .all(|target| target.class == ReinstallTargetClass::Retained)
+    }
+
     pub fn plan_token(&self) -> &str {
         &self.plan_token
     }
@@ -1193,23 +1243,31 @@ impl PreparedReinstall {
 
 pub enum ReinstallPreparation {
     Ready(Box<PreparedReinstall>),
-    Blocked(ReinstallPlanPreview),
+    Blocked(Box<ReinstallPlanPreview>),
 }
 
 impl ReinstallPreparation {
     pub fn into_preview(self) -> ReinstallPlanPreview {
         match self {
-            Self::Ready(prepared) => ReinstallPlanPreview {
-                status: ReinstallPreviewStatus::Ready,
-                prerequisite_decision: prepared.prerequisite_decision,
-                installed_revision: Some(revision_summary(prepared.installed_revision_id)),
-                candidate_revision: Some(revision_summary(prepared.candidate.revision_id)),
-                counts: prepared.counts,
-                attachment_counts: prepared.attachment_counts,
-                blocking_reasons: Vec::new(),
-                plan_token: Some(prepared.plan_token),
-            },
-            Self::Blocked(preview) => preview,
+            Self::Ready(prepared) => {
+                let no_changes = prepared.is_noop_reapply();
+                ReinstallPlanPreview {
+                    file_effects: prepared.file_effects,
+                    status: if no_changes {
+                        ReinstallPreviewStatus::NoChanges
+                    } else {
+                        ReinstallPreviewStatus::Ready
+                    },
+                    prerequisite_decision: prepared.prerequisite_decision,
+                    installed_revision: Some(revision_summary(prepared.installed_revision_id)),
+                    candidate_revision: Some(revision_summary(prepared.candidate.revision_id)),
+                    counts: prepared.counts,
+                    attachment_counts: prepared.attachment_counts,
+                    blocking_reasons: Vec::new(),
+                    plan_token: (!no_changes).then_some(prepared.plan_token),
+                }
+            }
+            Self::Blocked(preview) => *preview,
         }
     }
 }
@@ -1295,6 +1353,7 @@ pub(crate) fn summarize(bytes: &[u8]) -> InstalledFileSummary {
 }
 
 struct CandidatePlanTokenFacts<'a> {
+    intent: hmm_core::ReinstallIntent,
     revision: &'a StoredModRevision,
     source_files: &'a [PreparedSourceFile],
     target_files: &'a BTreeMap<InstallTargetPath, Option<PreparedFile>>,
@@ -1313,6 +1372,9 @@ fn canonical_plan_token(
 ) -> String {
     let mut hasher = Sha256::new();
     hash_field(&mut hasher, "reinstall-preview-v1");
+    if !candidate.intent.is_standard() {
+        hash_field(&mut hasher, candidate.intent.as_str());
+    }
     hash_field(&mut hasher, request.game_id.as_str());
     hash_field(&mut hasher, request.profile_id.as_str());
     hash_field(&mut hasher, request.mod_id.as_str());

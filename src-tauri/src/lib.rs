@@ -34,6 +34,7 @@ mod reinstall_commands;
 mod reinstall_dto;
 mod replacement_commands;
 mod replacement_dto;
+mod retarget_file_dto;
 mod save_backup_center_commands;
 mod save_backup_center_dto;
 mod save_backup_commands;
@@ -56,8 +57,9 @@ use category_commands::{
 };
 use debug_log_commands::{get_debug_log_settings, set_debug_log_settings};
 use equipment_retarget_commands::{
-    get_equipment_retarget_configuration, preview_equipment_retarget_install,
-    preview_equipment_retarget_reinstall, start_equipment_retarget_install_task,
+    get_equipment_retarget_configuration, preview_equipment_reapply,
+    preview_equipment_retarget_install, preview_equipment_retarget_reinstall,
+    start_equipment_reapply_task, start_equipment_retarget_install_task,
     start_equipment_retarget_reinstall_task,
 };
 use external_import_commands::{
@@ -228,6 +230,8 @@ pub fn run() {
             list_replacement_target_occupancy,
             get_equipment_retarget_configuration,
             preview_equipment_retarget_install,
+            preview_equipment_reapply,
+            start_equipment_reapply_task,
             preview_equipment_retarget_reinstall,
             start_equipment_retarget_install_task,
             start_equipment_retarget_reinstall_task,

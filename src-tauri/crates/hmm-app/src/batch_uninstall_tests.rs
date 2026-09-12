@@ -518,6 +518,7 @@ fn install_and_reinstall_recovery_are_global_blockers() {
         entries: Vec::new(),
     });
     state.add_reinstall_transaction(ReinstallRecoveryTransaction {
+        intent: Default::default(),
         profile_id: ProfileId::new("default"),
         mod_id: ModId::new("b"),
         old_revision_id: ModRevisionId::new("rev-b"),

@@ -31,6 +31,7 @@ export type BatchModLifecycleItemInputDto =
     }
   | {
       operation: "reinstall";
+      intent?: "standard" | "reapply_equipment_targets";
       modId: string;
       installedRevisionId: string;
       candidateRevisionId: string;
