@@ -484,20 +484,8 @@ fn batch_retarget_preview_and_commit_share_attachment_retention_facts() {
     };
     let fixture = Fixture::with_layout(true, true, true);
     let manifest = read_fixture_manifest(&fixture.app_data);
+    let before = snapshot_file_tree(&fixture.game);
     let revision = manifest.entries[0].revision_id.clone().unwrap();
-    let planned = fixture
-        .state
-        .replacement_workflow
-        .preview_reinstall_target(hmm_app::PreviewRetargetReinstallRequest {
-            game_id: GameId::mhw(),
-            profile_id: ProfileId::new("default"),
-            mod_id: fixture.mod_id.clone(),
-            installed_revision_id: revision.clone(),
-            installed_binding: manifest.replacement_bindings[0].clone(),
-            target_id: target("one002", "wp/one"),
-            layer: FileLayer::new("base", 0),
-        })
-        .unwrap();
     let request = crate::BatchLifecyclePlanRequest {
         plan: BatchPlanRequest {
             schema_version: BATCH_PLAN_SCHEMA_VERSION,
@@ -510,34 +498,60 @@ fn batch_retarget_preview_and_commit_share_attachment_retention_facts() {
                 installed_revision_id: revision.clone(),
                 candidate_revision_id: revision,
                 layer: FileLayer::new("base", 0),
-                replacement_binding_snapshot: Some(
-                    planned.install_plan().replacement_bindings[0].clone(),
-                ),
+                replacement_binding_snapshot: None,
             })],
         },
-        replacement_targets: std::collections::BTreeMap::new(),
+        replacement_targets: std::collections::BTreeMap::from([(
+            fixture.mod_id.clone(),
+            target("one002", "wp/one"),
+        )]),
     };
     let environment = crate::RuntimeEnvironment::sandbox(fixture.app_data.clone()).unwrap();
     let preview =
         crate::BatchLifecycleAutomation::preview_request(&environment, request.clone()).unwrap();
     assert_eq!(preview.plan.status(), hmm_core::BatchPlanStatus::Ready);
-    let (_, sealed) = crate::BatchLifecycleAutomation::seal_request(
+    assert_eq!(snapshot_file_tree(&fixture.game), before);
+    assert_eq!(read_fixture_manifest(&fixture.app_data), manifest);
+    let database = fixture.state.database_handle();
+    let (_, sealed) = crate::BatchLifecycleAutomation::seal_request_with_database(
         &environment,
         request,
         preview.preview_token.as_deref().unwrap(),
+        Arc::clone(&database),
     )
     .unwrap();
-    let (_, result) = crate::BatchLifecycleAutomation::start_request(
+    let (_, result) = crate::BatchLifecycleAutomation::start_request_with_database(
         &environment,
         &sealed.batch_id,
         &sealed.plan_token,
+        database,
     )
     .unwrap();
     assert_eq!(result.status, hmm_core::BatchAttemptStatus::Completed);
     assert_eq!(fs::read(fixture.game.join(PLUGIN)).unwrap(), PLUGIN_BYTES);
     assert_eq!(fs::read(fixture.game.join(TOOL)).unwrap(), TOOL_BYTES);
-    assert!(fixture
+    assert!(!fixture
         .game
-        .join("nativePC/wp/one/one002/mod/one002.mod3")
+        .join("nativePC/wp/one/one001/mod/one001.mod3")
         .exists());
+    assert_eq!(
+        fs::read(fixture.game.join("nativePC/wp/one/one002/mod/one002.mod3")).unwrap(),
+        EQUIPMENT_FILES[0].1
+    );
+    let after = read_fixture_manifest(&fixture.app_data);
+    for path in [PLUGIN, TOOL] {
+        let old = manifest
+            .entries
+            .iter()
+            .find(|entry| entry.target_path.as_str() == path)
+            .unwrap();
+        let kept = after
+            .entries
+            .iter()
+            .find(|entry| entry.target_path.as_str() == path)
+            .unwrap();
+        assert_eq!(kept, old);
+    }
+    assert_no_reinstall_recovery_transactions(&fixture.app_data);
+    assert_no_retarget_staging(&fixture.app_data);
 }
