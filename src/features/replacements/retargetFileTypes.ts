@@ -4,6 +4,7 @@ export type RetargetFileDisposition =
 
 export type RetargetFileReason =
   | "target_mapping" | "original_target" | "texture_reference" | "unmapped_resource"
+  | "ambiguous_resource_identity" | "conflicting_resource_identity"
   | "package_resource" | "installed_attachment" | "plugin_not_included" | "executable_policy";
 
 export type RetargetFilePreview = {
