@@ -471,7 +471,7 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
     let facts = plan.adapter_facts().expect("sealed adapter facts");
     assert_eq!(
         facts.strategy_version(),
-        1,
+        2,
         "资源保留策略使用独立身份和版本"
     );
     assert_eq!(facts.adapter_id(), "mhw.equipment");

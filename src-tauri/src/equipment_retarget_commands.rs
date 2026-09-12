@@ -5,7 +5,6 @@ use crate::reinstall_dto::ReinstallPlanPreviewDto;
 use crate::replacement_commands::{
     analyze_request_from_dto, parse_game_id, parse_target_id,
     replacement_workflow_error_to_command_error, required_id,
-    retarget_reinstall_error_to_command_error,
 };
 use crate::replacement_dto::AnalyzeImportedModReplacementRequestDto;
 use crate::state::AppState;
@@ -41,21 +40,21 @@ pub async fn get_equipment_retarget_configuration(
 pub async fn preview_equipment_retarget_install(
     request: EquipmentRetargetSelectionRequestDto,
     state: State<'_, AppState>,
-) -> Result<EquipmentRetargetInstallPreviewDto, CommandErrorDto> {
+) -> Result<EquipmentRetargetInstallPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = selection_from_dto(request)?;
     let preflight = Arc::clone(&state.initial_retarget_install_preflight);
     tauri::async_runtime::spawn_blocking(move || preflight.preview(request))
         .await
         .map_err(|_| unavailable())?
         .map(Into::into)
-        .map_err(replacement_workflow_error_to_command_error)
+        .map_err(EquipmentRetargetPreviewErrorDto::from)
 }
 
 #[tauri::command]
 pub async fn preview_equipment_retarget_reinstall(
     request: EquipmentRetargetSelectionRequestDto,
     state: State<'_, AppState>,
-) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
+) -> Result<ReinstallPlanPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = reinstall_selection_from_dto(request)?;
     let executor = Arc::clone(&state.reinstall_executor);
     let preview = tauri::async_runtime::spawn_blocking(move || {
@@ -63,8 +62,8 @@ pub async fn preview_equipment_retarget_reinstall(
     })
     .await
     .map_err(|_| unavailable())?
-    .map_err(retarget_reinstall_error_to_command_error)?;
-    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| unavailable())
+    .map_err(EquipmentRetargetPreviewErrorDto::from)?;
+    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| unavailable().into())
 }
 
 #[tauri::command]
@@ -117,7 +116,7 @@ pub fn start_equipment_retarget_reinstall_task(
 pub async fn preview_equipment_reapply(
     request: EquipmentReapplyRequestDto,
     state: State<'_, AppState>,
-) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
+) -> Result<ReinstallPlanPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = reapply_selection_from_dto(request)?;
     let executor = Arc::clone(&state.reinstall_executor);
     let preview = tauri::async_runtime::spawn_blocking(move || {
@@ -125,8 +124,8 @@ pub async fn preview_equipment_reapply(
     })
     .await
     .map_err(|_| unavailable())?
-    .map_err(retarget_reinstall_error_to_command_error)?;
-    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| unavailable())
+    .map_err(EquipmentRetargetPreviewErrorDto::from)?;
+    ReinstallPlanPreviewDto::try_from(preview).map_err(|_| unavailable().into())
 }
 
 #[tauri::command]
