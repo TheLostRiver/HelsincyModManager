@@ -125,6 +125,7 @@ export type RetargetActionPreview = {
 };
 
 export type InitialRetargetInstallPreview = {
+  fileEffects?: import("./retargetFileTypes").RetargetFilePreview[];
   analysis: ReplacementAnalysis;
   target: ReplacementTarget;
   actions: RetargetActionPreview[];

@@ -2,6 +2,19 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import type { AnalyzeImportedModReplacementInput, RetargetInstallTaskStarted } from "./replacementTypes";
 import type { EquipmentRetargetConfiguration, EquipmentRetargetInstallPreview, EquipmentRetargetSelection } from "./equipmentRetargetTypes";
+import type { EquipmentReapplyInput } from "./equipmentRetargetTypes";
+
+function reapplyRequest(input: EquipmentReapplyInput) {
+  return { gameId: input.gameId, profileId: input.profileId, modId: input.modId };
+}
+
+export function previewEquipmentReapply(input: EquipmentReapplyInput): Promise<ReinstallPlanPreview> {
+  return invoke("preview_equipment_reapply", { request: reapplyRequest(input) });
+}
+
+export function startEquipmentReapply(input: EquipmentReapplyInput, planToken: string): Promise<RetargetInstallTaskStarted> {
+  return invoke("start_equipment_reapply_task", { request: { selection: reapplyRequest(input), planToken } });
+}
 
 export function getEquipmentRetargetConfiguration(input: AnalyzeImportedModReplacementInput): Promise<EquipmentRetargetConfiguration> {
   return invoke("get_equipment_retarget_configuration", { request: { gameId: input.gameId, profileId: input.profileId, modId: input.modId } });
