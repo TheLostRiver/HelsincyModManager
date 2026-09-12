@@ -173,6 +173,9 @@ mod tests {
             "packageId",
             "originalInstallEvidence",
             "original_install_evidence",
+            "policyExclusions",
+            "attachmentCounts",
+            "retainedAttachments",
         ] {
             let mut injected = request.clone();
             injected[key] = json!("not-accepted");

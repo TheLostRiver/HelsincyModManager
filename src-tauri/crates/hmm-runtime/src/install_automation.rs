@@ -474,7 +474,7 @@ impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
                 );
             }
         };
-        let preparation = self.preview.prepare_replacement_target_switch(
+        let preparation = self.preview.prepare_replacement_target_switch_with_origin(
             ReinstallPreviewRequest {
                 game_id: request.game_id.clone(),
                 profile_id: request.profile_id.clone(),
@@ -483,6 +483,8 @@ impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
                 layer: request.input.layer.clone(),
             },
             planned.install_plan().clone(),
+            context.original_install_evidence,
+            planned.policy_exclusions(),
         )?;
         ReinstallPreviewBatchItemFactsReader::facts_from_preparation(request, preparation)
     }
@@ -503,6 +505,7 @@ fn blocked_reinstall_preview(
             revision_id: request.input.candidate_revision_id.clone(),
         }),
         counts: ReinstallTargetCounts::default(),
+        attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
         blocking_reasons: vec![ReinstallBlockingReasonSummary { reason, count: 1 }],
         plan_token: None,
     }
@@ -1583,6 +1586,7 @@ fn reinstall_blocking_reason_code(reason: ReinstallBlockingReason) -> &'static s
         ReinstallBlockingReason::CandidateNotFound => "candidate_not_found",
         ReinstallBlockingReason::CandidateNotReady => "candidate_not_ready",
         ReinstallBlockingReason::OriginalInstallUnverified => "original_install_unverified",
+        ReinstallBlockingReason::InstalledAttachmentUnverified => "installed_attachment_unverified",
         ReinstallBlockingReason::CandidateOwnerMismatch => "candidate_owner_mismatch",
         ReinstallBlockingReason::CandidateAlreadyInstalled => "candidate_already_installed",
         ReinstallBlockingReason::ManifestStateUnsafe => "manifest_state_unsafe",

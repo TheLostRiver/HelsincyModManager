@@ -169,6 +169,7 @@ pub enum ReplacementWarningDto {
     SourceMatchesTarget,
     WeaponPartialPartSet,
     UnmappedResourcesKept,
+    PolicyExcludedResources,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -410,6 +411,9 @@ mod replacement_dto_tests {
             "targetPath",
             "originalInstallEvidence",
             "original_install_evidence",
+            "policyExclusions",
+            "attachmentCounts",
+            "retainedAttachments",
         ] {
             assert!(
                 serialized.get(forbidden).is_none(),

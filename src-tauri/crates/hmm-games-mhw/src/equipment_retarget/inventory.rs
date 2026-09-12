@@ -84,6 +84,7 @@ pub(super) struct PackageResources {
     pub sources: BTreeMap<ReplacementSourceId, SourceResources>,
     pub companions: Vec<Resource>,
     pub excluded_count: u32,
+    pub excluded_files: Vec<hmm_core::RetargetPolicyExcludedFile>,
 }
 
 impl PackageResources {
@@ -94,6 +95,7 @@ impl PackageResources {
         let mut sources = BTreeMap::new();
         let mut outside_count = 0usize;
         let mut excluded_count = 0u32;
+        let mut excluded_files = Vec::new();
         for asset in assets {
             if asset.package_file_id().as_str().trim().is_empty()
                 || !identities.insert(asset.package_file_id().clone())
@@ -113,6 +115,14 @@ impl PackageResources {
             }
             let filename = path.as_str().rsplit('/').next().unwrap_or_default();
             if is_rejected_executable_file_name(filename) {
+                excluded_files.push(
+                    hmm_core::RetargetPolicyExcludedFile::new(
+                        asset.package_file_id().clone(),
+                        path,
+                        hmm_core::RetargetExclusionReason::ExecutableOrScript,
+                    )
+                    .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?,
+                );
                 excluded_count = excluded_count
                     .checked_add(1)
                     .ok_or(ReplacementAdapterError::InvalidRetargetPlan)?;
@@ -157,6 +167,7 @@ impl PackageResources {
             sources,
             companions,
             excluded_count,
+            excluded_files,
         };
         if result.installable_count() + outside_count + excluded_count as usize != assets.len() {
             return Err(ReplacementAdapterError::InvalidRetargetPlan);

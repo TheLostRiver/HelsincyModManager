@@ -261,6 +261,7 @@ fn preparation_projection_reuses_blocked_reinstall_facts_contract() {
         input: reinstall_input("mod-a", "v1", "v2", None),
     };
     let preview = ReinstallPlanPreview {
+        attachment_counts: crate::ReinstallAttachmentCounts::default(),
         status: crate::ReinstallPreviewStatus::Blocked,
         prerequisite_decision: crate::GamePrerequisiteDecision {
             game_id: GameId::mhw(),
