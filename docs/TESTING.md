@@ -24,6 +24,9 @@ node --test "src/features/replacements/*.test.mjs"
 接管记录和布局不一致；多版本且无 revision 时拒绝猜测。验证预览不写清单、确认切换后补齐来源、
 清单失败恢复原无绑定状态、暂存后原包变化使提交失效，以及中断后经重装恢复还原原清单。准备完成后
 取消与提交屏障前取消均须保留原清单字节和游戏文件；DTO 拒绝调用方提交恢复证据，旧查询可省略 profile。
+附件连续性回归运行 `cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment::attachments`。
+必须验证附件不被重写、备份引用和归属保留、旧装备文件正常清理、未安装附件不补装，以及原包缺失／
+内容变化、接管、清单故障、取消、中断恢复和同版本批量切换。版本升级仍须移除新包不再提供的条目。
 详细语义见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
 
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。

@@ -126,6 +126,7 @@ export const replacementCopy = {
       source_matches_target: "源槽位与目标槽位相同",
       weapon_partial_part_set: "武器包只包含部分可选部件，将仅处理已检测到的完整文件对",
       unmapped_resources_kept: "部分资源无法明确改名，将保留原路径并一起安装。",
+      policy_excluded_resources: "部分随包插件或工具未包含在本次安装中，相关功能可能不可用。",
     },
     block: {
       profileUnavailable: "当前 Profile 不可用。",
@@ -416,6 +417,7 @@ export const replacementCopy = {
       source_matches_target: "Source slot is the same as the target slot",
       weapon_partial_part_set: "This weapon package contains only some optional parts; only detected complete file pairs will be processed",
       unmapped_resources_kept: "Some resources cannot be renamed with confidence. They will be installed at their original paths.",
+      policy_excluded_resources: "Some bundled plugin or tool files are not included in this installation. Related features may be unavailable.",
     },
     block: {
       profileUnavailable: "The current profile is unavailable.",
@@ -710,6 +712,7 @@ export const replacementCopy = {
       source_matches_target: "ソーススロットとターゲットスロットが同一です",
       weapon_partial_part_set: "この武器パッケージには一部のオプションパーツのみが含まれています。検出済みの完全なファイルペアのみ処理します",
       unmapped_resources_kept: "一部のリソースは改名先を確定できないため、元のパスのままインストールします。",
+      policy_excluded_resources: "同梱のプラグインまたはツールの一部はインストールに含まれません。関連機能が利用できない場合があります。",
     },
     block: {
       profileUnavailable: "現在のプロファイルは利用できません。",

@@ -107,7 +107,8 @@ export type ReplacementWarning =
   | "unsupported_source"
   | "source_matches_target"
   | "weapon_partial_part_set"
-  | "unmapped_resources_kept";
+  | "unmapped_resources_kept"
+  | "policy_excluded_resources";
 
 export type ReplacementAnalysis = {
   gameId: string;

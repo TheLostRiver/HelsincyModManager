@@ -6,6 +6,7 @@ import { getReinstallBlockingReasonLabel } from "../mods/modReinstallTaskState";
 import { getPrerequisiteDecisionCodeLabel, getPrerequisiteDecisionMessage } from "../mods/modPrerequisiteDecision";
 import { ReplacementTargetPanel, type ReplacementTargetPanelProps } from "./ReplacementTargetPanel";
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
+import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { getEquipmentRetargetConfiguration } from "./equipmentRetargetApi";
 import { equipmentRetargetCopy } from "./equipmentRetargetCopy";
 import type { EquipmentRetargetConfiguration, EquipmentSourceConfiguration, EquipmentTargetChoice } from "./equipmentRetargetTypes";
@@ -80,6 +81,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
           ? copy.panel.blockingConflicts(preview.value.installPlan.conflicts.length) : copy.panel.noBlockingConflicts}</p>
         {preview.value.installPlan.hasBlockingConflicts && <p>{copy.panel.blockingConflictHint}</p>}
       </> : <>
+        <RetargetAttachmentNotice counts={preview.value.attachmentCounts} />
         <dl className="replacement-panel__counts">
           <div><dt>{copy.panel.countRetained}</dt><dd>{preview.value.counts.retained}</dd></div>
           <div><dt>{copy.panel.countReplaced}</dt><dd>{preview.value.counts.replaced}</dd></div>

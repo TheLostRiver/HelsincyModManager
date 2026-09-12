@@ -65,6 +65,7 @@ import {
 import "./ReplacementTargetPanel.css";
 import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
+import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 
@@ -309,6 +310,10 @@ export function ReplacementTargetPanel({
     [loadState],
   );
   const analysis = loadState.status === "ready" ? loadState.analysis : null;
+  const displayWarnings = [...new Set([
+    ...(analysis?.warnings ?? []),
+    ...(previewState.status === "ready" && previewState.mode === "initial" ? previewState.preview.warnings : []),
+  ])];
   const installedTargetId = analysis?.installedTargetId;
   const filteredOptions = useMemo(() => buildReplacementTargetOptions(targets, locale, query), [locale, query, targets]);
   const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null;
@@ -594,9 +599,9 @@ export function ReplacementTargetPanel({
         </div>
       ) : null}
 
-      {analysis?.warnings.length ? (
+      {displayWarnings.length ? (
         <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
-          {analysis.warnings.map((warning) => (
+          {displayWarnings.map((warning) => (
             <li key={warning}>
               <AlertTriangle size={14} aria-hidden="true" />
               {rCopy.warnings[warning]}
@@ -829,6 +834,7 @@ export function ReplacementTargetPanel({
                 </>
               ) : (
                 <>
+                  <RetargetAttachmentNotice counts={previewState.preview.attachmentCounts} />
                   <dl className="replacement-panel__counts">
                     <div data-kind="retained">
                       <dt>{rCopy.panel.countRetained}</dt>

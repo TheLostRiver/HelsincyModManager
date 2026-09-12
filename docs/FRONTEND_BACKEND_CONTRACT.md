@@ -737,6 +737,12 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 原来的无绑定清单。启动与卡片 hover 不触发回填。
 已安装 Mod 的替换面板顶部名称也采用同一份 profile 分析结果，避免卡片摘要中的新导入版本覆盖旧版本来源。
 
+目标切换预览可返回 `attachmentCounts: { retained, excluded }`：分别表示保持原位的可信已安装附件和
+本次未包含的政策排除文件数量；两者都为零时省略该字段，旧调用方和无附件响应保持兼容。
+`installed_attachment_unverified` 表示附件安装事实无法核实；`policy_excluded_resources` 是首次
+定向安装的非阻断提示，说明插件／工具未包含、相关功能可能不可用。字段只供展示，不是调用方的
+安装授权；请求不能提交排除路径、附件计数或自造保留证据。单源和多源界面共享相同的数量解释。
+
 当前 target、不安全 recovery 状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
 `install.reinstall.*` phase、game/profile 写锁和 cancellation barrier；前端严格按 `taskId` 匹配事件，
 取消入口只在 queued/plan/preflight 安全阶段可见。
