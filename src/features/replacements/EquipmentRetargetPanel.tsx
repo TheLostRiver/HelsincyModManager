@@ -64,6 +64,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
   const switching = props.installStatus === "installed";
   const prerequisite = preview.status === "ready" ? preview.value.prerequisiteDecision : null;
   const warnings = preview.status === "ready" && preview.mode === "initial" ? [...new Set(preview.value.warnings)] : [];
+  const failedSource = preview.status === "error" ? configuration.sources.find(({ source }) => source.id === preview.sourceId) : undefined;
   return <section className="replacement-panel equipment-retarget" aria-label={groupCopy.title}>
     <div className="replacement-panel__section-heading"><h3>{groupCopy.title}</h3></div>
     <p className="equipment-retarget__hint">{groupCopy.hint}</p>
@@ -75,7 +76,9 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
       onChoose={(choice) => workflow.choose(item.source.id, choice)} />)}
     {workflow.block && <p className="replacement-panel__notice is-blocked" role="status">{workflow.block}</p>}
     {preview.status === "loading" && <p role="status">{copy.panel.previewLoading}</p>}
-    {preview.status === "error" && <p className="replacement-panel__notice" role="alert">{preview.message}</p>}
+    {preview.status === "error" && <p className="replacement-panel__notice" role="alert">
+      <span>{failedSource && <strong>{replacementIdentityLabel(failedSource.source, locale)}: </strong>}{preview.message}</span>
+    </p>}
     {preview.status === "ready" && <div className="replacement-panel__preview" aria-live="polite">
       <div className="replacement-panel__section-heading"><h3>{preview.mode === "reapply" ? fileCopy.reapplyTitle : preview.mode === "initial" ? copy.panel.initialPreviewTitle : copy.panel.switchPreviewTitle}</h3></div>
       {preview.mode === "reapply" && <p className="retarget-reapply-hint">{fileCopy.reapplyHint}</p>}

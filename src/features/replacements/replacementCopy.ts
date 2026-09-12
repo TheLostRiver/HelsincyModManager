@@ -195,7 +195,7 @@ export const replacementCopy = {
         },
         weapon_no_relocatable_resources: {
           message: "该源装备没有可明确改名的资源。",
-          hint: "可按 Mod 默认目标安装；如果需要换目标，请检查其文件命名。",
+          hint: "可将此来源保持作者原位，再调整其他来源；若要移动此来源，请检查编号目录和文件名。",
         },
         weapon_multiple_source_roots: {
           message: "该压缩包包含多套武器资源，当前版本无法自动重定向。",
@@ -486,7 +486,7 @@ export const replacementCopy = {
         },
         weapon_no_relocatable_resources: {
           message: "This source has no resources with a clear target name.",
-          hint: "You can install it at the mod's default target. Check its file names before changing targets.",
+          hint: "Keep this source at the author's original target to adjust other sources. Check its numbered directories and filenames before moving it.",
         },
         weapon_multiple_source_roots: {
           message: "This archive contains multiple weapon asset sets; this version cannot retarget them automatically.",
@@ -781,7 +781,7 @@ export const replacementCopy = {
         },
         weapon_no_relocatable_resources: {
           message: "この元装備には改名先を確定できるリソースがありません。",
-          hint: "Mod 本来の対象へインストールできます。対象を変える場合はファイル名を確認してください。",
+          hint: "この元装備を作者の元の対象に保てば、他の元装備を変更できます。移動する場合は番号付きディレクトリとファイル名を確認してください。",
         },
         weapon_multiple_source_roots: {
           message: "このアーカイブには複数の武器アセット一式が含まれており、現在のバージョンでは自動リターゲットできません。",

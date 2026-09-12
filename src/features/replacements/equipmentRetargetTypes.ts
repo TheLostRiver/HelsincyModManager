@@ -30,6 +30,13 @@ export type EquipmentRetargetSelection = {
 
 export type EquipmentReapplyInput = Pick<EquipmentRetargetSelection, "gameId" | "profileId" | "modId">;
 
+export type EquipmentRetargetPreviewError = { code: string; message: string; sourceId?: string };
+
+export function equipmentErrorSourceId(error: unknown): string | null {
+  return typeof error === "object" && error !== null && "sourceId" in error && typeof error.sourceId === "string"
+    ? error.sourceId : null;
+}
+
 export type EquipmentRetargetInstallPreview = Omit<InitialRetargetInstallPreview, "target" | "actions"> & {
   targets: ReplacementTarget[];
 };

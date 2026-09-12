@@ -49,3 +49,22 @@ test("old responses without file details render nothing", { concurrency: false }
   t.after(async () => { await act(async () => root.unmount()); delete globalThis.__fileDetailsLocale; });
   assert.equal(root.toJSON(), null);
 });
+
+test("ambiguous and conflicting identities explain why the entire path stays in place", { concurrency: false }, async (t) => {
+  const reasons = ["ambiguous_resource_identity", "conflicting_resource_identity"];
+  const files = reasons.map((reason, index) => ({ fileId: `kept-${index}`, sourceId: "source",
+    sourcePath: `nativePC/fixture/kept-${index}.mod3`, targetPath: `nativePC/fixture/kept-${index}.mod3`,
+    installedPath: null, disposition: "kept_in_place", reason, change: null }));
+  globalThis.__fileDetailsLocale = "zh_cn";
+  const tree = () => React.createElement(RetargetFileDetails, { files });
+  let root;
+  await act(async () => { root = TestRenderer.create(tree()); });
+  t.after(async () => { await act(async () => root.unmount()); delete globalThis.__fileDetailsLocale; });
+  await act(async () => root.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    globalThis.__fileDetailsLocale = locale;
+    await act(async () => root.update(tree()));
+    for (const reason of reasons) assert.ok(text(root.toJSON()).includes(retargetFileCopy[locale].reasons[reason]));
+    for (const file of files) assert.ok(text(root.toJSON()).includes(file.sourcePath));
+  }
+});

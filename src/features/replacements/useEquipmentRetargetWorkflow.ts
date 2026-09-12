@@ -5,7 +5,7 @@ import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import { getEquipmentRetargetConfiguration, previewEquipmentRetargetInstall, previewEquipmentRetargetReinstall,
   startEquipmentRetargetInstall, startEquipmentRetargetReinstall } from "./equipmentRetargetApi";
 import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetargetApi";
-import { equipmentSlotIntents, initialEquipmentChoices } from "./equipmentRetargetTypes";
+import { equipmentErrorSourceId, equipmentSlotIntents, initialEquipmentChoices } from "./equipmentRetargetTypes";
 import type { EquipmentRetargetConfiguration, EquipmentRetargetInstallPreview, EquipmentRetargetSelection, EquipmentTargetChoice } from "./equipmentRetargetTypes";
 import type { EquipmentReapplyInput } from "./equipmentRetargetTypes";
 import { cancelRetargetInstallTask } from "./replacementApi";
@@ -16,7 +16,7 @@ import type { ReplacementTargetPanelProps } from "./ReplacementTargetPanel";
 
 type Preview =
   | { status: "idle" | "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; sourceId: string | null }
   | { status: "ready"; mode: "initial"; request: EquipmentRetargetSelection; value: EquipmentRetargetInstallPreview }
   | { status: "ready"; mode: "switch"; request: EquipmentRetargetSelection; value: ReinstallPlanPreview }
   | { status: "ready"; mode: "reapply"; request: EquipmentReapplyInput; value: ReinstallPlanPreview };
@@ -134,7 +134,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
         : { status: "ready", mode: "initial", request, value: await previewEquipmentRetargetInstall(request) };
       if (previewGeneration.current === generation) setPreview(next);
     } catch (error) {
-      if (previewGeneration.current === generation) setPreview({ status: "error", message: replacementErrorMessage(error, latest.current.copy.events.previewFallback, latest.current.copy.errors) });
+      if (previewGeneration.current === generation) setPreview({ status: "error", sourceId: equipmentErrorSourceId(error), message: replacementErrorMessage(error, latest.current.copy.events.previewFallback, latest.current.copy.errors) });
     }
   };
 
@@ -148,7 +148,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
       const value = await previewEquipmentReapply(request);
       if (previewGeneration.current === generation) setPreview({ status: "ready", mode: "reapply", request, value });
     } catch (error) {
-      if (previewGeneration.current === generation) setPreview({ status: "error", message: replacementErrorMessage(error, latest.current.copy.events.previewFallback, latest.current.copy.errors) });
+      if (previewGeneration.current === generation) setPreview({ status: "error", sourceId: equipmentErrorSourceId(error), message: replacementErrorMessage(error, latest.current.copy.events.previewFallback, latest.current.copy.errors) });
     }
   };
 

@@ -653,6 +653,11 @@ target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 不返回 source/target relative path 或 path-family。文件去向通过独立的可选 `fileEffects` 投影返回，
 前端不从 source、target metadata 或文件名推导路径。
 
+三个装备预览命令（首次安装、目标切换、重新应用）的错误继续包含 `code` 和 `message`，来源明确时
+可另带 `sourceId`；其他错误省略它。例如 `weapon_no_relocatable_resources` 以此指出没有可移动资源
+的来源。前端只用该 ID 关联当前配置中的名称与编号，不从错误消息推导身份；找不到对应源时保留通用
+错误说明。用户可将该源设为保持作者原位，再预览完整选择；该字段不是允许省略其他来源的授权。
+
 单源／多源首次安装、目标切换和重新应用预览可提供 `fileEffects` 数组；旧响应可以省略。
 每项为 `{ fileId, sourceId, sourcePath, installedPath, targetPath, disposition, reason, change }`。
 三个 path 都是已经验证的游戏根相对展示路径，不包含本机游戏／原包／暂存目录；`installedPath: null`
@@ -660,8 +665,10 @@ target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 `sourceId` 可为空，表示包级资源；`change` 在重装核对完成后为 `retained | replaced | added | stale`，
 首次预览或排除项可为空。`disposition` 为 `relocated | kept_in_place | package_companion |
 installed_attachment_retained | plugin_candidate | policy_excluded`；`reason` 为 `target_mapping |
-original_target | texture_reference | unmapped_resource | package_resource | installed_attachment |
+original_target | texture_reference | unmapped_resource | ambiguous_resource_identity |
+conflicting_resource_identity | package_resource | installed_attachment |
 plugin_not_included | executable_policy`。插件候选只是未包含资源的说明，不是新安装授权。
+多义或矛盾编号对应 `kept_in_place`，保留完整原路径和内容；前端展示后端原因，不执行改名。
 界面默认折叠明细、展开后分批显示；这些字段不能回传到开始请求，也不能进入任务进度或日志。
 
 重新应用请求不接受 slots、目标 ID、revision、layer、intent 或安装证据。后端使用当前已安装 revision、
