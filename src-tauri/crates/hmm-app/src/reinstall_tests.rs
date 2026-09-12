@@ -673,6 +673,7 @@ fn same_revision_retarget_batch_facts_match_single_item_preparation() {
         }
     };
     let facts = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        intent: Default::default(),
         mod_id: ModId::new("mod-a"),
         installed_revision_id: ModRevisionId::new("v1"),
         candidate_revision_id: ModRevisionId::new("v1"),
@@ -706,6 +707,7 @@ fn same_revision_retarget_batch_facts_match_single_item_preparation() {
     );
 
     let drifted = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        intent: Default::default(),
         mod_id: ModId::new("mod-a"),
         installed_revision_id: ModRevisionId::new("v1"),
         candidate_revision_id: ModRevisionId::new("v1"),
@@ -723,6 +725,7 @@ fn same_revision_retarget_batch_facts_match_single_item_preparation() {
     );
 
     let missing = prepared.batch_item_facts(&ReinstallBatchItemInput {
+        intent: Default::default(),
         mod_id: ModId::new("mod-a"),
         installed_revision_id: ModRevisionId::new("v1"),
         candidate_revision_id: ModRevisionId::new("v1"),
@@ -1699,6 +1702,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
         let active_mod_id = self.active_mod_id.lock().expect("active Mod lock").clone();
         if *profile_id == ProfileId::new("default") && active_mod_id.as_ref() == Some(mod_id) {
             return Ok(Some(ReinstallRecoveryTransaction {
+                intent: Default::default(),
                 profile_id: ProfileId::new("default"),
                 mod_id: active_mod_id.expect("matched active Mod"),
                 old_revision_id: ModRevisionId::new("v1"),
@@ -1732,6 +1736,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
             return Ok(persisted);
         }
         Ok(vec![ReinstallRecoveryTransaction {
+            intent: Default::default(),
             profile_id: ProfileId::new("default"),
             mod_id: active_mod_id.expect("active Mod exists"),
             old_revision_id: ModRevisionId::new("v1"),

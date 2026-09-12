@@ -1,4 +1,5 @@
 use crate::dto::GamePrerequisiteDecisionDto;
+use crate::retarget_file_dto::RetargetFilePreviewDto;
 use hmm_app::{
     InstallManifestStatus, InstallRecoveryActionKind, InstallRecoveryStatus, ModRevisionList,
     ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallPlanPreview,
@@ -186,6 +187,8 @@ pub struct ReinstallAttachmentCountsDto {
 )]
 pub enum ReinstallPlanPreviewDto {
     Ready {
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        file_effects: Vec<RetargetFilePreviewDto>,
         prerequisite_decision: GamePrerequisiteDecisionDto,
         plan_token: String,
         installed_revision: ModRevisionSummaryDto,
@@ -196,6 +199,8 @@ pub enum ReinstallPlanPreviewDto {
         blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
     },
     Blocked {
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        file_effects: Vec<RetargetFilePreviewDto>,
         prerequisite_decision: GamePrerequisiteDecisionDto,
         plan_token: (),
         installed_revision: Option<ModRevisionSummaryDto>,
@@ -205,10 +210,23 @@ pub enum ReinstallPlanPreviewDto {
         attachment_counts: Option<ReinstallAttachmentCountsDto>,
         blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
     },
+    NoChanges {
+        prerequisite_decision: GamePrerequisiteDecisionDto,
+        plan_token: (),
+        installed_revision: ModRevisionSummaryDto,
+        candidate_revision: ModRevisionSummaryDto,
+        counts: ReinstallTargetCountsDto,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment_counts: Option<ReinstallAttachmentCountsDto>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        file_effects: Vec<RetargetFilePreviewDto>,
+        blocking_reasons: Vec<ReinstallBlockingReasonSummaryDto>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReinstallDtoInvariantError {
+    InvalidNoChanges,
     ReadyFieldsMissing,
     ReadyHasBlockingReasons,
     BlockedHasPlanToken,
@@ -219,6 +237,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
     type Error = ReinstallDtoInvariantError;
 
     fn try_from(preview: ReinstallPlanPreview) -> Result<Self, Self::Error> {
+        let file_effects = preview.file_effects.into_iter().map(Into::into).collect();
         let prerequisite_decision = preview.prerequisite_decision.clone().into();
         let attachment_counts =
             (!preview.attachment_counts.is_empty()).then_some(ReinstallAttachmentCountsDto {
@@ -241,6 +260,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     return Err(ReinstallDtoInvariantError::ReadyFieldsMissing);
                 }
                 Ok(Self::Ready {
+                    file_effects,
                     prerequisite_decision,
                     plan_token,
                     installed_revision: installed_revision.into(),
@@ -263,6 +283,7 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                     return Err(ReinstallDtoInvariantError::CandidateNotFoundHasCandidate);
                 }
                 Ok(Self::Blocked {
+                    file_effects,
                     prerequisite_decision,
                     plan_token: (),
                     installed_revision: preview.installed_revision.map(Into::into),
@@ -274,6 +295,35 @@ impl TryFrom<ReinstallPlanPreview> for ReinstallPlanPreviewDto {
                         .into_iter()
                         .map(Into::into)
                         .collect(),
+                })
+            }
+            ReinstallPreviewStatus::NoChanges => {
+                if preview.plan_token.is_some()
+                    || !preview.blocking_reasons.is_empty()
+                    || preview.prerequisite_decision.is_blocked()
+                    || preview.counts.replaced != 0
+                    || preview.counts.added != 0
+                    || preview.counts.stale != 0
+                {
+                    return Err(ReinstallDtoInvariantError::InvalidNoChanges);
+                }
+                let (Some(installed), Some(candidate)) =
+                    (preview.installed_revision, preview.candidate_revision)
+                else {
+                    return Err(ReinstallDtoInvariantError::InvalidNoChanges);
+                };
+                if installed.revision_id != candidate.revision_id {
+                    return Err(ReinstallDtoInvariantError::InvalidNoChanges);
+                }
+                Ok(Self::NoChanges {
+                    prerequisite_decision,
+                    plan_token: (),
+                    installed_revision: installed.into(),
+                    candidate_revision: candidate.into(),
+                    counts: preview.counts.into(),
+                    attachment_counts,
+                    file_effects,
+                    blocking_reasons: Vec::new(),
                 })
             }
         }
@@ -454,6 +504,7 @@ mod tests {
     #[test]
     fn ready_preview_serializes_as_strict_discriminated_union() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            file_effects: Vec::new(),
             attachment_counts: hmm_app::ReinstallAttachmentCounts { retained: 1, excluded: 2 },
             status: ReinstallPreviewStatus::Ready,
             prerequisite_decision: warning_prerequisite_decision(),
@@ -501,8 +552,55 @@ mod tests {
     }
 
     #[test]
+    fn no_changes_has_no_write_token_and_cannot_hide_file_changes_or_blockers() {
+        let preview = ReinstallPlanPreview {
+            status: ReinstallPreviewStatus::NoChanges,
+            file_effects: Vec::new(),
+            attachment_counts: Default::default(),
+            prerequisite_decision: ready_prerequisite_decision(),
+            installed_revision: Some(revision("revision-v1")),
+            candidate_revision: Some(revision("revision-v1")),
+            counts: ReinstallTargetCounts {
+                retained: 1,
+                ..Default::default()
+            },
+            blocking_reasons: Vec::new(),
+            plan_token: None,
+        };
+        let value =
+            serde_json::to_value(ReinstallPlanPreviewDto::try_from(preview.clone()).unwrap())
+                .unwrap();
+        assert_eq!(value["status"], "no_changes");
+        assert!(value["planToken"].is_null());
+        assert_eq!(value["blockingReasons"], json!([]));
+        for case in ["token", "revision", "changes", "blocker", "prerequisite"] {
+            let mut changed = preview.clone();
+            match case {
+                "token" => changed.plan_token = Some("unexpected-token".into()),
+                "revision" => changed.candidate_revision = Some(revision("revision-v2")),
+                "changes" => changed.counts.added = 1,
+                "blocker" => changed
+                    .blocking_reasons
+                    .push(ReinstallBlockingReasonSummary {
+                        reason: ReinstallBlockingReason::TargetChanged,
+                        count: 1,
+                    }),
+                "prerequisite" => {
+                    changed.prerequisite_decision.status = GamePrerequisiteDecisionStatus::Blocked
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                ReinstallPlanPreviewDto::try_from(changed).is_err(),
+                "accepted {case}"
+            );
+        }
+    }
+
+    #[test]
     fn candidate_not_found_serializes_null_candidate_and_token() {
         let dto = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            file_effects: Vec::new(),
             attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
             status: ReinstallPreviewStatus::Blocked,
             prerequisite_decision: ready_prerequisite_decision(),
@@ -536,6 +634,7 @@ mod tests {
     #[test]
     fn incomplete_ready_preview_is_rejected_before_serialization() {
         let result = ReinstallPlanPreviewDto::try_from(ReinstallPlanPreview {
+            file_effects: Vec::new(),
             attachment_counts: hmm_app::ReinstallAttachmentCounts::default(),
             status: ReinstallPreviewStatus::Ready,
             prerequisite_decision: ready_prerequisite_decision(),

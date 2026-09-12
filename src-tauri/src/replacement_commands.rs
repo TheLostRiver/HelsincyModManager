@@ -668,6 +668,7 @@ impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto 
     fn from(preflight: InitialRetargetInstallPreflight) -> Self {
         let planned = preflight.planned;
         Self {
+            file_effects: planned.file_effects().into_iter().map(Into::into).collect(),
             analysis: planned.analysis().clone().into(),
             // 单目标预览：前端契约仍是单个 target/actions/warnings。多槽位预览的 DTO
             // 是 `#349` 切片④ 的事，这里取第一个（`SoleSource` 下恰好只有一个）。

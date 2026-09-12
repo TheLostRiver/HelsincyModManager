@@ -45,6 +45,46 @@ impl ReinstallTaskService {
 }
 
 impl<E: EquipmentRetargetReinstallTaskExecutor> ReinstallTaskRunner<E> {
+    pub(crate) fn verify_equipment_reapply_noop(
+        &self,
+        request: EquipmentRetargetReinstallRequest,
+        expected_digest: &str,
+    ) -> bool {
+        if request.intent != hmm_core::ReinstallIntent::ReapplyEquipmentTargets {
+            return false;
+        }
+        let Ok(prepared) = self.executor.prepare_equipment_retarget_reinstall(request) else {
+            return false;
+        };
+        let counts = prepared.audit_context().counts;
+        prepared.batch_plan_digest() == expected_digest
+            && counts.added == 0
+            && counts.replaced == 0
+            && counts.stale == 0
+    }
+
+    pub(crate) fn run_equipment_retarget_reinstall_task_for_orchestration_with_observer<
+        O: TaskProgressObserver + ?Sized,
+    >(
+        &self,
+        task_id: &str,
+        request: StartEquipmentRetargetReinstallTaskRequest,
+        expected_batch_plan_digest: &str,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, ReinstallTaskOrchestrationError> {
+        let selection = request.selection.clone();
+        self.run_task(
+            task_id,
+            &request,
+            observer,
+            || {
+                self.executor
+                    .prepare_equipment_retarget_reinstall(selection)
+            },
+            |prepared| orchestration_plan_token(prepared, expected_batch_plan_digest),
+        )
+    }
+
     pub fn run_equipment_retarget_reinstall_task(
         &self,
         task_id: &str,

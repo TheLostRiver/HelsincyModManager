@@ -49,6 +49,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         return Err(ReplacementAdapterError::SourceHasNoAvailableTargets);
     }
     let mut actions = Vec::new();
+    let mut effects = Vec::new();
     let mut kept_unmapped = false;
     let mut moved = false;
     for resource in &unit.resources {
@@ -59,6 +60,13 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         };
         moved |= destination != resource.path;
         kept_unmapped |= unmapped;
+        effects.push(super::file_effects::resource_effect(
+            resource,
+            &destination,
+            Some(unit.source.id().clone()),
+            identity,
+            unmapped,
+        ));
         actions.push(action(
             resource,
             destination,
@@ -73,6 +81,13 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     }
     if request.carries_package_companions {
         for resource in &package.companions {
+            effects.push(super::file_effects::resource_effect(
+                resource,
+                &resource.path,
+                None,
+                true,
+                false,
+            ));
             actions.push(action(
                 resource,
                 resource.path.clone(),
@@ -107,12 +122,18 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     }
     let plan = RetargetPlan::new(request.binding, unit.source.clone(), actions, warnings)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
+    if request.carries_package_companions {
+        effects.extend(super::file_effects::excluded_effects(&package)?);
+    }
     let plan = plan
         .with_policy_exclusions(if request.carries_package_companions {
             package.excluded_files
         } else {
             Vec::new()
         })
+        .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
+    let plan = plan
+        .with_file_effects(effects)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
     let closure = digest(plan.actions().iter().flat_map(|action| {
         [

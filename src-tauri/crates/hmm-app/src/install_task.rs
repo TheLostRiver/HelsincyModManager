@@ -3689,6 +3689,7 @@ mod tests {
             match self.mode {
                 AdmissionRepositoryMode::Empty => Ok(Vec::new()),
                 AdmissionRepositoryMode::Pending => Ok(vec![ReinstallRecoveryTransaction {
+                    intent: Default::default(),
                     profile_id: profile_id.clone(),
                     mod_id: ModId::new("mod-a"),
                     old_revision_id: ModRevisionId::new("installed-v1"),

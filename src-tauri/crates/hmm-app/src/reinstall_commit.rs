@@ -155,6 +155,10 @@ impl ReinstallCommitService {
     ) -> Result<ReinstallCommitResult, ReinstallCommitError> {
         self.revalidate(&prepared, expected_plan_token)?;
 
+        if prepared.is_noop_reapply() {
+            return Err(ReinstallCommitError::PreviewStale);
+        }
+
         let mut transaction = self.create_transaction(&prepared)?;
         if self.recovery.save_transaction(&transaction).is_err() {
             self.abort_before_mutation(&transaction);
@@ -229,6 +233,16 @@ impl ReinstallCommitService {
         if expected_plan_token != prepared.plan_token {
             return Err(ReinstallCommitError::PreviewStale);
         }
+        if !prepared.intent.is_standard()
+            && (prepared.reapply_source_fingerprints.len() != prepared.source_files.len()
+                || prepared.source_files.iter().any(|source| {
+                    !prepared
+                        .reapply_source_fingerprints
+                        .contains_key(&source.provider.package_file_id)
+                }))
+        {
+            return Err(ReinstallCommitError::PreviewStale);
+        }
         let manifest = self
             .manifests
             .load_manifest(&prepared.request.profile_id)
@@ -255,6 +269,15 @@ impl ReinstallCommitService {
             })?;
         if candidate.as_ref() != Some(&prepared.candidate) {
             return Err(ReinstallCommitError::PreviewStale);
+        }
+        for (id, expected) in &prepared.reapply_source_fingerprints {
+            let bytes = self
+                .original_source
+                .read_candidate_source_file(&prepared.candidate, id)
+                .map_err(|_| ReinstallCommitError::PreviewStale)?;
+            if summarize(&bytes) != *expected {
+                return Err(ReinstallCommitError::PreviewStale);
+            }
         }
         let legacy_provenance = self
             .catalog
@@ -393,6 +416,7 @@ impl ReinstallCommitService {
         }
 
         let transaction = ReinstallRecoveryTransaction {
+            intent: prepared.intent,
             profile_id: prepared.request.profile_id.clone(),
             mod_id: prepared.request.mod_id.clone(),
             old_revision_id: prepared.installed_revision_id.clone(),
@@ -811,6 +835,7 @@ fn same_pre_mutation_operation(
         && durable.mod_id == attempted.mod_id
         && durable.old_revision_id == attempted.old_revision_id
         && durable.candidate_revision_id == attempted.candidate_revision_id
+        && durable.intent == attempted.intent
         && durable.plan_token == attempted.plan_token
         && durable.plan_hash == attempted.plan_hash
         && durable.pre_reinstall_manifest == attempted.pre_reinstall_manifest

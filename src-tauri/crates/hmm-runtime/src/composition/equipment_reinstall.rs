@@ -1,8 +1,11 @@
 use super::*;
+#[path = "retarget_source_recording.rs"]
+mod source_recording;
 use hmm_app::{
     EquipmentRetargetReinstallRequest, EquipmentRetargetReinstallTaskExecutor,
     InstalledEquipmentReinstallResolution, PreviewEquipmentRetargetReinstallRequest,
 };
+use source_recording::RecordingRetargetSourceReader;
 
 impl ConfiguredReinstallExecutor {
     pub fn preview_equipment_retarget_reinstall(
@@ -17,6 +20,7 @@ impl ConfiguredReinstallExecutor {
         &self,
         request: EquipmentRetargetReinstallRequest,
     ) -> Result<ConfiguredRetargetReinstallPreparation, ConfiguredRetargetReinstallError> {
+        let intent = request.intent;
         let services = self
             .services_for(&request.game_id)
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
@@ -55,14 +59,16 @@ impl ConfiguredReinstallExecutor {
             layer: request.layer,
         };
         let policy_exclusions = planned.policy_exclusions();
+        let file_effects = planned.file_effects();
         if planned.install_plan().has_blocking_conflicts() {
             let preparation = services
                 .preview
-                .prepare_equipment_target_switch_with_origin(
+                .prepare_equipment_with_intent(
                     preview_request,
                     planned.install_plan().clone(),
                     context.original_install_evidence,
                     policy_exclusions,
+                    intent,
                 )
                 .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
             return Ok(ConfiguredRetargetReinstallPreparation {
@@ -81,9 +87,20 @@ impl ConfiguredReinstallExecutor {
                 )
             })?;
         let staging_root = retarget_reinstall_staging_root(&self.app_data_dir);
+        let package_reader: Arc<dyn hmm_ports::InstallSourceFileReader> =
+            Arc::new(FileSystemInstallSourceFileReader::new(source_root));
+        let recording = (intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets).then(|| {
+            Arc::new(RecordingRetargetSourceReader::new(Arc::clone(
+                &package_reader,
+            )))
+        });
+        let materialization_reader: Arc<dyn hmm_ports::InstallSourceFileReader> = match &recording {
+            Some(reader) => reader.clone(),
+            None => package_reader,
+        };
         let materializer = FileSystemRetargetStagingMaterializer::new_with_registry(
             staging_root.clone(),
-            Arc::new(FileSystemInstallSourceFileReader::new(source_root)),
+            materialization_reader,
             Arc::clone(&self.content_transformers),
         );
         let plan = self
@@ -91,6 +108,15 @@ impl ConfiguredReinstallExecutor {
             .materialize_equipment_reinstall(&materializer, planned)
             .map_err(ConfiguredRetargetReinstallError::Replacement)?;
         let staging_cleanup = RetargetStagingCleanup::armed(staging_root.clone());
+        let source_summaries = recording
+            .as_ref()
+            .map(|reader| reader.summaries())
+            .transpose()
+            .map_err(|_| {
+                ConfiguredRetargetReinstallError::Replacement(
+                    ReplacementWorkflowError::PlanUnavailable,
+                )
+            })?;
         let reader = RetargetStagingInstallSourceFileReader::from_install_plan(staging_root, &plan)
             .map_err(|_| {
                 ConfiguredRetargetReinstallError::Replacement(
@@ -113,12 +139,18 @@ impl ConfiguredReinstallExecutor {
                 Arc::clone(&source),
             )
             .preview
-            .prepare_equipment_target_switch_with_origin(
+            .prepare_equipment_with_intent(
                 preview_request,
                 plan,
                 context.original_install_evidence,
                 policy_exclusions,
+                intent,
             )
+            .and_then(|preparation| preparation.with_file_effects(file_effects))
+            .and_then(|preparation| match source_summaries {
+                Some(summaries) => preparation.with_reapply_source_fingerprints(summaries),
+                None => Ok(preparation),
+            })
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,
@@ -161,25 +193,28 @@ impl EquipmentRetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
                 source: prepared.source,
                 staging_cleanup: prepared.staging_cleanup,
             }),
-            ReinstallPreparation::Blocked(preview) => Err(ReinstallTaskPrepareError::Preflight(
-                ReinstallTaskAuditContext {
-                    previous_revision_id: preview
-                        .installed_revision
-                        .as_ref()
-                        .map(|revision| revision.revision_id.clone()),
-                    candidate_revision_id: preview
-                        .candidate_revision
-                        .map(|revision| revision.revision_id)
-                        .or_else(|| {
-                            preview
-                                .installed_revision
-                                .map(|revision| revision.revision_id)
-                        })
-                        .unwrap_or(fallback.candidate_revision_id),
-                    counts: preview.counts,
-                    adapter_facts: None,
-                },
-            )),
+            ReinstallPreparation::Blocked(preview) => {
+                let preview = *preview;
+                Err(ReinstallTaskPrepareError::Preflight(
+                    ReinstallTaskAuditContext {
+                        previous_revision_id: preview
+                            .installed_revision
+                            .as_ref()
+                            .map(|revision| revision.revision_id.clone()),
+                        candidate_revision_id: preview
+                            .candidate_revision
+                            .map(|revision| revision.revision_id)
+                            .or_else(|| {
+                                preview
+                                    .installed_revision
+                                    .map(|revision| revision.revision_id)
+                            })
+                            .unwrap_or(fallback.candidate_revision_id),
+                        counts: preview.counts,
+                        adapter_facts: None,
+                    },
+                ))
+            }
         }
     }
 }

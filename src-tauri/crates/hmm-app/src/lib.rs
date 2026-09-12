@@ -292,7 +292,7 @@ pub use reinstall::{
     ReinstallBlockingReasonSummary, ReinstallCandidatePlanError, ReinstallCandidatePlanRequest,
     ReinstallCandidatePlanner, ReinstallCandidateSourceReader, ReinstallPlanPreview,
     ReinstallPreparation, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
-    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts, RetargetFilePreview,
 };
 pub use reinstall_commit::{
     ReinstallCommitError, ReinstallCommitPhase, ReinstallCommitResult, ReinstallCommitService,

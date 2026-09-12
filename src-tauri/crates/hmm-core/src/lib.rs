@@ -1,6 +1,7 @@
 mod app_version;
 mod batch;
 mod category;
+mod equipment_reapply;
 mod equipment_reinstall;
 mod external_import;
 mod external_install_state;
@@ -14,6 +15,7 @@ mod reinstall;
 mod replacement;
 mod retarget;
 mod retarget_exclusions;
+mod retarget_files;
 mod save_backup;
 mod save_directory;
 mod save_restore;
@@ -34,6 +36,7 @@ pub use batch::{
     DEFAULT_BATCH_PREVIEW_TOKEN_TTL_MILLIS,
 };
 pub use category::{Category, CategoryLabel};
+pub use equipment_reapply::{is_same_revision_equipment_reapply, ReinstallIntent};
 pub use equipment_reinstall::is_same_revision_equipment_target_switch;
 pub use external_import::{
     ExternalImportAdapterId, ExternalImportBatch, ExternalImportBatchId,
@@ -112,6 +115,7 @@ pub use retarget::{
     RetargetPlan, RetargetSourceOrigin, RetargetSourceRouting,
 };
 pub use retarget_exclusions::{RetargetExclusionReason, RetargetPolicyExcludedFile};
+pub use retarget_files::{RetargetFileDisposition, RetargetFileEffect, RetargetFileReason};
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
     SaveBackupBackgroundSettings, SaveBackupManifest, SaveBackupManifestFile,

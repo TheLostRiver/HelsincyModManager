@@ -1354,6 +1354,7 @@ fn batch_plan_request(
                         parse_batch_id_component(candidate_revision_id, "batch_item_invalid")
                             .map(ModRevisionId::new)?;
                     Ok(BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                        intent: Default::default(),
                         mod_id,
                         installed_revision_id,
                         candidate_revision_id,

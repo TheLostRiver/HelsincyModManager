@@ -638,17 +638,44 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | `start_equipment_retarget_install_task` | 与多源首次预览相同 | `TaskStartedDto` |
 | `preview_equipment_retarget_reinstall` | `gameId`、`profileId`、`modId`、`slots`、layer | 整组 `ReinstallPlanPreviewDto` 与 plan token |
 | `start_equipment_retarget_reinstall_task` | `{ selection: 多源预览请求, planToken }` | `TaskStartedDto` |
+| `preview_equipment_reapply` | `gameId`、`profileId`、`modId` | 当前已安装完整目标的 `ReinstallPlanPreviewDto`；无变更时 `no_changes`，无写入 token |
+| `start_equipment_reapply_task` | `{ selection: { gameId, profileId, modId }, planToken }` | `TaskStartedDto`，沿用重装任务、写锁与恢复流程 |
 
 前端不得提交 `packageId`、revision package id、source path、sandbox/cache/staging/game root、
 `bindingId`、`internalId` 或最终 target path。`sourceId` 仅允许出现在新的多源 `slots` 中；旧单源
 command 仍由后端推断唯一源。后端按稳定身份重建包事实、解析目标、生成 binding、`RetargetPlan`、
 staging 和 `InstallPlan`。默认 MHW 策略保留材质内容和贴图位置，不需要二进制解析；旧显式材质转换
 能力保留受限 content reader 和 sealed transform invocation。前端不接触 bytes、digest、transformer
-参数或路径。已安装目标切换的 revision 来源见下文，不得复用 display revision。
+参数或写入路径；下述文件处置明细的受控相对路径仅用于展示、复制和文本筛选。
+已安装目标切换的 revision 来源见下文，不得复用 display revision。
 target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 不返回原始 catalog metadata。source/action DTO 只投影稳定 type/id/internal id、support 与动作事实，
-不返回 source/target relative path 或 path-family；UI preview 只显示 resource type、internal id、动作数、
-冲突与 prerequisite。
+不返回 source/target relative path 或 path-family。文件去向通过独立的可选 `fileEffects` 投影返回，
+前端不从 source、target metadata 或文件名推导路径。
+
+单源／多源首次安装、目标切换和重新应用预览可提供 `fileEffects` 数组；旧响应可以省略。
+每项为 `{ fileId, sourceId, sourcePath, installedPath, targetPath, disposition, reason, change }`。
+三个 path 都是已经验证的游戏根相对展示路径，不包含本机游戏／原包／暂存目录；`installedPath: null`
+表示该 Mod 没有对应管理记录，不代表物理文件不存在，`targetPath: null` 表示本次不包含该文件。
+`sourceId` 可为空，表示包级资源；`change` 在重装核对完成后为 `retained | replaced | added | stale`，
+首次预览或排除项可为空。`disposition` 为 `relocated | kept_in_place | package_companion |
+installed_attachment_retained | plugin_candidate | policy_excluded`；`reason` 为 `target_mapping |
+original_target | texture_reference | unmapped_resource | package_resource | installed_attachment |
+plugin_not_included | executable_policy`。插件候选只是未包含资源的说明，不是新安装授权。
+界面默认折叠明细、展开后分批显示；这些字段不能回传到开始请求，也不能进入任务进度或日志。
+
+重新应用请求不接受 slots、目标 ID、revision、layer、intent 或安装证据。后端使用当前已安装 revision、
+完整目标集合及原文件层级；普通目标切换仍拒绝同目标。`no_changes` 响应含相同的 installedRevision／
+candidateRevision、retained 计数、空 blockingReasons、可选附件计数和 fileEffects，planToken 为 null，
+replaced／added／stale 均为零；前端不启动任务。确有差异时返回 ready，开始请求仍须消费对应 token。
+意图、文件处置和用于暂存的原始文件摘要参与预览／批量摘要，提交复核源文件与实际游戏文件。
+持久事务的可选 intent 为 `standard | reapply_equipment_targets`；省略表示旧流程，旧事务仍可恢复。
+重新应用必须保持来源和物理目标，不能通过换意图或回放普通切换 token 改变目标。
+
+批量 Reinstall item 可选 intent 为 `reapply_equipment_targets`，仅允许 installedRevisionId 与
+candidateRevisionId 相同，且不能同时提供 replacementTargets 或绑定快照。后端重新取得当前目标和层，
+完整来源及文件事实进入摘要；没有文件差异的 item 复核后完成，不写游戏文件／清单，也不创建单项
+重装事务。批量环境准入规则不变。当前 MHW 批量重新应用使用默认无内容转换的路径策略。
 
 多源 `slots` 为 `[{ action: "keep", sourceId } | { action: "retarget", sourceId, targetId }]`。
 `keep` 表示作者设定的原位目标；已安装包的界面默认按每个源实际目标生成完整选择，因此修改一件装备
@@ -729,7 +756,7 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 离开时抛弃旧响应，查询失败不自动循环。详情可先于源扫描显示；15 秒前端等待上限只结束等待，
 不伪造后端扫描取消。来源 `imported` 只可表述文件导入，不能区分手动选择与拖拽。
 
-同 revision 只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，或后端的
+普通目标切换在同 revision 时，只有 persisted/candidate binding 证明同一 Mod/profile/source/path-family lineage，或后端的
 原位证据通过完整核验，且新 `targetId` 与已安装 target 不同时才允许进入真正重装。缺失 binding 的旧
 安装只在原包、清单与实际文件的完整集合、身份和摘要一致时恢复；旧记录未写 revision 时还要求该 Mod
 只有一个可确认的导入版本。`original_install_unverified` 表示原位布局无法证明，不能凭前端确认放行。
@@ -743,7 +770,7 @@ target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型�
 定向安装的非阻断提示，说明插件／工具未包含、相关功能可能不可用。字段只供展示，不是调用方的
 安装授权；请求不能提交排除路径、附件计数或自造保留证据。单源和多源界面共享相同的数量解释。
 
-当前 target、不安全 recovery 状态、blocking conflict 或 preview token 过期均 fail closed。start 继续使用既有
+普通切换的当前 target、不安全 recovery 状态、blocking conflict 或 preview token 过期均 fail closed。重新应用仅通过上述独立意图进入。start 继续使用既有
 `install.reinstall.*` phase、game/profile 写锁和 cancellation barrier；前端严格按 `taskId` 匹配事件，
 取消入口只在 queued/plan/preflight 安全阶段可见。
 

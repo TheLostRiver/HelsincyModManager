@@ -261,6 +261,7 @@ fn preparation_projection_reuses_blocked_reinstall_facts_contract() {
         input: reinstall_input("mod-a", "v1", "v2", None),
     };
     let preview = ReinstallPlanPreview {
+        file_effects: Vec::new(),
         attachment_counts: crate::ReinstallAttachmentCounts::default(),
         status: crate::ReinstallPreviewStatus::Blocked,
         prerequisite_decision: crate::GamePrerequisiteDecision {
@@ -285,7 +286,7 @@ fn preparation_projection_reuses_blocked_reinstall_facts_contract() {
 
     let facts = ReinstallPreviewBatchItemFactsReader::facts_from_preparation(
         &request,
-        ReinstallPreparation::Blocked(preview),
+        ReinstallPreparation::Blocked(Box::new(preview)),
     )
     .expect("blocked facts");
 
@@ -397,6 +398,15 @@ impl RetargetReinstallTaskExecutor for FakeExecutor {
         let mut prepared = self.prepared.clone();
         prepared.candidate_revision_id = ModRevisionId::new("v1");
         Ok(prepared)
+    }
+}
+
+impl crate::EquipmentRetargetReinstallTaskExecutor for FakeExecutor {
+    fn prepare_equipment_retarget_reinstall(
+        &self,
+        _request: crate::EquipmentRetargetReinstallRequest,
+    ) -> Result<Self::Prepared, ReinstallTaskPrepareError> {
+        panic!("ordinary batch fixture must not execute equipment reapply")
     }
 }
 
@@ -730,6 +740,7 @@ fn reinstall_input(
     replacement_binding_snapshot: Option<ReplacementBindingSnapshot>,
 ) -> ReinstallBatchItemInput {
     ReinstallBatchItemInput {
+        intent: Default::default(),
         mod_id: ModId::new(mod_id),
         installed_revision_id: ModRevisionId::new(installed_revision_id),
         candidate_revision_id: ModRevisionId::new(candidate_revision_id),

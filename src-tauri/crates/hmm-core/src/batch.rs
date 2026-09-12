@@ -69,6 +69,8 @@ pub struct UninstallBatchItemInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReinstallBatchItemInput {
+    #[serde(default, skip_serializing_if = "crate::ReinstallIntent::is_standard")]
+    pub intent: crate::ReinstallIntent,
     pub mod_id: ModId,
     pub installed_revision_id: ModRevisionId,
     pub candidate_revision_id: ModRevisionId,
@@ -146,6 +148,12 @@ impl BatchItemInput {
                 }
             }
             Self::Reinstall(input) => {
+                if !input.intent.is_standard()
+                    && (input.installed_revision_id != input.candidate_revision_id
+                        || input.replacement_binding_snapshot.is_some())
+                {
+                    return Err(BatchPlanError::InvalidInput);
+                }
                 if input.installed_revision_id.as_str().trim().is_empty()
                     || input.candidate_revision_id.as_str().trim().is_empty()
                     || input.layer.name.trim().is_empty()
@@ -613,6 +621,8 @@ enum CanonicalBatchItemInput<'a> {
     },
     Reinstall {
         mod_id: &'a str,
+        #[serde(skip_serializing_if = "crate::ReinstallIntent::is_standard")]
+        intent: crate::ReinstallIntent,
         installed_revision_id: &'a str,
         candidate_revision_id: &'a str,
         layer: CanonicalLayer<'a>,
@@ -820,6 +830,7 @@ fn canonical_item(item: &BatchItemPlan) -> CanonicalBatchItem<'_> {
             expected_installed_revision_id: input.expected_installed_revision_id.as_str(),
         },
         BatchItemInput::Reinstall(input) => CanonicalBatchItemInput::Reinstall {
+            intent: input.intent,
             mod_id: input.mod_id.as_str(),
             installed_revision_id: input.installed_revision_id.as_str(),
             candidate_revision_id: input.candidate_revision_id.as_str(),
@@ -1126,6 +1137,7 @@ mod tests {
         let request = request(
             BatchOperation::Reinstall,
             vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                intent: Default::default(),
                 mod_id: ModId::new("mod-a"),
                 installed_revision_id: ModRevisionId::new("revision-a"),
                 candidate_revision_id: ModRevisionId::new("revision-a"),
@@ -1207,6 +1219,7 @@ mod tests {
                 request(
                     BatchOperation::Reinstall,
                     vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                        intent: Default::default(),
                         mod_id: ModId::new("mod-a"),
                         installed_revision_id: ModRevisionId::new("revision-a"),
                         candidate_revision_id: ModRevisionId::new("revision-a"),
@@ -1694,6 +1707,7 @@ mod tests {
             profile_id: ProfileId::new("default"),
             execution_policy: BatchExecutionPolicy::StopOnFailure,
             items: vec![BatchItemInput::Reinstall(ReinstallBatchItemInput {
+                intent: Default::default(),
                 mod_id: ModId::new("a"),
                 installed_revision_id: ModRevisionId::new("installed-a"),
                 candidate_revision_id: ModRevisionId::new("candidate-a"),
