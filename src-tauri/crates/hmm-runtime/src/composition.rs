@@ -2545,8 +2545,14 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         {
             return Err(source_error());
         }
+        let has_staged_sources = request.source_routing.staged_entries().next().is_some();
+        if carries_retarget_binding && !has_staged_sources {
+            return Err(source_error());
+        }
         let (source_files, staging_roots): (Arc<dyn InstallSourceFileReader>, Vec<PathBuf>) =
-            if request.source_routing.is_empty() {
+            if !has_staged_sources {
+                // 全部来源保持原位时，完整显式路由只有 ImportedPackage，不需要 staging 读取器。
+                // 上面的逐动作覆盖检查仍适用，非原位绑定也不能借此退回原包。
                 (imported_source_files()?, Vec::new())
             } else {
                 let mut roots_by_package_file = BTreeMap::new();
@@ -3868,5 +3874,44 @@ mod tests {
             looked_up.load(Ordering::SeqCst),
             "identity 绑定该走原包读取，不该被重定向闸门拦下"
         );
+    }
+
+    #[test]
+    fn explicit_package_routes_cannot_bypass_a_nonidentity_binding_or_missing_file_route() {
+        for (created_at, destination, files) in [
+            (42, "one002", vec!["first.mod3"]),
+            (0, "one001", vec!["first.mod3", "second.mod3"]),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let looked_up = Arc::new(AtomicBool::new(false));
+            let game = temp.path().join("game");
+            fs::create_dir_all(&game).unwrap();
+            let committer = committer_for(
+                temp.path().join("app-data"),
+                game.clone(),
+                Arc::clone(&looked_up),
+            );
+            let mut routing = RetargetSourceRouting::empty();
+            routing
+                .read_from_package(hmm_core::PackageFileId::new("first.mod3"))
+                .unwrap();
+            let result = committer.commit_install_plan(commit_request_with_binding(
+                routing,
+                created_at,
+                destination,
+                &files,
+            ));
+            assert!(matches!(
+                result,
+                Err(InstallCommitError::Failed {
+                    phase: InstallCommitPhase::SourceRead
+                })
+            ));
+            assert!(
+                !looked_up.load(Ordering::SeqCst),
+                "invalid routes are rejected before opening a source reader"
+            );
+            assert!(game_tree_is_empty(&game));
+        }
     }
 }

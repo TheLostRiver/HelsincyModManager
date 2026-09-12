@@ -22,7 +22,14 @@ export const retargetFileCopy = {
     equipment: "装备资源", package: "包级资源", unknown: "未知处置", more: "显示更多文件",
     shown: (visible: number, total: number) => `显示 ${visible} / ${total} 个文件`,
     dispositions: { relocated: "映射到目标", kept_in_place: "保留作者原位", package_companion: "包级配套", installed_attachment_retained: "保留已安装附件", plugin_candidate: "未包含的插件候选", policy_excluded: "按策略排除" },
-    reasons: { target_mapping: "按装备目标映射资源路径。", original_target: "使用作者设置的原始位置。", texture_reference: "保持贴图路径，保留既有引用。", unmapped_resource: "无法明确映射，保留原始路径和内容。", package_resource: "作为整个 Mod 的配套资源保留。", installed_attachment: "已核实的已安装附件，保持原路径和内容。", plugin_not_included: "此插件候选未包含在本次计划中，当前不会新增安装。", executable_policy: "随包可执行文件或脚本未包含在本次计划中。" },
+    reasons: {
+      target_mapping: "按装备目标映射资源路径。", original_target: "使用作者设置的原始位置。",
+      texture_reference: "保持贴图路径，保留既有引用。", unmapped_resource: "无法明确映射，保留原始路径和内容。",
+      ambiguous_resource_identity: "名称包含多处装备编号，无法确定改名方式，保留完整原路径和内容。",
+      conflicting_resource_identity: "目录或文件名中的装备编号与来源不一致，保留完整原路径和内容。",
+      package_resource: "作为整个 Mod 的配套资源保留。", installed_attachment: "已核实的已安装附件，保持原路径和内容。",
+      plugin_not_included: "此插件候选未包含在本次计划中，当前不会新增安装。", executable_policy: "随包可执行文件或脚本未包含在本次计划中。",
+    },
     changes: { retained: "无需写入", replaced: "更新", added: "新增", stale: "清理旧文件" },
   },
   en: {
@@ -34,7 +41,14 @@ export const retargetFileCopy = {
     equipment: "Equipment resource", package: "Package resource", unknown: "Unknown disposition", more: "Show more files",
     shown: (visible: number, total: number) => `Showing ${visible} of ${total} files`,
     dispositions: { relocated: "Mapped to target", kept_in_place: "Original location", package_companion: "Package companion", installed_attachment_retained: "Installed companion retained", plugin_candidate: "Plugin candidate not included", policy_excluded: "Excluded by policy" },
-    reasons: { target_mapping: "Resource paths follow the selected equipment target.", original_target: "Use the location set by the Mod author.", texture_reference: "Keep texture paths to preserve existing references.", unmapped_resource: "No unambiguous mapping is available; keep the original path and contents.", package_resource: "Keep this companion resource for the whole Mod.", installed_attachment: "The verified installed companion keeps its path and contents.", plugin_not_included: "This plugin candidate is outside the current plan and will not be newly installed.", executable_policy: "The bundled executable or script is outside the current plan." },
+    reasons: {
+      target_mapping: "Resource paths follow the selected equipment target.", original_target: "Use the location set by the Mod author.",
+      texture_reference: "Keep texture paths to preserve existing references.", unmapped_resource: "No unambiguous mapping is available; keep the original path and contents.",
+      ambiguous_resource_identity: "The name contains multiple equipment IDs. Keep the entire original path and contents because the intended rename is unclear.",
+      conflicting_resource_identity: "An equipment ID in the directory or filename disagrees with the source. Keep the entire original path and contents.",
+      package_resource: "Keep this companion resource for the whole Mod.", installed_attachment: "The verified installed companion keeps its path and contents.",
+      plugin_not_included: "This plugin candidate is outside the current plan and will not be newly installed.", executable_policy: "The bundled executable or script is outside the current plan.",
+    },
     changes: { retained: "No write needed", replaced: "Update", added: "Add", stale: "Remove old file" },
   },
   ja: {
@@ -46,7 +60,14 @@ export const retargetFileCopy = {
     equipment: "装備リソース", package: "パッケージリソース", unknown: "不明な処理", more: "さらに表示",
     shown: (visible: number, total: number) => `${total} 個中 ${visible} 個を表示`,
     dispositions: { relocated: "対象に配置", kept_in_place: "作者の元の位置を維持", package_companion: "パッケージの付属リソース", installed_attachment_retained: "インストール済みの付属ファイルを保持", plugin_candidate: "含まれないプラグイン候補", policy_excluded: "ポリシーによる除外" },
-    reasons: { target_mapping: "選択した装備対象に合わせてパスを設定します。", original_target: "作者が指定した元の位置を使用します。", texture_reference: "既存の参照を維持するためテクスチャのパスを保持します。", unmapped_resource: "明確に対応付けられないため、元のパスと内容を保持します。", package_resource: "Mod 全体の付属リソースとして保持します。", installed_attachment: "確認済みの付属ファイルのパスと内容を保持します。", plugin_not_included: "このプラグイン候補は今回の計画に含まれず、新規にインストールされません。", executable_policy: "同梱の実行ファイルまたはスクリプトは今回の計画に含まれません。" },
+    reasons: {
+      target_mapping: "選択した装備対象に合わせてパスを設定します。", original_target: "作者が指定した元の位置を使用します。",
+      texture_reference: "既存の参照を維持するためテクスチャのパスを保持します。", unmapped_resource: "明確に対応付けられないため、元のパスと内容を保持します。",
+      ambiguous_resource_identity: "名前に装備番号が複数あり改名方法を確定できないため、元のパス全体と内容を保持します。",
+      conflicting_resource_identity: "ディレクトリまたはファイル名の装備番号が元の装備と一致しないため、元のパス全体と内容を保持します。",
+      package_resource: "Mod 全体の付属リソースとして保持します。", installed_attachment: "確認済みの付属ファイルのパスと内容を保持します。",
+      plugin_not_included: "このプラグイン候補は今回の計画に含まれず、新規にインストールされません。", executable_policy: "同梱の実行ファイルまたはスクリプトは今回の計画に含まれません。",
+    },
     changes: { retained: "書き込み不要", replaced: "更新", added: "追加", stale: "旧ファイルを削除" },
   },
 } satisfies LocaleDictionary<RetargetFileCopy>;

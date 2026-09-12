@@ -1,10 +1,9 @@
 use super::inventory::{is_texture, EquipmentRoot, PackageResources, Resource};
-use crate::{
-    ArmorResourcePath, MhwReplacementCatalog, WeaponAnalysisError, WeaponMainId, WeaponPathError,
-};
+use crate::weapon_retarget::{WeaponResourceMapper, WeaponResourceMapping};
+use crate::{ArmorResourcePath, MhwReplacementCatalog, WeaponAnalysisError, WeaponMainId};
 use hmm_core::{
-    InstallTargetPath, ReplacementAdapterFacts, ReplacementWarning, RetargetAction, RetargetPlan,
-    REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
+    InstallTargetPath, ReplacementAdapterFacts, ReplacementWarning, RetargetAction,
+    RetargetFileReason, RetargetPlan, REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
 };
 use hmm_ports::{
     ReplacementAdapterError, ReplacementAdapterResult, ReplacementCatalogProvider,
@@ -52,14 +51,21 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     let mut effects = Vec::new();
     let mut kept_unmapped = false;
     let mut moved = false;
+    let weapon_mapper = match &unit.root {
+        EquipmentRoot::Weapon(root) => Some(WeaponResourceMapper::new(
+            root,
+            unit.resources.iter().map(|resource| &resource.path),
+        )),
+        EquipmentRoot::Armor(_) => None,
+    };
     for resource in &unit.resources {
         let (destination, unmapped) = if identity || is_texture(&resource.path) {
-            (resource.path.clone(), false)
+            (resource.path.clone(), None)
         } else {
-            destination(&unit.root, resource, target.internal_id())?
+            destination(weapon_mapper.as_ref(), resource, target.internal_id())?
         };
         moved |= destination != resource.path;
-        kept_unmapped |= unmapped;
+        kept_unmapped |= unmapped.is_some();
         effects.push(super::file_effects::resource_effect(
             resource,
             &destination,
@@ -75,7 +81,8 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         )?);
     }
     if !identity && !moved {
-        return Err(ReplacementAdapterError::AnalysisRejected {
+        return Err(ReplacementAdapterError::SourceAnalysisRejected {
+            source_id: unit.source.id().clone(),
             code: WeaponAnalysisError::NoRelocatableResources.code(),
         });
     }
@@ -86,7 +93,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
                 &resource.path,
                 None,
                 true,
-                false,
+                None,
             ));
             actions.push(action(
                 resource,
@@ -104,9 +111,9 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         };
     let mut targets = BTreeSet::new();
     if actions.len() != expected
-        || actions.iter().any(|action| {
-            !targets.insert(action.target_relative_path().as_str().to_ascii_lowercase())
-        })
+        || actions
+            .iter()
+            .any(|action| !targets.insert(action.target_relative_path().windows_key()))
     {
         return Err(ReplacementAdapterError::InvalidRetargetPlan);
     }
@@ -151,7 +158,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
         "mhw.equipment",
         "path-only-resource-preserving",
-        1,
+        2,
         closure,
         source,
         plan.content_transform_set_sha256(),
@@ -167,27 +174,27 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
 }
 
 fn destination(
-    root: &EquipmentRoot,
+    weapon_mapper: Option<&WeaponResourceMapper<'_>>,
     resource: &Resource,
     target: &str,
-) -> ReplacementAdapterResult<(InstallTargetPath, bool)> {
-    match root {
-        EquipmentRoot::Weapon(root) => {
+) -> ReplacementAdapterResult<(InstallTargetPath, Option<RetargetFileReason>)> {
+    match weapon_mapper {
+        Some(mapper) => {
             let target = WeaponMainId::parse(target)
                 .map_err(|_| ReplacementAdapterError::UnsupportedReplacementTarget)?;
-            match root.relocate_matching_resource(&resource.path, &target) {
-                Ok(Some(path)) => Ok((path, false)),
-                Ok(None) | Err(WeaponPathError::UnsupportedResource) => {
-                    Ok((resource.path.clone(), true))
+            match mapper.map(&resource.path, &target) {
+                Ok(WeaponResourceMapping::Relocated(path)) => Ok((path, None)),
+                Ok(WeaponResourceMapping::Kept(reason)) => {
+                    Ok((resource.path.clone(), Some(reason)))
                 }
                 Err(_) => Err(ReplacementAdapterError::UnsafeRetargetPath),
             }
         }
-        EquipmentRoot::Armor(_) => {
+        None => {
             let path = ArmorResourcePath::parse(resource.path.as_str())
                 .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)?;
             path.retarget(target)
-                .map(|path| (path, false))
+                .map(|path| (path, None))
                 .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)
         }
     }

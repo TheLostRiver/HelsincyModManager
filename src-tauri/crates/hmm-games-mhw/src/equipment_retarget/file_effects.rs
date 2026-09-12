@@ -10,7 +10,7 @@ pub(super) fn resource_effect(
     destination: &InstallTargetPath,
     source_id: Option<ReplacementSourceId>,
     identity: bool,
-    unmapped: bool,
+    unmapped: Option<Reason>,
 ) -> RetargetFileEffect {
     let (disposition, reason) = if source_id.is_none() {
         (Disposition::PackageCompanion, Reason::PackageResource)
@@ -21,8 +21,10 @@ pub(super) fn resource_effect(
     } else if identity {
         (Disposition::KeptInPlace, Reason::OriginalTarget)
     } else {
-        debug_assert!(unmapped);
-        (Disposition::KeptInPlace, Reason::UnmappedResource)
+        (
+            Disposition::KeptInPlace,
+            unmapped.expect("unchanged resources have a mapping reason"),
+        )
     };
     RetargetFileEffect {
         package_file_id: resource.id.clone(),

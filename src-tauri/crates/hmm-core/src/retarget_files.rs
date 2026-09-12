@@ -23,6 +23,8 @@ pub enum RetargetFileReason {
     OriginalTarget,
     TextureReference,
     UnmappedResource,
+    AmbiguousResourceIdentity,
+    ConflictingResourceIdentity,
     PackageResource,
     InstalledAttachment,
     PluginNotIncluded,
@@ -80,6 +82,8 @@ pub(crate) fn validate_file_effects(
                                 RetargetFileReason::OriginalTarget
                                     | RetargetFileReason::TextureReference
                                     | RetargetFileReason::UnmappedResource
+                                    | RetargetFileReason::AmbiguousResourceIdentity
+                                    | RetargetFileReason::ConflictingResourceIdentity
                             )
                     }
                     RetargetFileDisposition::PackageCompanion => {

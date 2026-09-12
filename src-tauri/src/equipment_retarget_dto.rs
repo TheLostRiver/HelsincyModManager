@@ -5,6 +5,59 @@ use crate::replacement_dto::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// 装备预览错误可指向一个稳定来源；不扩张通用错误 DTO，也不暴露资源路径。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EquipmentRetargetPreviewErrorDto {
+    #[serde(flatten)]
+    pub error: crate::dto::CommandErrorDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+}
+
+impl From<crate::dto::CommandErrorDto> for EquipmentRetargetPreviewErrorDto {
+    fn from(error: crate::dto::CommandErrorDto) -> Self {
+        Self {
+            error,
+            source_id: None,
+        }
+    }
+}
+
+fn rejected_source(error: &hmm_app::ReplacementWorkflowError) -> Option<String> {
+    match error {
+        hmm_app::ReplacementWorkflowError::Analysis(hmm_app::ReplacementServiceError::Adapter(
+            hmm_ports::ReplacementAdapterError::SourceAnalysisRejected { source_id, .. },
+        )) => Some(source_id.as_str().to_owned()),
+        _ => None,
+    }
+}
+
+impl From<hmm_app::ReplacementWorkflowError> for EquipmentRetargetPreviewErrorDto {
+    fn from(error: hmm_app::ReplacementWorkflowError) -> Self {
+        let source_id = rejected_source(&error);
+        Self {
+            error: crate::replacement_commands::replacement_workflow_error_to_command_error(error),
+            source_id,
+        }
+    }
+}
+
+impl From<hmm_runtime::ConfiguredRetargetReinstallError> for EquipmentRetargetPreviewErrorDto {
+    fn from(error: hmm_runtime::ConfiguredRetargetReinstallError) -> Self {
+        let source_id = match &error {
+            hmm_runtime::ConfiguredRetargetReinstallError::Replacement(error) => {
+                rejected_source(error)
+            }
+            _ => None,
+        };
+        Self {
+            error: crate::replacement_commands::retarget_reinstall_error_to_command_error(error),
+            source_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EquipmentReapplyRequestDto {
@@ -195,6 +248,37 @@ mod tests {
             json!({"selection":scope, "planToken":"fixture-token"}),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn equipment_preview_errors_identify_only_the_rejected_source() {
+        let error =
+            hmm_app::ReplacementWorkflowError::Analysis(hmm_app::ReplacementServiceError::Adapter(
+                hmm_ports::ReplacementAdapterError::SourceAnalysisRejected {
+                    source_id: hmm_core::ReplacementSourceId::parse("fixture-source").unwrap(),
+                    code: "weapon_no_relocatable_resources",
+                },
+            ));
+        let initial =
+            serde_json::to_value(EquipmentRetargetPreviewErrorDto::from(error.clone())).unwrap();
+        let reinstall = serde_json::to_value(EquipmentRetargetPreviewErrorDto::from(
+            hmm_runtime::ConfiguredRetargetReinstallError::Replacement(error),
+        ))
+        .unwrap();
+        assert_eq!(
+            initial,
+            json!({
+                "code": "weapon_no_relocatable_resources",
+                "message": "replacement analysis is unavailable",
+                "sourceId": "fixture-source",
+            })
+        );
+        assert_eq!(reinstall, initial);
+        let generic = serde_json::to_value(EquipmentRetargetPreviewErrorDto::from(
+            hmm_app::ReplacementWorkflowError::PlanUnavailable,
+        ))
+        .unwrap();
+        assert!(generic.get("sourceId").is_none());
     }
 
     #[test]

@@ -14,6 +14,8 @@ mod canonical;
 mod composition;
 #[path = "runtime_equipment_origin_tests.rs"]
 mod origin;
+#[path = "runtime_equipment_path_mapping_tests.rs"]
+mod paths;
 
 const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     (

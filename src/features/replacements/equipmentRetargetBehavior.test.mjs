@@ -62,6 +62,7 @@ async function mount(t, overrides = {}) {
     prerequisiteDecision: { status: "ready", codes: [] }, fileEffects: api.fileEffects });
   api.request = async (kind, input) => {
     api.calls.push({ kind, input });
+    if (["preview", "switchPreview", "reapplyPreview"].includes(kind) && api.previewFailure) throw api.previewFailure;
     if (kind === "configuration") return api.config;
     if (kind === "reapplyPreview") return api.holdReapply ? new Promise((resolve) => api.pending.push(resolve)) : api.reapplyPreview();
     if (kind === "preview") return api.holdPreview ? new Promise((resolve) => api.pending.push(resolve)) : api.preview();
@@ -104,6 +105,39 @@ test("group reapply submits no edited target choices and no-changes stays read-o
   assert.equal(h.buttons()[1].props.disabled, true);
   await h.click(1);
   assert.equal(h.api.calls.filter((call) => call.kind.endsWith("Start") || call.kind === "start").length, 0);
+});
+
+for (const mode of ["initial", "switch", "reapply"]) {
+  test(`${mode} preview identifies an unmovable source and preserves the other choices`, options, async (t) => {
+    const h = await mount(t, { installed: mode !== "initial", previewFailure: { code: "weapon_no_relocatable_resources", sourceId: "source-weapon" } });
+    await h.choose(0, "weapon-c");
+    await h.choose(1, "armor-b");
+    if (mode === "reapply") await act(async () => h.buttons().find((button) => text(button) === "重新应用当前目标").props.onClick());
+    else await h.click(0);
+    const alert = h.root.root.findByProps({ role: "alert" });
+    assert.ok(text(alert).includes("名称weapon-a"));
+    assert.ok(text(alert).includes("weapon-a"));
+    assert.ok(text(alert).includes("保持作者原位"));
+    assert.ok(!text(alert).includes("armor-a"));
+    assert.equal(h.buttons()[1].props.disabled, true);
+    assert.equal(h.root.root.findAllByType("select")[1].props.value, JSON.stringify(["armor-b", null]));
+    h.api.previewFailure = null;
+    await act(async () => h.root.root.findAllByType("select")[0].props.onChange({ target: { value: "" } }));
+    assert.equal(h.root.root.findAllByProps({ role: "alert" }).length, 0);
+    await h.click(0);
+    const next = h.api.calls.filter((call) => call.kind === "preview" || call.kind === "switchPreview").at(-1);
+    assert.deepEqual(next.input.slots, [
+      { action: "keep", sourceId: "source-weapon" },
+      { action: "retarget", sourceId: "source-armor", targetId: "armor-b" },
+    ]);
+    assert.equal(h.buttons()[1].props.disabled, false);
+  });
+}
+
+test("an unknown error source does not become a fabricated equipment label", options, async (t) => {
+  const h = await mount(t, { previewFailure: { code: "weapon_no_relocatable_resources", sourceId: "unrecognized-source" } });
+  await h.click(0);
+  assert.ok(!text(h.root.root.findByProps({ role: "alert" })).includes("unrecognized-source"));
 });
 
 test("group reapply requires a ready preview and uses the same task completion lifecycle", options, async (t) => {

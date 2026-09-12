@@ -1,6 +1,6 @@
 use hmm_core::{
     GameId, PackageFileId, ReplacementAnalysis, ReplacementBinding, ReplacementCatalog,
-    ReplacementSource, ReplacementTarget, ReplacementTargetId, RetargetPlan,
+    ReplacementSource, ReplacementSourceId, ReplacementTarget, ReplacementTargetId, RetargetPlan,
 };
 use thiserror::Error;
 
@@ -147,6 +147,12 @@ pub enum ReplacementAdapterError {
     SourceContentUnavailable,
     #[error("replacement analysis was rejected: {code}")]
     AnalysisRejected { code: &'static str },
+    /// 整组计划中某个源无法完成请求；只携带稳定源身份，不回显包路径。
+    #[error("replacement source analysis was rejected: {code}")]
+    SourceAnalysisRejected {
+        source_id: ReplacementSourceId,
+        code: &'static str,
+    },
 }
 
 pub type ReplacementAdapterResult<T> = Result<T, ReplacementAdapterError>;

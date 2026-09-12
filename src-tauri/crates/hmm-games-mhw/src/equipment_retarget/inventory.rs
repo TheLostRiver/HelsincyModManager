@@ -214,6 +214,7 @@ impl PackageResources {
 
 pub(super) fn is_texture(path: &InstallTargetPath) -> bool {
     path.as_str()
+        .trim_end_matches(['.', ' '])
         .rsplit_once('.')
         .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("tex"))
 }

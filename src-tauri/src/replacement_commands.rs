@@ -586,7 +586,8 @@ fn analysis_error_to_command_error(error: ReplacementServiceError) -> CommandErr
             hmm_ports::ReplacementAdapterError::SourceContentUnavailable,
         ) => "weapon_source_content_unavailable",
         ReplacementServiceError::Adapter(
-            hmm_ports::ReplacementAdapterError::AnalysisRejected { code },
+            hmm_ports::ReplacementAdapterError::AnalysisRejected { code }
+            | hmm_ports::ReplacementAdapterError::SourceAnalysisRejected { code, .. },
         ) => code,
         ReplacementServiceError::Adapter(_) => "replacement_analysis_unavailable",
     };
