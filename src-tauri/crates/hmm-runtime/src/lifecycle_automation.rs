@@ -1586,6 +1586,7 @@ fn reinstall_status_token_code(status: ReinstallPreviewStatus) -> &'static str {
     match status {
         ReinstallPreviewStatus::Ready => "ready",
         ReinstallPreviewStatus::Blocked => "blocked",
+        ReinstallPreviewStatus::NoChanges => "no_changes",
     }
 }
 

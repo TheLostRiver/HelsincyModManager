@@ -1677,6 +1677,7 @@ impl ConfiguredReinstallExecutor {
             })
             .map_err(ConfiguredRetargetReinstallError::Replacement)?;
         let policy_exclusions = planned.policy_exclusions();
+        let file_effects = planned.file_effects();
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
@@ -1735,6 +1736,7 @@ impl ConfiguredReinstallExecutor {
                 context.original_install_evidence,
                 policy_exclusions,
             )
+            .and_then(|preparation| preparation.with_file_effects(file_effects))
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {
             preparation,
@@ -1925,25 +1927,28 @@ impl RetargetReinstallTaskExecutor for ConfiguredReinstallExecutor {
                 source,
                 staging_cleanup,
             }),
-            ReinstallPreparation::Blocked(preview) => Err(ReinstallTaskPrepareError::Preflight(
-                ReinstallTaskAuditContext {
-                    previous_revision_id: preview
-                        .installed_revision
-                        .as_ref()
-                        .map(|revision| revision.revision_id.clone()),
-                    candidate_revision_id: preview
-                        .candidate_revision
-                        .map(|revision| revision.revision_id)
-                        .or_else(|| {
-                            preview
-                                .installed_revision
-                                .map(|revision| revision.revision_id)
-                        })
-                        .unwrap_or(fallback.candidate_revision_id),
-                    counts: preview.counts,
-                    adapter_facts: None,
-                },
-            )),
+            ReinstallPreparation::Blocked(preview) => {
+                let preview = *preview;
+                Err(ReinstallTaskPrepareError::Preflight(
+                    ReinstallTaskAuditContext {
+                        previous_revision_id: preview
+                            .installed_revision
+                            .as_ref()
+                            .map(|revision| revision.revision_id.clone()),
+                        candidate_revision_id: preview
+                            .candidate_revision
+                            .map(|revision| revision.revision_id)
+                            .or_else(|| {
+                                preview
+                                    .installed_revision
+                                    .map(|revision| revision.revision_id)
+                            })
+                            .unwrap_or(fallback.candidate_revision_id),
+                        counts: preview.counts,
+                        adapter_facts: None,
+                    },
+                ))
+            }
         }
     }
 }

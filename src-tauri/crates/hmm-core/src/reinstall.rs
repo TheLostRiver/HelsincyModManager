@@ -130,6 +130,8 @@ pub struct ReinstallRecoveryTransaction {
     pub mod_id: ModId,
     pub old_revision_id: ModRevisionId,
     pub candidate_revision_id: ModRevisionId,
+    #[serde(default, skip_serializing_if = "crate::ReinstallIntent::is_standard")]
+    pub intent: crate::ReinstallIntent,
     pub plan_token: String,
     pub plan_hash: String,
     pub status: ReinstallRecoveryTransactionStatus,
@@ -143,6 +145,8 @@ pub struct ReinstallRecoveryTransaction {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReinstallRecoveryTransactionValidationError {
+    #[error("equipment reapply must preserve the installed revision and targets and change files")]
+    InvalidEquipmentReapplyIntent,
     #[error("reinstall transaction original installation evidence is invalid")]
     InvalidOriginalInstallEvidence,
     #[error("reinstall transaction profile does not match its pre-reinstall manifest")]
@@ -186,7 +190,27 @@ impl ReinstallRecoveryTransaction {
                 ReinstallRecoveryTransactionValidationError::InvalidOriginalInstallEvidence,
             );
         }
-        if self.old_revision_id == self.candidate_revision_id
+        if self.intent == crate::ReinstallIntent::ReapplyEquipmentTargets
+            && (self.old_revision_id != self.candidate_revision_id
+                || !(crate::is_same_revision_equipment_reapply(
+                    &self.pre_reinstall_manifest,
+                    &self.mod_id,
+                    &self.candidate_revision_id,
+                    &self.candidate_replacement_bindings,
+                ) || self.original_install_evidence.as_ref().is_some_and(|evidence| {
+                    evidence.allows_equipment_reapply(
+                        &self.pre_reinstall_manifest,
+                        &self.candidate_replacement_bindings,
+                    )
+                }))
+                // 回滚会逐个移除已经恢复的目标，恢复中的空列表不代表最初没有文件变更。
+                || (matches!(self.status, ReinstallRecoveryTransactionStatus::Planned | ReinstallRecoveryTransactionStatus::Committing)
+                    && !self.targets.iter().any(|target| target.class != ReinstallTargetClass::Retained)))
+        {
+            return Err(ReinstallRecoveryTransactionValidationError::InvalidEquipmentReapplyIntent);
+        }
+        if self.intent.is_standard()
+            && self.old_revision_id == self.candidate_revision_id
             && !self
                 .original_install_evidence
                 .as_ref()
@@ -1546,6 +1570,7 @@ mod tests {
 
         ReinstallRecoveryTransaction {
             profile_id: ProfileId::new("default"),
+            intent: Default::default(),
             mod_id: ModId::new("mod-a"),
             old_revision_id: ModRevisionId::new("v1"),
             candidate_revision_id: ModRevisionId::new("v2"),

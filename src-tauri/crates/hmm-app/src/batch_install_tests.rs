@@ -915,6 +915,7 @@ fn reinstall_batch() -> (SealedBatch, hmm_core::BatchAttempt, String) {
         let installed_revision_id = ModRevisionId::new(format!("{}-v1", mod_id.as_str()));
         let candidate_revision_id = ModRevisionId::new(format!("{}-v2", mod_id.as_str()));
         let input = BatchItemInput::Reinstall(ReinstallBatchItemInput {
+            intent: Default::default(),
             mod_id,
             installed_revision_id: installed_revision_id.clone(),
             candidate_revision_id: candidate_revision_id.clone(),

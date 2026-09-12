@@ -23,7 +23,7 @@ pub(super) enum EquipmentRoot {
 }
 
 impl EquipmentRoot {
-    fn from_path(path: &InstallTargetPath) -> Option<Self> {
+    pub(super) fn from_path(path: &InstallTargetPath) -> Option<Self> {
         if let Some(root) =
             WeaponResourceRoot::of_resource_path(path.as_str()).filter(|root| root.contains(path))
         {
@@ -34,7 +34,7 @@ impl EquipmentRoot {
             .map(Self::Armor)
     }
 
-    fn source(&self) -> ReplacementAdapterResult<ReplacementSource> {
+    pub(super) fn source(&self) -> ReplacementAdapterResult<ReplacementSource> {
         let (id, kind, internal, family, supported) = match self {
             Self::Weapon(root) => (
                 generate_mhw_equipment_stable_id(

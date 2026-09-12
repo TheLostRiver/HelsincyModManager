@@ -7,6 +7,8 @@ import { getPrerequisiteDecisionCodeLabel, getPrerequisiteDecisionMessage } from
 import { ReplacementTargetPanel, type ReplacementTargetPanelProps } from "./ReplacementTargetPanel";
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
+import { RetargetFileDetails } from "./RetargetFileDetails";
+import { retargetFileCopy } from "./retargetFileCopy";
 import { getEquipmentRetargetConfiguration } from "./equipmentRetargetApi";
 import { equipmentRetargetCopy } from "./equipmentRetargetCopy";
 import type { EquipmentRetargetConfiguration, EquipmentSourceConfiguration, EquipmentTargetChoice } from "./equipmentRetargetTypes";
@@ -54,6 +56,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
   const { locale } = useI18n();
   const copy = resolveCopy(replacementCopy, locale);
   const groupCopy = resolveCopy(equipmentRetargetCopy, locale);
+  const fileCopy = resolveCopy(retargetFileCopy, locale);
   const prerequisiteCopy = resolveCopy(modLifecycleCopy, locale).prerequisite;
   const reinstallCopy = resolveCopy(modReinstallCopy, locale).task;
   const workflow = useEquipmentRetargetWorkflow(props, initialConfiguration, copy);
@@ -74,13 +77,15 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
     {preview.status === "loading" && <p role="status">{copy.panel.previewLoading}</p>}
     {preview.status === "error" && <p className="replacement-panel__notice" role="alert">{preview.message}</p>}
     {preview.status === "ready" && <div className="replacement-panel__preview" aria-live="polite">
-      <div className="replacement-panel__section-heading"><h3>{preview.mode === "initial" ? copy.panel.initialPreviewTitle : copy.panel.switchPreviewTitle}</h3></div>
+      <div className="replacement-panel__section-heading"><h3>{preview.mode === "reapply" ? fileCopy.reapplyTitle : preview.mode === "initial" ? copy.panel.initialPreviewTitle : copy.panel.switchPreviewTitle}</h3></div>
+      {preview.mode === "reapply" && <p className="retarget-reapply-hint">{fileCopy.reapplyHint}</p>}
       {preview.mode === "initial" ? <>
         <p>{copy.panel.actionCount(preview.value.installPlan.actions.length)}</p>
         <p>{preview.value.installPlan.hasBlockingConflicts
           ? copy.panel.blockingConflicts(preview.value.installPlan.conflicts.length) : copy.panel.noBlockingConflicts}</p>
         {preview.value.installPlan.hasBlockingConflicts && <p>{copy.panel.blockingConflictHint}</p>}
       </> : <>
+        {preview.value.status === "no_changes" && <div className="replacement-panel__inline-state is-success" role="status">{fileCopy.noChanges}</div>}
         <RetargetAttachmentNotice counts={preview.value.attachmentCounts} />
         <dl className="replacement-panel__counts">
           <div><dt>{copy.panel.countRetained}</dt><dd>{preview.value.counts.retained}</dd></div>
@@ -95,6 +100,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
         {prerequisite.codes.map((code) => <p key={code}>{getPrerequisiteDecisionCodeLabel(code, prerequisiteCopy)}</p>)}
       </div>}
       {warnings.length > 0 && <ul aria-label={copy.panel.warningsAria}>{warnings.map((warning) => <li key={warning}>{copy.warnings[warning]}</li>)}</ul>}
+      <RetargetFileDetails files={preview.value.fileEffects} sourceLabels={Object.fromEntries(configuration.sources.map(({ source }) => [source.id, replacementIdentityLabel(source, locale)]))} />
     </div>}
     {workflow.listener === "failed" && <div className="replacement-panel__notice" role="alert">
       {copy.panel.listenerUnavailable}<button type="button" onClick={workflow.retryListener}>{copy.panel.retryListener}</button>
@@ -111,8 +117,9 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
         {switching ? copy.panel.previewSwitch : copy.panel.generatePreview}
       </button>
       <button type="button" className="is-primary" disabled={!workflow.canStart} onClick={() => void workflow.start()}>
-        {switching ? copy.panel.confirmSwitch : copy.panel.installToTarget}
+        {preview.status === "ready" && preview.mode === "reapply" ? fileCopy.confirmReapply : switching ? copy.panel.confirmSwitch : copy.panel.installToTarget}
       </button>
+      {switching && <button type="button" className="is-secondary" disabled={!workflow.canReapply || preview.status === "loading"} onClick={() => void workflow.createReapplyPreview()}>{fileCopy.previewReapply}</button>}
       {task.status === "running" && canCancelRetargetInstallTaskPhase(task.phase) && <button type="button" className="is-secondary"
         disabled={workflow.cancel === "requesting"} onClick={() => void workflow.cancelTask()}>
         {workflow.cancel === "requesting" ? copy.panel.cancelling : copy.panel.cancelTask}

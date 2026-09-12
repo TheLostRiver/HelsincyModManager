@@ -241,6 +241,18 @@ impl OriginalInstallEvidence {
         )
     }
 
+    pub fn allows_equipment_reapply(
+        &self,
+        manifest: &InstallManifest,
+        candidates: &[ReplacementBindingSnapshot],
+    ) -> bool {
+        self.allows_switch(
+            manifest,
+            candidates,
+            crate::is_same_revision_equipment_reapply,
+        )
+    }
+
     fn allows_switch(
         &self,
         manifest: &InstallManifest,

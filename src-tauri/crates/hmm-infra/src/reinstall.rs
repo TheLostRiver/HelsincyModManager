@@ -310,6 +310,7 @@ mod tests {
         let retained = target("retained.bin");
         ReinstallRecoveryTransaction {
             profile_id: ProfileId::new("default"),
+            intent: Default::default(),
             mod_id: ModId::new("mod-a"),
             old_revision_id: ModRevisionId::new("v1"),
             candidate_revision_id: ModRevisionId::new("v2"),

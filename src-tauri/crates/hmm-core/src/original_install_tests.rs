@@ -221,6 +221,7 @@ fn recovery_requires_the_original_evidence_and_retains_the_unmodified_manifest()
     let facts = Facts::new();
     let evidence = facts.verify().unwrap();
     let mut transaction = ReinstallRecoveryTransaction {
+        intent: Default::default(),
         profile_id: ProfileId::new("profile"),
         mod_id: ModId::new("mod"),
         old_revision_id: ModRevisionId::new("revision"),

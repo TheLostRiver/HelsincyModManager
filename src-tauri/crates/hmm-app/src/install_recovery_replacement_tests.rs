@@ -94,6 +94,7 @@ pub(super) fn reinstall_recovery_fixture() -> (
     candidate_manifest.replacement_bindings = candidate_replacement_bindings.clone();
 
     let transaction = ReinstallRecoveryTransaction {
+        intent: Default::default(),
         profile_id,
         mod_id,
         old_revision_id,

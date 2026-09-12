@@ -173,6 +173,7 @@ fn multi_source_batch_install_records_all_sources_and_can_switch_after_restart()
         })
         .collect();
     let selection = hmm_app::EquipmentRetargetReinstallRequest {
+        intent: Default::default(),
         game_id: GameId::mhw(),
         profile_id: profile,
         mod_id,
