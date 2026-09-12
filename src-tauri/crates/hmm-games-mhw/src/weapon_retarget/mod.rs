@@ -8,6 +8,9 @@ mod mrl3_transform;
 mod part_rename;
 mod path;
 mod replacement;
+mod resource_path;
+
+pub(crate) use resource_path::{WeaponResourceMapper, WeaponResourceMapping};
 
 pub use analysis::{
     analyze_mhw_weapon_assets, WeaponAnalysisError, WeaponAnalysisWarning, WeaponCompanionAsset,

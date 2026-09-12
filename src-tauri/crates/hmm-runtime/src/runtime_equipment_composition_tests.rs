@@ -295,6 +295,45 @@ fn body_and_head_can_share_a_target_then_move_one_source_after_restart() {
 }
 
 #[test]
+fn nested_blade_and_sheath_directories_share_a_target_and_preserve_backups() {
+    assert_composition_roundtrip(CompositionCase {
+        sources: ["swo035", "swo019"],
+        shared_target: "swo001",
+        split_target: "swo002",
+        files: [
+            (
+                "nativePC/wp/swo/swo035/mod/swo035/custom.mod3",
+                b"nested blade model",
+            ),
+            (
+                "nativePC/wp/swo/swo035/mod/swo035/custom.mrl3",
+                b"nested blade material",
+            ),
+            (
+                "nativePC/wp/swo/swo019/mod/swo019/saya019.mod3",
+                b"nested sheath model",
+            ),
+            (
+                "nativePC/wp/swo/swo019/mod/swo019/saya019.mrl3",
+                b"nested sheath material",
+            ),
+        ],
+        shared_paths: [
+            "nativePC/wp/swo/swo001/mod/swo001/custom.mod3",
+            "nativePC/wp/swo/swo001/mod/swo001/custom.mrl3",
+            "nativePC/wp/swo/swo001/mod/swo001/saya001.mod3",
+            "nativePC/wp/swo/swo001/mod/swo001/saya001.mrl3",
+        ],
+        split_paths: [
+            "nativePC/wp/swo/swo002/mod/swo002/custom.mod3",
+            "nativePC/wp/swo/swo002/mod/swo002/custom.mrl3",
+            "nativePC/wp/swo/swo001/mod/swo001/saya001.mod3",
+            "nativePC/wp/swo/swo001/mod/swo001/saya001.mrl3",
+        ],
+    });
+}
+
+#[test]
 fn actual_same_file_collisions_are_visible_and_cannot_write_the_game() {
     for (files, choices) in [
         (

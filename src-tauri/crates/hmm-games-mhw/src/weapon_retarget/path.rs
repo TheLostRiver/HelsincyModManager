@@ -114,46 +114,6 @@ impl WeaponResourceRoot {
         path.as_str().starts_with(&prefix)
     }
 
-    /// 只移动文件名明确属于本槽位的资源；无法判断的名称留给调用方原位保留。
-    /// 与旧材质改写策略分开，避免改变已记录的二进制转换语义。
-    pub(crate) fn relocate_matching_resource(
-        &self,
-        path: &InstallTargetPath,
-        target: &WeaponMainId,
-    ) -> Result<Option<InstallTargetPath>, WeaponPathError> {
-        if target.family() != self.family {
-            return Err(WeaponPathError::CrossFamilyTarget);
-        }
-        if !self.contains(path) {
-            return Err(WeaponPathError::NotWeaponPath);
-        }
-        let filename = path
-            .as_str()
-            .rsplit('/')
-            .next()
-            .ok_or(WeaponPathError::UnsafePath)?;
-        let normalized_bs = filename
-            .get(..3)
-            .filter(|prefix| prefix.eq_ignore_ascii_case("bs_"))
-            .map(|_| format!("bs_{}", &filename[3..]));
-        let filename = normalized_bs.as_deref().unwrap_or(filename);
-        let renamed = match rename_weapon_stem(filename, &self.main_id, target) {
-            PartRename::Renamed(name) => name,
-            PartRename::Unrelated => return Ok(None),
-            PartRename::Ambiguous => return Err(WeaponPathError::UnsupportedResource),
-        };
-        let mut parts = path
-            .as_str()
-            .split('/')
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        parts[RESOURCE_ROOT_SEGMENT_COUNT - 1] = target.as_str().to_owned();
-        *parts.last_mut().ok_or(WeaponPathError::UnsafePath)? = renamed;
-        InstallTargetPath::parse(parts.join("/"), [NATIVE_PC_ROOT])
-            .map(Some)
-            .map_err(|_| WeaponPathError::UnsafePath)
-    }
-
     /// 把本槽位目录内的任意伴生文件重定位到目标槽位。
     ///
     /// 与 MRL3 引用改写共用 [`part_rename`] 的同一套规则：替换主 ID 段，再按部件 ID 前缀

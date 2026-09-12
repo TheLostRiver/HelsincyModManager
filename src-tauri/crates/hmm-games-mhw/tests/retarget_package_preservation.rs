@@ -260,7 +260,8 @@ fn an_unmapped_weapon_model_does_not_report_success_when_nothing_can_move() {
                 carries_package_companions: true
             })
             .unwrap_err(),
-        ReplacementAdapterError::AnalysisRejected {
+        ReplacementAdapterError::SourceAnalysisRejected {
+            source_id: source.id().clone(),
             code: "weapon_no_relocatable_resources"
         }
     );
