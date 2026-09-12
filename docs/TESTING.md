@@ -43,6 +43,23 @@ node --test src/features/replacements/equipmentReapplyApi.test.mjs src/features/
 UI 验证三语、窄屏、展开／搜索／分页、无变化禁止提交、重复点击和迟到响应；接口拒绝调用方提交
 目标、层、路径、处置或保留证据。人工浏览器夹具须明确标注，不能作为真实游戏内效果证据。
 
+武器目录与文件名组合映射的聚焦回归：
+
+```powershell
+cargo test -p hmm-games-mhw --test weapon_nested_path_mapping
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment::paths
+cargo test -p hmm-runtime nested_blade_and_sheath_directories
+cargo test -p hmm-tauri equipment_preview_errors_identify_only_the_rejected_source
+node --test src/features/replacements/equipmentRetargetBehavior.test.mjs src/features/replacements/retargetFileDetailsBehavior.test.mjs
+```
+
+覆盖完整编号目录和文件名同时迁移、已证明的副件目录、自定义文件名、Unicode、大小写、`bs_`、日期／
+长数字与贴图原位。检查多义／矛盾编号不被部分改名，部件目录证据不跨源、不来自贴图；多源互换、
+链式及同目标非冲突组合须核对实际字节和独立绑定，真实及 Windows 等价碰撞在写入前阻断。
+人工 v1 清单须可读取、重新应用至 v2、失败恢复原布局及原 v1 事实，并在重启后恢复或卸载到基线；
+只有版本号不同而文件无差异时，不写入或回填清单。来源拒绝须经 DTO 和三语 UI 标出名称／编号，
+保持该源原位后可以继续调整其他源，不能静默丢失选择。
+
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。
 
 ## 目标
