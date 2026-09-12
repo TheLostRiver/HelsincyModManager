@@ -208,6 +208,11 @@ impl PreparedReinstall {
             canonical["originalInstallEvidence"] =
                 serde_json::to_value(evidence).expect("serializable original install evidence");
         }
+        if !self.attachment_counts.is_empty() {
+            canonical["attachmentCounts"] = serde_json::json!({
+                "retained": self.attachment_counts.retained, "excluded": self.attachment_counts.excluded,
+            });
+        }
         sha256_prefixed(
             &serde_json::to_vec(&canonical)
                 .expect("validated reinstall batch facts are serializable"),
@@ -717,6 +722,9 @@ fn reinstall_blocking_code(reason: ReinstallBlockingReason) -> &'static str {
         ReinstallBlockingReason::CandidateNotReady => "reinstall_candidate_not_ready",
         ReinstallBlockingReason::OriginalInstallUnverified => {
             "reinstall_original_install_unverified"
+        }
+        ReinstallBlockingReason::InstalledAttachmentUnverified => {
+            "reinstall_installed_attachment_unverified"
         }
         ReinstallBlockingReason::CandidateOwnerMismatch => "reinstall_candidate_owner_mismatch",
         ReinstallBlockingReason::CandidateAlreadyInstalled => {

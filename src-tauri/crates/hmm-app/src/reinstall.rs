@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[path = "reinstall_attachments.rs"]
+mod attachments;
 #[path = "reinstall_origin.rs"]
 mod origin;
 #[path = "reinstall_target_paths.rs"]
@@ -53,6 +55,18 @@ pub struct ReinstallTargetCounts {
     pub stale: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReinstallAttachmentCounts {
+    pub retained: u32,
+    pub excluded: u32,
+}
+
+impl ReinstallAttachmentCounts {
+    pub fn is_empty(&self) -> bool {
+        self.retained == 0 && self.excluded == 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ReinstallBlockingReason {
     PrerequisitesBlocked,
@@ -60,6 +74,7 @@ pub enum ReinstallBlockingReason {
     CandidateNotFound,
     CandidateNotReady,
     OriginalInstallUnverified,
+    InstalledAttachmentUnverified,
     CandidateOwnerMismatch,
     CandidateAlreadyInstalled,
     ManifestStateUnsafe,
@@ -87,6 +102,7 @@ pub struct ReinstallPlanPreview {
     pub installed_revision: Option<ReinstallRevisionSummary>,
     pub candidate_revision: Option<ReinstallRevisionSummary>,
     pub counts: ReinstallTargetCounts,
+    pub attachment_counts: ReinstallAttachmentCounts,
     pub blocking_reasons: Vec<ReinstallBlockingReasonSummary>,
     pub plan_token: Option<String>,
 }
@@ -104,6 +120,7 @@ impl ReinstallPlanPreview {
             installed_revision: installed_revision.map(revision_summary),
             candidate_revision: candidate_revision.map(revision_summary),
             counts: ReinstallTargetCounts::default(),
+            attachment_counts: ReinstallAttachmentCounts::default(),
             blocking_reasons: vec![ReinstallBlockingReasonSummary { reason, count: 1 }],
             plan_token: None,
         }
@@ -467,7 +484,7 @@ impl ReinstallPreviewService {
         &self,
         request: ReinstallPreviewRequest,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
-        self.prepare_with_candidate_plan(request, None, ReplacementSwitchMode::Disabled, None)
+        self.prepare_with_candidate_plan(request, None, ReplacementSwitchMode::Disabled, None, None)
     }
 
     pub fn prepare_replacement_target_switch(
@@ -479,6 +496,7 @@ impl ReinstallPreviewService {
             request,
             Some(candidate_plan),
             ReplacementSwitchMode::SingleSource,
+            None,
             None,
         )
     }
@@ -493,6 +511,7 @@ impl ReinstallPreviewService {
             Some(candidate_plan),
             ReplacementSwitchMode::Equipment,
             None,
+            None,
         )
     }
 
@@ -502,6 +521,7 @@ impl ReinstallPreviewService {
         candidate_plan: Option<InstallPlan>,
         switch_mode: ReplacementSwitchMode,
         mut original_install_evidence: Option<OriginalInstallEvidence>,
+        policy_exclusions: Option<&[hmm_core::RetargetPolicyExcludedFile]>,
     ) -> Result<ReinstallPreparation, ReinstallPreviewError> {
         let prerequisite_decision = self.prerequisite_decision(&request.game_id);
         let blocked = |installed_revision, candidate_revision, reason| {
@@ -777,6 +797,37 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::CandidateAlreadyInstalled,
             ));
         }
+        if policy_exclusions.is_some()
+            && (matches!(switch_mode, ReplacementSwitchMode::Disabled)
+                || installed_revision_id != candidate_revision_id)
+        {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::CandidateNotReady,
+            ));
+        }
+        if let Some(exclusions) = policy_exclusions {
+            if let Err(reason) = attachments::verify_retarget_inventory(
+                &request.mod_id,
+                &manifest,
+                &plan,
+                exclusions,
+            ) {
+                return Ok(blocked(installed_summary, candidate_summary, reason));
+            }
+        }
+        let attachments = match self.retain_installed_attachments(
+            &request,
+            &candidate,
+            &manifest,
+            &mut plan,
+            policy_exclusions.unwrap_or_default(),
+            original_install_evidence.is_some(),
+        ) {
+            Ok(attachments) => attachments,
+            Err(reason) => return Ok(blocked(installed_summary, candidate_summary, reason)),
+        };
         if plan.actions.iter().any(|action| {
             action.provider.mod_id != request.mod_id
                 || action.provider.target_path != action.target_path
@@ -867,6 +918,17 @@ impl ReinstallPreviewService {
                 }
             };
 
+        if attachments.retained_targets.iter().any(|target| {
+            !classifications.iter().any(|item| {
+                item.target_path == *target && item.class == ReinstallTargetClass::Retained
+            })
+        }) {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::InstalledAttachmentUnverified,
+            ));
+        }
         let mut counts = ReinstallTargetCounts::default();
         for classification in &classifications {
             match classification.class {
@@ -889,6 +951,7 @@ impl ReinstallPreviewService {
                 backup_files: &backup_facts,
                 replacement_bindings: &plan.replacement_bindings,
                 original_install_evidence: original_install_evidence.as_ref(),
+                attachment_counts: attachments.counts,
             },
         );
         let targets = build_prepared_targets(
@@ -910,6 +973,7 @@ impl ReinstallPreviewService {
             backup_files: backup_facts,
             targets,
             counts,
+            attachment_counts: attachments.counts,
             prerequisite_decision,
             plan_hash: plan_token.clone(),
             plan_token,
@@ -1115,6 +1179,7 @@ pub struct PreparedReinstall {
     pub(crate) backup_files: BTreeMap<String, PreparedFile>,
     pub(crate) targets: Vec<PreparedReinstallTarget>,
     pub(crate) counts: ReinstallTargetCounts,
+    pub(crate) attachment_counts: ReinstallAttachmentCounts,
     pub(crate) prerequisite_decision: GamePrerequisiteDecision,
     pub(crate) plan_token: String,
     pub(crate) plan_hash: String,
@@ -1140,6 +1205,7 @@ impl ReinstallPreparation {
                 installed_revision: Some(revision_summary(prepared.installed_revision_id)),
                 candidate_revision: Some(revision_summary(prepared.candidate.revision_id)),
                 counts: prepared.counts,
+                attachment_counts: prepared.attachment_counts,
                 blocking_reasons: Vec::new(),
                 plan_token: Some(prepared.plan_token),
             },
@@ -1235,6 +1301,7 @@ struct CandidatePlanTokenFacts<'a> {
     backup_files: &'a BTreeMap<String, PreparedFile>,
     replacement_bindings: &'a [ReplacementBindingSnapshot],
     original_install_evidence: Option<&'a OriginalInstallEvidence>,
+    attachment_counts: ReinstallAttachmentCounts,
 }
 
 fn canonical_plan_token(
@@ -1329,6 +1396,17 @@ fn canonical_plan_token(
         hash_summary(&mut hasher, &summary.summary);
     }
     hash_replacement_snapshots(&mut hasher, candidate.replacement_bindings);
+    if !candidate.attachment_counts.is_empty() {
+        hash_field(&mut hasher, "installed-attachments-v1");
+        hash_field(
+            &mut hasher,
+            &candidate.attachment_counts.retained.to_string(),
+        );
+        hash_field(
+            &mut hasher,
+            &candidate.attachment_counts.excluded.to_string(),
+        );
+    }
     if let Some(evidence) = candidate.original_install_evidence {
         hash_field(&mut hasher, "original-install-evidence-v1");
         hash_field(

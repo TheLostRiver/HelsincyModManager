@@ -13,6 +13,7 @@ mod profile;
 mod reinstall;
 mod replacement;
 mod retarget;
+mod retarget_exclusions;
 mod save_backup;
 mod save_directory;
 mod save_restore;
@@ -110,6 +111,7 @@ pub use retarget::{
     ReplacementAnalysis, ReplacementSource, ReplacementWarning, RetargetAction, RetargetError,
     RetargetPlan, RetargetSourceOrigin, RetargetSourceRouting,
 };
+pub use retarget_exclusions::{RetargetExclusionReason, RetargetPolicyExcludedFile};
 pub use save_backup::{
     SaveBackupBackgroundProtectionStatus, SaveBackupBackgroundRegistrationStatus,
     SaveBackupBackgroundSettings, SaveBackupManifest, SaveBackupManifestFile,

@@ -1596,6 +1596,7 @@ fn reinstall_block_reason_token_code(reason: ReinstallBlockingReason) -> &'stati
         ReinstallBlockingReason::CandidateNotFound => "candidate_not_found",
         ReinstallBlockingReason::CandidateNotReady => "candidate_not_ready",
         ReinstallBlockingReason::OriginalInstallUnverified => "original_install_unverified",
+        ReinstallBlockingReason::InstalledAttachmentUnverified => "installed_attachment_unverified",
         ReinstallBlockingReason::CandidateOwnerMismatch => "candidate_owner_mismatch",
         ReinstallBlockingReason::CandidateAlreadyInstalled => "candidate_already_installed",
         ReinstallBlockingReason::ManifestStateUnsafe => "manifest_state_unsafe",

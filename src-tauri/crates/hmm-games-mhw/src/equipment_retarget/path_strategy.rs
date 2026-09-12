@@ -102,7 +102,17 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     if kept_unmapped {
         warnings.push(ReplacementWarning::UnmappedResourcesKept);
     }
+    if request.carries_package_companions && package.excluded_count > 0 {
+        warnings.push(ReplacementWarning::PolicyExcludedResources);
+    }
     let plan = RetargetPlan::new(request.binding, unit.source.clone(), actions, warnings)
+        .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
+    let plan = plan
+        .with_policy_exclusions(if request.carries_package_companions {
+            package.excluded_files
+        } else {
+            Vec::new()
+        })
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
     let closure = digest(plan.actions().iter().flat_map(|action| {
         [
