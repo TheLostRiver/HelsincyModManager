@@ -44,13 +44,18 @@ impl ReinstallPreparation {
         {
             return Err(ReinstallPreviewError::CandidatePlanUnavailable);
         }
+        let retained_attachments = prepared
+            .file_effects
+            .iter()
+            .filter(|file| {
+                file.effect.disposition
+                    == hmm_core::RetargetFileDisposition::InstalledAttachmentRetained
+            })
+            .map(|file| &file.effect.package_file_id)
+            .collect::<BTreeSet<_>>();
         for source in &prepared.source_files {
             if !summaries.contains_key(&source.provider.package_file_id) {
-                if !prepared.file_effects.iter().any(|file| {
-                    file.effect.package_file_id == source.provider.package_file_id
-                        && file.effect.disposition
-                            == hmm_core::RetargetFileDisposition::InstalledAttachmentRetained
-                }) {
+                if !retained_attachments.contains(&source.provider.package_file_id) {
                     return Err(ReinstallPreviewError::CandidatePlanUnavailable);
                 }
                 summaries.insert(
