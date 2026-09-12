@@ -30,35 +30,46 @@ impl ReinstallPreparation {
         if effects.is_empty() {
             return Ok(self);
         }
+        let mut installed_by_id = BTreeMap::new();
+        for entry in prepared
+            .old_manifest
+            .entries
+            .iter()
+            .filter(|entry| entry.mod_id == prepared.request.mod_id)
+        {
+            installed_by_id
+                .entry(&entry.package_file_id)
+                .or_insert(entry);
+        }
+        let mut candidates_by_id = BTreeMap::new();
+        for source in &prepared.source_files {
+            candidates_by_id
+                .entry(&source.provider.package_file_id)
+                .or_insert(source);
+        }
+        let targets_by_path = prepared
+            .targets
+            .iter()
+            .map(|target| (&target.target_path, target))
+            .collect::<BTreeMap<_, _>>();
         let mut ids = BTreeSet::new();
         let mut previews = Vec::with_capacity(effects.len());
         for mut effect in effects {
             if !ids.insert(effect.package_file_id.clone()) {
                 return Err(ReinstallPreviewError::CandidatePlanUnavailable);
             }
-            let installed_path = prepared
-                .old_manifest
-                .entries
-                .iter()
-                .find(|entry| {
-                    entry.mod_id == prepared.request.mod_id
-                        && entry.package_file_id == effect.package_file_id
-                })
+            let installed_path = installed_by_id
+                .get(&effect.package_file_id)
                 .map(|entry| entry.target_path.clone());
-            let candidate = prepared
-                .source_files
-                .iter()
-                .find(|source| source.provider.package_file_id == effect.package_file_id);
+            let candidate = candidates_by_id.get(&effect.package_file_id);
             let change = if let Some(source) = candidate {
                 if effect.target_path.as_ref().is_some_and(|target| {
                     target.windows_key() != source.provider.target_path.windows_key()
                 }) {
                     return Err(ReinstallPreviewError::CandidatePlanUnavailable);
                 }
-                let target = prepared
-                    .targets
-                    .iter()
-                    .find(|target| target.target_path == source.provider.target_path)
+                let target = targets_by_path
+                    .get(&source.provider.target_path)
                     .ok_or(ReinstallPreviewError::CandidatePlanUnavailable)?;
                 if effect.target_path.is_none() {
                     if target.class != ReinstallTargetClass::Retained
