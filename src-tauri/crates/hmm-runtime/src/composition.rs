@@ -1474,14 +1474,21 @@ struct ConfiguredReinstallCandidateSourceReader {
 
 struct RetargetStagingReinstallCandidateSourceReader {
     reader: RetargetStagingInstallSourceFileReader,
+    original_source: Arc<dyn ReinstallCandidateSourceReader>,
+    policy_exclusions: std::collections::BTreeSet<PackageFileId>,
 }
 
 impl ReinstallCandidateSourceReader for RetargetStagingReinstallCandidateSourceReader {
     fn read_candidate_source_file(
         &self,
-        _candidate: &StoredModRevision,
+        candidate: &StoredModRevision,
         package_file_id: &PackageFileId,
     ) -> anyhow::Result<Vec<u8>> {
+        if self.policy_exclusions.contains(package_file_id) {
+            return self
+                .original_source
+                .read_candidate_source_file(candidate, package_file_id);
+        }
         self.reader.read_source_file(package_file_id)
     }
 }
@@ -1669,6 +1676,7 @@ impl ConfiguredReinstallExecutor {
                 layer: request.layer.clone(),
             })
             .map_err(ConfiguredRetargetReinstallError::Replacement)?;
+        let policy_exclusions = planned.policy_exclusions();
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
@@ -1693,7 +1701,15 @@ impl ConfiguredReinstallExecutor {
                 staging_root.clone(),
                 &plan,
             ) {
-                Ok(reader) => Arc::new(RetargetStagingReinstallCandidateSourceReader { reader }),
+                Ok(reader) => Arc::new(RetargetStagingReinstallCandidateSourceReader {
+                    reader,
+                    original_source: Arc::clone(&self.source),
+                    policy_exclusions: policy_exclusions
+                        .iter()
+                        .flatten()
+                        .map(|file| file.package_file_id().clone())
+                        .collect(),
+                }),
                 Err(_) => {
                     return Err(ConfiguredRetargetReinstallError::Replacement(
                         ReplacementWorkflowError::PlanUnavailable,
@@ -1717,6 +1733,7 @@ impl ConfiguredReinstallExecutor {
                 candidate_request,
                 plan,
                 context.original_install_evidence,
+                policy_exclusions,
             )
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
         Ok(ConfiguredRetargetReinstallPreparation {

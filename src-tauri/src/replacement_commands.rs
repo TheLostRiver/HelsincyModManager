@@ -659,6 +659,7 @@ impl From<ReplacementWarning> for ReplacementWarningDto {
             ReplacementWarning::SourceMatchesTarget => Self::SourceMatchesTarget,
             ReplacementWarning::WeaponPartialPartSet => Self::WeaponPartialPartSet,
             ReplacementWarning::UnmappedResourcesKept => Self::UnmappedResourcesKept,
+            ReplacementWarning::PolicyExcludedResources => Self::PolicyExcludedResources,
         }
     }
 }

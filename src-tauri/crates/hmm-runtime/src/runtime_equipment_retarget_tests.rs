@@ -6,6 +6,8 @@ use hmm_app::{
 };
 use hmm_games_mhw::MhwReplacementCatalog;
 
+#[path = "runtime_equipment_attachment_tests.rs"]
+mod attachments;
 #[path = "runtime_equipment_canonical_tests.rs"]
 mod canonical;
 #[path = "runtime_equipment_composition_tests.rs"]

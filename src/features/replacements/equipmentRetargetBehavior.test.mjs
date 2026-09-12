@@ -60,6 +60,7 @@ async function mount(t, overrides = {}) {
     if (kind === "configuration") return api.config;
     if (kind === "preview") return api.holdPreview ? new Promise((resolve) => api.pending.push(resolve)) : api.preview();
     if (kind === "switchPreview") return { status: api.blocked ? "blocked" : "ready", planToken: api.blocked ? null : "equipment-plan", counts: { retained: 2, replaced: 0, added: 1, stale: 1 },
+      attachmentCounts: api.attachmentCounts,
       blockingReasons: api.blocked ? [{ code: "original_install_unverified", count: 1 }] : [], prerequisiteDecision: { status: "ready", codes: [] } };
     if (kind === "cancel") return { taskId: input.taskId, kind: "install", status: "cancelled" };
     if (kind === "start" || kind === "switchStart") {
@@ -87,6 +88,17 @@ async function mount(t, overrides = {}) {
     update: async (next = {}) => act(async () => { props = { ...props, ...next }; root.update(tree()); }),
   };
 }
+
+test("equipment preview shows attachment retention and discards its notice on a new selection", options, async (t) => {
+  const h = await mount(t, { installed: true, attachmentCounts: { retained: 1, excluded: 2 } });
+  await h.choose(0, "weapon-c");
+  await h.click(0);
+  assert.ok(text(h.root.toJSON()).includes("本次保留 1 个已安装附件"));
+  assert.ok(text(h.root.toJSON()).includes("本次未包含 2 个随包插件或工具"));
+  await h.choose(0, "weapon-b");
+  assert.ok(!text(h.root.toJSON()).includes("本次保留 1 个已安装附件"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+});
 
 test("group selection sends every source and all names still map to the real target", options, async (t) => {
   const h = await mount(t);
