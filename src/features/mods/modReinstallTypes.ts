@@ -32,6 +32,7 @@ export type ReinstallBlockingReason =
   | "candidate_not_found"
   | "candidate_not_ready"
   | "original_install_unverified"
+  | "installed_attachment_unverified"
   | "candidate_owner_mismatch"
   | "candidate_already_installed"
   | "manifest_state_unsafe"
@@ -51,6 +52,8 @@ export type ReinstallBlockingReasonSummary = {
   count: number;
 };
 
+export type ReinstallAttachmentCounts = { retained: number; excluded: number };
+
 export type ReinstallPlanPreview =
   | {
       status: "ready";
@@ -59,6 +62,7 @@ export type ReinstallPlanPreview =
       installedRevision: ModRevisionSummary;
       candidateRevision: ModRevisionSummary;
       counts: ReinstallTargetCounts;
+      attachmentCounts?: ReinstallAttachmentCounts;
       blockingReasons: [];
     }
   | {
@@ -68,5 +72,6 @@ export type ReinstallPlanPreview =
       installedRevision: ModRevisionSummary | null;
       candidateRevision: ModRevisionSummary | null;
       counts: ReinstallTargetCounts;
+      attachmentCounts?: ReinstallAttachmentCounts;
       blockingReasons: ReinstallBlockingReasonSummary[];
     };
