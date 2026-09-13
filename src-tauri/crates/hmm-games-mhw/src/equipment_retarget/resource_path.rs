@@ -1,27 +1,27 @@
 //! 默认路径策略的组合映射；旧材质转换器继续使用原有路径和引用规则。
-use super::family::{WeaponFamily, WeaponMainId};
-use super::part_rename::{rename_weapon_stem, PartRename};
-use super::path::{WeaponPathError, WeaponResourceRoot};
+use super::numbered_identity::{NumberedId, NumberedRoot};
+use crate::weapon_retarget::{rename_numbered_stem, PartRename};
+use crate::WeaponPathError;
 use hmm_core::{InstallTargetPath, RetargetFileReason};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-pub(crate) enum WeaponResourceMapping {
+pub(super) enum NumberedResourceMapping {
     Relocated(InstallTargetPath),
     Kept(RetargetFileReason),
 }
 
 /// 部件目录只能由同源模型／材质的完整文件主干证明，不能从目录自身的数字反推。
-pub(crate) struct WeaponResourceMapper<'a> {
-    root: &'a WeaponResourceRoot,
+pub(super) struct NumberedResourceMapper<'a> {
+    root: NumberedRoot<'a>,
     part_stems: BTreeSet<String>,
     // 候选模型提供的前缀仅用于识别矛盾，不直接授权目录迁移。
     part_prefixes: BTreeSet<String>,
 }
 
-impl<'a> WeaponResourceMapper<'a> {
-    pub(crate) fn new(
-        root: &'a WeaponResourceRoot,
+impl<'a> NumberedResourceMapper<'a> {
+    pub(super) fn new(
+        root: NumberedRoot<'a>,
         paths: impl IntoIterator<Item = &'a InstallTargetPath>,
     ) -> Self {
         let mut candidates = Vec::new();
@@ -45,9 +45,11 @@ impl<'a> WeaponResourceMapper<'a> {
             {
                 continue;
             }
-            if let PartRename::Renamed(_) =
-                rename_weapon_stem(&normalize_bs(stem), root.main_id(), root.main_id())
-            {
+            if let PartRename::Renamed(_) = rename_numbered_stem(
+                &normalize_bs(stem),
+                root.main_id().parts(),
+                root.main_id().parts(),
+            ) {
                 candidates.push((stem, path));
                 if let Some(token) = numbered_tokens(stem).first() {
                     part_prefixes.insert(token.prefix.to_ascii_lowercase());
@@ -72,12 +74,12 @@ impl<'a> WeaponResourceMapper<'a> {
         mapper
     }
 
-    pub(crate) fn map(
+    pub(super) fn map(
         &self,
         path: &InstallTargetPath,
-        target: &WeaponMainId,
-    ) -> Result<WeaponResourceMapping, WeaponPathError> {
-        if target.family() != self.root.family() {
+        target: NumberedId<'_>,
+    ) -> Result<NumberedResourceMapping, WeaponPathError> {
+        if target.family() != self.root.main_id().family() {
             return Err(WeaponPathError::CrossFamilyTarget);
         }
         if !self.root.contains(path) {
@@ -90,24 +92,28 @@ impl<'a> WeaponResourceMapper<'a> {
             .rsplit_once('.')
             .map_or(*filename, |(stem, _)| stem);
         if let Some(reason) = identity_issue(stem, self.root.main_id()) {
-            return Ok(WeaponResourceMapping::Kept(reason));
+            return Ok(NumberedResourceMapping::Kept(reason));
         }
         let mut directories = Vec::new();
         let mut mapped_directory = false;
         for part in &parts[4..parts.len() - 1] {
             if let Some(reason) = self.directory_issue(part) {
-                return Ok(WeaponResourceMapping::Kept(reason));
+                return Ok(NumberedResourceMapping::Kept(reason));
             }
             if part.eq_ignore_ascii_case(self.root.main_id().as_str())
                 || self.part_stems.contains(&part.to_ascii_lowercase())
             {
-                match rename_weapon_stem(&normalize_bs(part), self.root.main_id(), target) {
+                match rename_numbered_stem(
+                    &normalize_bs(part),
+                    self.root.main_id().parts(),
+                    target.parts(),
+                ) {
                     PartRename::Renamed(name) => {
                         directories.push(name);
                         mapped_directory = true;
                     }
                     PartRename::Unrelated | PartRename::Ambiguous => {
-                        return Ok(WeaponResourceMapping::Kept(
+                        return Ok(NumberedResourceMapping::Kept(
                             RetargetFileReason::AmbiguousResourceIdentity,
                         ));
                     }
@@ -116,21 +122,24 @@ impl<'a> WeaponResourceMapper<'a> {
                 directories.push((*part).to_owned());
             }
         }
-        let filename =
-            match rename_weapon_stem(&normalize_bs(filename), self.root.main_id(), target) {
-                PartRename::Renamed(name) => name,
-                PartRename::Unrelated if mapped_directory => (*filename).to_owned(),
-                PartRename::Unrelated => {
-                    return Ok(WeaponResourceMapping::Kept(
-                        RetargetFileReason::UnmappedResource,
-                    ))
-                }
-                PartRename::Ambiguous => {
-                    return Ok(WeaponResourceMapping::Kept(
-                        RetargetFileReason::AmbiguousResourceIdentity,
-                    ))
-                }
-            };
+        let filename = match rename_numbered_stem(
+            &normalize_bs(filename),
+            self.root.main_id().parts(),
+            target.parts(),
+        ) {
+            PartRename::Renamed(name) => name,
+            PartRename::Unrelated if mapped_directory => (*filename).to_owned(),
+            PartRename::Unrelated => {
+                return Ok(NumberedResourceMapping::Kept(
+                    RetargetFileReason::UnmappedResource,
+                ))
+            }
+            PartRename::Ambiguous => {
+                return Ok(NumberedResourceMapping::Kept(
+                    RetargetFileReason::AmbiguousResourceIdentity,
+                ))
+            }
+        };
         let mut mapped = parts[..3]
             .iter()
             .map(|part| (*part).to_owned())
@@ -139,7 +148,7 @@ impl<'a> WeaponResourceMapper<'a> {
         mapped.extend(directories);
         mapped.push(filename);
         InstallTargetPath::parse(mapped.join("/"), ["nativePC"])
-            .map(WeaponResourceMapping::Relocated)
+            .map(NumberedResourceMapping::Relocated)
             .map_err(|_| WeaponPathError::UnsafePath)
     }
 
@@ -152,9 +161,9 @@ impl<'a> WeaponResourceMapper<'a> {
                 .contains(&token.prefix.to_ascii_lowercase())
                 || self
                     .root
-                    .family()
-                    .secondary_part()
-                    .is_some_and(|part| token.prefix.eq_ignore_ascii_case(part.prefix()))
+                    .main_id()
+                    .secondary_prefix()
+                    .is_some_and(|prefix| token.prefix.eq_ignore_ascii_case(prefix))
         });
         if known_part {
             identity_issue(name, self.root.main_id())
@@ -175,8 +184,8 @@ fn normalize_bs(name: &str) -> Cow<'_, str> {
     }
 }
 
-fn explicit_main_conflict(name: &str, source: &WeaponMainId) -> bool {
-    name.is_ascii() && WeaponMainId::parse(&name.to_ascii_lowercase()).is_ok_and(|id| id != *source)
+fn explicit_main_conflict(name: &str, source: NumberedId<'_>) -> bool {
+    source.conflicts_with_main(name)
 }
 
 struct NumberedToken<'a> {
@@ -225,14 +234,13 @@ fn numbered_tokens(name: &str) -> Vec<NumberedToken<'_>> {
     tokens
 }
 
-fn identity_issue(name: &str, source: &WeaponMainId) -> Option<RetargetFileReason> {
+fn identity_issue(name: &str, source: NumberedId<'_>) -> Option<RetargetFileReason> {
     let tokens = numbered_tokens(name);
     let source_digits = format!("{:03}", source.number());
     if tokens.iter().any(|token| {
         token.digits != source_digits
             || token.has_bs != source.has_bs_prefix()
-            || WeaponFamily::parse(&token.prefix.to_ascii_lowercase())
-                .is_ok_and(|family| family != source.family())
+            || source.conflicts_with_prefix(token.prefix)
     }) {
         Some(RetargetFileReason::ConflictingResourceIdentity)
     } else if tokens.len() > 1 {

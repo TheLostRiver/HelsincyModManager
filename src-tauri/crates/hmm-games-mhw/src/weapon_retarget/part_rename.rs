@@ -44,7 +44,7 @@ use super::family::WeaponMainId;
 
 /// 一次文件名改写的结论。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum PartRename {
+pub(crate) enum PartRename {
     /// 主干命中源槽位数字，已换成目标槽位数字。
     Renamed(String),
     /// 与本槽位无关，原样保留。
@@ -69,12 +69,20 @@ pub(super) fn split_weapon_stem<'a>(
     stem: &'a str,
     source: &WeaponMainId,
 ) -> Option<Result<WeaponStem<'a>, ()>> {
+    split_numbered_stem(stem, source.number(), source.has_bs_prefix())
+}
+
+fn split_numbered_stem(
+    stem: &str,
+    source_number: u16,
+    source_has_bs: bool,
+) -> Option<Result<WeaponStem<'_>, ()>> {
     // `bs_` 是槽位身份的一部分，不是前缀的一部分：源带目标不带时整段都要换掉。
     let (stem_has_bs, body) = match stem.strip_prefix("bs_") {
         Some(body) => (true, body),
         None => (false, stem),
     };
-    if stem_has_bs != source.has_bs_prefix() {
+    if stem_has_bs != source_has_bs {
         return None;
     }
 
@@ -88,7 +96,7 @@ pub(super) fn split_weapon_stem<'a>(
     }
     let (prefix, after_prefix) = body.split_at(prefix_len);
 
-    let digits = format!("{:03}", source.number());
+    let digits = format!("{source_number:03}");
     let rest = after_prefix.strip_prefix(digits.as_str())?;
 
     // 守卫①：数字段后面不能再跟数字。部件 ID 形如 `<前缀><3 位数字>`，否则
@@ -123,16 +131,27 @@ pub(super) fn rename_weapon_stem(
     source: &WeaponMainId,
     target: &WeaponMainId,
 ) -> PartRename {
-    match split_weapon_stem(stem, source) {
+    rename_numbered_stem(
+        stem,
+        (source.number(), source.has_bs_prefix()),
+        (target.number(), target.has_bs_prefix()),
+    )
+}
+
+/// 武器与猎虫共用数字段规则；身份解析及可选目标仍由各自的 adapter 类型约束。
+pub(crate) fn rename_numbered_stem(
+    stem: &str,
+    source: (u16, bool),
+    target: (u16, bool),
+) -> PartRename {
+    match split_numbered_stem(stem, source.0, source.1) {
         None => PartRename::Unrelated,
         Some(Err(())) => PartRename::Ambiguous,
         Some(Ok(parsed)) => {
-            let bs_prefix = if target.has_bs_prefix() { "bs_" } else { "" };
+            let bs_prefix = if target.1 { "bs_" } else { "" };
             PartRename::Renamed(format!(
                 "{bs_prefix}{}{:03}{}",
-                parsed.prefix,
-                target.number(),
-                parsed.rest
+                parsed.prefix, target.0, parsed.rest
             ))
         }
     }

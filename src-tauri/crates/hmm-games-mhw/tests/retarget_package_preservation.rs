@@ -181,6 +181,7 @@ fn weapon_retarget_keeps_texture_locations_and_material_contents() {
 fn an_unknown_catalog_source_can_stay_in_place_without_becoming_an_arbitrary_target() {
     for path in [
         "nativePC/wp/one/one999/mod/custom.mod3",
+        "nativePC/wp/mus/mus999/mod/custom.mod3",
         "nativePC/pl/f_equip/pl999_0000/body/custom.mod3",
     ] {
         let assets = assets(&[path]);
