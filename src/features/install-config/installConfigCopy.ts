@@ -5,9 +5,8 @@ import type { PackageContentRootKind } from "./packageContentsTypes";
  * 「安装配置」覆盖层的全部用户可见文案（`#354` 切片 D4）。
  *
  * 措辞上有一条硬规矩：`installable` / `rejectedByGame` / `excludedByPlayer` 是**三条互相
- * 独立的事实**，文案不得把它们合并成单一的「会不会装」。拒绝清单当前只在重定向链路上被
- * 强制执行，普通安装链路尚未套用——合并必然在其中一条链路上给出与实际相反的答案。
- * 所以 `rejectedByGame` 的说明句显式点出「重定向安装」这个前提，而不是笼统写「不会安装」。
+ * 独立的事实**，文案不得把它们合并成单一的「会不会装」。命中默认排除类型的插件仍可经
+ * 后端检查和明确选择后包含，最终以插件选择和计划预览为准。
  */
 
 export type InstallConfigFactCopy = {
@@ -131,7 +130,7 @@ export const installConfigCopy = {
       treeAria: "包内容树",
       summary: ({ fileCount, installableCount }) =>
         `共 ${fileCount} 个文件，其中 ${installableCount} 个在安装范围内`,
-      summaryRejected: (count) => `${count} 个在游戏拒绝清单内`,
+      summaryRejected: (count) => `${count} 个受安装规则约束`,
       summaryExcluded: (count) => `${count} 个已被你勾掉`,
     },
     contentRoot: {
@@ -168,8 +167,8 @@ export const installConfigCopy = {
           `算出来的安装路径是 ${targetPath}，但本游戏只接受特定的顶层目录，因此它不会进入安装计划。`,
       },
       rejectedByGame: {
-        label: "游戏拒绝清单",
-        detail: "重定向安装会跳过这个文件。普通安装链路目前尚未套用这份清单。",
+        label: "受安装规则约束",
+        detail: "此文件受安装规则约束；能否包含及原因请查看插件选择和计划预览。",
       },
       excludedByPlayer: {
         label: "已勾掉",
@@ -207,7 +206,7 @@ export const installConfigCopy = {
       discard: "放弃改动",
       saved: "选择已保存，安装时按此执行。",
       unsaved: "有未保存的改动。",
-      saveFailed: "保存失败，选择没有生效。请重试。",
+      saveFailed: "保存未完成，请检查提示后重试。",
       confirmCloseDetail: "有未保存的改动，关掉就没了。",
       keepEditing: "继续编辑",
       discardAndClose: "放弃并关闭",
@@ -230,7 +229,7 @@ export const installConfigCopy = {
       treeAria: "Package contents tree",
       summary: ({ fileCount, installableCount }) =>
         `${fileCount} files, ${installableCount} of them within the install scope`,
-      summaryRejected: (count) => `${count} on the game reject list`,
+      summaryRejected: (count) => `${count} subject to installation rules`,
       summaryExcluded: (count) => `${count} excluded by you`,
     },
     contentRoot: {
@@ -268,8 +267,8 @@ export const installConfigCopy = {
           `The computed install path is ${targetPath}, but this game only accepts specific top-level directories, so it will not enter the install plan.`,
       },
       rejectedByGame: {
-        label: "Game reject list",
-        detail: "Retarget installs skip this file. The plain install path does not apply this list yet.",
+        label: "Installation rules apply",
+        detail: "Check the plugin choices and plan preview to see whether this file can be included and why.",
       },
       excludedByPlayer: {
         label: "Excluded",
@@ -304,7 +303,7 @@ export const installConfigCopy = {
       discard: "Discard changes",
       saved: "Selection saved; installs will follow it.",
       unsaved: "You have unsaved changes.",
-      saveFailed: "Saving failed, so the selection did not take effect. Try again.",
+      saveFailed: "Saving is incomplete. Check the messages and try again.",
       confirmCloseDetail: "You have unsaved changes. Closing discards them.",
       keepEditing: "Keep editing",
       discardAndClose: "Discard and close",
@@ -327,7 +326,7 @@ export const installConfigCopy = {
       treeAria: "パッケージ内容ツリー",
       summary: ({ fileCount, installableCount }) =>
         `全 ${fileCount} ファイル中 ${installableCount} 件がインストール対象範囲内`,
-      summaryRejected: (count) => `${count} 件がゲームの拒否リストに該当`,
+      summaryRejected: (count) => `${count} 件にインストール規則が適用されます`,
       summaryExcluded: (count) => `${count} 件を除外済み`,
     },
     contentRoot: {
@@ -365,8 +364,8 @@ export const installConfigCopy = {
           `算出されたインストールパスは ${targetPath} ですが、このゲームは特定のトップレベルディレクトリのみを受け付けるため、インストール計画には入りません。`,
       },
       rejectedByGame: {
-        label: "ゲームの拒否リスト",
-        detail: "リターゲットインストールではスキップされます。通常のインストール経路にはこのリストがまだ適用されていません。",
+        label: "インストール規則の対象",
+        detail: "含められるかどうかとその理由は、プラグインの選択とプランの確認で表示されます。",
       },
       excludedByPlayer: {
         label: "除外済み",
@@ -401,7 +400,7 @@ export const installConfigCopy = {
       discard: "変更を破棄",
       saved: "選択を保存しました。インストールはこの内容に従います。",
       unsaved: "未保存の変更があります。",
-      saveFailed: "保存に失敗したため、選択は反映されていません。再試行してください。",
+      saveFailed: "保存が完了していません。表示された内容を確認して再試行してください。",
       confirmCloseDetail: "未保存の変更があります。閉じると失われます。",
       keepEditing: "編集を続ける",
       discardAndClose: "破棄して閉じる",

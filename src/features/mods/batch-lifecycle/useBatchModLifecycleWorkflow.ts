@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getBatchModLifecycleResult,
   previewBatchModLifecycle,
@@ -21,6 +21,9 @@ import {
 } from "./batchModLifecycleWorkflow.ts";
 import type { InstallManifestStatusSummary } from "../modInstallPlanTypes.ts";
 import type { ModRevisionList } from "../modLibraryTypes.ts";
+import { selectionInput, setModPluginSelection } from "../../install-plugins/pluginSelectionApi.ts";
+import type { PluginInventory } from "../../install-plugins/pluginSelectionTypes";
+import { loadBatchPluginChoices } from "./batchPluginChoices.ts";
 
 export const DEFAULT_BATCH_EXECUTION_POLICY: BatchModLifecycleExecutionPolicy =
   "stop_on_failure";
@@ -71,6 +74,11 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   const [state, setState] = useState<BatchModLifecycleWorkflowState>({ status: "idle" });
   const stateRef = useRef(state);
   const generationRef = useRef(0);
+  const [pluginChoices, setPluginChoices] = useState<PluginInventory[]>([]);
+  const [pluginSaving, setPluginSaving] = useState(false);
+  const [pluginError, setPluginError] = useState<unknown>(null);
+  const pluginSavingRef = useRef(false);
+  const previewRequestRef = useRef<BatchModLifecycleRequestDto | null>(null);
   const resolutionRef = useRef<BatchModLifecycleItemResolution>({
     items: [],
     excluded: [],
@@ -78,11 +86,28 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   });
   const replacementTargetsRef = useRef<{ modId: string; targetId: string }[]>([]);
   const activeAttemptRef = useRef<{ batchId: string; attemptNumber: number } | null>(null);
+  const scopeKey = JSON.stringify([gameId, profileId]);
+  const stateScopeRef = useRef(scopeKey);
 
   const updateState = useCallback((next: BatchModLifecycleWorkflowState) => {
     stateRef.current = next;
     setState(next);
   }, []);
+
+  useEffect(() => {
+    stateScopeRef.current = scopeKey;
+    generationRef.current += 1;
+    pluginSavingRef.current = false;
+    setPluginSaving(false);
+    setPluginChoices([]);
+    setPluginError(null);
+    previewRequestRef.current = null;
+    activeAttemptRef.current = null;
+    replacementTargetsRef.current = [];
+    resolutionRef.current = { items: [], excluded: [], unresolvable: [] };
+    updateState({ status: "idle" });
+    return () => { generationRef.current += 1; };
+  }, [scopeKey, updateState]);
 
   const requestFor = useCallback(
     (operation: BatchModLifecycleOperation, policy: BatchModLifecycleExecutionPolicy) => {
@@ -140,8 +165,13 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       generation: number,
       policy: BatchModLifecycleExecutionPolicy,
     ) => {
+      previewRequestRef.current = request;
       updateState({ status: "preview-loading", policy });
       try {
+        const choices = await loadBatchPluginChoices(request, () => generation === generationRef.current);
+        if (generation !== generationRef.current) return;
+        setPluginChoices(choices);
+        setPluginError(null);
         const preview = await previewBatchModLifecycle(request);
         if (generation !== generationRef.current) {
           return;
@@ -162,6 +192,35 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     [updateState],
   );
 
+  const changePlugin = async (inventory: PluginInventory, fileId: string, selected: boolean) => {
+    const request = previewRequestRef.current;
+    if (!request || pluginSavingRef.current || stateRef.current.status !== "preview-ready") return;
+    const generation = ++generationRef.current;
+    pluginSavingRef.current = true;
+    setPluginSaving(true);
+    setPluginError(null);
+    updateState({ status: "preview-loading", policy: request.executionPolicy });
+    try {
+      await setModPluginSelection(selectionInput({ ...inventory, files: inventory.files.map((file) => file.fileId === fileId ? { ...file, selected } : file) }));
+      if (generation === generationRef.current) await previewRequest(request, generation, request.executionPolicy);
+    } catch (error) {
+      if (generation === generationRef.current) {
+        setPluginError(error);
+        updateState({ status: "preview-error", errorCode: commandErrorCode(error), policy: request.executionPolicy, operation: operationOfRequest(request) });
+      }
+    } finally {
+      if (generation === generationRef.current) {
+        pluginSavingRef.current = false;
+        setPluginSaving(false);
+      }
+    }
+  };
+
+  const reloadPlugins = () => {
+    const request = previewRequestRef.current;
+    if (request && !pluginSavingRef.current) void previewRequest(request, ++generationRef.current, request.executionPolicy);
+  };
+
   const prepare = useCallback(
     async (operation: BatchModLifecycleOperation, selectedModIds: string[]) => {
       if (gameId === null || profileId === null) {
@@ -173,6 +232,9 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       }
       const generation = ++generationRef.current;
       activeAttemptRef.current = null;
+      setPluginChoices([]);
+      setPluginError(null);
+      previewRequestRef.current = null;
       updateState({ status: "resolving" });
       try {
         const manifestStatuses = await loadManifestStatuses(selectedModIds);
@@ -276,6 +338,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
             selectedTargets: Object.fromEntries(
               orderedTargetFacts.map((facts) => [facts.modId, null]),
             ),
+            reapplyModIds: [],
           });
           return;
         }
@@ -348,6 +411,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       }
       updateState({
         ...current,
+        reapplyModIds: current.reapplyModIds.filter((id) => id !== modId),
         selectedTargets: {
           ...current.selectedTargets,
           [modId]: targetId,
@@ -357,12 +421,19 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     [updateState],
   );
 
+  const setReapplyTarget = useCallback((modId: string) => {
+    const current = stateRef.current;
+    if (current.status !== "target-selection" || !current.targetFacts.some((facts) => facts.modId === modId)) return;
+    updateState({ ...current, selectedTargets: { ...current.selectedTargets, [modId]: null },
+      reapplyModIds: [...current.reapplyModIds.filter((id) => id !== modId), modId] });
+  }, [updateState]);
+
   const previewWithReplacementTargets = useCallback(() => {
     const current = stateRef.current;
     if (current.status !== "target-selection") {
       return;
     }
-    const replacementTargets = current.targetFacts.map((facts) => ({
+    const replacementTargets = current.targetFacts.filter((facts) => !current.reapplyModIds.includes(facts.modId)).map((facts) => ({
       facts,
       targetId: current.selectedTargets[facts.modId],
     }));
@@ -381,6 +452,9 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       modId: facts.modId,
       targetId: targetId as string,
     }));
+    resolutionRef.current = { ...resolutionRef.current, items: resolutionRef.current.items.map((item) =>
+      item.operation === "reinstall" && current.reapplyModIds.includes(item.modId)
+        ? { ...item, intent: "reapply_equipment_targets" } : item) };
     const generation = ++generationRef.current;
     const request = requestFor("reinstall", current.policy);
     if (request === null) {
@@ -528,7 +602,11 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   }, [updateState]);
 
   const reset = useCallback(() => {
+    if (pluginSavingRef.current) return;
     generationRef.current += 1;
+    setPluginChoices([]);
+    setPluginError(null);
+    previewRequestRef.current = null;
     activeAttemptRef.current = null;
     replacementTargetsRef.current = [];
     resolutionRef.current = { items: [], excluded: [], unresolvable: [] };
@@ -536,11 +614,13 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   }, [updateState]);
 
   return {
-    state,
+    pluginChoices, pluginSaving, pluginError, changePlugin, reloadPlugins,
+    state: stateScopeRef.current === scopeKey ? state : { status: "idle" } as BatchModLifecycleWorkflowState,
     resolution: resolutionRef.current,
     prepare,
     setPolicy,
     setReplacementTarget,
+    setReapplyTarget,
     previewWithReplacementTargets,
     confirmAndStart,
     retry,

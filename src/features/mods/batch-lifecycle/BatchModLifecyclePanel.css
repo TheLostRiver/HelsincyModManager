@@ -218,7 +218,7 @@
 }
 
 .batch-panel__target-unavailable {
-  color: var(--color-warning-text) !important;
+  color: var(--color-text-muted) !important;
 }
 
 .batch-panel__preview-items {

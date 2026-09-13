@@ -123,7 +123,8 @@ test("context menu lifecycle action reuses the existing single-item install and 
   assert.match(page, /status === "not_installed"[\s\S]*?copy\.page\.cardAction\.installLabel/);
   assert.match(page, /case "install":\s*startSelectedInstallTask\(modId\)/);
   assert.match(page, /case "uninstall":\s*promptSelectedUninstallTask\(modId\)/);
-  assert.match(page, /const startSelectedInstallTask = \(requestedModId\?: string\)/);
+  assert.match(page, /const startSelectedInstallTask = \(requestedModId\?: string, approved = false, expectedRevisionId\?: string\)/);
+  assert.match(page, /if \(!approved\)\s*\{[\s\S]*?setInstallPreviewTarget\(/);
   assert.match(page, /const promptSelectedUninstallTask = \(requestedModId\?: string\)/);
   assert.match(page, /selectionInteractionLocked/);
   assert.match(menu, /handleItemClick\(resolvedLifecycleAction\.actionId\)/);

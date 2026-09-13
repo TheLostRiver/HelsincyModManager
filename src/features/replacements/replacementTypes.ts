@@ -50,7 +50,7 @@ export type PreviewInitialRetargetInstallInput = {
   layerPriority: number;
 };
 
-export type StartRetargetInstallTaskInput = PreviewInitialRetargetInstallInput;
+export type StartRetargetInstallTaskInput = PreviewInitialRetargetInstallInput & { expectedRevisionId?: string };
 
 export type PreviewRetargetReinstallInput = PreviewInitialRetargetInstallInput;
 

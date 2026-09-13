@@ -35,6 +35,11 @@ import {
 import { classifyPackageContentsError, type PackageContentsFailure } from "./packageContentsError";
 import type { InstallConfigTarget } from "./InstallConfigTargetProvider";
 import type { PackageContents } from "./packageContentsTypes";
+import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
+import { PluginReapplyActions } from "../install-plugins/PluginReapplyActions";
+import { usePluginSelection } from "../install-plugins/usePluginSelection";
+import { pluginSelectionCopy } from "../install-plugins/pluginSelectionCopy";
 
 /*
  * 「安装配置」的悬浮覆盖层（`#354` 切片 D4）。
@@ -68,6 +73,12 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
    * 在这个 feature 里再抄一份只会随后端加码而漂移。
    */
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
+  const pluginCopy = resolveCopy(pluginSelectionCopy, locale);
+  const { activeProfileId } = useActiveProfile();
+  const [reapplyBusy, setReapplyBusy] = useState(false);
+  const savePending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set<string>());
@@ -94,6 +105,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const [planToken, setPlanToken] = useState(0);
 
   const { modId } = target;
+  const plugins = usePluginSelection(activeProfileId ? { gameId: "mhw", profileId: activeProfileId, modId } : null, { draft: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +151,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
 
     previewInstallPlanForImportedMod({
       gameId: "mhw",
+      ...(activeProfileId ? { profileId: activeProfileId } : {}),
       modId,
       // 与 Mod 库的安装入口同一套值，否则预览的计划与真装的不是同一个。
       layerName: "base",
@@ -158,7 +171,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
     return () => {
       cancelled = true;
     };
-  }, [modId, planToken, state.status]);
+  }, [modId, planToken, state.status, activeProfileId]);
 
   const tree = useMemo(
     () => (state.status === "ready" ? buildPackageContentTree(state.contents.entries) : []),
@@ -174,12 +187,14 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   );
 
   const savedExcluded = state.status === "ready" ? state.contents.excludedFiles : [];
-  const isDirty = !isSameSelection(draftExcluded, savedExcluded);
+  const packageDirty = !isSameSelection(draftExcluded, savedExcluded);
+  const isDirty = packageDirty || plugins.dirty;
+  const busy = saving || plugins.saving || reapplyBusy;
   /*
    * 计划预览读的是后端持久化状态，看不见草稿。差几处就如实说几处——笼统的「可能已过期」
    * 玩家没法判断值不值得先保存一下再看。
    */
-  const planDriftCount = countSelectionDrift(draftExcluded, savedExcluded);
+  const planDriftCount = countSelectionDrift(draftExcluded, savedExcluded) + plugins.dirtyCount;
 
   const handleToggle = useCallback((path: string) => {
     setExpandedPaths((current) => {
@@ -195,6 +210,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
 
   const handleToggleSelection = useCallback(
     (path: string) => {
+      if (busy) return;
       const node = nodesByPath.get(path);
       if (!node) {
         return;
@@ -202,27 +218,36 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       setSaveFailed(false);
       setDraftExcluded((current) => toggleSelection(node, current));
     },
-    [nodesByPath],
+    [nodesByPath, busy],
   );
 
   /** 返回是否保存成功——「保存并关闭」要据此决定关不关，失败了关掉就把改动丢了。 */
   const handleSave = async (): Promise<boolean> => {
+    if (savePending.current || busy) return false;
+    savePending.current = true;
     setSaving(true);
     setSaveFailed(false);
+    let packageSelectionSaved = false;
     try {
       /*
        * 空排除集合走 `clear` 而不是提交一个空数组：清掉记录与「记录着一个空集合」在仓储
        * 层不是一回事，前者让这个包回到从没被干预过的状态。
        */
-      const excludedFiles = [...draftExcluded];
-      const contents =
-        excludedFiles.length === 0
+      if (packageDirty) {
+        const excludedFiles = [...draftExcluded];
+        const contents = excludedFiles.length === 0
           ? await clearModPackageFileSelection({ gameId: "mhw", modId })
           : await setModPackageFileSelection({ gameId: "mhw", modId, excludedFiles });
 
-      // 两条命令都**回读**并返回生效之后的结果，直接用它，不自己推演。
-      setState({ status: "ready", contents });
-      setDraftExcluded(new Set(contents.excludedFiles));
+        // 两条命令都回读生效后的结果，插件保存失败也不能继续显示旧的包计划。
+        if (!mounted.current) return false;
+        setState({ status: "ready", contents });
+        setDraftExcluded(new Set(contents.excludedFiles));
+        packageSelectionSaved = true;
+      }
+      // A changed plugin inventory is rejected by the backend; do not migrate approval in UI.
+      if (plugins.dirty) await plugins.confirm();
+      plugins.reload();
       /*
        * 排除集合变了，计划跟着变——这一步让「保存」顺带回答「那结果是什么」。
        *
@@ -231,21 +256,26 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       setPlanToken((token) => token + 1);
       return true;
     } catch {
+      if (!mounted.current) return false;
+      if (packageSelectionSaved) setPlanToken((token) => token + 1);
       setSaveFailed(true);
       return false;
     } finally {
-      setSaving(false);
+      savePending.current = false;
+      if (mounted.current) setSaving(false);
     }
   };
 
   const handleSaveAndClose = async () => {
-    if (await handleSave()) {
+    if (await handleSave() && mounted.current) {
       onClose();
     }
     // 失败就留在面板里：确认条会换成失败文案，改动还在草稿里没丢。
   };
 
   const handleDiscard = () => {
+    if (busy) return;
+    plugins.discard();
     setDraftExcluded(new Set(savedExcluded));
     setSaveFailed(false);
     setConfirmingClose(false);
@@ -259,10 +289,12 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
    * 某些排除项可能落到新内容根之外，那属于「陈旧排除项」，后端明确是无害放过。
    */
   const applyContentRoot = async (run: () => Promise<PackageContents>) => {
+    if (busy || plugins.dirty) return;
     setContentRootBusy(true);
     setContentRootFailed(false);
     try {
       setState({ status: "ready", contents: await run() });
+      plugins.reload();
       // 换了内容根，整棵树的 targetPath 全变了，上一份计划整个作废。
       setPlanToken((token) => token + 1);
     } catch {
@@ -292,6 +324,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       // 清除本身失败也照常重载：重载会重新分档，届时给出当时真实的失败原因。
     }
     setReloadToken((token) => token + 1);
+    plugins.reload();
   };
 
   /*
@@ -303,6 +336,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
    * 只盯勾选草稿：内容根是选中即提交的，没有「未保存」这一说。
    */
   const handleRequestClose = () => {
+    if (busy) return;
     if (isDirty) {
       setConfirmingClose(true);
       return;
@@ -319,13 +353,13 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       description={copy.page.description}
       onClose={handleRequestClose}
       // 保存写盘期间不许关闭：关掉不会取消已经发出的写入，只会让玩家看不到结果。
-      busy={saving}
+      busy={busy}
       footer={
         state.status === "ready" ? (
           <SelectionActions
             copy={copy}
             isDirty={isDirty}
-            saving={saving}
+            saving={busy}
             saveFailed={saveFailed}
             onSave={handleSave}
             onDiscard={handleDiscard}
@@ -337,7 +371,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
         {confirmingClose ? (
           <CloseConfirmBanner
             copy={copy}
-            saving={saving}
+            saving={busy}
             saveFailed={saveFailed}
             onKeepEditing={() => setConfirmingClose(false)}
             onDiscardAndClose={onClose}
@@ -388,7 +422,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
             <ContentRootPanel
               contents={state.contents}
               copy={copy}
-              busy={contentRootBusy}
+              busy={contentRootBusy || busy || plugins.dirty}
               failed={contentRootFailed}
               onChoose={handleChooseContentRoot}
               onReset={handleResetContentRoot}
@@ -430,12 +464,20 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
               />
             )}
 
+            {activeProfileId ? <>
+              <PluginSelectionPanel controller={plugins} disabled={busy || contentRootBusy} />
+              <PluginReapplyActions key={`${activeProfileId}:${modId}`}
+                profileId={activeProfileId} modId={modId} plugins={plugins}
+                disabled={isDirty || saving || contentRootBusy} refreshToken={planToken}
+                onBusyChange={setReapplyBusy} onCompleted={() => { plugins.reload(); setPlanToken((token) => token + 1); }} />
+            </> : <p role="status">{pluginCopy.noProfile}</p>}
+
             <InstallPlanPreviewPanel
               state={plan}
               copy={copy}
               prerequisiteCopy={lifecycleCopy.prerequisite}
               driftCount={planDriftCount}
-              saving={saving}
+              saving={busy}
               onSaveAndRefresh={() => void handleSave()}
               onRetry={() => setPlanToken((token) => token + 1)}
             />
@@ -567,4 +609,3 @@ function SelectionActions({
     </div>
   );
 }
-

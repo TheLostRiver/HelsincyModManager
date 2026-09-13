@@ -1,4 +1,5 @@
 import type { LocaleDictionary } from "../../shared/i18n";
+import { pluginSelectionCopy } from "../install-plugins/pluginSelectionCopy.ts";
 import type { ReinstallFailurePhase, ReinstallTaskPhase } from "./modReinstallTaskState";
 import type { ReinstallBlockingReason } from "./modReinstallTypes";
 
@@ -8,6 +9,7 @@ import type { ReinstallBlockingReason } from "./modReinstallTypes";
 
 export type ModReinstallCopy = {
   task: {
+    pluginErrors: Record<string, string>;
     phases: Record<ReinstallTaskPhase, string>;
     blockingReasons: Record<ReinstallBlockingReason, string>;
     failureMessages: Record<ReinstallFailurePhase, string>;
@@ -72,6 +74,7 @@ export type ModReinstallCopy = {
 export const modReinstallCopy = {
   zh_cn: {
     task: {
+      pluginErrors: pluginSelectionCopy.zh_cn.errors,
       phases: {
         "install.reinstall.queued": "等待重装",
         "install.reinstall.plan.building": "生成重装计划",
@@ -174,6 +177,7 @@ export const modReinstallCopy = {
   },
   en: {
     task: {
+      pluginErrors: pluginSelectionCopy.en.errors,
       phases: {
         "install.reinstall.queued": "Waiting to reinstall",
         "install.reinstall.plan.building": "Building reinstall plan",
@@ -276,6 +280,7 @@ export const modReinstallCopy = {
   },
   ja: {
     task: {
+      pluginErrors: pluginSelectionCopy.ja.errors,
       phases: {
         "install.reinstall.queued": "再インストール待機中",
         "install.reinstall.plan.building": "再インストールプランを生成中",

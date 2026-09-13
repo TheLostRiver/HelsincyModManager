@@ -183,18 +183,19 @@ test("install plan sheet renders backend prerequisite decision without rebuildin
 test("mod library page renders a backend install plan preview workflow", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const feedbackSource = readSource("src/features/mods/ModLifecycleFeedback.tsx");
+  const previewSource = readSource("src/features/mods/ModInstallPreview.tsx");
 
-  assert.match(source, /previewInstallPlanForImportedMod/);
+  assert.match(source, /ModInstallPreview/);
   assert.match(source, /InstallPlanDetailSheet/);
   assert.match(feedbackSource, /DetailSheet/);
   assert.match(source, /preview-plan/);
   assert.match(source, /selectedIds\.size\s*!==\s*1/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath/i);
 
-  const previewCall = source.match(/previewInstallPlanForImportedMod\(\{([\s\S]*?)\}\)/);
+  const previewCall = previewSource.match(/previewInstallPlanForImportedMod\(\{([\s\S]*?)\}\)/);
   assert.ok(previewCall, "expected page to call the backend-driven imported mod preview wrapper");
-  assert.match(previewCall[1], /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
-  assert.match(previewCall[1], /modId/);
+  assert.match(previewCall[1], /\.\.\.request/);
+  assert.match(source, /gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId/);
   assert.match(previewCall[1], /layerName:\s*"base"/);
   assert.match(previewCall[1], /layerPriority:\s*0/);
   assert.doesNotMatch(previewCall[1], /targetPath|allowedTargetRoots|sandbox|cache|archivePath/i);

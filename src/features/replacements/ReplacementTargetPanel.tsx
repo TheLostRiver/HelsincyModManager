@@ -68,6 +68,8 @@ import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { RetargetFileDetails } from "./RetargetFileDetails";
 import { retargetFileCopy } from "./retargetFileCopy";
+import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
+import { usePluginSelection } from "../install-plugins/usePluginSelection";
 import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetargetApi";
 import type { RetargetInstallTaskStarted } from "./replacementTypes";
 import { useAppRoute } from "../../app/routing/useAppRoute";
@@ -163,6 +165,9 @@ export function ReplacementTargetPanel({
   const [taskState, setTaskState] = useState<RetargetInstallTaskState>({ status: "idle" });
   const taskStateRef = useRef<RetargetInstallTaskState>(taskState);
   const previewRequestGenerationRef = useRef(0);
+  const plugins = usePluginSelection(profileId ? { gameId, profileId, modId } : null, {
+    onInvalidated: () => { previewRequestGenerationRef.current += 1; setPreviewState({ status: "idle" }); },
+  });
   const pendingEventsRef = useRef(new Map<string, TaskProgressEventDto>());
   const completedTaskRef = useRef<string | null>(null);
   const refreshGenerationRef = useRef(0);
@@ -180,12 +185,14 @@ export function ReplacementTargetPanel({
     setTaskState(next);
   }, []);
 
+  const reloadPlugins = plugins.reload;
   const refreshCompletedInstall = useCallback(() => {
     const generation = ++refreshGenerationRef.current;
     setRefreshState({ status: "refreshing" });
     void refreshRetargetInstallState(onInstallCompleted, rCopyRef.current.events).then((next) => {
       if (refreshGenerationRef.current === generation) {
         if (next.status === "ready") {
+          reloadPlugins();
           completionReloadPendingRef.current = true;
           setRetryToken((value) => value + 1);
         } else {
@@ -193,7 +200,7 @@ export function ReplacementTargetPanel({
         }
       }
     });
-  }, [onInstallCompleted]);
+  }, [onInstallCompleted, reloadPlugins]);
 
   useEffect(() => {
     refreshGenerationRef.current += 1;
@@ -292,7 +299,7 @@ export function ReplacementTargetPanel({
   const taskActive = taskState.status === "starting" || taskState.status === "running";
   const refreshPending =
     taskState.status === "completed" && completedTaskRef.current !== taskState.taskId;
-  const panelBusy = taskActive || refreshPending || refreshState.status === "refreshing";
+  const panelBusy = taskActive || plugins.saving || refreshPending || refreshState.status === "refreshing";
   useEffect(() => onBusyChange(panelBusy), [onBusyChange, panelBusy]);
   useEffect(() => () => onBusyChange(false), [onBusyChange]);
 
@@ -389,6 +396,7 @@ export function ReplacementTargetPanel({
 
   const createPreview = () => {
     if (
+      !plugins.ready ||
       !selectedTarget ||
       profileId === null ||
       blockMessage !== null ||
@@ -432,7 +440,7 @@ export function ReplacementTargetPanel({
   };
 
   const createReapplyPreview = () => {
-    if (profileId === null || installStatus !== "installed" || blockMessage !== null || taskActive) return;
+    if (!plugins.ready || profileId === null || installStatus !== "installed" || blockMessage !== null || taskActive) return;
     const generation = ++previewRequestGenerationRef.current;
     setPreviewState({ status: "loading" });
     void previewEquipmentReapply({ gameId, profileId, modId }).then((preview) => {
@@ -470,13 +478,13 @@ export function ReplacementTargetPanel({
       profileId === null ||
       previewState.status !== "ready" ||
       blockMessage !== null ||
-      !canStart
+      !canStart || !plugins.ready
     ) {
       return;
     }
 
     if (taskStateRef.current.status === "starting" || taskStateRef.current.status === "running") return;
-    let launch: () => Promise<RetargetInstallTaskStarted>;
+    let launch: (expectedRevision?: string) => Promise<RetargetInstallTaskStarted>;
     if (previewState.mode === "reapply" && previewState.preview.status === "ready") {
       const token = previewState.preview.planToken;
       launch = () => startEquipmentReapply({ gameId, profileId, modId }, token);
@@ -484,11 +492,11 @@ export function ReplacementTargetPanel({
       if (!selectedTarget) return;
       const request = { gameId, profileId, modId, targetId: selectedTarget.id, layerName: "base", layerPriority: 0 };
       const token = previewState.mode === "switch" && previewState.preview.status === "ready" ? previewState.preview.planToken : null;
-      launch = token ? () => startRetargetReinstallTask({ ...request, planToken: token }) : () => startRetargetInstallTask(request);
+      launch = token ? () => startRetargetReinstallTask({ ...request, planToken: token }) : (revision) => startRetargetInstallTask({ ...request, ...(revision ? { expectedRevisionId: revision } : {}) });
     }
     pendingEventsRef.current.clear();
     setTrackedTaskState({ status: "starting" });
-    const start = launch();
+    const start = plugins.confirm().then((inventory) => launch(inventory?.revisionId));
     const queuedPhase =
       previewState.mode !== "initial" ? "install.reinstall.queued" : "install.retarget.queued";
     const failedPhase =
@@ -602,6 +610,7 @@ export function ReplacementTargetPanel({
   return (
     <div className="replacement-panel">
       {contextPanel}
+      <PluginSelectionPanel controller={plugins} disabled={taskActive} />
       {installStatus === "installed" && analysis?.retargetable && !installedTargetId
         ? <p className="replacement-panel__notice" role="status">{rCopy.panel.originRecoveryHint}</p> : null}
       {blockMessage ? (
@@ -1006,6 +1015,7 @@ export function ReplacementTargetPanel({
           className="is-secondary"
           onClick={createPreview}
           disabled={
+            !plugins.ready ||
             selectedTarget === null ||
             isCurrentInstalledReplacementTarget(selectedTarget.id, installedTargetId) ||
             !analysis?.retargetable ||
@@ -1022,6 +1032,7 @@ export function ReplacementTargetPanel({
           className="is-primary"
           onClick={startInstall}
           disabled={
+            !plugins.ready ||
             previewState.status !== "ready" ||
             blockMessage !== null ||
             (previewState.mode !== "initial"
@@ -1049,7 +1060,7 @@ export function ReplacementTargetPanel({
           )}
           {previewState.status === "ready" && previewState.mode === "reapply" ? fileCopy.confirmReapply : targetSwitch ? rCopy.panel.confirmSwitch : rCopy.panel.installToTarget}
         </button>
-        {targetSwitch && <button type="button" className="is-secondary" onClick={createReapplyPreview} disabled={profileId === null || blockMessage !== null || previewState.status === "loading" || taskActive}>
+        {targetSwitch && <button type="button" className="is-secondary" onClick={createReapplyPreview} disabled={!plugins.ready || profileId === null || blockMessage !== null || previewState.status === "loading" || taskActive}>
           <RotateCcw size={16} aria-hidden="true" />{fileCopy.previewReapply}
         </button>}
       </div>

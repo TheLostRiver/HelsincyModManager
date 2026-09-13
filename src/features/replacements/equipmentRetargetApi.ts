@@ -22,6 +22,7 @@ export function getEquipmentRetargetConfiguration(input: AnalyzeImportedModRepla
 
 function selectionRequest(input: EquipmentRetargetSelection) {
   return {
+    ...(input.expectedRevisionId ? { expectedRevisionId: input.expectedRevisionId } : {}),
     gameId: input.gameId, profileId: input.profileId, modId: input.modId,
     slots: input.slots.map((slot) => slot.action === "keep"
       ? { action: "keep", sourceId: slot.sourceId }

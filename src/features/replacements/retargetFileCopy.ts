@@ -24,6 +24,7 @@ export const retargetFileCopy = {
     dispositions: { relocated: "映射到目标", kept_in_place: "保留作者原位", package_companion: "包级配套", installed_attachment_retained: "保留已安装附件", plugin_candidate: "未包含的插件候选", policy_excluded: "按策略排除" },
     reasons: {
       target_mapping: "按装备目标映射资源路径。", original_target: "使用作者设置的原始位置。",
+      plugin_selected: "按当前配置档的选择包含插件，保留插件原始位置。",
       texture_reference: "保持贴图路径，保留既有引用。", unmapped_resource: "无法明确映射，保留原始路径和内容。",
       ambiguous_resource_identity: "名称包含多处装备编号，无法确定改名方式，保留完整原路径和内容。",
       conflicting_resource_identity: "目录或文件名中的装备编号与来源不一致，保留完整原路径和内容。",
@@ -43,6 +44,7 @@ export const retargetFileCopy = {
     dispositions: { relocated: "Mapped to target", kept_in_place: "Original location", package_companion: "Package companion", installed_attachment_retained: "Installed companion retained", plugin_candidate: "Plugin candidate not included", policy_excluded: "Excluded by policy" },
     reasons: {
       target_mapping: "Resource paths follow the selected equipment target.", original_target: "Use the location set by the Mod author.",
+      plugin_selected: "Include the plugin selected for this profile at its original location.",
       texture_reference: "Keep texture paths to preserve existing references.", unmapped_resource: "No unambiguous mapping is available; keep the original path and contents.",
       ambiguous_resource_identity: "The name contains multiple equipment IDs. Keep the entire original path and contents because the intended rename is unclear.",
       conflicting_resource_identity: "An equipment ID in the directory or filename disagrees with the source. Keep the entire original path and contents.",
@@ -62,6 +64,7 @@ export const retargetFileCopy = {
     dispositions: { relocated: "対象に配置", kept_in_place: "作者の元の位置を維持", package_companion: "パッケージの付属リソース", installed_attachment_retained: "インストール済みの付属ファイルを保持", plugin_candidate: "含まれないプラグイン候補", policy_excluded: "ポリシーによる除外" },
     reasons: {
       target_mapping: "選択した装備対象に合わせてパスを設定します。", original_target: "作者が指定した元の位置を使用します。",
+      plugin_selected: "このプロファイルで選択したプラグインを元の位置に配置します。",
       texture_reference: "既存の参照を維持するためテクスチャのパスを保持します。", unmapped_resource: "明確に対応付けられないため、元のパスと内容を保持します。",
       ambiguous_resource_identity: "名前に装備番号が複数あり改名方法を確定できないため、元のパス全体と内容を保持します。",
       conflicting_resource_identity: "ディレクトリまたはファイル名の装備番号が元の装備と一致しないため、元のパス全体と内容を保持します。",

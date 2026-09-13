@@ -19,11 +19,11 @@
   max-height: none;
 }
 
-/* 正文本身不滚动，滚动交给内部的树——否则会出现内外两条滚动条。 */
+/* 插件选择和重新应用预览可能很长，正文可滚动，页脚仍固定可达。 */
 .install-config-modal .feedback-modal__body {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .install-config {
@@ -31,7 +31,7 @@
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 0 auto;
 }
 
 /* 内容根 */
@@ -218,8 +218,10 @@
 
 .install-config-tree {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  /* 为虚拟树保留至少六行，避免被插件区域压缩为零高。 */
+  flex: 1 0 192px;
+  min-height: 192px;
+  max-height: min(480px, 50dvh);
   overflow: auto;
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-card);

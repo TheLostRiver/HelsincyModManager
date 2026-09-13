@@ -21,6 +21,7 @@ export function previewInstallPlanForImportedMod(
     request: {
       gameId: input.gameId,
       modId: input.modId,
+      ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
       layerName: input.layerName,
       layerPriority: input.layerPriority,
     },
@@ -35,6 +36,7 @@ export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStar
       profileId: input.profileId,
       layerName: input.layerName,
       layerPriority: input.layerPriority,
+      ...(input.expectedRevisionId === undefined ? {} : { expectedRevisionId: input.expectedRevisionId }),
     },
   });
 }

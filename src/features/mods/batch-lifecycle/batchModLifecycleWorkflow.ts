@@ -34,6 +34,7 @@ export type BatchModLifecycleWorkflowState =
       policy: BatchModLifecycleExecutionPolicy;
       targetFacts: BatchModLifecycleReplacementTargetFacts[];
       selectedTargets: Record<string, string | null>;
+      reapplyModIds: string[];
     }
   | { status: "preview-loading"; policy: BatchModLifecycleExecutionPolicy }
   | {
