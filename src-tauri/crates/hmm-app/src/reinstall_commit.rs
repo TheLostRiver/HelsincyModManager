@@ -2,7 +2,7 @@ use crate::reinstall::{
     summarize, PreparedReinstall, PreparedReinstallTarget, ReinstallCandidateSourceReader,
 };
 use hmm_core::{
-    replace_entries_and_bindings_for_mod, InstallManifest, InstallManifestEntry,
+    replace_entries_bindings_and_plugins_for_mod, InstallManifest, InstallManifestEntry,
     InstallManifestStatus, InstallTargetPath, ReinstallRecoveryTarget,
     ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
     ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
@@ -279,6 +279,19 @@ impl ReinstallCommitService {
                 return Err(ReinstallCommitError::PreviewStale);
             }
         }
+        for file in prepared
+            .candidate_plugin_selections
+            .iter()
+            .flat_map(|selection| selection.files())
+        {
+            let bytes = self
+                .original_source
+                .read_candidate_source_file(&prepared.candidate, &file.package_file_id)
+                .map_err(|_| ReinstallCommitError::PreviewStale)?;
+            if summarize(&bytes) != file.source_file {
+                return Err(ReinstallCommitError::PreviewStale);
+            }
+        }
         let legacy_provenance = self
             .catalog
             .get_mod(&prepared.request.mod_id)
@@ -427,6 +440,7 @@ impl ReinstallCommitService {
             pre_reinstall_manifest: prepared.old_manifest.clone(),
             original_install_evidence: prepared.original_install_evidence.clone(),
             candidate_replacement_bindings: prepared.candidate_replacement_bindings.clone(),
+            candidate_plugin_selections: prepared.candidate_plugin_selections.clone(),
             targets: recovery_targets,
         };
         if transaction.validate().is_err() {
@@ -841,6 +855,7 @@ fn same_pre_mutation_operation(
         && durable.pre_reinstall_manifest == attempted.pre_reinstall_manifest
         && durable.original_install_evidence == attempted.original_install_evidence
         && durable.candidate_replacement_bindings == attempted.candidate_replacement_bindings
+        && durable.candidate_plugin_selections == attempted.candidate_plugin_selections
         && durable.targets == attempted.targets
 }
 
@@ -902,13 +917,14 @@ fn build_candidate_manifest(
             adopted: false,
         })
         .collect();
-    let mut manifest = replace_entries_and_bindings_for_mod(
+    let mut manifest = replace_entries_bindings_and_plugins_for_mod(
         &prepared.old_manifest,
         &prepared.request.mod_id,
         &prepared.legacy_provenance,
         &prepared.candidate.revision_id,
         entries,
         prepared.candidate_replacement_bindings.clone(),
+        prepared.candidate_plugin_selections.clone(),
     )
     .map_err(|_| ())?;
     manifest.status = InstallManifestStatus::Completed;

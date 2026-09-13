@@ -512,6 +512,13 @@ RetargetAction
 - 冲突检测基于最终目标路径，而不是原始压缩包路径。
 - 玩家切换目标时，本质上是卸载旧绑定，再安装新绑定。
 
+插件选择由 `hmm-app::PluginSelectionService` 统一编排，MHW adapter 的 `GamePluginPolicy` 只解析
+位置与 PE/DLL 结构；通用 core 不识别 MHW 路径。`hmm-ports::PluginSelectionRepository` 对应 infra 的
+受控原子 JSON pending 记录。`PluginSelectionSnapshot` 绑定 profile／Mod／revision 和完整文件摘要，
+随 InstallPlan、manifest、重装 token／批量摘要及 recovery 保存 applied 事实。保存选择不修改游戏；
+失败回滚恢复旧应用快照。Tauri 只传稳定身份和勾选，UI 在显式打开安装／配置／重定向预览后查询。
+详情见 [MHW 资源策略](MHW_RETARGET_RESOURCE_STRATEGY.md#插件选择与安装事务)。
+
 ### 安装计划
 
 安装前必须先生成 `InstallPlan`。

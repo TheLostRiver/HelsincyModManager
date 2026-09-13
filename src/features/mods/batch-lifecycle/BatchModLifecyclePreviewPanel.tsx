@@ -17,13 +17,21 @@ import {
 import type { BatchModLifecycleItemResolution } from "./batchModLifecycleWorkflow";
 import type { BatchModLifecycleWorkflowState } from "./batchModLifecycleWorkflow";
 import "./BatchModLifecyclePanel.css";
+import { PluginSelectionPanel } from "../../install-plugins/PluginSelectionPanel";
+import type { PluginInventory } from "../../install-plugins/pluginSelectionTypes";
 
 export type BatchModLifecyclePreviewPanelProps = {
+  pluginChoices?: PluginInventory[];
+  pluginSaving?: boolean;
+  pluginError?: unknown;
+  onPluginChange?: (inventory: PluginInventory, fileId: string, selected: boolean) => Promise<void>;
+  onReloadPlugins?: () => void;
   workflowState: BatchModLifecycleWorkflowState;
   resolution: BatchModLifecycleItemResolution;
   policy: BatchModLifecycleExecutionPolicy;
   onPolicyChange: (policy: BatchModLifecycleExecutionPolicy) => void;
   onReplacementTargetChange: (modId: string, targetId: string) => void;
+  onReapplyTargetChange: (modId: string) => void;
   onPreviewWithReplacementTargets: () => void;
   onConfirm: () => void;
   onClose: () => void;
@@ -120,7 +128,7 @@ function PreviewItems({ request }: { request: BatchModLifecycleRequestDto }) {
                   <div>
                     <dt>{panelCopy.targetLabel}</dt>
                     <dd>
-                      {replacementTargetByModId.has(item.modId)
+                      {item.intent === "reapply_equipment_targets" ? panelCopy.reapplyCurrent : replacementTargetByModId.has(item.modId)
                         ? panelCopy.switchTo(replacementTargetByModId.get(item.modId) ?? "")
                         : panelCopy.keepCurrent}
                     </dd>
@@ -141,9 +149,11 @@ export function BatchModLifecyclePreviewPanel({
   policy,
   onPolicyChange,
   onReplacementTargetChange,
+  onReapplyTargetChange,
   onPreviewWithReplacementTargets,
   onConfirm,
   onClose,
+  pluginChoices = [], pluginSaving = false, pluginError = null, onPluginChange, onReloadPlugins,
 }: BatchModLifecyclePreviewPanelProps) {
   const { locale } = useI18n();
   const bCopy = resolveCopy(batchModLifecycleCopy, locale);
@@ -169,12 +179,13 @@ export function BatchModLifecyclePreviewPanel({
     targetSelection !== null
     && targetSelection.targetFacts.every((facts) => {
       const targetId = targetSelection.selectedTargets[facts.modId];
-      return facts.retargetable
+      return targetSelection.reapplyModIds.includes(facts.modId) || (facts.retargetable
         && targetId !== null
         && targetId !== facts.installedTargetId
-        && facts.targets.some((target) => target.id === targetId);
+        && facts.targets.some((target) => target.id === targetId));
     });
   const confirmDisabled =
+    pluginSaving ||
     workflowState.status !== "preview-ready"
     || preview === null
     || preview.previewToken === null;
@@ -194,13 +205,22 @@ export function BatchModLifecyclePreviewPanel({
             type="button"
             className="batch-panel__close"
             aria-label={panelCopy.closeAria}
-            onClick={onClose}
+          onClick={onClose}
+            disabled={pluginSaving || workflowState.status === "confirming"}
           >
             <X size={16} aria-hidden="true" />
           </button>
         </header>
 
         <div className="batch-panel__body">
+          {pluginChoices.map((inventory) => <section key={`${inventory.profileId}:${inventory.modId}:${inventory.revisionId}`}>
+            <h3>{inventory.modId}</h3>
+            <PluginSelectionPanel disabled={workflowState.status !== "preview-ready"} controller={{
+              status: "ready", inventory, error: pluginError, saving: pluginSaving, draft: false,
+              choose: (fileId, selected) => onPluginChange?.(inventory, fileId, selected) ?? Promise.resolve(),
+              reload: () => onReloadPlugins?.(),
+            }} />
+          </section>)}
           {loading && (
             <div className="batch-panel__loading" role="status">
               <LoaderCircle size={18} className="batch-panel__spinner" aria-hidden="true" />
@@ -228,8 +248,14 @@ export function BatchModLifecyclePreviewPanel({
                 return (
                   <fieldset className="batch-panel__target-group" key={facts.modId}>
                     <legend>{facts.modId}</legend>
+                    <label className="batch-panel__target-option">
+                      <input type="radio" name={`batch-replacement-target-${facts.modId}`}
+                        checked={targetSelection.reapplyModIds.includes(facts.modId)}
+                        onChange={() => onReapplyTargetChange(facts.modId)} />
+                      <span><strong>{panelCopy.reapplyCurrent}</strong></span>
+                    </label>
                     {!facts.retargetable || availableTargets.length === 0 ? (
-                      <p className="batch-panel__target-unavailable" role="alert">
+                      <p className="batch-panel__target-unavailable" role="status">
                         {panelCopy.targetUnavailable}
                       </p>
                     ) : (

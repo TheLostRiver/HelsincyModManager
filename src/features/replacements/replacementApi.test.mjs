@@ -48,7 +48,8 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
 
   const start = exportedFunction(api, "startRetargetInstallTask");
   assert.match(start, /invoke<RetargetInstallTaskStarted>\("start_retarget_install_task"/);
-  assert.match(start, /\{\s*request:\s*initialRetargetRequest\(input\),?\s*\}/);
+  assert.match(start, /request:\s*\{\s*\.\.\.initialRetargetRequest\(input\)/);
+  assert.match(start, /input\.expectedRevisionId\s*\?\s*\{ expectedRevisionId: input\.expectedRevisionId \}/);
 
   const switchPreview = exportedFunction(api, "previewRetargetReinstall");
   assert.match(
@@ -100,7 +101,7 @@ test("replacement typed API wrappers use exact commands and request shapes", () 
   assert.match(types, /export type CancelRetargetInstallTaskInput/);
   assert.doesNotMatch(
     api,
-    /packageId|revisionId|sourceId|bindingId|sandbox|staging|gameRoot|archivePath|rawPath/i,
+    /\b(?:packageId|revisionId|sourceId|bindingId|sandbox|staging|gameRoot|archivePath|rawPath)\b/i,
   );
 });
 
@@ -114,8 +115,9 @@ test("replacement request types expose stable ids but no filesystem or package f
   assert.match(source, /installedTargetId\?:\s*string/);
   assert.doesNotMatch(
     requestTypes[0],
-    /packageId|revisionId|sourceId|bindingId|sandbox|staging|targetPath|archivePath|rawPath/i,
+    /\b(?:packageId|revisionId|sourceId|bindingId|sandbox|staging|targetPath|archivePath|rawPath)\b/i,
   );
+  assert.match(requestTypes[0], /expectedRevisionId\?:\s*string/);
   assert.match(requestTypes[0], /planToken:\s*string/);
   assert.match(requestTypes[0], /taskId:\s*string/);
 });

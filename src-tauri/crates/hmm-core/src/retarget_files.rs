@@ -28,6 +28,7 @@ pub enum RetargetFileReason {
     PackageResource,
     InstalledAttachment,
     PluginNotIncluded,
+    PluginSelected,
     ExecutablePolicy,
 }
 

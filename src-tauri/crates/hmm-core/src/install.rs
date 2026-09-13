@@ -146,6 +146,8 @@ pub struct InstallPlan {
     pub conflicts: Vec<InstallConflict>,
     #[serde(default)]
     pub replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_selections: Vec<crate::PluginSelectionSnapshot>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -215,6 +217,7 @@ impl InstallPlan {
             actions,
             conflicts,
             replacement_bindings: Vec::new(),
+            plugin_selections: Vec::new(),
         }
     }
 
@@ -457,6 +460,8 @@ pub const INSTALL_MANIFEST_SCHEMA_VERSION: u32 = INSTALL_MANIFEST_SCHEMA_VERSION
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum InstallManifestValidationError {
+    #[error("install manifest plugin selection does not match its owned files")]
+    InvalidPluginSelection,
     #[error("unsupported install manifest schema version: {schema_version}")]
     UnsupportedSchemaVersion { schema_version: u32 },
     #[error("schema v1 install manifest cannot contain revisioned entries")]
@@ -500,6 +505,8 @@ pub struct InstallManifest {
     pub entries: Vec<InstallManifestEntry>,
     #[serde(default)]
     pub replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_selections: Vec<crate::PluginSelectionSnapshot>,
 }
 
 #[derive(Deserialize)]
@@ -524,6 +531,8 @@ struct InstallManifestWire {
     entries: Vec<InstallManifestEntry>,
     #[serde(default)]
     replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    #[serde(default)]
+    plugin_selections: Vec<crate::PluginSelectionSnapshot>,
 }
 
 impl<'de> Deserialize<'de> for InstallManifest {
@@ -551,6 +560,7 @@ impl<'de> Deserialize<'de> for InstallManifest {
             plan_hash: wire.plan_hash,
             entries: wire.entries,
             replacement_bindings: wire.replacement_bindings,
+            plugin_selections: wire.plugin_selections,
         };
         manifest.validate().map_err(D::Error::custom)?;
         Ok(manifest)
@@ -594,6 +604,8 @@ impl InstallManifest {
             }
         }
 
+        crate::plugin_selection::validate_manifest_plugins(self)
+            .map_err(|_| InstallManifestValidationError::InvalidPluginSelection)?;
         let mut binding_ids = BTreeSet::<ReplacementBindingId>::new();
         // `#349`：与计划侧同口径，唯一性键是 (mod_id, source_id)。见
         // `InstallPlan::validate_replacement_bindings` 的说明。
@@ -636,6 +648,7 @@ impl InstallManifest {
             plan_hash: None,
             entries,
             replacement_bindings: Vec::new(),
+            plugin_selections: Vec::new(),
         }
     }
 
@@ -660,6 +673,7 @@ impl InstallManifest {
             plan_hash,
             entries,
             replacement_bindings: Vec::new(),
+            plugin_selections: Vec::new(),
         }
     }
 }
@@ -1079,6 +1093,7 @@ mod tests {
     #[test]
     fn manifest_status_serializes_as_stable_snake_case() {
         let manifest = InstallManifest {
+            plugin_selections: Vec::new(),
             profile_id: ProfileId::new("default"),
             manifest_id: "profile:default".to_owned(),
             schema_version: 1,

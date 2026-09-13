@@ -187,6 +187,24 @@ impl RetargetInstallTaskRunner {
         task_id: &str,
         request: PreviewInitialRetargetInstallRequest,
     ) -> Result<Vec<TaskProgressEvent>, RetargetInstallTaskRunError> {
+        self.run_equipment_install(task_id, request, None)
+    }
+
+    pub fn run_equipment_retarget_install_task_at_revision(
+        &self,
+        task_id: &str,
+        request: PreviewInitialRetargetInstallRequest,
+        expected_revision: hmm_core::ModRevisionId,
+    ) -> Result<Vec<TaskProgressEvent>, RetargetInstallTaskRunError> {
+        self.run_equipment_install(task_id, request, Some(expected_revision))
+    }
+
+    fn run_equipment_install(
+        &self,
+        task_id: &str,
+        request: PreviewInitialRetargetInstallRequest,
+        expected_revision: Option<hmm_core::ModRevisionId>,
+    ) -> Result<Vec<TaskProgressEvent>, RetargetInstallTaskRunError> {
         if self.task_manager.start_task(task_id).is_err() {
             return Err(RetargetInstallTaskRunError { events: Vec::new() });
         }
@@ -203,6 +221,20 @@ impl RetargetInstallTaskRunner {
             Ok(planned) => planned,
             Err(_) => return Err(self.fail(task_id, &request, events, "planning", 0, None)),
         };
+        if expected_revision
+            .as_ref()
+            .is_some_and(|expected| expected != &planned.revision_id)
+        {
+            self.planner.discard_initial_retarget_install(&planned.plan);
+            return Err(self.fail(
+                task_id,
+                &request,
+                events,
+                "plugin_inventory_changed",
+                planned.plan.actions.len(),
+                None,
+            ));
+        }
         let revision_id = planned.revision_id;
         let plan = planned.plan;
         let source_routing = planned.source_routing;

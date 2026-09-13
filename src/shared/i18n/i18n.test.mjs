@@ -67,6 +67,7 @@ test("语言偏好持久化：版本化 JSON 且读取带校验", () => {
 
 test("copy 字典三语齐全并由 satisfies 锁定", () => {
   for (const relativePath of [
+    "src/features/install-plugins/pluginSelectionCopy.ts",
     "src/features/settings/settingsPageCopy.ts",
     "src/features/about/aboutPageCopy.ts",
     "src/features/settings/backgroundProtectionCopy.ts",

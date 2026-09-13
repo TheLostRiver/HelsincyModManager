@@ -95,6 +95,8 @@ pub enum InstallCommitError {
     PlanHasInvalidReplacementBindings,
     #[error("install plan does not match the expected Mod revision identity")]
     PlanHasInvalidRevisionIdentity,
+    #[error("install plan plugin selection is invalid or unversioned")]
+    PlanHasInvalidPluginSelection,
     #[error("install commit failed during {phase:?}")]
     Failed { phase: InstallCommitPhase },
     #[error("install commit failed during {failed_phase:?}; rollback succeeded")]
@@ -365,7 +367,23 @@ impl InstallCommitService {
         }
 
         let plan_hash = install_plan_hash(&plan);
+        if plan
+            .validate_plugin_selections(&game_id, &profile_id)
+            .is_err()
+            || plan.plugin_selections.iter().any(|selection| {
+                expected_revision.as_ref().is_none_or(|(mod_id, revision)| {
+                    selection.scope().mod_id != *mod_id
+                        || selection.scope().revision_id != *revision
+                }) || selection
+                    .files()
+                    .iter()
+                    .any(|file| file.choice == hmm_core::PluginFileChoiceKind::RetainInstalled)
+            })
+        {
+            return Err(InstallCommitError::PlanHasInvalidPluginSelection);
+        }
         let replacement_bindings = plan.replacement_bindings.clone();
+        let plugin_selections = plan.plugin_selections.clone();
         let existing_manifest = self
             .manifest_repository
             .load_manifest(&profile_id)
@@ -409,6 +427,23 @@ impl InstallCommitService {
                 phase: InstallCommitPhase::Manifest,
             })?;
         let mut sourced_actions = Vec::with_capacity(plan.actions.len());
+        for file in plugin_selections
+            .iter()
+            .flat_map(|selection| selection.files())
+            .filter(|file| !file.choice.is_included())
+        {
+            let matches = self
+                .source_files
+                .read_source_file(&file.package_file_id)
+                .is_ok_and(|bytes| hmm_core::installed_file_summary(&bytes) == file.source_file);
+            if !matches {
+                let error = InstallCommitError::Failed {
+                    phase: InstallCommitPhase::SourceRead,
+                };
+                Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
+                return Err(error);
+            }
+        }
 
         for action in plan.actions {
             let source_bytes = match self
@@ -424,6 +459,21 @@ impl InstallCommitService {
                     return Err(error);
                 }
             };
+            if plugin_selections
+                .iter()
+                .filter(|selection| selection.scope().mod_id == action.provider.mod_id)
+                .flat_map(|selection| selection.files())
+                .any(|file| {
+                    file.package_file_id == action.provider.package_file_id
+                        && hmm_core::installed_file_summary(&source_bytes) != file.source_file
+                })
+            {
+                let error = InstallCommitError::Failed {
+                    phase: InstallCommitPhase::SourceRead,
+                };
+                Self::finish_recovery_records_after_failure(&mut recovery_records, &error);
+                return Err(error);
+            }
             sourced_actions.push((action, source_bytes));
         }
 
@@ -532,6 +582,7 @@ impl InstallCommitService {
                 .map(|change| change.entry.clone())
                 .collect(),
             replacement_bindings,
+            plugin_selections,
             plan_hash,
         );
 
@@ -911,6 +962,7 @@ impl UninstallModService {
         // 解构会 move manifest，先留一份副本：下面回收残留绑定时只需要改
         // replacement_bindings，其余字段必须原样保留。
         let binding_count_before = manifest.replacement_bindings.len();
+        let plugin_count_before = manifest.plugin_selections.len();
         let reclaim_base = manifest.clone();
 
         let InstallManifest {
@@ -922,6 +974,7 @@ impl UninstallModService {
             status,
             entries,
             replacement_bindings,
+            plugin_selections,
             ..
         } = manifest;
 
@@ -932,14 +985,21 @@ impl UninstallModService {
             .into_iter()
             .filter(|snapshot| snapshot.mod_id() != &request.mod_id)
             .collect();
+        let kept_plugin_selections = plugin_selections
+            .into_iter()
+            .filter(|selection| selection.scope().mod_id != request.mod_id)
+            .collect::<Vec<_>>();
 
         if uninstall_entries.is_empty() {
             // 卸载失败或回滚残留会让条目先消失、绑定还留着。这里原先直接返回，
             // 于是清单一直为「未安装」的 MOD 声称一个替换目标，下次安装就会拿
             // 这份陈旧目标做比对（#278）。返回前先把残留回收掉。
-            if kept_replacement_bindings.len() != binding_count_before {
+            if kept_replacement_bindings.len() != binding_count_before
+                || kept_plugin_selections.len() != plugin_count_before
+            {
                 let mut reclaimed = reclaim_base.clone();
                 reclaimed.replacement_bindings = kept_replacement_bindings.clone();
+                reclaimed.plugin_selections = kept_plugin_selections.clone();
                 // 尽力而为：无论回收是否成功，该 MOD 都处于未安装状态，
                 // 不能用回收失败的错误盖掉本来的 ModNotInstalled 语义。
                 let _ = self.manifest_repository.save_manifest(&reclaimed);
@@ -1035,6 +1095,7 @@ impl UninstallModService {
         updated_manifest.schema_migration = schema_migration;
         updated_manifest.status = status;
         updated_manifest.replacement_bindings = kept_replacement_bindings;
+        updated_manifest.plugin_selections = kept_plugin_selections;
         if self
             .manifest_repository
             .save_manifest(&updated_manifest)
@@ -1223,11 +1284,13 @@ fn merge_install_manifest(
     existing_manifest: Option<InstallManifest>,
     applied_entries: Vec<InstallManifestEntry>,
     applied_replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    applied_plugin_selections: Vec<hmm_core::PluginSelectionSnapshot>,
     plan_hash: String,
 ) -> InstallManifest {
     let (
         mut entries,
         mut replacement_bindings,
+        mut plugin_selections,
         created_at,
         status,
         manifest_id,
@@ -1238,6 +1301,7 @@ fn merge_install_manifest(
             (
                 manifest.entries,
                 manifest.replacement_bindings,
+                manifest.plugin_selections,
                 manifest.created_at,
                 manifest.status,
                 Some(manifest.manifest_id),
@@ -1259,6 +1323,8 @@ fn merge_install_manifest(
     entries.extend(applied_entries);
     replacement_bindings.retain(|snapshot| !touched_mods.contains(snapshot.mod_id()));
     replacement_bindings.extend(applied_replacement_bindings);
+    plugin_selections.retain(|selection| !touched_mods.contains(&selection.scope().mod_id));
+    plugin_selections.extend(applied_plugin_selections);
 
     let completed_at = current_manifest_timestamp();
     let mut manifest = InstallManifest::completed_with_metadata(
@@ -1284,6 +1350,7 @@ fn merge_install_manifest(
     manifest.schema_migration = schema_migration;
     manifest.status = status;
     manifest.replacement_bindings = replacement_bindings;
+    manifest.plugin_selections = plugin_selections;
     manifest
 }
 
@@ -1339,6 +1406,13 @@ pub(crate) fn uninstall_manifest_snapshot_digest(
         .cloned()
         .collect::<Vec<_>>();
     hash_replacement_snapshots(&mut hasher, &bindings);
+    let plugins = manifest
+        .plugin_selections
+        .iter()
+        .filter(|selection| selection.scope().mod_id == *mod_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    crate::plugin_facts::hash_selections(&mut hasher, &plugins);
 
     format!("sha256:{}", digest_to_hex(&hasher.finalize()))
 }
@@ -1395,6 +1469,7 @@ fn install_plan_hash(plan: &InstallPlan) -> String {
         hasher.update(action.provider.layer.priority.to_be_bytes());
     }
     hash_replacement_snapshots(&mut hasher, &plan.replacement_bindings);
+    crate::plugin_facts::hash_selections(&mut hasher, &plan.plugin_selections);
 
     let digest = hasher.finalize();
     format!("sha256:{}", digest_to_hex(&digest))

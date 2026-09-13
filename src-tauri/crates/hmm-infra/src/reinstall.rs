@@ -309,6 +309,7 @@ mod tests {
     ) -> ReinstallRecoveryTransaction {
         let retained = target("retained.bin");
         ReinstallRecoveryTransaction {
+            candidate_plugin_selections: Vec::new(),
             profile_id: ProfileId::new("default"),
             intent: Default::default(),
             mod_id: ModId::new("mod-a"),

@@ -8,6 +8,7 @@ import { ReplacementTargetPanel, type ReplacementTargetPanelProps } from "./Repl
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { RetargetFileDetails } from "./RetargetFileDetails";
+import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
 import { retargetFileCopy } from "./retargetFileCopy";
 import { getEquipmentRetargetConfiguration } from "./equipmentRetargetApi";
 import { equipmentRetargetCopy } from "./equipmentRetargetCopy";
@@ -74,6 +75,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
       choice={workflow.choices[item.source.id] ?? null} installedTargetId={configuration.installedTargets?.[item.source.id]}
       installed={switching} disabled={workflow.busy || task.status === "completed"}
       onChoose={(choice) => workflow.choose(item.source.id, choice)} />)}
+    <PluginSelectionPanel controller={workflow.plugins} disabled={workflow.busy || task.status === "completed"} />
     {workflow.block && <p className="replacement-panel__notice is-blocked" role="status">{workflow.block}</p>}
     {preview.status === "loading" && <p role="status">{copy.panel.previewLoading}</p>}
     {preview.status === "error" && <p className="replacement-panel__notice" role="alert">

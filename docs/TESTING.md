@@ -18,7 +18,7 @@ node --test "src/features/replacements/*.test.mjs"
 同时验证跨 Mod 冲突、stale token、重复／缺失源、未知源原位保留和清单保存故障时的整体回滚。
 同目标组合覆盖刀身／刀鞘、身体／头部，验证重启后拆分、重新合并和清单失败回滚；同一装备目标可由
 不同 Mod 提供互不重叠的文件。真实同文件冲突必须在首次安装和重装预览中阻断，不写游戏或留下暂存。
-普通安装／新版本重装／批量安装须保存所有实际来源，保持原安装文件政策；新版本导入后改目标仍读取
+普通安装／新版本重装／批量安装须保存所有实际来源，共用插件选择政策；新版本导入后改目标仍读取
 已安装 revision。批量来源事实变化使预览失效，自动生成的原位绑定不能绕过未完成选择意图。
 旧原位安装恢复覆盖单源／多源、已记录 revision／唯一旧版本、源与目标内容篡改、缺失文件／摘要、
 接管记录和布局不一致；多版本且无 revision 时拒绝猜测。验证预览不写清单、确认切换后补齐来源、
@@ -59,6 +59,29 @@ node --test src/features/replacements/equipmentRetargetBehavior.test.mjs src/fea
 人工 v1 清单须可读取、重新应用至 v2、失败恢复原布局及原 v1 事实，并在重启后恢复或卸载到基线；
 只有版本号不同而文件无差异时，不写入或回填清单。来源拒绝须经 DTO 和三语 UI 标出名称／编号，
 保持该源原位后可以继续调整其他源，不能静默丢失选择。
+
+## MHW 插件选择
+
+```powershell
+cargo test -p hmm-core --test plugin_selection
+cargo test -p hmm-games-mhw --test plugin_policy
+cargo test -p hmm-infra plugin_selection
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment::plugins
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment
+cargo test -p hmm-app reinstall_task
+cargo test -p hmm-tauri plugin_selection
+node --test "src/features/install-plugins/*.test.mjs"
+```
+
+所有 DLL、包和游戏根都使用人工夹具；不加载 DLL，不运行随包工具。位置、结构、架构、截断文件、
+边界溢出和拒绝类型均有正反例。仓储覆盖只读无副作用、记录损坏、scope 隔离及链接／junction 拒绝，
+并验证首次保存、选择替换后的重新读取及临时文件清理。Unix 回归还覆盖目录路径被替换为链接后仍
+通过已打开的目录句柄同步；目录打开或同步失败必须返回错误。
+选择生命周期须断言实际文件、manifest 与 applied 快照：确认后安装、重启保留、明确移除／补装、
+单个装备切换、候选版本隔离、批量与 CLI 精确 token、跨 Mod 冲突、源／目标／选择变化、取消、清单
+故障和中断恢复。旧无格式附件夹具显式重建历史事实，不能用放宽新安装检查的方法维持旧测试。
+受管文件缺失／变化必须阻断；移除纯插件 Mod 最后文件须恢复备份，非插件文件不能被顺带修改。
+前端验证默认确认、保存／放弃、旧响应隔离、scope 切换、批量旧 token 失效，以及任务终态刷新。
 
 本文档定义 Helsincy Mod Manager 的测试与验证基线。项目当前处于规划和脚手架基线阶段，测试命令会随着核心功能落地继续完善。
 

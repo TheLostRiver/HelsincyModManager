@@ -615,7 +615,7 @@ fn sync_directory(path: &Path) -> Result<()> {
 }
 
 #[cfg(windows)]
-fn is_windows_directory_sync_capability_error(error: &std::io::Error) -> bool {
+pub(crate) fn is_windows_directory_sync_capability_error(error: &std::io::Error) -> bool {
     // Windows-backed mapped directories can allow the rename but reject opening or flushing a
     // directory handle. Only these capability errors downgrade the optional parent barrier; temp
     // file creation, write, sync, and rename failures still propagate.
@@ -1127,6 +1127,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let repository = JsonInstallManifestRepository::new(temp.path().join("manifests"));
         let manifest = InstallManifest {
+            plugin_selections: Vec::new(),
             profile_id: ProfileId::new("default"),
             manifest_id: "profile:default".to_owned(),
             schema_version: 1,

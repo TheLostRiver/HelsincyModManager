@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, FileCheck2, Loader2, Trash2, X } from "lucide-react";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   DetailSheet,
   Dialog,
@@ -46,6 +46,7 @@ export type UninstallConfirmationState = {
 type InstallPlanDetailSheetProps = {
   state: InstallPlanDetailSheetState;
   onClose: () => void;
+  children?: ReactNode;
 };
 
 function recoveryTitle(status: UnsafeInstallStatus, planSheet: ModLifecycleCopy["planSheet"]) {
@@ -68,7 +69,7 @@ function sheetTitle(
   return planSheet.defaultTitle;
 }
 
-export function InstallPlanDetailSheet({ state, onClose }: InstallPlanDetailSheetProps) {
+export function InstallPlanDetailSheet({ state, onClose, children }: InstallPlanDetailSheetProps) {
   const { locale } = useI18n();
   const planSheet = resolveCopy(modLifecycleCopy, locale).planSheet;
   if (state.status === "idle") {
@@ -103,6 +104,7 @@ export function InstallPlanDetailSheet({ state, onClose }: InstallPlanDetailShee
       ) : null}
       {state.status === "recovery-required" ? <RecoveryRequiredSummary state={state} /> : null}
       {state.status === "ready" ? <InstallPlanSummary plan={state.plan} /> : null}
+      {children}
     </DetailSheet>
   );
 }

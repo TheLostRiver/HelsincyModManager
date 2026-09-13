@@ -32,6 +32,7 @@ mod mod_storage_inspector;
 mod mod_storage_migrator;
 mod package_content_root;
 mod package_file_selection;
+mod plugin_selection;
 mod prerequisite_rules_repository;
 mod preview_image;
 mod rar_archive_source;
@@ -112,6 +113,7 @@ pub use mod_storage_migrator::{
 };
 pub use package_content_root::JsonModPackageContentRootRepository;
 pub use package_file_selection::JsonModPackageFileSelectionRepository;
+pub use plugin_selection::JsonPluginSelectionRepository;
 pub use prerequisite_rules_repository::{
     JsonGamePrerequisiteRuleRepository, ReadOnlyJsonGamePrerequisiteRuleRepository,
 };

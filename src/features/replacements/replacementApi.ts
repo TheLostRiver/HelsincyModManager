@@ -79,7 +79,7 @@ export function startRetargetInstallTask(
   input: StartRetargetInstallTaskInput,
 ): Promise<RetargetInstallTaskStarted> {
   return invoke<RetargetInstallTaskStarted>("start_retarget_install_task", {
-    request: initialRetargetRequest(input),
+    request: { ...initialRetargetRequest(input), ...(input.expectedRevisionId ? { expectedRevisionId: input.expectedRevisionId } : {}) },
   });
 }
 

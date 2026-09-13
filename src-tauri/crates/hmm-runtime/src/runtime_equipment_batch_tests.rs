@@ -15,7 +15,7 @@ const EXTRA_FILES: &[(&str, &[u8])] = &[
     ),
     (
         "nativePC/plugins/fixture_support.dll",
-        b"inert batch plugin",
+        &crate::plugin_test_fixture::X64_DLL,
     ),
 ];
 

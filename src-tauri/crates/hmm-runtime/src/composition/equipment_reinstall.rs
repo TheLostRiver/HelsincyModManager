@@ -24,6 +24,11 @@ impl ConfiguredReinstallExecutor {
         let services = self
             .services_for(&request.game_id)
             .map_err(ConfiguredRetargetReinstallError::Reinstall)?;
+        if intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets {
+            if let Some(prepared) = self.prepare_unbound_plugin_reapply(&request)? {
+                return Ok(prepared);
+            }
+        }
         let context = services
             .preview
             .resolve_installed_equipment_context(

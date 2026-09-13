@@ -20,6 +20,7 @@ export type EquipmentSlotIntent =
   | { action: "retarget"; sourceId: string; targetId: string };
 
 export type EquipmentRetargetSelection = {
+  expectedRevisionId?: string;
   gameId: GameId;
   profileId: string;
   modId: string;

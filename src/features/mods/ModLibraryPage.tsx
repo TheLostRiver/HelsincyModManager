@@ -53,6 +53,7 @@ import {
 } from "./ModLibraryQueryFeedback";
 import { ModPosterCard } from "./ModPosterCard";
 import { ReinstallPlanPreviewPanel } from "./ReinstallPlanPreviewPanel";
+import { ModInstallPreview, type ModInstallPreviewTarget } from "./ModInstallPreview";
 import { BatchModLifecyclePreviewPanel } from "./batch-lifecycle/BatchModLifecyclePreviewPanel.tsx";
 import {
   BatchModLifecycleResultPanel,
@@ -62,7 +63,6 @@ import { DEFAULT_BATCH_EXECUTION_POLICY } from "./batch-lifecycle/useBatchModLif
 import type { BatchModLifecycleReplacementTargetFacts } from "./batch-lifecycle/batchModLifecycleTypes.ts";
 import {
   getInstallManifestStatus,
-  previewInstallPlanForImportedMod,
   scanInstallRecovery,
   startInstallTask,
   startUninstallTask,
@@ -245,34 +245,6 @@ const initialScrollUiState = getModLibraryScrollUiState({
   clientHeight: 0,
 });
 
-function installPlanPreviewErrorMessage(
-  error: unknown,
-  planPreview: ModLibraryCopy["page"]["planPreview"],
-) {
-  const code =
-    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-      ? error.code
-      : null;
-
-  switch (code) {
-    case "install_planning_imported_mod_not_found":
-      return planPreview.modNotFound;
-    case "install_planning_imported_mod_analysis_unavailable":
-      return planPreview.analysisUnavailable;
-    case "install_planning_imported_mod_sandbox_unavailable":
-    case "install_planning_imported_mod_file_scan_unavailable":
-      return planPreview.archiveUnavailable;
-    // #284：合集包要让玩家知道该怎么做（拆分后分别导入），不能报成「读不出来」。
-    case "install_planning_imported_mod_ambiguous_content_root":
-      return planPreview.ambiguousContentRoot;
-    case "install_planning_game_adapter_not_found":
-    case "game_id_invalid":
-      return planPreview.unsupportedGame;
-    default:
-      return planPreview.failed;
-  }
-}
-
 function installTaskErrorMessage(
   error: unknown,
   operation: ManagedInstallTaskOperation,
@@ -383,6 +355,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [installPlanDetailState, setInstallPlanDetailState] = useState<InstallPlanDetailSheetState>({
     status: "idle",
   });
+  const [installPreviewTarget, setInstallPreviewTarget] = useState<ModInstallPreviewTarget | null>(null);
   const [previewModId, setPreviewModId] = useState<string | null>(null);
   const [uninstallConfirmation, setUninstallConfirmation] = useState<PendingUninstallConfirmation | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<ModDeletionConfirmation | null>(null);
@@ -1208,7 +1181,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return;
     }
 
-    const previewGeneration = ++installPlanPreviewGenerationRef.current;
+    installPlanPreviewGenerationRef.current += 1;
     const [modId] = Array.from(selectedIds);
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
@@ -1217,36 +1190,15 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       setInstallPlanDetailState(recoveryPanelState);
       return;
     }
-    if (!canInstallSelected) {
+    if (!canInstallSelected || activeProfileId === null) {
       return;
     }
 
-    setInstallPlanDetailState({ status: "loading", modName });
-    void previewInstallPlanForImportedMod({
-      gameId: DEFAULT_INSTALL_GAME_ID,
-      modId,
-      layerName: "base",
-      layerPriority: 0,
-    })
-      .then((plan) => {
-        if (installPlanPreviewGenerationRef.current !== previewGeneration) {
-          return;
-        }
-        setInstallPlanDetailState({ status: "ready", modName, plan });
-      })
-      .catch((error: unknown) => {
-        if (installPlanPreviewGenerationRef.current !== previewGeneration) {
-          return;
-        }
-        setInstallPlanDetailState({
-          status: "error",
-          modName,
-          message: installPlanPreviewErrorMessage(error, copy.page.planPreview),
-        });
-      });
+    setInstallPlanDetailState({ status: "idle" });
+    setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId, modName, autoStartWithoutPlugins: false });
   };
 
-  const startSelectedInstallTask = (requestedModId?: string) => {
+  const startSelectedInstallTask = (requestedModId?: string, approved = false, expectedRevisionId?: string) => {
     if (
       libraryQueryBusy
       || selectionMode !== "single"
@@ -1279,6 +1231,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return;
     }
 
+    if (!approved) {
+      setInstallPlanDetailState({ status: "idle" });
+      setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId, modName, autoStartWithoutPlugins: true });
+      return;
+    }
+    setInstallPreviewTarget(null);
     setInstallPlanDetailState({ status: "idle" });
     setLifecycleToast(null);
     pendingInstallProgressEventsRef.current.clear();
@@ -1295,6 +1253,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       profileId: activeProfileId,
       layerName: "base",
       layerPriority: 0,
+      expectedRevisionId,
     })
       .then((task) => {
         const pendingProgressEvent = pendingInstallProgressEventsRef.current.get(task.taskId) ?? null;
@@ -1825,6 +1784,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         state={installPlanDetailState}
         onClose={closeInstallPlanDetail}
       />
+      {installPreviewTarget && installPreviewTarget.profileId === activeProfileId && <ModInstallPreview
+        key={`${installPreviewTarget.profileId}:${installPreviewTarget.modId}`}
+        target={installPreviewTarget}
+        onClose={() => setInstallPreviewTarget(null)}
+        onInstall={(revisionId) => startSelectedInstallTask(installPreviewTarget.modId, true, revisionId)}
+      />}
 
       <UninstallConfirmationDialog
         state={uninstallConfirmation}
@@ -1855,6 +1820,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         <BatchModLifecyclePreviewPanel
           workflowState={batchWorkflow.state}
           resolution={batchWorkflow.resolution}
+          pluginChoices={batchWorkflow.pluginChoices}
+          pluginSaving={batchWorkflow.pluginSaving}
+          pluginError={batchWorkflow.pluginError}
+          onPluginChange={batchWorkflow.changePlugin}
+          onReloadPlugins={batchWorkflow.reloadPlugins}
           policy={
             batchWorkflow.state.status === "resolving"
               ? DEFAULT_BATCH_EXECUTION_POLICY
@@ -1862,6 +1832,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           }
           onPolicyChange={batchWorkflow.setPolicy}
           onReplacementTargetChange={batchWorkflow.setReplacementTarget}
+          onReapplyTargetChange={batchWorkflow.setReapplyTarget}
           onPreviewWithReplacementTargets={batchWorkflow.previewWithReplacementTargets}
           onConfirm={() => void batchWorkflow.confirmAndStart()}
           onClose={batchWorkflow.reset}
@@ -1890,6 +1861,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         taskState={reinstallWorkflow.taskState}
         listenerStatus={reinstallWorkflow.listenerStatus}
         canConfirm={reinstallWorkflow.canConfirm && !libraryQueryBusy}
+        plugins={reinstallWorkflow.plugins}
         onClose={reinstallWorkflow.closeReinstall}
         onCandidateChange={reinstallWorkflow.selectCandidateRevision}
         onPreview={reinstallWorkflow.generatePreview}

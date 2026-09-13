@@ -2,6 +2,7 @@ import type { GameId } from "../game-setup/gameSetupTypes";
 
 export type PreviewImportedModInstallPlanInput = {
   gameId: GameId;
+  profileId?: string;
   modId: string;
   layerName: string;
   layerPriority: number;
@@ -9,6 +10,7 @@ export type PreviewImportedModInstallPlanInput = {
 
 export type StartInstallTaskInput = PreviewImportedModInstallPlanInput & {
   profileId: string;
+  expectedRevisionId?: string;
 };
 
 export type StartUninstallTaskInput = {

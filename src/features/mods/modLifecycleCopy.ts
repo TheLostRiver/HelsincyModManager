@@ -1,4 +1,5 @@
 import type { LocaleDictionary } from "../../shared/i18n";
+import { pluginSelectionCopy } from "../install-plugins/pluginSelectionCopy.ts";
 import type { InstallRecoveryIssueSummary, UnsafeInstallStatus } from "./modInstallPlanTypes";
 import type { GamePrerequisiteDecisionCode } from "./modInstallPlanTypes";
 import type { ManagedInstallTaskPhase } from "./modInstallTaskState";
@@ -112,6 +113,7 @@ export const modLifecycleCopy = {
       installFailedDefault: "安装失败",
       uninstallFailedDefault: "卸载失败",
       installFailures: {
+        ...pluginSelectionCopy.zh_cn.errors,
         planning: "无法生成安装计划",
         lock: "安装任务暂时无法开始",
         commit: "安装未完成，已重新检查安装状态",
@@ -239,6 +241,7 @@ export const modLifecycleCopy = {
       installFailedDefault: "Install failed",
       uninstallFailedDefault: "Uninstall failed",
       installFailures: {
+        ...pluginSelectionCopy.en.errors,
         planning: "Failed to build the install plan",
         lock: "The install task cannot start right now",
         commit: "Install did not complete; install status was re-checked",
@@ -371,6 +374,7 @@ export const modLifecycleCopy = {
       installFailedDefault: "インストール失敗",
       uninstallFailedDefault: "アンインストール失敗",
       installFailures: {
+        ...pluginSelectionCopy.ja.errors,
         planning: "インストールプランを生成できません",
         lock: "インストールタスクを今は開始できません",
         commit: "インストールが完了しなかったため、インストール状態を再確認しました",

@@ -21,6 +21,7 @@ import {
   type ReinstallTaskState,
 } from "./modReinstallTaskState";
 import type { ReinstallPlanPreview } from "./modReinstallTypes";
+import { usePluginSelection } from "../install-plugins/usePluginSelection";
 
 type ReinstallPreviewState =
   | { status: "idle" }
@@ -82,6 +83,8 @@ export function useModReinstallWorkflow({
   const activeTaskContextRef = useRef<ReinstallTaskContext | null>(null);
   const refreshedTerminalTaskIdsRef = useRef(new Set<string>());
   const requestGenerationRef = useRef(0);
+  const scopeRef = useRef({ gameId, profileId });
+  scopeRef.current = { gameId, profileId };
 
   const setTrackedDialogState = useCallback(
     (update: ReinstallDialogState | ((current: ReinstallDialogState) => ReinstallDialogState)) => {
@@ -96,6 +99,31 @@ export function useModReinstallWorkflow({
     taskStateRef.current = next;
     setTaskState(next);
   }, []);
+
+  const dialogInScope = dialogState.status === "open" && dialogState.gameId === gameId && dialogState.profileId === profileId;
+  const plugins = usePluginSelection(dialogInScope && dialogState.selectedCandidateRevisionId ? {
+    gameId: dialogState.gameId, profileId: dialogState.profileId, modId: dialogState.modId,
+    revisionId: dialogState.selectedCandidateRevisionId,
+  } : null, {
+    onInvalidated: () => {
+      requestGenerationRef.current += 1;
+      setTrackedDialogState((current) => current.status === "open" ? { ...current, previewState: { status: "idle" } } : current);
+    },
+  });
+  const reloadPlugins = plugins.reload;
+
+  useEffect(() => {
+    const current = dialogStateRef.current;
+    if (current.status === "open" && (current.gameId !== gameId || current.profileId !== profileId)) {
+      requestGenerationRef.current += 1;
+      setTrackedDialogState({ status: "closed" });
+      if (taskIdRef.current === null) {
+        startPendingRef.current = false;
+        setTrackedTaskState({ status: "idle" });
+      }
+    }
+  }, [gameId, profileId, setTrackedDialogState, setTrackedTaskState]);
+  useEffect(() => () => { requestGenerationRef.current += 1; }, []);
 
   const refreshTaskDurableFacts = useCallback(
     async (context: ReinstallTaskContext) => {
@@ -117,7 +145,7 @@ export function useModReinstallWorkflow({
       ]);
 
       setTrackedDialogState((current) => {
-        if (current.status !== "open" || current.modId !== context.modId) {
+        if (current.status !== "open" || current.modId !== context.modId || current.profileId !== context.profileId || current.gameId !== context.gameId) {
           return current;
         }
 
@@ -129,8 +157,9 @@ export function useModReinstallWorkflow({
           catalogMessage: facts.revisions === null ? current.catalogMessage : null,
         };
       });
+      if (scopeRef.current.gameId === context.gameId && scopeRef.current.profileId === context.profileId) reloadPlugins();
     },
-    [refreshLibrary, setTrackedDialogState],
+    [refreshLibrary, setTrackedDialogState, reloadPlugins],
   );
 
   const applyProgressState = useCallback(
@@ -274,7 +303,7 @@ export function useModReinstallWorkflow({
 
   const closeReinstall = useCallback(() => {
     const currentTask = taskStateRef.current;
-    if (currentTask.status === "starting" || currentTask.status === "running") {
+    if (plugins.saving || currentTask.status === "starting" || currentTask.status === "running") {
       return;
     }
 
@@ -285,10 +314,11 @@ export function useModReinstallWorkflow({
     activeTaskContextRef.current = null;
     setTrackedTaskState({ status: "idle" });
     setTrackedDialogState({ status: "closed" });
-  }, [setTrackedDialogState, setTrackedTaskState]);
+  }, [plugins.saving, setTrackedDialogState, setTrackedTaskState]);
 
   const selectCandidateRevision = useCallback(
     (candidateRevisionId: string) => {
+      if (plugins.saving || startPendingRef.current) return;
       requestGenerationRef.current += 1;
       setTrackedDialogState((current) =>
         current.status === "open"
@@ -300,14 +330,14 @@ export function useModReinstallWorkflow({
           : current,
       );
     },
-    [setTrackedDialogState],
+    [plugins.saving, setTrackedDialogState],
   );
 
   const generatePreview = useCallback(() => {
     const current = dialogStateRef.current;
     const currentTask = taskStateRef.current;
     if (
-      current.status !== "open" ||
+      !plugins.ready || current.status !== "open" ||
       current.catalogStatus !== "ready" ||
       !canPreviewReinstall(current.installStatus, current.selectedCandidateRevisionId, currentTask)
     ) {
@@ -349,13 +379,13 @@ export function useModReinstallWorkflow({
             : latest,
         );
       });
-  }, [reCopy, setTrackedDialogState, setTrackedTaskState]);
+  }, [plugins.ready, reCopy, setTrackedDialogState, setTrackedTaskState]);
 
   const confirmReinstall = useCallback(() => {
     const current = dialogStateRef.current;
     const currentTask = taskStateRef.current;
     if (
-      listenerStatus !== "ready" ||
+      !plugins.ready || startPendingRef.current || listenerStatus !== "ready" ||
       current.status !== "open" ||
       current.previewState.status !== "ready" ||
       !canConfirmReinstall(current.installStatus, current.previewState.preview, currentTask)
@@ -383,15 +413,21 @@ export function useModReinstallWorkflow({
       candidateRevisionId: preview.candidateRevision.revisionId,
     });
 
-    void startReinstallTask({
+    const generation = requestGenerationRef.current;
+    void plugins.confirm().then(() => {
+      if (generation !== requestGenerationRef.current || scopeRef.current.gameId !== current.gameId || scopeRef.current.profileId !== current.profileId) {
+        throw { code: "plugin_inventory_changed" };
+      }
+      return startReinstallTask({
       gameId: current.gameId,
       profileId: current.profileId,
       modId: current.modId,
       candidateRevisionId: preview.candidateRevision.revisionId,
       layer: { name: "base", priority: 0 },
       planToken: preview.planToken,
-    })
+    }); })
       .then((task) => {
+        if (generation !== requestGenerationRef.current) return;
         startPendingRef.current = false;
         const pendingProgressEvent = pendingProgressEventsRef.current.get(task.taskId) ?? null;
         pendingProgressEventsRef.current.clear();
@@ -422,6 +458,7 @@ export function useModReinstallWorkflow({
         applyProgressState(next);
       })
       .catch((error: unknown) => {
+        if (generation !== requestGenerationRef.current) return;
         startPendingRef.current = false;
         pendingProgressEventsRef.current.clear();
         activeTaskContextRef.current = null;
@@ -432,17 +469,18 @@ export function useModReinstallWorkflow({
             : latest,
         );
       });
-  }, [applyProgressState, listenerStatus, reCopy, setTrackedDialogState, setTrackedTaskState]);
+  }, [applyProgressState, listenerStatus, plugins, reCopy, setTrackedDialogState, setTrackedTaskState]);
 
   const taskActive = taskState.status === "starting" || taskState.status === "running";
   const canConfirm =
-    listenerStatus === "ready" &&
+    plugins.ready && listenerStatus === "ready" &&
     dialogState.status === "open" &&
     dialogState.previewState.status === "ready" &&
     canConfirmReinstall(dialogState.installStatus, dialogState.previewState.preview, taskState);
 
   return {
-    dialogState,
+    plugins,
+    dialogState: dialogInScope ? dialogState : { status: "closed" } as ReinstallDialogState,
     taskState,
     listenerStatus,
     taskActive,

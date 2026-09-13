@@ -147,27 +147,37 @@ pub fn list_replacement_target_occupancy(
 }
 
 #[tauri::command]
-pub fn preview_initial_retarget_install(
+pub async fn preview_initial_retarget_install(
     request: PreviewInitialRetargetInstallRequestDto,
     state: State<'_, AppState>,
 ) -> Result<InitialRetargetInstallPreviewDto, CommandErrorDto> {
     let request = preview_request_from_dto(request)?;
-    state
-        .initial_retarget_install_preflight
-        .preview(request)
+    let service = state.initial_retarget_install_preflight.clone();
+    tauri::async_runtime::spawn_blocking(move || service.preview(request))
+        .await
+        .map_err(|_| {
+            replacement_workflow_error_to_command_error(ReplacementWorkflowError::PlanUnavailable)
+        })?
         .map(Into::into)
         .map_err(replacement_workflow_error_to_command_error)
 }
 
 #[tauri::command]
-pub fn preview_retarget_reinstall(
+pub async fn preview_retarget_reinstall(
     request: PreviewRetargetReinstallRequestDto,
     state: State<'_, AppState>,
 ) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
-    let preview = state
-        .reinstall_executor
-        .preview_retarget_reinstall(retarget_reinstall_request_from_dto(request)?)
-        .map_err(retarget_reinstall_error_to_command_error)?;
+    let request = retarget_reinstall_request_from_dto(request)?;
+    let service = state.reinstall_executor.clone();
+    let preview =
+        tauri::async_runtime::spawn_blocking(move || service.preview_retarget_reinstall(request))
+            .await
+            .map_err(|_| {
+                replacement_workflow_error_to_command_error(
+                    ReplacementWorkflowError::PlanUnavailable,
+                )
+            })?
+            .map_err(retarget_reinstall_error_to_command_error)?;
     ReinstallPlanPreviewDto::try_from(preview).map_err(|_| CommandErrorDto {
         code: "replacement_reinstall_preview_unavailable".to_owned(),
         message: "replacement reinstall preview is unavailable".to_owned(),
@@ -180,7 +190,13 @@ pub fn start_retarget_install_task(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
+    let expected_revision = request.expected_revision_id.clone();
     let request = start_request_from_dto(request)?;
+    let expected_revision = crate::plugin_selection_commands::expected_current_revision(
+        expected_revision,
+        &request.mod_id,
+        &state.replacement_workflow,
+    )?;
     let runner_request = request.clone();
     let task = queue_retarget_install_task(&state.retarget_install_tasks, request)?;
     let _ = emit_task_progress(&app_handle, queued_event(&task));
@@ -189,6 +205,7 @@ pub fn start_retarget_install_task(
         app_handle,
         task.task_id.clone(),
         runner_request,
+        expected_revision,
     );
     Ok(task.into())
 }
@@ -260,9 +277,18 @@ fn spawn_runner(
     app_handle: AppHandle,
     task_id: String,
     request: StartRetargetInstallTaskRequest,
+    expected_revision: Option<hmm_core::ModRevisionId>,
 ) {
     std::thread::spawn(move || {
-        let events = match runner.run_retarget_install_task(&task_id, request) {
+        let result = match expected_revision {
+            Some(revision) => runner.run_equipment_retarget_install_task_at_revision(
+                &task_id,
+                request.into(),
+                revision,
+            ),
+            None => runner.run_retarget_install_task(&task_id, request),
+        };
+        let events = match result {
             Ok(events) => events,
             Err(error) => error.events,
         };
@@ -477,6 +503,9 @@ pub(crate) fn replacement_workflow_error_to_command_error(
     error: ReplacementWorkflowError,
 ) -> CommandErrorDto {
     let (code, message) = match error {
+        ReplacementWorkflowError::PluginSelection(error) => {
+            return crate::plugin_selection_commands::plugin_error(error)
+        }
         ReplacementWorkflowError::UnsupportedGame => (
             "replacement_unsupported_game",
             "replacement is unsupported for this game",
@@ -688,13 +717,7 @@ impl From<InitialRetargetInstallPreflight> for InitialRetargetInstallPreviewDto 
                     target_internal_id: action.target_internal_id().to_owned(),
                 })
                 .collect(),
-            warnings: planned
-                .retarget_plans()
-                .iter()
-                .flat_map(|plan| plan.warnings())
-                .copied()
-                .map(Into::into)
-                .collect(),
+            warnings: planned.warnings().into_iter().map(Into::into).collect(),
             install_plan: planned.install_plan().clone().into(),
             prerequisite_decision: preflight.prerequisite_decision.into(),
         }
@@ -893,6 +916,7 @@ mod tests {
         let task_manager = Arc::new(hmm_app::TaskManager::new());
         let task_service = hmm_app::RetargetInstallTaskService::new(task_manager);
         let request = start_request_from_dto(StartRetargetInstallTaskRequestDto {
+            expected_revision_id: None,
             game_id: "mhw".to_owned(),
             profile_id: "profile-a".to_owned(),
             mod_id: "mod-a".to_owned(),
