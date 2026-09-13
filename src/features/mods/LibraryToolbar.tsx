@@ -1,4 +1,4 @@
-import { Search, Grid, LayoutGrid, List, Tags, TerminalSquare } from "lucide-react";
+import { Search, Grid, LayoutGrid, List, MessageSquareText, Tags, TerminalSquare } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
@@ -12,10 +12,12 @@ type LibraryToolbarProps = {
   filterChips: LibraryFilterChip[];
   viewMode: ModViewMode;
   showCardCategoryLabels: boolean;
+  showCardHover: boolean;
   onQueryChange: (value: string) => void;
   onQuerySubmit: () => void;
   onFilterChange: (value: ModLibraryFilter) => void;
   onToggleCardCategoryLabels: () => void;
+  onToggleCardHover: () => void;
   onViewModeChange: (mode: ModViewMode) => void;
 };
 
@@ -27,16 +29,19 @@ export function LibraryToolbar({
   filterChips,
   viewMode,
   showCardCategoryLabels,
+  showCardHover,
   onQueryChange,
   onQuerySubmit,
   onFilterChange,
   onToggleCardCategoryLabels,
+  onToggleCardHover,
   onViewModeChange,
 }: LibraryToolbarProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(modLibraryCopy, locale).toolbar;
   const viewModeIndex = Math.max(0, viewModeOrder.indexOf(viewMode));
   const labelToggleTitle = showCardCategoryLabels ? copy.hideLabels : copy.showLabels;
+  const hoverToggleTitle = showCardHover ? copy.hideHover : copy.showHover;
 
   return (
     <div className="library-toolbar" data-tour-id="mods.toolbar">
@@ -70,6 +75,20 @@ export function LibraryToolbar({
                 onClick={onToggleCardCategoryLabels}
               >
                 <Tags size={16} strokeWidth={2.3} aria-hidden="true" />
+              </button>
+            )}
+          </ModLibraryControlTooltip>
+
+          <ModLibraryControlTooltip content={hoverToggleTitle} describeControl={false}>
+            {() => (
+              <button
+                type="button"
+                className={`library-hover-toggle${showCardHover ? " is-active" : ""}`}
+                aria-label={hoverToggleTitle}
+                aria-pressed={showCardHover}
+                onClick={onToggleCardHover}
+              >
+                <MessageSquareText size={16} strokeWidth={2.3} aria-hidden="true" />
               </button>
             )}
           </ModLibraryControlTooltip>
