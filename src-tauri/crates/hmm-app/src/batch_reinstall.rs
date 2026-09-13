@@ -217,6 +217,10 @@ impl PreparedReinstall {
             canonical["originalInstallEvidence"] =
                 serde_json::to_value(evidence).expect("serializable original install evidence");
         }
+        if let Some(evidence) = &self.additional_sources_evidence {
+            canonical["additionalSourcesEvidence"] =
+                serde_json::to_value(evidence).expect("serializable additional source evidence");
+        }
         if !self.attachment_counts.is_empty() {
             canonical["attachmentCounts"] = serde_json::json!({
                 "retained": self.attachment_counts.retained, "excluded": self.attachment_counts.excluded,

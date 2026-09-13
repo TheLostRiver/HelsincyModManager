@@ -71,6 +71,11 @@ MHW 默认装备重定向的文件盘点和路径规则位于 `hmm-games-mhw/equ
 分别记录和复核，防止原包变化被暂存缓存掩盖。
 详见[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md)。
 
+独立猎虫身份和目录位于 `hmm-games-mhw/kinsect_retarget`，与武器共用 adapter 内的编号路径映射，
+不改变 14 武器族或把游戏语法放入 core。已有装备绑定的旧安装以 `AdditionalSourcesEvidence` 核验
+新增原位来源；原绑定集合、源文件归属和摘要进入预览／批量／恢复事实，新绑定与文件在同一事务提交。
+原始无绑定安装的证据边界不变，旧恢复事务仍可读取；无实际变化不写清单。
+
 ```text
 src-tauri/              # Tauri 应用 crate，包名 hmm-tauri
   src/                  # Tauri commands、state、events、应用启动

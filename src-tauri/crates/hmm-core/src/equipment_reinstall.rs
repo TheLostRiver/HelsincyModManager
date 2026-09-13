@@ -9,6 +9,26 @@ pub fn is_same_revision_equipment_target_switch(
     revision_id: &ModRevisionId,
     candidates: &[ReplacementBindingSnapshot],
 ) -> bool {
+    check_target_switch(manifest, mod_id, revision_id, candidates, false)
+}
+
+/// 只供读取旧恢复事务：当时的写入器尚未保存独立追加来源证据。
+pub(crate) fn is_legacy_equipment_target_switch(
+    manifest: &InstallManifest,
+    mod_id: &ModId,
+    revision_id: &ModRevisionId,
+    candidates: &[ReplacementBindingSnapshot],
+) -> bool {
+    check_target_switch(manifest, mod_id, revision_id, candidates, true)
+}
+
+fn check_target_switch(
+    manifest: &InstallManifest,
+    mod_id: &ModId,
+    revision_id: &ModRevisionId,
+    candidates: &[ReplacementBindingSnapshot],
+    legacy_new_sources: bool,
+) -> bool {
     if candidates.len() < 2 {
         return false;
     }
@@ -65,8 +85,9 @@ pub fn is_same_revision_equipment_target_switch(
                 }
             }
             None => {
-                // 新分析发现的源必须由应用层从同 revision 重建，不能挪用已有绑定。
-                if candidate.binding().created_at_unix_millis() != 0
+                // 新来源必须先通过 AdditionalSourcesEvidence 加入只读 lineage 副本。
+                if !legacy_new_sources
+                    || candidate.binding().created_at_unix_millis() != 0
                     || installed
                         .values()
                         .any(|previous| previous.binding_id() == candidate.binding_id())
@@ -217,7 +238,7 @@ mod tests {
         let mut encoded = serde_json::to_value(candidates.pop().unwrap()).unwrap();
         encoded["binding"]["created_at_unix_millis"] = serde_json::json!(0);
         candidates.push(serde_json::from_value(encoded).unwrap());
-        assert!(accepts(&manifest, &candidates));
+        assert!(!accepts(&manifest, &candidates));
         candidates.remove(0);
         assert!(!accepts(&manifest, &candidates));
     }

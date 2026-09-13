@@ -62,6 +62,29 @@ fn original_weapon_names_are_available_without_installation_or_hmm_retargeting()
 }
 
 #[test]
+fn original_kinsect_names_are_available_without_installation_or_hmm_retargeting() {
+    let files = ["nativePC/wp/mus/mus023/mod/mus023.mod3"];
+    let (temporary, runtime, package) = fixture(&files);
+    let summary = runtime
+        .replacement_workflow
+        .replacement_summary(
+            AnalyzeImportedReplacementRequest {
+                game_id: GameId::mhw(),
+                mod_id: ModId::new("mod-a"),
+            },
+            Some(&ProfileId::new("default")),
+        )
+        .unwrap();
+    assert_eq!(summary.sources.len(), 1);
+    assert_eq!(summary.sources[0].kind, "kinsect");
+    assert_eq!(summary.sources[0].internal_id, "mus023");
+    assert_eq!(summary.sources[0].display_names["zh_cn"], "龙魂虫");
+    assert_eq!(summary.sources[0].display_names["en"], "Dragon Soul");
+    assert_eq!(summary.installed_targets, Some(vec![]));
+    assert_no_installation(temporary.path(), &package, &files);
+}
+
+#[test]
 fn original_armor_names_come_from_the_catalog_without_a_profile_or_binding() {
     let files = ["nativePC/pl/f_equip/pl129_0000/arm/mod/f_body.mod3"];
     let (temporary, runtime, package) = fixture(&files);

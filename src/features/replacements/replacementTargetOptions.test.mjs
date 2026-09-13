@@ -39,6 +39,27 @@ test("armor search aliases remain searchable without becoming duplicate choices"
   assert.equal(buildReplacementTargetOptions([armor], "zh_cn", "pl001_0000").length, 1);
 });
 
+test("all 105 checked kinsect names are selectable across 29 resource targets in each locale", () => {
+  const artifact = JSON.parse(readFileSync(new URL("../../../src-tauri/crates/hmm-games-mhw/data/mhw-kinsect-targets.v1.json", import.meta.url), "utf8"));
+  const targets = artifact.targets.map((raw) => ({
+    id: raw.stable_id, gameId: "mhw", targetType: "kinsect", internalId: raw.internal_id,
+    displayNames: Object.fromEntries(Object.entries(raw.names).map(([locale, names]) => [locale, names.display_name])),
+    aliases: [...new Set(Object.values(raw.names).flatMap((names) => names.aliases))],
+    aliasesByLocale: Object.fromEntries(Object.entries(raw.names).map(([locale, names]) => [locale, names.aliases])),
+  }));
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    const options = buildReplacementTargetOptions(targets, locale);
+    assert.equal(options.length, 105);
+    assert.equal(new Set(options.map((option) => option.key)).size, 105);
+    assert.equal(new Set(options.map((option) => option.target.id)).size, 29);
+  }
+  const found = buildReplacementTargetOptions(targets, "zh_cn", "Nexus Dragon Soul");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].displayName, "Nexus Dragon Soul");
+  assert.equal(found[0].target.internalId, "mus023");
+  assert.equal(replacementIdentityLabel(found[0].target, "zh_cn", found[0].displayName), "Nexus Dragon Soul (mus023)");
+});
+
 test("selected alias keeps its proven name across locale changes and never uses array position as translation", () => {
   const selected = replacementTargetOption(weapon, "en", "黑龙玄刃");
   assert.equal(selected.displayName, "黑龙玄刃");

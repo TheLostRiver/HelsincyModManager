@@ -104,6 +104,8 @@ pub(super) fn reinstall_recovery_fixture() -> (
         status: ReinstallRecoveryTransactionStatus::Committing,
         pre_reinstall_manifest: old_manifest.clone(),
         original_install_evidence: None,
+        source_evidence_version: 1,
+        additional_sources_evidence: None,
         candidate_replacement_bindings,
         candidate_plugin_selections: Vec::new(),
         targets: vec![ReinstallRecoveryTarget {

@@ -295,7 +295,7 @@ pub use profile::{
 pub use reinstall::{
     InstalledEquipmentReinstallContext, InstalledEquipmentReinstallResolution,
     InstalledReplacementReinstallContext, InstalledReplacementReinstallResolution,
-    PreparedReinstall, ReinstallAttachmentCounts, ReinstallBlockingReason,
+    OriginalSourceInventory, PreparedReinstall, ReinstallAttachmentCounts, ReinstallBlockingReason,
     ReinstallBlockingReasonSummary, ReinstallCandidatePlanError, ReinstallCandidatePlanRequest,
     ReinstallCandidatePlanner, ReinstallCandidateSourceReader, ReinstallPlanPreview,
     ReinstallPreparation, ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,

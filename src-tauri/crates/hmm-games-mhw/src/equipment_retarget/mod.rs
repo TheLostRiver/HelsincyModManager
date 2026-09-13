@@ -2,7 +2,9 @@
 mod file_effects;
 mod identity;
 mod inventory;
+mod numbered_identity;
 mod path_strategy;
+mod resource_path;
 pub(crate) use identity::original_target_identity;
 
 use hmm_core::{GameId, ReplacementAnalysis, RetargetPlan};

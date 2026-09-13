@@ -64,7 +64,7 @@ export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, t
       const catalogTarget = targets.find((target) => target.id === item.id && target.gameId === gameId
         && target.targetType === item.kind && target.internalId === item.internalId);
       const named = Object.keys(item.displayNames).length > 0;
-      const sharedNames = named && catalogTarget?.targetType === "weapon"
+      const sharedNames = named && catalogTarget
         ? buildReplacementTargetOptions([catalogTarget], locale).slice(1).map((option) => option.displayName)
         : [];
       return <div key={item.id}>

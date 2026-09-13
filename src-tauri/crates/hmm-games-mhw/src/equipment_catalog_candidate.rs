@@ -18,6 +18,7 @@ const NATIVE_PC_ROOT: &str = "nativePC";
 pub enum EquipmentCandidateTargetKind {
     Armor,
     Weapon,
+    Kinsect,
 }
 
 impl EquipmentCandidateTargetKind {
@@ -25,6 +26,7 @@ impl EquipmentCandidateTargetKind {
         match self {
             Self::Armor => "armor",
             Self::Weapon => "weapon",
+            Self::Kinsect => "kinsect",
         }
     }
 }
@@ -49,6 +51,8 @@ pub enum EquipmentCandidateIdentityError {
     InvalidArmorResourcePath,
     #[error("equipment candidate weapon resource path is invalid")]
     InvalidWeaponResourcePath,
+    #[error("equipment candidate kinsect resource path is invalid")]
+    InvalidKinsectResourcePath,
 }
 
 impl EquipmentCandidateIdentityError {
@@ -59,6 +63,7 @@ impl EquipmentCandidateIdentityError {
             Self::WrongPathFamily => "wrong_path_family",
             Self::InvalidArmorResourcePath => "invalid_armor_resource_path",
             Self::InvalidWeaponResourcePath => "invalid_weapon_resource_path",
+            Self::InvalidKinsectResourcePath => "invalid_kinsect_resource_path",
         }
     }
 }
@@ -673,6 +678,13 @@ fn validate_resource_identity(
                 return Err(EquipmentCandidateIdentityError::InvalidWeaponResourcePath);
             }
         }
+        EquipmentCandidateTargetKind::Kinsect => {
+            if path_family != "wp/mus" {
+                return Err(EquipmentCandidateIdentityError::WrongPathFamily);
+            }
+            crate::KinsectResourceRoot::parse(resource_path)
+                .map_err(|_| EquipmentCandidateIdentityError::InvalidKinsectResourcePath)?;
+        }
     }
 
     let normalized_path = normalized.as_str().to_owned();
@@ -705,6 +717,7 @@ fn is_valid_armor_internal_id(value: &str) -> bool {
 
 fn is_weapon_family(value: &str) -> bool {
     !value.is_empty()
+        && value != "mus"
         && value
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
