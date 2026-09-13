@@ -203,7 +203,7 @@ test("settings hosts the persisted panel outside session preview state", () => {
   const copyModule = readProjectFile("src/features/settings/settingsPageCopy.ts");
   assert.match(
     copyModule,
-    /后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。/,
+    /后台保护、窗口关闭与启动页偏好会正式保存；标记为预览的选项只在当前会话中生效。/,
   );
   assert.match(page, /\{copy\.hero\.description\}/);
   assert.doesNotMatch(page, /当前真正后台守护尚未落地/);

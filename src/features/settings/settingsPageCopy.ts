@@ -34,6 +34,8 @@ export type SettingsPageCopy = {
     reduceMotion: { title: string; description: string };
     startPage: {
       label: string;
+      hint: string;
+      saveError: string;
       dashboard: string;
       mods: string;
       last: string;
@@ -70,7 +72,7 @@ export const settingsPageCopy = {
       eyebrow: "应用设置",
       title: "调整管理器的工作方式",
       description:
-        "后台保护与窗口关闭偏好会正式保存；其余标记为预览的选项只在当前会话中生效。",
+        "后台保护、窗口关闭与启动页偏好会正式保存；标记为预览的选项只在当前会话中生效。",
       statusLabel: "设置保存状态",
       dirty: "存在本次会话改动",
       pristine: "使用默认预览值",
@@ -79,7 +81,7 @@ export const settingsPageCopy = {
     appearance: {
       title: "界面偏好",
       description:
-        "主题模式与界面语言会立即保存并长期生效；其余显示密度类选项只是本次会话的预览，正式保存前不写入配置文件。",
+        "主题和语言即时生效并保存；启动页选择在下次启动时生效。显示密度类选项仍为本次会话的预览。",
       theme: {
         label: "主题模式",
         hint: "立即生效并长期保存，不受下方预览选项的重置影响。",
@@ -104,6 +106,8 @@ export const settingsPageCopy = {
       },
       startPage: {
         label: "启动后打开",
+        hint: "自动保存；完整退出并重启后生效。“上次页面”会恢复退出前最后访问的页面。",
+        saveError: "启动页偏好保存失败，请重试。",
         dashboard: "工作台",
         mods: "Mod 管理",
         last: "上次页面",
@@ -155,7 +159,7 @@ export const settingsPageCopy = {
       eyebrow: "App Settings",
       title: "Tune how the manager works",
       description:
-        "Background protection and the window-close preference are saved for real; options marked as previews only apply to the current session.",
+        "Background protection, window-close and start-page preferences are saved; options marked as previews only apply to the current session.",
       statusLabel: "Settings save status",
       dirty: "Session changes pending",
       pristine: "Using default preview values",
@@ -164,7 +168,7 @@ export const settingsPageCopy = {
     appearance: {
       title: "Interface preferences",
       description:
-        "Theme and interface language are saved immediately and persist; the remaining display-density options are session-only previews and are not written to the config file.",
+        "Theme and language apply immediately and are saved. The start page applies on the next launch. Display-density options remain session previews.",
       theme: {
         label: "Theme mode",
         hint: "Takes effect immediately and persists; unaffected by resetting the preview options below.",
@@ -190,6 +194,8 @@ export const settingsPageCopy = {
       },
       startPage: {
         label: "Open on launch",
+        hint: "Saved automatically; takes effect after fully exiting and restarting. Last page restores the page you visited before exiting.",
+        saveError: "Could not save the start-page preference. Please try again.",
         dashboard: "Dashboard",
         mods: "Mod library",
         last: "Last page",
@@ -249,7 +255,7 @@ export const settingsPageCopy = {
       eyebrow: "アプリ設定",
       title: "マネージャーの動作を調整",
       description:
-        "バックグラウンド保護とウィンドウを閉じる際の設定は正式に保存されます。プレビューと記載された項目は現在のセッションのみ有効です。",
+        "バックグラウンド保護、ウィンドウを閉じる際の設定、起動ページは保存されます。プレビューと記載された項目は現在のセッションのみ有効です。",
       statusLabel: "設定の保存状態",
       dirty: "このセッションでの変更あり",
       pristine: "既定のプレビュー値を使用中",
@@ -258,7 +264,7 @@ export const settingsPageCopy = {
     appearance: {
       title: "インターフェース設定",
       description:
-        "テーマと表示言語は即時保存され長期的に有効です。その他の表示密度系オプションはセッション内プレビューで、正式保存まで設定ファイルには書き込まれません。",
+        "テーマと表示言語は即時に反映・保存されます。起動ページは次回起動時に反映されます。表示密度の項目は現在のセッション内プレビューです。",
       theme: {
         label: "テーマモード",
         hint: "即時に反映され長期保存されます。下のプレビュー項目のリセットの影響を受けません。",
@@ -284,6 +290,8 @@ export const settingsPageCopy = {
       },
       startPage: {
         label: "起動後に開くページ",
+        hint: "自動保存され、完全に終了して再起動すると反映されます。「前回のページ」は終了前に最後に開いたページを復元します。",
+        saveError: "起動ページの設定を保存できませんでした。もう一度お試しください。",
         dashboard: "ダッシュボード",
         mods: "Mod 管理",
         last: "前回のページ",

@@ -513,7 +513,7 @@ StagingMaterializeFailed
 
 ## UI 工作流
 
-首版主要入口固定为 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`；现有右键“MOD 文件修改”动作
+首版主要入口固定为 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`；现有右键“MOD 文件重定向”动作
 直接打开该 Tab。该入口承载具体 Mod 的 source、target 选择和预览；未来 `/replacements` 页面只做
 全局 binding、占用与冲突总览，不作为 Gate B 首个操作入口。
 
@@ -599,7 +599,7 @@ SQLite 中应持久化玩家状态：
 
 ### 阶段 4：Tauri contract 与前端工作流（AR4，已实现）
 
-- 在 Mod 详情统一面板启用“替换目标”Tab，并由右键“MOD 文件修改”直达。
+- 在 Mod 详情统一面板启用“替换目标”Tab，并由右键“MOD 文件重定向”直达。
 - 展示源槽位、target catalog、冲突预览和 warning。
 - 首次安装只提交后端定义的 target/binding 选择，不让前端拼接路径。
 
