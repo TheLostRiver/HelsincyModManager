@@ -13,6 +13,7 @@ mod armor_retarget;
 mod equipment_catalog_candidate;
 mod equipment_retarget;
 mod executable_reject_list;
+mod kinsect_retarget;
 mod package_path;
 mod plugin_policy;
 mod prerequisites;
@@ -34,6 +35,7 @@ pub use equipment_catalog_candidate::{
     MHW_EQUIPMENT_CANDIDATE_JSON_SCHEMA, MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION,
 };
 pub use equipment_retarget::MhwReplacementAdapter;
+pub use kinsect_retarget::{KinsectId, KinsectPathError, KinsectResourceRoot};
 // 拒绝清单不是武器专属概念：防具侧（#336 切片⑥）落地时应复用同一份，
 // 所以放在 crate 级而不是 weapon_retarget 里。
 pub use executable_reject_list::{

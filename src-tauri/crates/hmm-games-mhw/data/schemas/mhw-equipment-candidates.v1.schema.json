@@ -128,14 +128,14 @@
       "properties": {
         "stable_id": {
           "type": "string",
-          "pattern": "^mhw:(armor|weapon):[a-f0-9]{64}$"
+          "pattern": "^mhw:(armor|weapon|kinsect):[a-f0-9]{64}$"
         },
         "target_kind": {
-          "enum": ["armor", "weapon"]
+          "enum": ["armor", "weapon", "kinsect"]
         },
         "path_family": {
           "type": "string",
-          "pattern": "^(pl/f_equip|wp/[a-z0-9][a-z0-9_-]*)$"
+          "pattern": "^(pl/[fm]_equip|wp/[a-z0-9][a-z0-9_-]*)$"
         },
         "resource_path": {
           "type": "string",
@@ -168,7 +168,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^mhw:(armor|weapon):[a-z0-9][a-z0-9._-]*$"
+            "pattern": "^mhw:(armor|weapon|kinsect):[a-z0-9][a-z0-9._-]*$"
           }
         }
       }
