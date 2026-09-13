@@ -74,6 +74,17 @@ test("moving hover to another Mod clears old data and rejects late responses", o
   assert.equal(h.state.current.replacement.modId, "b");
 });
 
+test("hover keeps installed source facts when the library displays a newer package", options, async (t) => {
+  const h = await mountHover(t);
+  const summary = { ...summaryFor(), sourcePackageId: "installed-old-package", sources: [
+    { id: "kinsect-source", kind: "kinsect", internalId: "mus023", displayNames: { en: "Dragon Soul" } },
+  ] };
+  await h.resolve(h.details[0], detailFor());
+  await h.resolve(h.summaries[0], summary);
+  assert.deepEqual(h.state.current.replacement, summary);
+  assert.equal(h.state.current.replacement.sources[0].displayNames.en, "Dragon Soul");
+});
+
 test("profile changes cannot reuse the previous profile replacement facts", options, async (t) => {
   const h = await mountHover(t);
   await h.update("a", "two");
