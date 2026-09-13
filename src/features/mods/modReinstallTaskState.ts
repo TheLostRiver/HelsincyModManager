@@ -79,6 +79,8 @@ function commandErrorCode(error: unknown) {
 }
 
 export function getReinstallPreviewErrorMessage(error: unknown, task: ModReinstallCopy["task"]) {
+  const pluginMessage = task.pluginErrors[commandErrorCode(error) ?? ""];
+  if (pluginMessage) return pluginMessage;
   switch (commandErrorCode(error)) {
     case "game_id_invalid":
       return task.previewErrors.gameUnsupported;
@@ -93,6 +95,8 @@ export function getReinstallPreviewErrorMessage(error: unknown, task: ModReinsta
 }
 
 export function getReinstallStartErrorMessage(error: unknown, task: ModReinstallCopy["task"]) {
+  const pluginMessage = task.pluginErrors[commandErrorCode(error) ?? ""];
+  if (pluginMessage) return pluginMessage;
   return commandErrorCode(error) === "plan_token_invalid"
     ? task.startErrors.planTokenInvalid
     : task.startErrors.startFailed;

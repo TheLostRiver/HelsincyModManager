@@ -1,4 +1,5 @@
 import type { LocaleDictionary } from "../../shared/i18n";
+import { pluginSelectionCopy } from "../install-plugins/pluginSelectionCopy.ts";
 import type { WeaponReplacementErrorCode } from "./replacementErrorText";
 import type { ReplacementWarning } from "./replacementTypes";
 import type { RetargetInstallTaskPhase } from "./replacementWorkflow";
@@ -259,6 +260,7 @@ export const replacementCopy = {
         },
       },
       generic: {
+        ...Object.fromEntries(Object.entries(pluginSelectionCopy.zh_cn.errors).map(([code, message]) => [code, { message }])),
         replacement_mod_not_found: { message: "未找到已导入的 Mod。" },
         replacement_package_unavailable: { message: "导入包当前不可用。" },
         replacement_source_not_retargetable: {
@@ -550,6 +552,7 @@ export const replacementCopy = {
         },
       },
       generic: {
+        ...Object.fromEntries(Object.entries(pluginSelectionCopy.en.errors).map(([code, message]) => [code, { message }])),
         replacement_mod_not_found: { message: "The imported mod was not found." },
         replacement_package_unavailable: { message: "The import package is currently unavailable." },
         replacement_source_not_retargetable: {
@@ -845,6 +848,7 @@ export const replacementCopy = {
         },
       },
       generic: {
+        ...Object.fromEntries(Object.entries(pluginSelectionCopy.ja.errors).map(([code, message]) => [code, { message }])),
         replacement_mod_not_found: { message: "インポート済みの Mod が見つかりませんでした。" },
         replacement_package_unavailable: { message: "インポートパッケージは現在利用できません。" },
         replacement_source_not_retargetable: {

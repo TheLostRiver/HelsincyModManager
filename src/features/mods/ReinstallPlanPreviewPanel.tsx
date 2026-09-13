@@ -18,12 +18,15 @@ import {
 } from "./modPrerequisiteDecision";
 import type { ReinstallDialogState } from "./useModReinstallWorkflow";
 import "./ReinstallPlanPreviewPanel.css";
+import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
+import type { PluginSelectionController } from "../install-plugins/usePluginSelection";
 
 type ReinstallPlanPreviewPanelProps = {
   state: ReinstallDialogState;
   taskState: ReinstallTaskState;
   listenerStatus: "loading" | "ready" | "failed";
   canConfirm: boolean;
+  plugins: PluginSelectionController;
   onClose: () => void;
   onCandidateChange: (revisionId: string) => void;
   onPreview: () => void;
@@ -78,7 +81,7 @@ function taskStatus(taskState: ReinstallTaskState, copy: ModReinstallCopy) {
   }
 }
 
-function PreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
+export function ReinstallPreviewSummary({ preview }: { preview: ReinstallPlanPreview }) {
   const { locale } = useI18n();
   const reCopy = resolveCopy(modReinstallCopy, locale);
   const dialog = reCopy.dialog;
@@ -173,6 +176,7 @@ export function ReinstallPlanPreviewPanel({
   taskState,
   listenerStatus,
   canConfirm,
+  plugins,
   onClose,
   onCandidateChange,
   onPreview,
@@ -184,7 +188,7 @@ export function ReinstallPlanPreviewPanel({
   const dialog = reCopy.dialog;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
-  const taskActive = taskState.status === "starting" || taskState.status === "running";
+  const taskActive = plugins.saving || taskState.status === "starting" || taskState.status === "running";
   const currentTaskStatus = taskStatus(taskState, reCopy);
   const openModId = state.status === "open" ? state.modId : null;
 
@@ -203,6 +207,7 @@ export function ReinstallPlanPreviewPanel({
   const preview = state.previewState.status === "ready" ? state.previewState.preview : null;
   const installWarning = cleanupPendingMessage(state.installStatus, dialog);
   const previewDisabled =
+    !plugins.ready ||
     state.catalogStatus !== "ready" ||
     !canPreviewReinstall(state.installStatus, state.selectedCandidateRevisionId, taskState);
 
@@ -297,7 +302,8 @@ export function ReinstallPlanPreviewPanel({
               <span>{state.previewState.message}</span>
             </div>
           ) : null}
-          {preview ? <PreviewSummary preview={preview} /> : null}
+          {preview ? <ReinstallPreviewSummary preview={preview} /> : null}
+          <PluginSelectionPanel controller={plugins} disabled={taskActive} />
 
           {installWarning ? (
             <div className="reinstall-dialog__notice is-danger" role="alert">

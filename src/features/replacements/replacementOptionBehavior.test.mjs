@@ -5,6 +5,7 @@ import TestRenderer from "react-test-renderer";
 import { registerReactTestModules } from "../../shared/testing/reactModuleLoader.mjs";
 
 registerReactTestModules({
+  "features/install-plugins/pluginSelectionApi.ts": `export const getModPluginSelection = async () => null; export const setModPluginSelection = async () => { throw new Error("no fixture plugins"); }; export const selectionInput = (value) => value;`,
   "shared/i18n/index.ts": `export { resolveCopy } from "./locales.ts"; export const useI18n = () => ({ locale: globalThis.__weaponOptions.locale });`,
   "shared/feedback/index.ts": `export const useFeedback = () => ({ pushToast: () => {} });`,
   "features/replacements/equipmentRetargetApi.ts": `
