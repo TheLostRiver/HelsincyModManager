@@ -168,7 +168,24 @@ impl PluginSelectionRepository for JsonPluginSelectionRepository {
 }
 
 fn sync_selection_directory(directory: &Dir) -> Result<()> {
+    #[cfg(windows)]
     let result = directory.try_clone()?.into_std_file().sync_all();
+    #[cfg(not(windows))]
+    let result = {
+        use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt as _};
+        use cap_std::fs::{OpenOptions, OpenOptionsExt as _};
+
+        // Linux directory capabilities can use O_PATH, which cannot be synced. Reopen the
+        // directory through its verified handle so a replaced path cannot redirect the sync.
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+            .follow(FollowSymlinks::No);
+        directory
+            .open_with(".", &options)
+            .and_then(|directory| directory.sync_all())
+    };
     #[cfg(windows)]
     if result
         .as_ref()
@@ -252,6 +269,82 @@ mod tests {
             Some(selected.clone())
         );
         assert!(readonly.save_selection(&selected).is_err());
+    }
+
+    #[test]
+    fn replacing_plugin_choices_persists_the_new_record_without_temporary_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("choices");
+        let repository = JsonPluginSelectionRepository::new(root.clone());
+        let original = selection();
+        repository.save_selection(&original).unwrap();
+
+        let mut files = original.files().to_vec();
+        files[0].choice = PluginFileChoiceKind::Include;
+        let replacement = PluginSelectionSnapshot::new(
+            original.scope().clone(),
+            original.policy_id(),
+            original.policy_version(),
+            files,
+        )
+        .unwrap();
+        JsonPluginSelectionRepository::new(root.clone())
+            .save_selection(&replacement)
+            .unwrap();
+
+        assert_eq!(
+            JsonPluginSelectionRepository::read_only(root.clone())
+                .load_selection(original.scope())
+                .unwrap(),
+            Some(replacement)
+        );
+        let entries = fs::read_dir(root)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            entries,
+            vec![repository
+                .selection_path(original.scope())
+                .file_name()
+                .unwrap()
+                .to_owned()]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_sync_uses_the_opened_handle_after_the_path_is_replaced() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("choices");
+        let repository = JsonPluginSelectionRepository::new(root.clone());
+        let directory = repository.open_root(true).unwrap().unwrap();
+        let moved = temp.path().join("moved");
+        fs::rename(&root, &moved).unwrap();
+        let missing = temp.path().join("missing");
+        std::os::unix::fs::symlink(&missing, &root).unwrap();
+
+        directory.write("record.json", b"saved").unwrap();
+        sync_selection_directory(&directory).unwrap();
+
+        assert_eq!(fs::read(moved.join("record.json")).unwrap(), b"saved");
+        assert!(!missing.exists());
+        assert!(fs::symlink_metadata(root).unwrap().file_type().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_sync_propagates_a_non_directory_handle_error() {
+        let file = tempfile::tempfile().unwrap();
+        let directory = Dir::from_std_file(file);
+        let error = sync_selection_directory(&directory).unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .raw_os_error(),
+            Some(libc::ENOTDIR)
+        );
     }
 
     #[test]
