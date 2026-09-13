@@ -12,13 +12,15 @@ export type ReplacementTargetOption = {
   secondaryName?: string;
 };
 
+const hasSelectableAliases = (target: ReplacementTarget) => target.targetType === "weapon" || target.targetType === "kinsect";
+
 export function replacementTargetOption(
   target: ReplacementTarget,
   locale: Locale,
   alias: string | null = null,
 ): ReplacementTargetOption {
   // 平表由后端验证过。保留所选的原文名称，不把不同语言独立排序的别名按下标配对。
-  const selectedAlias = target.targetType === "weapon" && alias !== null && target.aliases.includes(alias) ? alias : null;
+  const selectedAlias = hasSelectableAliases(target) && alias !== null && target.aliases.includes(alias) ? alias : null;
   const names = selectedAlias === null
     ? resolveReplacementTargetNames(target.displayNames, locale)
     : { displayName: selectedAlias };
@@ -27,7 +29,7 @@ export function replacementTargetOption(
 
 function visibleTargetOptions(target: ReplacementTarget, locale: Locale): ReplacementTargetOption[] {
   const primary = replacementTargetOption(target, locale);
-  if (target.targetType !== "weapon") return [primary];
+  if (!hasSelectableAliases(target)) return [primary];
   const seen = new Set([primary.displayName]);
   const aliases = resolveReplacementTargetAliases(target.aliasesByLocale, locale).filter((name) => {
     if (!name.trim() || seen.has(name) || !target.aliases.includes(name)) return false;
@@ -37,7 +39,7 @@ function visibleTargetOptions(target: ReplacementTarget, locale: Locale): Replac
   return [primary, ...aliases.map((alias) => replacementTargetOption(target, locale, alias))];
 }
 
-/** 每个武器名称一行；每一行仍引用后端给出的同一个模型目标。防具保持一目标一行。 */
+/** 每个武器／猎虫名称一行；每行仍引用后端同一模型目标。防具保持一目标一行。 */
 export function buildReplacementTargetOptions(
   targets: readonly ReplacementTarget[],
   locale: Locale,
@@ -53,7 +55,7 @@ export function buildReplacementTargetOptions(
     );
     const primaryMatches = Object.values(target.displayNames).some(matches);
     const matchingAliases = [...new Set(target.aliases.filter(matches))];
-    if (target.targetType !== "weapon") {
+    if (!hasSelectableAliases(target)) {
       return visibleMatches.length > 0 || primaryMatches || matchingAliases.length > 0 ? visible : [];
     }
 

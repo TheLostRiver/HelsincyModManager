@@ -232,6 +232,8 @@ fn recovery_requires_the_original_evidence_and_retains_the_unmodified_manifest()
         status: ReinstallRecoveryTransactionStatus::Planned,
         pre_reinstall_manifest: facts.manifest.clone(),
         original_install_evidence: Some(evidence),
+        source_evidence_version: 1,
+        additional_sources_evidence: None,
         candidate_replacement_bindings: vec![binding("a", "c"), binding("b", "b")],
         targets: vec![
             ReinstallRecoveryTarget {

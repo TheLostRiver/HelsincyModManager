@@ -528,6 +528,8 @@ fn install_and_reinstall_recovery_are_global_blockers() {
         status: ReinstallRecoveryTransactionStatus::RepairRequired,
         pre_reinstall_manifest: current_manifest,
         original_install_evidence: None,
+        source_evidence_version: 1,
+        additional_sources_evidence: None,
         candidate_replacement_bindings: Vec::new(),
         candidate_plugin_selections: Vec::new(),
         targets: Vec::new(),

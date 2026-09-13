@@ -301,3 +301,65 @@ target 键集恰为 `{id, target_type, display_name, aliases, internal_id, metad
 
 签核只对上表所列 artifact 版本有效。catalog 数据更新（新增条目、版本变更或分片布局变化）时，
 本签核须重新执行——候选 source 声明、`--require-bundled` 复验与边界核对缺一不可。
+
+## 新增记录：mhw-kinsect-v1（2026-09-13）
+
+本次按既有 `game_terminology` 政策核对独立猎虫名称。事实核对由协作 agent 执行，reviewer 如实
+记录为自动核对者；不沿用历史表格中的维护者姓名，不表示维护者另行完成了人工核签。
+
+### 分发物与来源声明
+
+- Artifact：`src-tauri/crates/hmm-games-mhw/data/mhw-kinsect-targets.v1.json`，29 个资源目标，
+  `mus001`–`mus029`，三语各 105 个名称（含共用模型的全部别名）。聚合目录版本为 `mhw-replacement-v2`。
+- 只包含名称、编号、相对资源根、派生 stable ID 及类型／状态／语言元数据，不包含其他游戏资产。
+- 名称转录渠道为 Kiranico 的 [英语](https://mhworld.kiranico.com/en/kinsects)、
+  [简体中文](https://mhworld.kiranico.com/zh/kinsects)与[日语](https://mhworld.kiranico.com/ja/kinsects)
+  猎虫页面，取得日期为 2026-09-13。权利人仍为 Capcom，页面不是再分发授权书。
+- 三语以攻击类型、粉尘、四项数值、费用、素材 ID 与数量组成的唯一行身份关联；105 条全部对应。
+  编号与资源根另经 MHW 资源映射核对，公开名称页面本身不提供 `musNNN` 对应关系；没有把页面
+  行号当作资源编号，也没有把人工包测试记为游戏内效果验证。
+
+候选 source 声明原文：
+
+```json
+{
+  "source_id": "mhw-ingame-kinsect-names",
+  "source_name": "MHW:I in-game kinsect names",
+  "source_url": "https://www.monsterhunter.com/world-iceborne/",
+  "retrieved_at": "2026-09-13",
+  "license": {
+    "status": "game_terminology",
+    "rights_holder": "Capcom Co., Ltd.",
+    "usage": "nominative",
+    "attribution": "Kinsect names are content of Capcom Co., Ltd. This project claims no rights in them and is not affiliated with or endorsed by Capcom.",
+    "reviewed_by": "Codex (automated factual review under the maintainer policy of 2026-08-21)",
+    "reviewed_at": "2026-09-13"
+  }
+}
+```
+
+### 复验证据与边界
+
+候选经 `cargo run -p hmm-games-mhw --example validate_equipment_candidates -- --require-bundled <candidate.json>`
+验证：退出码 0，29 个 active target，`valid: true`、`bundled_eligible: true`，`issues` 和
+`bundle_blockers` 均为空。校验器与正式数据分开提交。
+
+| 对象 | SHA-256 |
+| --- | --- |
+| `mhw-equipment-candidates.kinsect.v1.json` | `10dfbbca1e533a1e1dfd323f13e5a392364815926af31fcaea2f32a2ed527d98` |
+| `mhw-kinsect-targets.v1.json`（Git 中的 UTF-8 / LF 字节） | `8b85dd3b27b0030b922b2677d6577642f81041f07788c0414cdb196739838767` |
+
+全量字段核对：target 只含 `stable_id`、`target_type`、`resource_path`、`internal_id`、
+`metadata.path_family`、`status`、`names`；每个语言只含 `display_name` 与 `aliases`。
+29 个编号／路径／stable ID 一一对应，无重复或漏项，105 个名称均有资源归属。
+例如 `mus001` 为克里多隆虫1／Culldrone I／クルドローンⅠ，`mus023` 为龙魂虫／Dragon Soul／
+ドラゴンソウル，其进阶名称作为同模型选项保留。
+
+| 政策边界 | 核对结果 |
+| --- | --- |
+| 功能性标识 | 名称用于 Mod 原始／当前／新目标的展示、检索与选择 |
+| 不提供独立名称数据库产品 | 没有新增独立浏览或导出入口 |
+| 真实权利人与不主张权利 | source 声明和 NOTICE 均保留 Capcom 归属与非关联说明 |
+| 仅名称及署名 | 不纳入图标、模型、贴图等资产；NOTICE 已明确包含猎虫名称 |
+
+事实核对结果通过；本记录只适用于上述摘要对应的 artifact。未执行游戏内效果验收。

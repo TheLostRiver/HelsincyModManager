@@ -5,10 +5,11 @@ use crate::{
 };
 use hmm_core::{
     classify_reinstall_targets, is_same_revision_equipment_target_switch,
-    is_same_revision_replacement_target_switch, resolve_installed_revision, FileLayer, GameId,
-    InstallFileProvider, InstallManifest, InstallManifestEntry, InstallManifestStatusConsumption,
-    InstallManifestValidationError, InstallPlan, InstallTargetPath, InstalledFileSummary, ModId,
-    ModRevisionId, OriginalInstallEvidence, PackageFileId, ProfileId, ReinstallClassificationError,
+    is_same_revision_replacement_target_switch, resolve_installed_revision,
+    AdditionalSourcesEvidence, FileLayer, GameId, InstallFileProvider, InstallManifest,
+    InstallManifestEntry, InstallManifestStatusConsumption, InstallManifestValidationError,
+    InstallPlan, InstallTargetPath, InstalledFileSummary, ModId, ModRevisionId,
+    OriginalInstallEvidence, PackageFileId, ProfileId, ReinstallClassificationError,
     ReinstallManifestError, ReinstallTargetClass, ReinstallTargetState, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
@@ -20,6 +21,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[path = "reinstall_additional_sources.rs"]
+mod additional_sources;
 #[path = "reinstall_attachments.rs"]
 mod attachments;
 #[path = "reinstall_files.rs"]
@@ -191,11 +194,24 @@ pub struct ReinstallCandidatePlanRequest<'a> {
     pub layer: &'a FileLayer,
 }
 
+/// Adapter 提供的原位来源文件归属，只供后端旧安装核验，不从前端 DTO 接收。
+pub struct OriginalSourceInventory {
+    pub plan: InstallPlan,
+    pub source_files: BTreeMap<hmm_core::ReplacementSourceId, BTreeSet<PackageFileId>>,
+}
+
 pub trait ReinstallCandidatePlanner: Send + Sync {
     fn build_candidate_plan(
         &self,
         request: ReinstallCandidatePlanRequest<'_>,
     ) -> Result<InstallPlan, ReinstallCandidatePlanError>;
+
+    fn original_source_inventory(
+        &self,
+        _request: ReinstallCandidatePlanRequest<'_>,
+    ) -> Result<Option<OriginalSourceInventory>, ReinstallCandidatePlanError> {
+        Ok(None)
+    }
 }
 
 impl ReinstallCandidatePlanner for InstallPlanningService {
@@ -470,6 +486,26 @@ impl ReinstallPreviewService {
         } else {
             None
         };
+        if original_install_evidence.is_none() {
+            match self.verify_additional_sources(
+                game_id,
+                mod_id,
+                installed_revision.as_ref().expect("validated revision"),
+                &manifest,
+            ) {
+                Ok(Some(evidence)) => installed_bindings.extend(evidence.bindings().cloned()),
+                Ok(None) => {}
+                Err(reason) => {
+                    return Ok(InstalledEquipmentReinstallResolution::Blocked(
+                        blocked_preview(
+                            Some(installed_revision_id.clone()),
+                            Some(installed_revision_id),
+                            reason,
+                        ),
+                    ))
+                }
+            }
+        }
         if !multiple && installed_bindings.len() != 1 {
             return Ok(InstalledEquipmentReinstallResolution::Blocked(
                 blocked_preview(
@@ -749,6 +785,30 @@ impl ReinstallPreviewService {
             ));
         }
 
+        // 每次准备都重新核对新增来源，不把查询阶段的临时绑定当成安装事实。
+        let additional_sources_evidence = if !matches!(switch_mode, ReplacementSwitchMode::Disabled)
+            && installed_revision_id == candidate_revision_id
+            && original_install_evidence.is_none()
+        {
+            match self.verify_additional_sources(
+                &request.game_id,
+                &request.mod_id,
+                &candidate,
+                &manifest,
+            ) {
+                Ok(evidence) => evidence,
+                Err(reason) => {
+                    return Ok(blocked(
+                        Some(installed_revision_id),
+                        Some(candidate_revision_id),
+                        reason,
+                    ))
+                }
+            }
+        } else {
+            None
+        };
+
         let candidate_summary = Some(candidate_revision_id.clone());
         let installed_summary = Some(installed_revision_id.clone());
         if plan.has_blocking_conflicts() {
@@ -819,24 +879,37 @@ impl ReinstallPreviewService {
                 || original_install_evidence.as_ref().is_some_and(|evidence| {
                     evidence.allows_equipment_reapply(&manifest, &plan.replacement_bindings)
                 })
+                || additional_sources_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| {
+                        evidence.allows_equipment_reapply(&manifest, &plan.replacement_bindings)
+                    })
         } else {
             original_install_evidence.as_ref().is_some_and(|evidence| {
                 evidence.allows_single_target_switch(&manifest, &plan.replacement_bindings)
                     || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
                         && evidence
                             .allows_equipment_target_switch(&manifest, &plan.replacement_bindings))
-            }) || is_same_revision_replacement_target_switch(
-                &manifest,
-                &request.mod_id,
-                &candidate_revision_id,
-                &plan.replacement_bindings,
-            ) || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
-                && is_same_revision_equipment_target_switch(
+            }) || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
+                && additional_sources_evidence
+                    .as_ref()
+                    .is_some_and(|evidence| {
+                        evidence
+                            .allows_equipment_target_switch(&manifest, &plan.replacement_bindings)
+                    }))
+                || is_same_revision_replacement_target_switch(
                     &manifest,
                     &request.mod_id,
                     &candidate_revision_id,
                     &plan.replacement_bindings,
-                ))
+                )
+                || (matches!(switch_mode, ReplacementSwitchMode::Equipment)
+                    && is_same_revision_equipment_target_switch(
+                        &manifest,
+                        &request.mod_id,
+                        &candidate_revision_id,
+                        &plan.replacement_bindings,
+                    ))
         };
         if installed_revision_id == candidate_revision_id && !same_revision_switch_allowed {
             return Ok(blocked(
@@ -977,6 +1050,24 @@ impl ReinstallPreviewService {
             ));
         }
 
+        // 新来源的候选产出必须仍来自核验过的原包字节；原有来源保留自己的内容策略。
+        if additional_sources_evidence
+            .as_ref()
+            .is_some_and(|evidence| {
+                evidence.files().any(|file| {
+                    !source_facts.iter().any(|source| {
+                        &source.provider.package_file_id == file.package_file_id()
+                            && &source.summary == file.summary()
+                    })
+                })
+            })
+        {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::OriginalInstallUnverified,
+            ));
+        }
         let classifications =
             match classify_reinstall_targets(&request.mod_id, installed_states, candidate_states) {
                 Ok(classifications) => classifications,
@@ -1044,6 +1135,7 @@ impl ReinstallPreviewService {
                 replacement_bindings: &plan.replacement_bindings,
                 plugin_selections: &plan.plugin_selections,
                 original_install_evidence: original_install_evidence.as_ref(),
+                additional_sources_evidence: additional_sources_evidence.as_ref(),
                 attachment_counts: attachments.counts,
             },
         );
@@ -1068,6 +1160,7 @@ impl ReinstallPreviewService {
             legacy_provenance,
             old_manifest: manifest,
             original_install_evidence,
+            additional_sources_evidence,
             candidate_replacement_bindings: plan.replacement_bindings,
             candidate_plugin_selections: plan.plugin_selections,
             source_files: source_facts,
@@ -1278,6 +1371,7 @@ pub struct PreparedReinstall {
     pub(crate) legacy_provenance: Vec<ModRevisionId>,
     pub(crate) old_manifest: InstallManifest,
     pub(crate) original_install_evidence: Option<OriginalInstallEvidence>,
+    pub(crate) additional_sources_evidence: Option<AdditionalSourcesEvidence>,
     pub(crate) candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     pub(crate) candidate_plugin_selections: Vec<hmm_core::PluginSelectionSnapshot>,
     pub(crate) source_files: Vec<PreparedSourceFile>,
@@ -1429,6 +1523,7 @@ struct CandidatePlanTokenFacts<'a> {
     replacement_bindings: &'a [ReplacementBindingSnapshot],
     plugin_selections: &'a [hmm_core::PluginSelectionSnapshot],
     original_install_evidence: Option<&'a OriginalInstallEvidence>,
+    additional_sources_evidence: Option<&'a AdditionalSourcesEvidence>,
     attachment_counts: ReinstallAttachmentCounts,
 }
 
@@ -1545,6 +1640,13 @@ fn canonical_plan_token(
         hash_field(
             &mut hasher,
             &serde_json::to_string(evidence).expect("serializable original install facts"),
+        );
+    }
+    if let Some(evidence) = candidate.additional_sources_evidence {
+        hash_field(&mut hasher, "additional-sources-evidence-v1");
+        hash_field(
+            &mut hasher,
+            &serde_json::to_string(evidence).expect("serializable additional source facts"),
         );
     }
 

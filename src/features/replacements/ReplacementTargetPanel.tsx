@@ -332,7 +332,7 @@ export function ReplacementTargetPanel({
   const selectedOption = selectedTarget ? replacementTargetOption(selectedTarget, locale, selectedAlias) : null;
   const selectedModelOptions = selectedTarget ? buildReplacementTargetOptions([selectedTarget], locale) : [];
   const selectedAliases = selectedTarget
-    ? selectedTarget.targetType === "weapon"
+    ? selectedTarget.targetType === "weapon" || selectedTarget.targetType === "kinsect"
       ? selectedModelOptions.length > 1 ? selectedModelOptions.map((option) => option.displayName) : []
       : resolveReplacementTargetAliases(selectedTarget.aliasesByLocale, locale)
     : [];

@@ -317,6 +317,9 @@ mod tests {
             "packageId",
             "originalInstallEvidence",
             "original_install_evidence",
+            "additionalSourcesEvidence",
+            "additional_sources_evidence",
+            "sourceEvidenceVersion",
             "policyExclusions",
             "attachmentCounts",
             "retainedAttachments",
@@ -330,7 +333,12 @@ mod tests {
         }
         let start = json!({"selection": request, "planToken": "fixture-preview"});
         serde_json::from_value::<StartEquipmentRetargetReinstallRequestDto>(start.clone()).unwrap();
-        for field in ["originalInstallEvidence", "original_install_evidence"] {
+        for field in [
+            "originalInstallEvidence",
+            "original_install_evidence",
+            "additionalSourcesEvidence",
+            "additional_sources_evidence",
+        ] {
             for nested in [false, true] {
                 let mut injected = start.clone();
                 let object = if nested {
@@ -368,5 +376,26 @@ mod tests {
         assert_eq!(dto.internal_id, "one999");
         assert!(dto.display_names.is_empty());
         assert!(dto.aliases.is_empty());
+    }
+
+    #[test]
+    fn kinsect_targets_keep_their_independent_kind_names_and_localized_aliases() {
+        use hmm_ports::ReplacementCatalogProvider;
+        let catalog = hmm_games_mhw::MhwReplacementCatalog
+            .replacement_catalog()
+            .unwrap();
+        let target = catalog
+            .targets()
+            .iter()
+            .find(|target| target.internal_id() == "mus023")
+            .unwrap();
+        let encoded = serde_json::to_value(ReplacementTargetDto::from(target.clone())).unwrap();
+        assert_eq!(encoded["targetType"], "kinsect");
+        assert_eq!(encoded["internalId"], "mus023");
+        assert_eq!(encoded["displayNames"]["en"], "Dragon Soul");
+        assert_eq!(
+            encoded["aliasesByLocale"]["en"],
+            json!(["True Dragon Soul", "Nexus Dragon Soul"])
+        );
     }
 }

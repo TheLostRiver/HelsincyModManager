@@ -49,6 +49,7 @@ fn target(
     let kind_name = match kind {
         EquipmentCandidateTargetKind::Armor => "armor",
         EquipmentCandidateTargetKind::Weapon => "weapon",
+        EquipmentCandidateTargetKind::Kinsect => "kinsect",
     };
     let stable_id = generate_mhw_equipment_stable_id(kind, path_family, resource_path)
         .expect("test target identity should be valid");
@@ -104,6 +105,43 @@ fn candidate_schema_is_valid_json_and_locks_v1() {
         MHW_EQUIPMENT_CANDIDATE_SCHEMA_VERSION
     );
     assert_eq!(schema["properties"]["game_id"]["const"], "mhw");
+}
+
+#[test]
+fn kinsect_candidates_use_the_same_provenance_gate_and_strict_path_identity() {
+    let kinsect = target(
+        EquipmentCandidateTargetKind::Kinsect,
+        "wp/mus",
+        "nativePC/wp/mus/mus001",
+        "Artificial Kinsect",
+        "active",
+    );
+    let valid = catalog(vec![source("redistributable")], vec![kinsect.clone()]);
+    assert!(validate_mhw_equipment_candidate_catalog_for_bundling(&valid).is_ok());
+    let unknown = catalog(vec![source("unknown")], vec![kinsect.clone()]);
+    assert!(matches!(
+        validate_mhw_equipment_candidate_catalog_for_bundling(&unknown),
+        Err(EquipmentCandidateBundlingError::EligibilityBlocked)
+    ));
+    for (field, value, code) in [
+        ("path_family", "wp/rod", "wrong_path_family"),
+        (
+            "resource_path",
+            "nativePC/wp/mus/rod001",
+            "invalid_kinsect_resource_path",
+        ),
+        (
+            "resource_path",
+            "nativePC/wp/mus/mus001/mod",
+            "invalid_kinsect_resource_path",
+        ),
+    ] {
+        let mut invalid = kinsect.clone();
+        invalid[field] = json!(value);
+        assert!(
+            issue_codes(&catalog(vec![source("redistributable")], vec![invalid])).contains(code)
+        );
+    }
 }
 
 #[test]

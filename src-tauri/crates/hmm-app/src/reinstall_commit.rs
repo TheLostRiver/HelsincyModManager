@@ -334,6 +334,22 @@ impl ReinstallCommitService {
                 }
             }
         }
+        if let Some(evidence) = &prepared.additional_sources_evidence {
+            if evidence.validate(&prepared.old_manifest).is_err()
+                || evidence.revision_id() != &prepared.candidate.revision_id
+            {
+                return Err(ReinstallCommitError::PreviewStale);
+            }
+            for file in evidence.files() {
+                let bytes = self
+                    .original_source
+                    .read_candidate_source_file(&prepared.candidate, file.package_file_id())
+                    .map_err(|_| ReinstallCommitError::PreviewStale)?;
+                if &summarize(&bytes) != file.summary() {
+                    return Err(ReinstallCommitError::PreviewStale);
+                }
+            }
+        }
         for source in &prepared.source_files {
             let bytes = self
                 .source
@@ -439,6 +455,8 @@ impl ReinstallCommitService {
             status: ReinstallRecoveryTransactionStatus::Planned,
             pre_reinstall_manifest: prepared.old_manifest.clone(),
             original_install_evidence: prepared.original_install_evidence.clone(),
+            source_evidence_version: 1,
+            additional_sources_evidence: prepared.additional_sources_evidence.clone(),
             candidate_replacement_bindings: prepared.candidate_replacement_bindings.clone(),
             candidate_plugin_selections: prepared.candidate_plugin_selections.clone(),
             targets: recovery_targets,
@@ -854,6 +872,8 @@ fn same_pre_mutation_operation(
         && durable.plan_hash == attempted.plan_hash
         && durable.pre_reinstall_manifest == attempted.pre_reinstall_manifest
         && durable.original_install_evidence == attempted.original_install_evidence
+        && durable.source_evidence_version == attempted.source_evidence_version
+        && durable.additional_sources_evidence == attempted.additional_sources_evidence
         && durable.candidate_replacement_bindings == attempted.candidate_replacement_bindings
         && durable.candidate_plugin_selections == attempted.candidate_plugin_selections
         && durable.targets == attempted.targets

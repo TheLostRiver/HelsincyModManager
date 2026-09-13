@@ -70,6 +70,9 @@ CAT-01 固定以下 adapter 规则：
   变体归属属于结构事实（哪个目录存在），provenance 与名称来源分开声明。
 - Weapon：`target_kind=weapon`、`path_family=wp/<family>`，路径必须位于
   `nativePC/wp/<family>/...` 且 family 一致。
+- Kinsect：`target_kind=kinsect`、`path_family=wp/mus`，资源根严格为
+  `nativePC/wp/mus/musNNN`。猎虫独立于 14 个 weapon family，不接受 `bs_`、跨族编号或资源根后的
+  文件段；未登记的合法来源编号不自动成为可选目标。稳定 ID 仍使用同一个算法，既有武器／防具 ID 不变。
 - 路径段只允许 ASCII 字母、数字、`.`、`_`、`-`；大小写折叠后的路径必须全局唯一。
 
 14 个 weapon family 的枚举、资源编号 parser 和二进制 transformer 分类已由

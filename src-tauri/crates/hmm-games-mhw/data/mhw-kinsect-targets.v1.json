@@ -1,0 +1,1018 @@
+{
+  "schema_version": 1,
+  "catalog_version": "mhw-kinsect-v1",
+  "game_id": "mhw",
+  "targets": [
+    {
+      "stable_id": "mhw:kinsect:f1839691b10709ca66c594833df1fc5b976ef90f8e146da5d8ff1975bd6a15ab",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus001",
+      "internal_id": "mus001",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "克里多隆虫1",
+          "aliases": [
+            "克里多隆虫2",
+            "克里多隆虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Culldrone I",
+          "aliases": [
+            "Culldrone II",
+            "Culldrone III"
+          ]
+        },
+        "ja": {
+          "display_name": "クルドローンⅠ",
+          "aliases": [
+            "クルドローンⅡ",
+            "クルドローンⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:65aec762c5af1610ba1301c8ba09463cce62c3cd4b0ade1508b64799cce918a6",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus002",
+      "internal_id": "mus002",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "金光圣甲虫1",
+          "aliases": [
+            "金光圣甲虫2",
+            "金光圣甲虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Elscarad I",
+          "aliases": [
+            "Elscarad II",
+            "Elscarad III"
+          ]
+        },
+        "ja": {
+          "display_name": "エルドラーンⅠ",
+          "aliases": [
+            "エルドラーンⅡ",
+            "エルドラーンⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:f06e3e5cfe788fa582200951a93cf88956ab998cee87630e65fedb2646a9d1b5",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus003",
+      "internal_id": "mus003",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "阿玛斯达古虫1",
+          "aliases": [
+            "阿玛斯达古虫2",
+            "阿玛斯达古虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Alucanid I",
+          "aliases": [
+            "Alucanid II",
+            "Alucanid III"
+          ]
+        },
+        "ja": {
+          "display_name": "アルマスタッグⅠ",
+          "aliases": [
+            "アルマスタッグⅡ",
+            "アルマスタッグⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:f54902973f30b6f0efbe497d1f0d9904dada24e712604f90c96e1e782870cd36",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus004",
+      "internal_id": "mus004",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "莫纳克布鲁斯达古虫1",
+          "aliases": [
+            "莫纳克布鲁斯达古虫2",
+            "莫纳克布鲁斯达古虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Monarch Alucanid I",
+          "aliases": [
+            "Monarch Alucanid II",
+            "Monarch Alucanid III"
+          ]
+        },
+        "ja": {
+          "display_name": "モナークブルスタッグⅠ",
+          "aliases": [
+            "モナークブルスタッグⅡ",
+            "モナークブルスタッグⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:b2bb5ecd6b8bdf4ce71d99c2f6e2ab7804d016a436448ef8f1c00b945baf6045",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus005",
+      "internal_id": "mus005",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "列吉纳波兰堤虫1",
+          "aliases": [
+            "列吉纳波兰堤虫2",
+            "列吉纳波兰堤虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Empresswing I",
+          "aliases": [
+            "Empresswing II",
+            "Empresswing III"
+          ]
+        },
+        "ja": {
+          "display_name": "レジナヴォランテⅠ",
+          "aliases": [
+            "レジナヴォランテⅡ",
+            "レジナヴォランテⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:5ab81253053106d5c68f31ff3590ea4c2632836fd22e275421c127d3857705a3",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus006",
+      "internal_id": "mus006",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "贾吉尔多雷虫1",
+          "aliases": [
+            "贾吉尔多雷虫2",
+            "贾吉尔多雷虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Rigiprayne I",
+          "aliases": [
+            "Rigiprayne II",
+            "Rigiprayne III"
+          ]
+        },
+        "ja": {
+          "display_name": "ガシルドーレⅠ",
+          "aliases": [
+            "ガシルドーレⅡ",
+            "ガシルドーレⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:e210c89c4f79bf85a0615e664b1910fef265a86c0f3e794abf9da769928914e4",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus007",
+      "internal_id": "mus007",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "咚库拉普虫1",
+          "aliases": [
+            "咚库拉普虫2",
+            "咚库拉普虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Cancadaman I",
+          "aliases": [
+            "Cancadaman II",
+            "Cancadaman III"
+          ]
+        },
+        "ja": {
+          "display_name": "ドゥンクラープⅠ",
+          "aliases": [
+            "ドゥンクラープⅡ",
+            "ドゥンクラープⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:0a3393bbf1334f5f09d077a99027f0ce421f6d813fcd0ce18c2c32bde7696d1a",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus008",
+      "internal_id": "mus008",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "乌卡都雷虫1",
+          "aliases": [
+            "乌卡都雷虫2",
+            "乌卡都雷虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Fiddlebrix I",
+          "aliases": [
+            "Fiddlebrix II",
+            "Fiddlebrix III"
+          ]
+        },
+        "ja": {
+          "display_name": "ウカドゥーレⅠ",
+          "aliases": [
+            "ウカドゥーレⅡ",
+            "ウカドゥーレⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:1606e8e1e4df630eb7d571d8795b7b0d6926a4fc41197add84ff8463c80938ea",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus009",
+      "internal_id": "mus009",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "卡捷奇里巴涅虫1",
+          "aliases": [
+            "卡捷奇里巴涅虫2",
+            "卡捷奇里巴涅虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Windchopper I",
+          "aliases": [
+            "Windchopper II",
+            "Windchopper III"
+          ]
+        },
+        "ja": {
+          "display_name": "カゼキリバネⅠ",
+          "aliases": [
+            "カゼキリバネⅡ",
+            "カゼキリバネⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:573c79f4ed1d3ff12e8e766c8d5322a20ea2ed67c7fed90189f774810de8c61a",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus010",
+      "internal_id": "mus010",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "奥希纳朵虫1",
+          "aliases": [
+            "奥希纳朵虫2",
+            "奥希纳朵虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Grancathar I",
+          "aliases": [
+            "Grancathar II",
+            "Grancathar III"
+          ]
+        },
+        "ja": {
+          "display_name": "オオシナトⅠ",
+          "aliases": [
+            "オオシナトⅡ",
+            "オオシナトⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:050fdb811a2e636a46eb4fa1120ded0bf9f89442625027b0950b2a742f6bacaf",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus011",
+      "internal_id": "mus011",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "希纳朵莫多奇虫1",
+          "aliases": [
+            "希纳朵莫多奇虫2",
+            "希纳朵莫多奇虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Pseudocath I",
+          "aliases": [
+            "Pseudocath II",
+            "Pseudocath III"
+          ]
+        },
+        "ja": {
+          "display_name": "シナトモドキⅠ",
+          "aliases": [
+            "シナトモドキⅡ",
+            "シナトモドキⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:40eec596255c1bb433c999cedcc470be1c7afe43610e5ff50b803620f13e1001",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus012",
+      "internal_id": "mus012",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "马尔多隆虫1",
+          "aliases": [
+            "马尔多隆虫2",
+            "马尔多隆虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Mauldrone I",
+          "aliases": [
+            "Mauldrone II",
+            "Mauldrone III"
+          ]
+        },
+        "ja": {
+          "display_name": "マルドローンⅠ",
+          "aliases": [
+            "マルドローンⅡ",
+            "マルドローンⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:8e446a2421b60761c327c13b6d6db0d01bf8128618d29c6976679ccd7bc18421",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus013",
+      "internal_id": "mus013",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "恐惧银色金龟子1",
+          "aliases": [
+            "恐惧银色金龟子2",
+            "恐惧银色金龟子3"
+          ]
+        },
+        "en": {
+          "display_name": "Arginesse I",
+          "aliases": [
+            "Arginesse II",
+            "Arginesse III"
+          ]
+        },
+        "ja": {
+          "display_name": "アルジャーロンⅠ",
+          "aliases": [
+            "アルジャーロンⅡ",
+            "アルジャーロンⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:4f691732988b75929576ac2a5380d4dc8fd5ad75e01bcc290733dc0e429837f2",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus014",
+      "internal_id": "mus014",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "札米鲁比托尔虫1",
+          "aliases": [
+            "札米鲁比托尔虫2",
+            "札米鲁比托尔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Foebeetle I",
+          "aliases": [
+            "Foebeetle II",
+            "Foebeetle III"
+          ]
+        },
+        "ja": {
+          "display_name": "ザミールビートルⅠ",
+          "aliases": [
+            "ザミールビートルⅡ",
+            "ザミールビートルⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:5ceae995136ceee12b8d40314711265d4f76b0383739ad86db71752aaf02ee80",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus015",
+      "internal_id": "mus015",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "肯尼希苟比托尔虫1",
+          "aliases": [
+            "肯尼希苟比托尔虫2",
+            "肯尼希苟比托尔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Carnage Beetle I",
+          "aliases": [
+            "Carnage Beetle II",
+            "Carnage Beetle III"
+          ]
+        },
+        "ja": {
+          "display_name": "ケーニヒゴアビートルⅠ",
+          "aliases": [
+            "ケーニヒゴアビートルⅡ",
+            "ケーニヒゴアビートルⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:c3611a756370eeaffdf3e8c52a58a0eb732c50a2632bb32988c6c20e17a1a9ab",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus016",
+      "internal_id": "mus016",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "菲尔卡诺虫1",
+          "aliases": [
+            "菲尔卡诺虫2",
+            "菲尔卡诺虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Bonnetfille I",
+          "aliases": [
+            "Bonnetfille II",
+            "Bonnetfille III"
+          ]
+        },
+        "ja": {
+          "display_name": "フィルカーノⅠ",
+          "aliases": [
+            "フィルカーノⅡ",
+            "フィルカーノⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:faee75571758ae3fcca8d60caa4c08f23fd440f6ed05828707a97aaae8d274e3",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus017",
+      "internal_id": "mus017",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "哈鲁奇塔虫1",
+          "aliases": [
+            "哈鲁奇塔虫2",
+            "哈鲁奇塔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Ladytarge I",
+          "aliases": [
+            "Ladytarge II",
+            "Ladytarge III"
+          ]
+        },
+        "ja": {
+          "display_name": "ハルキータⅠ",
+          "aliases": [
+            "ハルキータⅡ",
+            "ハルキータⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:0a97e28f27e72003f3be5c21ad2e9adb5c267246d8f51eb39d19a8989cf54f34",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus018",
+      "internal_id": "mus018",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "多伦奇塔虫1",
+          "aliases": [
+            "多伦奇塔虫2",
+            "多伦奇塔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Ladypavise I",
+          "aliases": [
+            "Ladypavise II",
+            "Ladypavise III"
+          ]
+        },
+        "ja": {
+          "display_name": "ドルンキータⅠ",
+          "aliases": [
+            "ドルンキータⅡ",
+            "ドルンキータⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:dc033bfa1d4dd038338c0abf62d4d08e4c41309aa8410b6d16eb15770e25ef73",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus019",
+      "internal_id": "mus019",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "艾尔若阿尼亚虫1",
+          "aliases": [
+            "艾尔若阿尼亚虫2",
+            "艾尔若阿尼亚虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Arkmaiden I",
+          "aliases": [
+            "Arkmaiden II",
+            "Arkmaiden III"
+          ]
+        },
+        "ja": {
+          "display_name": "アルジョアーニャⅠ",
+          "aliases": [
+            "アルジョアーニャⅡ",
+            "アルジョアーニャⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:c9c65483cf01f20108cf9d940d7fcdaebb5cd199570130675faef9dacbf86dd7",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus020",
+      "internal_id": "mus020",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "加尔黑尔虫1",
+          "aliases": [
+            "加尔黑尔虫2",
+            "加尔黑尔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Gullshad I",
+          "aliases": [
+            "Gullshad II",
+            "Gullshad III"
+          ]
+        },
+        "ja": {
+          "display_name": "ガルーヘルⅠ",
+          "aliases": [
+            "ガルーヘルⅡ",
+            "ガルーヘルⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:1d7b58d8263dd26c998bd323fd85a530864fb6ca7f195055b1d34d6621425548",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus021",
+      "internal_id": "mus021",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "梅巴奇尔虫1",
+          "aliases": [
+            "梅巴奇尔虫2",
+            "梅巴奇尔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Bullshroud I",
+          "aliases": [
+            "Bullshroud II",
+            "Bullshroud III"
+          ]
+        },
+        "ja": {
+          "display_name": "メイヴァーチルⅠ",
+          "aliases": [
+            "メイヴァーチルⅡ",
+            "メイヴァーチルⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:eac528760025377d44b195a6fee20a5cb33bde7881003b7e568e06c46cae62bd",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus022",
+      "internal_id": "mus022",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "梵里艾尔虫1",
+          "aliases": [
+            "梵里艾尔虫2",
+            "梵里艾尔虫3"
+          ]
+        },
+        "en": {
+          "display_name": "Whispervesp I",
+          "aliases": [
+            "Whispervesp II",
+            "Whispervesp III"
+          ]
+        },
+        "ja": {
+          "display_name": "ヴァンリエールⅠ",
+          "aliases": [
+            "ヴァンリエールⅡ",
+            "ヴァンリエールⅢ"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:b2e07643b95ffdf0ff0376b245da6cf3a059fbf6d4bb401fc0209ce080a7b638",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus023",
+      "internal_id": "mus023",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "龙魂虫",
+          "aliases": [
+            "龙魂虫·真",
+            "龙魂虫·极"
+          ]
+        },
+        "en": {
+          "display_name": "Dragon Soul",
+          "aliases": [
+            "True Dragon Soul",
+            "Nexus Dragon Soul"
+          ]
+        },
+        "ja": {
+          "display_name": "ドラゴンソウル",
+          "aliases": [
+            "ドラゴンソウル・真",
+            "ドラゴンソウル・極"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:d8d84cd97ff83a50aa9346c8ed52cf0541f714f65137eca8d477d95529adad29",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus024",
+      "internal_id": "mus024",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "齿钳锹形虫1·速",
+          "aliases": [
+            "齿钳锹形虫2·速",
+            "齿钳锹形虫3·速",
+            "齿钳锹形虫1·攻",
+            "齿钳锹形虫2·攻",
+            "齿钳锹形虫3·攻"
+          ]
+        },
+        "en": {
+          "display_name": "Vezirstag I Velox",
+          "aliases": [
+            "Vezirstag II Velox",
+            "Vezirstag III Velox",
+            "Vezirstag I Forz",
+            "Vezirstag II Forz",
+            "Vezirstag III Forz"
+          ]
+        },
+        "ja": {
+          "display_name": "サルヴァースタッグⅠ・速",
+          "aliases": [
+            "サルヴァースタッグⅡ・速",
+            "サルヴァースタッグⅢ・速",
+            "サルヴァースタッグⅠ・攻",
+            "サルヴァースタッグⅡ・攻",
+            "サルヴァースタッグⅢ・攻"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:6aa5abe77a0d9b398b34dd5fbda07d85bf208f3b7be1660f6302d75f3f6379ee",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus025",
+      "internal_id": "mus025",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "咒缚天牛1·速",
+          "aliases": [
+            "咒缚天牛2·速",
+            "咒缚天牛3·速",
+            "咒缚天牛1·攻",
+            "咒缚天牛2·攻",
+            "咒缚天牛3·攻"
+          ]
+        },
+        "en": {
+          "display_name": "Bilbobrix I Velox",
+          "aliases": [
+            "Bilbobrix II Velox",
+            "Bilbobrix III Velox",
+            "Bilbobrix I Forz",
+            "Bilbobrix II Forz",
+            "Bilbobrix III Forz"
+          ]
+        },
+        "ja": {
+          "display_name": "オスパーダドゥーレⅠ・速",
+          "aliases": [
+            "オスパーダドゥーレⅡ・速",
+            "オスパーダドゥーレⅢ・速",
+            "オスパーダドゥーレⅠ・攻",
+            "オスパーダドゥーレⅡ・攻",
+            "オスパーダドゥーレⅢ・攻"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:bc837474c3aba889a3012e9f6334d96fe68a6a400170d8c7ff66ec272af09a21",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus026",
+      "internal_id": "mus026",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "西纳托红枫虫1·愈",
+          "aliases": [
+            "西纳托红枫虫2·愈",
+            "西纳托红枫虫3·愈",
+            "西纳托红枫虫1·攻",
+            "西纳托红枫虫2·攻",
+            "西纳托红枫虫3·攻"
+          ]
+        },
+        "en": {
+          "display_name": "Foliacath I Medis",
+          "aliases": [
+            "Foliacath II Medis",
+            "Foliacath III Medis",
+            "Foliacath I Forz",
+            "Foliacath II Forz",
+            "Foliacath III Forz"
+          ]
+        },
+        "ja": {
+          "display_name": "シナトオオモミジⅠ・癒",
+          "aliases": [
+            "シナトオオモミジⅡ・癒",
+            "シナトオオモミジⅢ・癒",
+            "シナトオオモミジⅠ・攻",
+            "シナトオオモミジⅡ・攻",
+            "シナトオオモミジⅢ・攻"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:f6a8f4acd0779b73223aff449839c8d6a49a8e6eb98f1c043b8211289f6f64d1",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus027",
+      "internal_id": "mus027",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "光辉独角仙1·速",
+          "aliases": [
+            "光辉独角仙2·速",
+            "光辉独角仙3·速",
+            "光辉独角仙1·愈",
+            "光辉独角仙2·愈",
+            "光辉独角仙3·愈"
+          ]
+        },
+        "en": {
+          "display_name": "Gleambeetle I Velox",
+          "aliases": [
+            "Gleambeetle II Velox",
+            "Gleambeetle III Velox",
+            "Gleambeetle I Medis",
+            "Gleambeetle II Medis",
+            "Gleambeetle III Medis"
+          ]
+        },
+        "ja": {
+          "display_name": "グランツビートルⅠ・速",
+          "aliases": [
+            "グランツビートルⅡ・速",
+            "グランツビートルⅢ・速",
+            "グランツビートルⅠ・癒",
+            "グランツビートルⅡ・癒",
+            "グランツビートルⅢ・癒"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:5da758ac5a23749f7689c534523d71937372a8b89a6fb0316eeca002aa6ab679",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus028",
+      "internal_id": "mus028",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "爱心巨虫1·攻",
+          "aliases": [
+            "爱心巨虫2·攻",
+            "爱心巨虫3·攻",
+            "爱心巨虫1·速",
+            "爱心巨虫2·速",
+            "爱心巨虫3·速"
+          ]
+        },
+        "en": {
+          "display_name": "Ladytower I Forz",
+          "aliases": [
+            "Ladytower II Forz",
+            "Ladytower III Forz",
+            "Ladytower I Velox",
+            "Ladytower II Velox",
+            "Ladytower III Velox"
+          ]
+        },
+        "ja": {
+          "display_name": "アムルマリキータⅠ・攻",
+          "aliases": [
+            "アムルマリキータⅡ・攻",
+            "アムルマリキータⅢ・攻",
+            "アムルマリキータⅠ・速",
+            "アムルマリキータⅡ・速",
+            "アムルマリキータⅢ・速"
+          ]
+        }
+      }
+    },
+    {
+      "stable_id": "mhw:kinsect:4b9c32145e4978e63326a96c25bb1ba43812c9121a205df6ce8d440c221baf97",
+      "target_type": "kinsect",
+      "resource_path": "nativePC/wp/mus/mus029",
+      "internal_id": "mus029",
+      "metadata": {
+        "path_family": "wp/mus"
+      },
+      "status": "active",
+      "names": {
+        "zh_cn": {
+          "display_name": "弹头雀蛾1·攻",
+          "aliases": [
+            "弹头雀蛾2·攻",
+            "弹头雀蛾3·攻",
+            "弹头雀蛾1·愈",
+            "弹头雀蛾2·愈",
+            "弹头雀蛾3·愈"
+          ]
+        },
+        "en": {
+          "display_name": "Valorwing I Forz",
+          "aliases": [
+            "Valorwing II Forz",
+            "Valorwing III Forz",
+            "Valorwing I Medis",
+            "Valorwing II Medis",
+            "Valorwing III Medis"
+          ]
+        },
+        "ja": {
+          "display_name": "ヴァルフリューゲルⅠ・攻",
+          "aliases": [
+            "ヴァルフリューゲルⅡ・攻",
+            "ヴァルフリューゲルⅢ・攻",
+            "ヴァルフリューゲルⅠ・癒",
+            "ヴァルフリューゲルⅡ・癒",
+            "ヴァルフリューゲルⅢ・癒"
+          ]
+        }
+      }
+    }
+  ]
+}

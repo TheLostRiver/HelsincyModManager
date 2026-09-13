@@ -1,7 +1,7 @@
 use crate::package_path::{parse_safe_package_path, strip_leading_package_dirs, NATIVE_PC_ROOT};
 use crate::{
     generate_mhw_equipment_stable_id, is_rejected_executable_file_name, ArmorResourcePath,
-    EquipmentCandidateTargetKind, WeaponResourceRoot,
+    EquipmentCandidateTargetKind, KinsectResourceRoot, WeaponResourceRoot,
 };
 use hmm_core::{
     GameId, InstallTargetPath, PackageFileId, ReplacementAnalysis, ReplacementSource,
@@ -20,6 +20,7 @@ pub(super) struct Resource {
 pub(super) enum EquipmentRoot {
     Weapon(WeaponResourceRoot),
     Armor(ArmorResourcePath),
+    Kinsect(KinsectResourceRoot),
 }
 
 impl EquipmentRoot {
@@ -29,6 +30,9 @@ impl EquipmentRoot {
         {
             return Some(Self::Weapon(root));
         }
+        if let Some(root) = KinsectResourceRoot::of_resource_path(path.as_str()) {
+            return Some(Self::Kinsect(root));
+        }
         ArmorResourcePath::parse(path.as_str())
             .ok()
             .map(Self::Armor)
@@ -36,6 +40,18 @@ impl EquipmentRoot {
 
     pub(super) fn source(&self) -> ReplacementAdapterResult<ReplacementSource> {
         let (id, kind, internal, family, supported) = match self {
+            Self::Kinsect(root) => (
+                generate_mhw_equipment_stable_id(
+                    EquipmentCandidateTargetKind::Kinsect,
+                    root.path_family(),
+                    root.normalized_path().as_str(),
+                )
+                .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?,
+                "kinsect",
+                root.id().as_str(),
+                root.path_family(),
+                true,
+            ),
             Self::Weapon(root) => (
                 generate_mhw_equipment_stable_id(
                     EquipmentCandidateTargetKind::Weapon,
@@ -235,6 +251,7 @@ fn normalize_equipment_root(
     }
     let candidate = parts.join("/");
     if WeaponResourceRoot::of_resource_path(&candidate).is_none()
+        && KinsectResourceRoot::of_resource_path(&candidate).is_none()
         && ArmorResourcePath::parse(&candidate).is_err()
     {
         return Ok(path);

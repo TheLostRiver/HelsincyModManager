@@ -44,10 +44,10 @@ const WEAPON_CATALOG_SHARDS: [&str; 14] = [
     include_str!("../../data/weapons/mhw-weapon-targets.swo.v1.json"),
     include_str!("../../data/weapons/mhw-weapon-targets.two.v1.json"),
 ];
-/// 聚合 catalog（armor v3 + weapon v1）的版本号，Production 与 Sandbox 共用，
+/// 聚合 catalog（armor v3 + weapon v1 + kinsect v1）的版本号，Production 与 Sandbox 共用，
 /// 与 armor、weapon 各自的 catalog_version 相互独立（治理契约见
 /// EQUIPMENT_CATALOG_GOVERNANCE.md）。
-const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v1";
+const REPLACEMENT_CATALOG_VERSION: &str = "mhw-replacement-v2";
 const WEAPON_ADAPTER_ID: &str = "mhw.weapon";
 const WEAPON_STRATEGY_ID: &str = "mrl3-texture-path";
 /// v2（#336 切片②）：随行文件进入重定向计划。
@@ -82,6 +82,7 @@ fn cached_full_catalog() -> &'static ReplacementCatalogResult<ReplacementCatalog
     CACHED.get_or_init(|| {
         let mut targets = MhwArmorCatalog.replacement_catalog()?.targets().to_vec();
         targets.extend(weapon_targets()?);
+        targets.extend(crate::kinsect_retarget::kinsect_targets()?);
         targets.sort_by(|left, right| left.id().as_str().cmp(right.id().as_str()));
         ReplacementCatalog::new(
             ReplacementCatalogVersion::parse(REPLACEMENT_CATALOG_VERSION)
