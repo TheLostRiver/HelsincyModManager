@@ -27,6 +27,7 @@ type ModPosterCardProps = {
   onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
   showCategoryLabels?: boolean;
+  showHoverDetails?: boolean;
   /** 本会话的外部状态扫描结果（#286 3b-2）；null 表示本会话没扫过。 */
   externalState?: ExternalModStateDto | null;
 };
@@ -91,6 +92,7 @@ export function ModPosterCard({
   onContextMenu,
   index = 0,
   showCategoryLabels = true,
+  showHoverDetails = false,
   externalState = null,
 }: ModPosterCardProps) {
   const { locale } = useI18n();
@@ -197,7 +199,7 @@ export function ModPosterCard({
   }, [previewThumbnail?.thumbnailUrl]);
 
   return (
-    <ModCardHover item={item} gameId={gameId} profileId={profileId}>
+    <ModCardHover item={item} gameId={gameId} profileId={profileId} enabled={showHoverDetails}>
     <div
       role={batchSelectionActive ? "checkbox" : "button"}
       tabIndex={0}
