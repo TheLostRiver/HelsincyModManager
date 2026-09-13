@@ -855,7 +855,7 @@ fn aggregate_catalog_exposes_full_weapon_targets() {
         .replacement_catalog()
         .expect("aggregate replacement catalog");
 
-    assert_eq!(catalog.version().as_str(), "mhw-replacement-v1");
+    assert_eq!(catalog.version().as_str(), "mhw-replacement-v2");
     let armor_count = catalog
         .targets()
         .iter()
