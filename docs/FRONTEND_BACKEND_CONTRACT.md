@@ -627,7 +627,7 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | --- | --- | --- |
 | `list_replacement_targets` | `gameId`、`modId`、可选 `profileId`、可选 `query` | 与该 Mod source type/path-family 兼容的 catalog target 列表；提供 profile 时优先采用已记录安装版本 |
 | `analyze_imported_mod_replacement` | `gameId`、可选 `profileId`、`modId` | source、匹配文件数、warning、`retargetable` 与可选 `installedTargetId` |
-| `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sources, installedTargets }`，供卡片悬浮展示 |
+| `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sourcePackageId, sources, installedTargets }`，供卡片悬浮展示 |
 | `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
 | `start_retarget_install_task` | 与 preview 相同，可另带 `expectedRevisionId` 固定已确认版本 | `TaskStartedDto` |
@@ -793,13 +793,15 @@ binding identity、revision、internal id、相对/绝对路径、staging 或 ma
 `analyze_imported_mod_replacement` 的 source 另携带 `displayNames`（locale -> 名称）；目录不可用、
 缺失或匹配歧义时为空表，编号保留。名称投影不改变 support/retargetable 或单目标写流程的门禁。
 
-`get_mod_replacement_summary` 在 blocking worker 内读取 display revision 的受控包清单与可信
+`get_mod_replacement_summary` 在 blocking worker 内读取配置档已安装 revision（未安装时为 display revision）的受控包清单与可信
 manifest，不执行安装、staging 或写入。`sources` 和 `installedTargets` 的条目均为
 `{ id, kind, internalId, displayNames }`，没有 path-family、路径、二进制、hash 或原始 catalog metadata。
 源名称必须按 game/type/internalId/path-family 精确且唯一匹配；已安装名称还必须匹配 manifest 的
 target identity（旧 ID 交给 catalog provider 解析，仍复核快照类型、编号和 path-family），名称不确定只回空表。`installedTargets: null` 表示没有 profile 或安装事实不可验证，
 不可解释成未重定向；可信空清单为 `[]`。可展示多个绑定，但原有单目标查询仍拒绝多绑定，不放宽
-安装切换能力。`packageId` 是不透明的包身份，用于 hover 校验详情与源摘要来自同一 display revision。
+安装切换能力。`packageId` 是库中 display revision 的不透明包身份，用于 hover 校验详情与摘要的库状态
+一致；查询前后还核对 display revision 没有变化。`sourcePackageId` 是实际分析的来源包身份，配置档
+仍安装旧版本时可与 `packageId` 不同。导入新版不能让旧版已安装装备的原始名称消失或变成新包名称。
 前端只在实际 hover/键盘焦点后按需查询，不永久缓存这份安装事实；库 generation、Mod/profile 改变或
 离开时抛弃旧响应，查询失败不自动循环。详情可先于源扫描显示；15 秒前端等待上限只结束等待，
 不伪造后端扫描取消。来源 `imported` 只可表述文件导入，不能区分手动选择与拖拽。

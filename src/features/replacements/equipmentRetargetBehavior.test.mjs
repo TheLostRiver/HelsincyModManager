@@ -189,6 +189,24 @@ test("group selection sends every source and all names still map to the real tar
   assert.deepEqual(h.api.calls.find((call) => call.kind === "start").input, request);
 });
 
+test("kinsect sources show localized original names and submit aliases using backend target identity", options, async (t) => {
+  const kinsect = { ...target("mus024", "kinsect"), aliases: ["人工猎虫·攻", "Artificial Kinsect Forz", "人工猟虫・攻"],
+    aliasesByLocale: { zh_cn: ["人工猎虫·攻"], en: ["Artificial Kinsect Forz"], ja: ["人工猟虫・攻"] } };
+  const config = structuredClone(configuration);
+  config.sources.push({ source: { id: "source-kinsect", internalId: "mus001", sourceType: "kinsect", supported: true,
+    displayNames: { zh_cn: "人工猎虫", en: "Artificial Kinsect", ja: "人工猟虫" } }, originalTargetId: "mus001", targets: [target("mus001", "kinsect"), kinsect] });
+  const h = await mount(t, { config });
+  assert.ok(text(h.root.toJSON()).includes("猎虫 · 人工猎虫 (mus001)"));
+  assert.ok(h.root.root.findAllByType("option").map(text).includes("人工猎虫·攻 (mus024)"));
+  await h.choose(2, "mus024", "人工猎虫·攻");
+  await h.click(0);
+  assert.deepEqual(h.api.calls.find((call) => call.kind === "preview").input.slots, [
+    { action: "keep", sourceId: "source-weapon" },
+    { action: "keep", sourceId: "source-armor" },
+    { action: "retarget", sourceId: "source-kinsect", targetId: "mus024" },
+  ]);
+});
+
 test("switching one source preserves the other installed target and carries the preview token", options, async (t) => {
   const h = await mount(t, { installed: true });
   await h.choose(0, "weapon-c");

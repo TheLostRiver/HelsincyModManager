@@ -97,6 +97,7 @@ export type ModReplacementSummary = {
   gameId: string;
   modId: string;
   packageId: string;
+  sourcePackageId: string;
   sources: ReplacementSummaryItem[];
   installedTargets: ReplacementSummaryItem[] | null;
 };

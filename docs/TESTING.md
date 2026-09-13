@@ -2,6 +2,19 @@
 
 ## MHW 装备资源保留与多源切换
 
+独立猎虫与旧绑定追加来源的聚焦检查：
+
+```powershell
+cargo test -p hmm-games-mhw --test kinsect_identity --test kinsect_retarget --test equipment_catalog_candidate
+cargo test -p hmm-core additional_sources
+cargo test -p hmm-runtime core_mod_lifecycle_tests::equipment::kinsects
+node --test src/features/replacements/replacementTargetOptions.test.mjs
+```
+
+只用人工包和临时游戏根，验证 14 武器族及旧 stable ID 不变、29 猎虫目标和三语各 105 名称、独立／混合／
+多猎虫映射、旧棍绑定追加、同目标无差异不回填、源／目标／清单变化拒绝，以及失败、取消、批量与重启恢复。
+恢复事务缺少新来源证据时，新版本事务拒绝，历史版本事务仍按旧规则恢复。
+
 ```powershell
 cargo test -p hmm-games-mhw --test retarget_package_preservation
 cargo test -p hmm-core equipment_reinstall
