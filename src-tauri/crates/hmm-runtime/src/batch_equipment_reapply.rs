@@ -18,6 +18,23 @@ impl ReadOnlyInstallAutomation {
             "invalid equipment reapply identity"
         );
         let preview = self.reinstall_preview_service(game_id)?;
+        if let Some(prepared) = preview.prepare_unbound_plugin_reapply(
+            game_id,
+            profile_id,
+            &input.mod_id,
+            &input.layer,
+            &self.replacement_workflow,
+        )? {
+            let facts = prepared.into_preview();
+            anyhow::ensure!(
+                facts
+                    .installed_revision
+                    .as_ref()
+                    .is_some_and(|value| value.revision_id == input.installed_revision_id),
+                "installed plugin revision changed"
+            );
+            return Ok(input.layer.clone());
+        }
         let InstalledEquipmentReinstallResolution::Ready(context) =
             preview.resolve_installed_equipment_context(game_id, profile_id, &input.mod_id)?
         else {
@@ -52,6 +69,15 @@ impl ReadOnlyBatchReinstallItemFactsReader {
                 && request.input.replacement_binding_snapshot.is_none(),
             "invalid equipment reapply identity"
         );
+        if let Some(prepared) = self.preview.prepare_unbound_plugin_reapply(
+            &request.game_id,
+            &request.profile_id,
+            &request.input.mod_id,
+            &request.input.layer,
+            &self.replacement_workflow,
+        )? {
+            return ReinstallPreviewBatchItemFactsReader::facts_from_preparation(request, prepared);
+        }
         let context = self.preview.resolve_installed_equipment_context(
             &request.game_id,
             &request.profile_id,

@@ -1381,6 +1381,7 @@ fn classify_install_task_failure(
             },
             crate::InstallCommitError::PlanHasBlockingConflicts
             | crate::InstallCommitError::PlanHasInvalidReplacementBindings
+            | crate::InstallCommitError::PlanHasInvalidPluginSelection
             | crate::InstallCommitError::PlanHasInvalidRevisionIdentity => {
                 BatchInstallItemExecution::Blocked {
                     reason_code: "install_plan_blocked".to_owned(),

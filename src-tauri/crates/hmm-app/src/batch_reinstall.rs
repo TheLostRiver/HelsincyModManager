@@ -222,6 +222,27 @@ impl PreparedReinstall {
                 "retained": self.attachment_counts.retained, "excluded": self.attachment_counts.excluded,
             });
         }
+        let mut candidate_plugins = self
+            .candidate_plugin_selections
+            .iter()
+            .map(canonical_json)
+            .collect::<Vec<_>>();
+        candidate_plugins.sort();
+        if !candidate_plugins.is_empty() {
+            canonical["candidatePlugins"] = serde_json::json!(candidate_plugins);
+        }
+        // 批次中其他 Mod 的已应用选择会正常变化；只封存当前项目的事实。
+        let mut applied_plugins = self
+            .old_manifest
+            .plugin_selections
+            .iter()
+            .filter(|selection| selection.scope().mod_id == self.request.mod_id)
+            .map(canonical_json)
+            .collect::<Vec<_>>();
+        applied_plugins.sort();
+        if !applied_plugins.is_empty() {
+            canonical["manifest"]["plugins"] = serde_json::json!(applied_plugins);
+        }
         sha256_prefixed(
             &serde_json::to_vec(&canonical)
                 .expect("validated reinstall batch facts are serializable"),
@@ -241,7 +262,15 @@ impl PreparedReinstall {
         let binding_matches = if !input.intent.is_standard() {
             self.intent == input.intent && input.replacement_binding_snapshot.is_none()
         } else {
-            self.intent.is_standard() && actual_bindings == expected_bindings
+            // 普通跨版本重装不接受调用方指定目标，原位绑定由候选包重建。
+            // 同版本切换仍必须精确匹配调用方已确认的绑定。
+            let canonical_upgrade = self.installed_revision_id != self.candidate.revision_id
+                && input.replacement_binding_snapshot.is_none()
+                && self
+                    .candidate_replacement_bindings
+                    .iter()
+                    .all(crate::is_identity_replacement_binding);
+            self.intent.is_standard() && (actual_bindings == expected_bindings || canonical_upgrade)
         };
         let blocking_reasons = if binding_matches {
             Vec::new()

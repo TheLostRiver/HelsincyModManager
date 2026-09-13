@@ -62,6 +62,7 @@ fn manifest(status: InstallManifestStatus, mod_id: &ModId) -> InstallManifest {
         plan_hash: None,
         entries: vec![manifest_entry(mod_id)],
         replacement_bindings: Vec::new(),
+        plugin_selections: Vec::new(),
     }
 }
 
@@ -619,6 +620,7 @@ fn delete_fails_closed_when_reinstall_recovery_transaction_exists() {
             pre_reinstall_manifest: manifest(InstallManifestStatus::Completed, &mod_id),
             original_install_evidence: None,
             candidate_replacement_bindings: Vec::new(),
+            candidate_plugin_selections: Vec::new(),
             targets: Vec::new(),
         })
         .expect("save transaction");

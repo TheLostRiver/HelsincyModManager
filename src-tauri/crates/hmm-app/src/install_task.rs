@@ -274,7 +274,25 @@ impl InstallWriteAdmissionError {
     }
 }
 
+pub struct ReinstallPluginApproval<'a> {
+    pub game_id: &'a GameId,
+    pub profile_id: &'a ProfileId,
+    pub mod_id: &'a ModId,
+    pub plan_token: &'a str,
+    pub batch_plan_digest: &'a str,
+    pub selections: &'a [hmm_core::PluginSelectionSnapshot],
+}
+
 pub trait InstallWriteAdmission: Send + Sync {
+    /// GUI confirmation is recorded separately. Token-bearing automation may approve only
+    /// the prepared facts after checking its own sealed token and environment.
+    fn approve_reinstall_plugins(
+        &self,
+        _approval: &ReinstallPluginApproval<'_>,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        Ok(())
+    }
+
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
@@ -523,6 +541,25 @@ impl InstallTaskRunner {
             })
     }
 
+    pub fn run_install_revision_task_with_observer<O: TaskProgressObserver + ?Sized>(
+        &self,
+        task_id: &str,
+        request: StartInstallTaskRequest,
+        revision: ModRevisionId,
+        observer: &O,
+    ) -> Result<Vec<TaskProgressEvent>, InstallTaskRunError> {
+        self.run_install_task_for_orchestration_with_revision(
+            task_id,
+            request,
+            Some(revision),
+            None,
+            observer,
+        )
+        .map_err(|error| InstallTaskRunError {
+            events: error.events,
+        })
+    }
+
     pub(crate) fn run_install_task_for_orchestration_with_observer<
         O: TaskProgressObserver + ?Sized,
     >(
@@ -661,6 +698,30 @@ impl InstallTaskRunner {
         let prerequisite_decision = preflight.prerequisite_decision;
         let mut plan = preflight.plan;
         if let (Some(workflow), Some(revision)) = (&self.canonical_sources, revision_id.as_ref()) {
+            if let Err(error) = workflow.apply_plugin_selection(
+                hmm_core::PluginSelectionScope {
+                    game_id: request.game_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    mod_id: request.mod_id.clone(),
+                    revision_id: revision.clone(),
+                },
+                &request.layer,
+                false,
+                &mut plan,
+            ) {
+                let phase = match error {
+                    crate::ReplacementWorkflowError::PluginSelection(error) => error.code(),
+                    _ => "planning",
+                };
+                return Err(self.fail_with_audit(
+                    task_id,
+                    &request,
+                    events,
+                    observer,
+                    phase,
+                    action_count,
+                ));
+            }
             plan = match workflow.bind_canonical_install_sources(
                 &request.game_id,
                 &request.profile_id,
@@ -814,6 +875,24 @@ impl InstallTaskRunner {
                 &current_prerequisite_decision,
             ) {
                 Ok(()) => {
+                    if let Some(workflow) = &self.canonical_sources {
+                        if let Err(error) = workflow.ensure_plugin_choices_confirmed(&plan) {
+                            let phase = match error {
+                                crate::ReplacementWorkflowError::PluginSelection(error) => {
+                                    error.code()
+                                }
+                                _ => "planning",
+                            };
+                            return Err(self.fail_with_audit(
+                                task_id,
+                                &request,
+                                events,
+                                observer,
+                                phase,
+                                action_count,
+                            ));
+                        }
+                    }
                     observe_task_progress(
                         &mut events,
                         observer,
@@ -941,6 +1020,7 @@ impl InstallTaskRunner {
             | InstallCommitError::GameRunningUnknown
             | InstallCommitError::PlanHasBlockingConflicts
             | InstallCommitError::PlanHasInvalidReplacementBindings
+            | InstallCommitError::PlanHasInvalidPluginSelection
             | InstallCommitError::PlanHasInvalidRevisionIdentity
             | InstallCommitError::Failed { .. } => "not_attempted",
         };
@@ -3700,6 +3780,7 @@ mod tests {
                     pre_reinstall_manifest: sample_manifest(),
                     original_install_evidence: None,
                     candidate_replacement_bindings: Vec::new(),
+                    candidate_plugin_selections: Vec::new(),
                     targets: Vec::new(),
                 }]),
                 AdmissionRepositoryMode::Unavailable => {

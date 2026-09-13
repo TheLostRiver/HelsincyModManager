@@ -208,6 +208,7 @@ pub struct HmmRuntime {
     pub install_task_runner: Arc<InstallTaskRunner>,
     pub install_tasks: Arc<InstallTaskService>,
     pub replacement_workflow: Arc<ReplacementWorkflowService>,
+    pub plugin_selection: Arc<hmm_app::PluginSelectionService>,
     pub initial_retarget_install_preflight: Arc<InitialRetargetInstallPreflightService>,
     pub retarget_install_task_runner: Arc<RetargetInstallTaskRunner>,
     pub retarget_install_tasks: Arc<RetargetInstallTaskService>,
@@ -799,6 +800,15 @@ impl HmmRuntime {
             Arc::new(JsonModPackageFileSelectionRepository::new(
                 app_data_dir.join("install").join("file-selections"),
             ));
+        let plugin_selection = crate::plugin_selection::plugin_selection_service(
+            &app_data_dir,
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_import_sandbox_locator),
+            Arc::clone(&content_root_choices),
+            Arc::clone(&file_selection),
+            Arc::clone(&install_manifest_repository),
+            false,
+        );
         let install_file_scanner: Arc<dyn ModPackageInstallFileScanner> =
             Arc::new(SandboxModPackageInstallFileScanner::new(
                 Arc::clone(&content_root_choices),
@@ -859,17 +869,20 @@ impl HmmRuntime {
             vec![Arc::new(MhwReplacementAdapter)];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
             vec![Arc::new(MhwReplacementCatalog)];
-        let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
-            replacement_adapters,
-            replacement_catalogs,
-            Arc::clone(&mod_import_result_repository),
-            Arc::clone(&mod_import_sandbox_locator),
-            install_file_scanner,
-            install_file_reader,
-            initial_retarget_install_status,
-            Arc::clone(&install_manifest_repository),
-            Arc::new(SystemClock),
-        ));
+        let replacement_workflow = Arc::new(
+            ReplacementWorkflowService::new(
+                replacement_adapters,
+                replacement_catalogs,
+                Arc::clone(&mod_import_result_repository),
+                Arc::clone(&mod_import_sandbox_locator),
+                install_file_scanner,
+                install_file_reader,
+                initial_retarget_install_status,
+                Arc::clone(&install_manifest_repository),
+                Arc::new(SystemClock),
+            )
+            .with_plugin_selection(Arc::clone(&plugin_selection)),
+        );
         let content_transformers = Arc::new(
             ContentTransformerRegistry::new(vec![
                 Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>
@@ -911,14 +924,16 @@ impl HmmRuntime {
         ));
         // 安装、卸载与存档侧共用同一个探测器：游戏在跑时不得写玩家文件。
         let install_game_running_detector = game_running_detector_for_platform(&game_adapters);
-        let install_committer: Arc<dyn InstallPlanCommitter> =
-            Arc::new(ConfiguredInstallCommitter::new(
+        let install_committer: Arc<dyn InstallPlanCommitter> = Arc::new(
+            ConfiguredInstallCommitter::new(
                 Arc::clone(&game_config_repository),
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
                 app_data_dir.clone(),
                 Arc::clone(&install_game_running_detector),
-            ));
+            )
+            .with_plugin_selection(Arc::clone(&plugin_selection)),
+        );
         let mod_uninstaller = crate::uninstall::mod_uninstaller(
             Arc::clone(&game_config_repository),
             app_data_dir.clone(),
@@ -1113,6 +1128,7 @@ impl HmmRuntime {
             install_task_runner,
             install_tasks: Arc::new(InstallTaskService::new(Arc::clone(&task_manager))),
             replacement_workflow,
+            plugin_selection,
             initial_retarget_install_preflight,
             retarget_install_task_runner,
             retarget_install_tasks: Arc::new(RetargetInstallTaskService::new(Arc::clone(
@@ -1200,6 +1216,13 @@ impl ChainedInstallWriteAdmission {
 }
 
 impl InstallWriteAdmission for ChainedInstallWriteAdmission {
+    fn approve_reinstall_plugins(
+        &self,
+        approval: &hmm_app::ReinstallPluginApproval<'_>,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        self.first.approve_reinstall_plugins(approval)?;
+        self.second.approve_reinstall_plugins(approval)
+    }
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,
@@ -1526,6 +1549,9 @@ pub struct ConfiguredPreparedReinstall {
 }
 
 impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
+    fn plugin_selections(&self) -> &[hmm_core::PluginSelectionSnapshot] {
+        self.prepared.plugin_selections()
+    }
     fn audit_context(&self) -> ReinstallTaskAuditContext {
         self.prepared.audit_context()
     }
@@ -1541,6 +1567,8 @@ impl ReinstallTaskPrepared for ConfiguredPreparedReinstall {
 
 #[path = "composition/equipment_reinstall.rs"]
 mod equipment_reinstall;
+#[path = "composition/plugin_reapply.rs"]
+mod plugin_reapply;
 
 pub struct ConfiguredReinstallExecutor {
     game_config_repository: Arc<dyn GameConfigRepository>,
@@ -1856,6 +1884,9 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
     }
 
     fn revalidate(&self, prepared: &Self::Prepared) -> Result<(), ReinstallCommitError> {
+        self.replacement_workflow
+            .ensure_plugin_snapshots_confirmed(prepared.prepared.plugin_selections())
+            .map_err(|_| ReinstallCommitError::PreviewStale)?;
         self.services_for_game_instance_with_source(
             prepared.game_instance.clone(),
             Arc::clone(&prepared.source),
@@ -1875,6 +1906,9 @@ impl ReinstallTaskExecutor for ConfiguredReinstallExecutor {
             source,
             staging_cleanup: _cleanup_guard,
         } = prepared;
+        self.replacement_workflow
+            .ensure_plugin_snapshots_confirmed(prepared.plugin_selections())
+            .map_err(|_| ReinstallCommitError::PreviewStale)?;
         let result = load_reinstall_game_instance_for_commit(
             self.game_config_repository.as_ref(),
             &game_instance,
@@ -2224,6 +2258,7 @@ fn should_clean_up_staging<T>(result: &Result<T, InstallCommitError>) -> bool {
 }
 
 struct ConfiguredInstallCommitter {
+    plugin_selection: Option<Arc<hmm_app::PluginSelectionService>>,
     game_config_repository: Arc<dyn GameConfigRepository>,
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
     mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
@@ -2419,6 +2454,10 @@ fn discard_retarget_staging(staging_root: &Path) {
 }
 
 impl ConfiguredInstallCommitter {
+    fn with_plugin_selection(mut self, service: Arc<hmm_app::PluginSelectionService>) -> Self {
+        self.plugin_selection = Some(service);
+        self
+    }
     fn new(
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
@@ -2432,6 +2471,7 @@ impl ConfiguredInstallCommitter {
             mod_import_sandbox_locator,
             app_data_dir,
             game_running_detector,
+            plugin_selection: None,
         }
     }
 }
@@ -2441,6 +2481,18 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
         &self,
         request: ImportedModInstallCommitRequest,
     ) -> Result<InstallCommitResult, InstallCommitError> {
+        if let Some(plugins) = &self.plugin_selection {
+            plugins
+                .validate_plan_coverage(&request.plan, &request.game_id, &request.profile_id)
+                .map_err(|_| InstallCommitError::PlanHasInvalidPluginSelection)?;
+            for selection in &request.plan.plugin_selections {
+                plugins
+                    .ensure_confirmed(selection)
+                    .map_err(|_| InstallCommitError::PlanHasInvalidPluginSelection)?;
+            }
+        } else if !request.plan.plugin_selections.is_empty() {
+            return Err(InstallCommitError::PlanHasInvalidPluginSelection);
+        }
         let game_instance = self
             .game_config_repository
             .load_game_instance(&request.game_id)

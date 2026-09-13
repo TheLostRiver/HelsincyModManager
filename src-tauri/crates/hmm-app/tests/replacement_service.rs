@@ -474,6 +474,7 @@ fn manifest_with_entry(mod_id: &str, status: InstallManifestStatus) -> InstallMa
             adopted: false,
         }],
         replacement_bindings: Vec::new(),
+        plugin_selections: Vec::new(),
     }
 }
 

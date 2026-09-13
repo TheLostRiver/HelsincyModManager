@@ -56,6 +56,8 @@ pub struct PreviewInitialRetargetInstallRequestDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartRetargetInstallTaskRequestDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_revision_id: Option<String>,
     pub game_id: String,
     pub profile_id: String,
     pub mod_id: String,

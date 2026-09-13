@@ -16,6 +16,9 @@ mod install_automation;
 mod lifecycle_automation;
 mod mod_library;
 mod mod_storage;
+mod plugin_selection;
+#[cfg(test)]
+mod plugin_test_fixture;
 mod sandbox_write;
 mod uninstall;
 

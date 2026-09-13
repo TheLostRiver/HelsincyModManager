@@ -14,9 +14,12 @@ mod equipment_catalog_candidate;
 mod equipment_retarget;
 mod executable_reject_list;
 mod package_path;
+mod plugin_policy;
 mod prerequisites;
 mod save_directory;
 mod weapon_retarget;
+
+pub use plugin_policy::MhwPluginPolicy;
 
 pub use armor_retarget::{
     normalize_armor_display_text, normalize_armor_search_text, ArmorPathError, ArmorResourcePath,

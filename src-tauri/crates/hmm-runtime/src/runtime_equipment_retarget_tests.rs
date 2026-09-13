@@ -16,6 +16,8 @@ mod composition;
 mod origin;
 #[path = "runtime_equipment_path_mapping_tests.rs"]
 mod paths;
+#[path = "runtime_plugin_selection_tests.rs"]
+mod plugins;
 
 const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     (

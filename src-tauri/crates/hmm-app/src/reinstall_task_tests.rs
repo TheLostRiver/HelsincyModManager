@@ -22,7 +22,7 @@ impl ReinstallTaskPrepared for FakePrepared {
     }
 
     fn plan_token(&self) -> &str {
-        "prepared-plan-token"
+        "opaque-plan-token"
     }
 
     fn batch_plan_digest(&self) -> String {
@@ -39,6 +39,50 @@ struct FakeExecutor {
     cancel_during_commit: bool,
     commit_count: Mutex<usize>,
     commit_cancel_error: Mutex<Option<crate::TaskManagerError>>,
+}
+
+#[test]
+fn stale_preview_is_rejected_before_recording_plugin_approval_or_committing() {
+    struct RecordingApproval(std::sync::atomic::AtomicUsize);
+    impl crate::InstallWriteAdmission for RecordingApproval {
+        fn ensure_write_allowed(
+            &self,
+            _game: &GameId,
+            _profile: &ProfileId,
+        ) -> Result<(), crate::InstallWriteAdmissionError> {
+            Ok(())
+        }
+        fn approve_reinstall_plugins(
+            &self,
+            _approval: &crate::ReinstallPluginApproval<'_>,
+        ) -> Result<(), crate::InstallWriteAdmissionError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+    }
+    let manager = Arc::new(crate::TaskManager::new());
+    let task = manager.create_task(crate::TaskKind::Install).unwrap();
+    let executor = Arc::new(FakeExecutor::success(manager.clone(), &task.task_id));
+    let approval = Arc::new(RecordingApproval(std::sync::atomic::AtomicUsize::new(0)));
+    let runner = ReinstallTaskRunner::with_write_coordination(
+        manager,
+        executor.clone(),
+        Arc::new(RecordingAuditLog::default()),
+        Arc::new(FixedClock),
+        Arc::new(crate::GameProfileWriteLockRegistry::default()),
+        approval.clone(),
+    );
+    let mut request = sample_request();
+    request.plan_token = "stale-token".to_owned();
+    let error = runner
+        .run_reinstall_task(&task.task_id, request)
+        .unwrap_err();
+    assert_eq!(
+        error.events.last().unwrap().error.as_deref(),
+        Some("install_reinstall_failed:preflight")
+    );
+    assert_eq!(approval.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(executor.commit_count(), 0);
 }
 
 impl FakeExecutor {

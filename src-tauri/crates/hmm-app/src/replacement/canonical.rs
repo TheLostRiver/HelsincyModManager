@@ -134,7 +134,21 @@ impl ReinstallCandidatePlanner for CanonicalReinstallPlanner {
             request.mod_id,
             &request.candidate.revision_id,
         );
-        let plan = self.planning.build_candidate_plan(request)?;
+        let layer = request.layer.clone();
+        let mut plan = self.planning.build_candidate_plan(request)?;
+        self.replacement
+            .apply_plugin_selection(
+                hmm_core::PluginSelectionScope {
+                    game_id: game_id.clone(),
+                    profile_id: profile_id.clone(),
+                    mod_id: mod_id.clone(),
+                    revision_id: revision_id.clone(),
+                },
+                &layer,
+                false,
+                &mut plan,
+            )
+            .map_err(|_| ReinstallCandidatePlanError::NotReady)?;
         self.replacement
             .bind_canonical_install_sources(game_id, profile_id, mod_id, revision_id, plan)
             .map_err(|_| ReinstallCandidatePlanError::NotReady)

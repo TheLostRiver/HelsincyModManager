@@ -111,6 +111,7 @@ mod tests {
 
     fn manifest() -> InstallManifest {
         InstallManifest {
+            plugin_selections: Vec::new(),
             profile_id: ProfileId::new("profile"),
             manifest_id: "manifest".into(),
             schema_version: 2,

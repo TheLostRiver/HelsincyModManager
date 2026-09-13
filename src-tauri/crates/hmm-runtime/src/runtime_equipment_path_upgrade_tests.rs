@@ -37,7 +37,7 @@ fn legacy_fixture() -> Fixture {
         .initial_retarget_install_preflight
         .preview(initial_request(selection.clone()))
         .unwrap();
-    install_fixture_revision(&fixture.state, &fixture.mod_id, &ProfileId::new("default"));
+    fixture.install_legacy();
     fixture.run(selection);
     fixture.assert_layout(&CURRENT);
     let mut manifest = read_fixture_manifest(&fixture.app_data);

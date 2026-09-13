@@ -72,7 +72,13 @@ pub fn start_equipment_retarget_install_task(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
+    let expected_revision = request.expected_revision_id.clone();
     let request = selection_from_dto(request)?;
+    let expected_revision = crate::plugin_selection_commands::expected_current_revision(
+        expected_revision,
+        &request.mod_id,
+        &state.replacement_workflow,
+    )?;
     let task = state
         .retarget_install_tasks
         .start_equipment_retarget_install_task(request.clone())
@@ -89,9 +95,13 @@ pub fn start_equipment_retarget_install_task(
     let runner = Arc::clone(&state.retarget_install_task_runner);
     let task_id = task.task_id.clone();
     std::thread::spawn(move || {
-        let events = runner
-            .run_equipment_retarget_install_task(&task_id, request)
-            .unwrap_or_else(|error| error.events);
+        let result = match expected_revision {
+            Some(revision) => {
+                runner.run_equipment_retarget_install_task_at_revision(&task_id, request, revision)
+            }
+            None => runner.run_equipment_retarget_install_task(&task_id, request),
+        };
+        let events = result.unwrap_or_else(|error| error.events);
         for event in events {
             let _ = emit_task_progress(&app_handle, event);
         }

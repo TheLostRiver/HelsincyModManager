@@ -105,6 +105,7 @@ pub(super) fn reinstall_recovery_fixture() -> (
         pre_reinstall_manifest: old_manifest.clone(),
         original_install_evidence: None,
         candidate_replacement_bindings,
+        candidate_plugin_selections: Vec::new(),
         targets: vec![ReinstallRecoveryTarget {
             target_path: target.clone(),
             class: ReinstallTargetClass::Replaced,
