@@ -129,12 +129,18 @@ pub struct ReinstallTaskAuditContext {
 }
 
 pub trait ReinstallTaskPrepared: Send {
+    fn plugin_selections(&self) -> &[hmm_core::PluginSelectionSnapshot] {
+        &[]
+    }
     fn audit_context(&self) -> ReinstallTaskAuditContext;
     fn plan_token(&self) -> &str;
     fn batch_plan_digest(&self) -> String;
 }
 
 impl ReinstallTaskPrepared for PreparedReinstall {
+    fn plugin_selections(&self) -> &[hmm_core::PluginSelectionSnapshot] {
+        PreparedReinstall::plugin_selections(self)
+    }
     fn audit_context(&self) -> ReinstallTaskAuditContext {
         ReinstallTaskAuditContext {
             previous_revision_id: Some(self.installed_revision_id.clone()),
@@ -499,7 +505,21 @@ impl<E: ReinstallTaskExecutor> ReinstallTaskRunner<E> {
             observer,
             running_event(task_id, PREFLIGHT_PROCESSING_PHASE),
         );
-        if let Err(error) = self.executor.revalidate(&prepared) {
+        let admission = if prepared.plan_token() != expected_plan_token {
+            Err(ReinstallCommitError::PreviewStale)
+        } else {
+            self.write_admission
+                .approve_reinstall_plugins(&crate::ReinstallPluginApproval {
+                    game_id: request.game_id(),
+                    profile_id: request.profile_id(),
+                    mod_id: request.mod_id(),
+                    plan_token: prepared.plan_token(),
+                    batch_plan_digest: &prepared.batch_plan_digest(),
+                    selections: prepared.plugin_selections(),
+                })
+                .map_err(|_| ReinstallCommitError::PreviewStale)
+        };
+        if let Err(error) = admission.and_then(|()| self.executor.revalidate(&prepared)) {
             if self.is_cancelled(task_id) {
                 return Ok(events);
             }

@@ -37,6 +37,12 @@ mod mod_storage_migration;
 mod mod_storage_settings;
 mod mod_storage_write_gate;
 mod package_contents_query;
+mod plugin_facts;
+mod plugin_selection;
+pub use plugin_selection::{
+    PluginCandidate, PluginInventory, PluginSelectionService, PluginSelectionServiceError,
+    PluginSelectionSources,
+};
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -211,8 +217,9 @@ pub use install_task::{
     InstallPlanCommitter, InstallRecoveryActionExecutor, InstallTaskRunError, InstallTaskRunner,
     InstallTaskService, InstallWriteAdmission, InstallWriteAdmissionError, ModUninstaller,
     RecoveryActionTaskRunError, RecoveryActionTaskRunner, RecoveryActionTaskService,
-    ReinstallRecoveryWriteAdmission, StartInstallTaskRequest, StartRecoveryActionTaskRequest,
-    StartUninstallTaskRequest, UninstallTaskRunError, UninstallTaskRunner, UninstallTaskService,
+    ReinstallPluginApproval, ReinstallRecoveryWriteAdmission, StartInstallTaskRequest,
+    StartRecoveryActionTaskRequest, StartUninstallTaskRequest, UninstallTaskRunError,
+    UninstallTaskRunner, UninstallTaskService,
 };
 pub use log_diagnostics::{
     AuditLogDiagnosticsExport, AuditLogDiagnosticsExportService, MAX_AUDIT_LOG_DIAGNOSTIC_EVENTS,

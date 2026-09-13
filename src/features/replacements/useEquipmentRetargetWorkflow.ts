@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePluginSelection } from "../install-plugins/usePluginSelection";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "../mods/modImportTypes";
 import type { ReinstallPlanPreview } from "../mods/modReinstallTypes";
 import { getEquipmentRetargetConfiguration, previewEquipmentRetargetInstall, previewEquipmentRetargetReinstall,
@@ -44,6 +45,11 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     setTask(next);
   }, []);
 
+  const plugins = usePluginSelection(props.profileId ? { gameId: props.gameId, profileId: props.profileId, modId: props.modId } : null, {
+    onInvalidated: () => { previewGeneration.current += 1; setPreview({ status: "idle" }); },
+  });
+  const reloadPlugins = plugins.reload;
+
   useEffect(() => () => { lifetime.current += 1; previewGeneration.current += 1; }, []);
   useEffect(() => { previewGeneration.current += 1; setPreview({ status: "idle" }); }, [props.installStatus, props.completedLocally]);
 
@@ -76,6 +82,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
       const next = await getEquipmentRetargetConfiguration(latest.current.props);
       if (lifetime.current !== generation) return;
       setConfiguration(next);
+      reloadPlugins();
       setChoices(initialEquipmentChoices(next));
       setPreview({ status: "idle" });
       trackTask({ status: "idle" });
@@ -83,7 +90,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     } catch {
       if (lifetime.current === generation) setRefresh("failed");
     }
-  }, [trackTask]);
+  }, [trackTask, reloadPlugins]);
 
   useEffect(() => {
     if (task.status !== "completed" || refreshedTask.current === task.taskId) return;
@@ -92,7 +99,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
   }, [task, refreshCompleted]);
 
   const taskActive = task.status === "starting" || task.status === "running";
-  const busy = taskActive || refresh === "refreshing" || (task.status === "completed" && refresh === "idle");
+  const busy = taskActive || plugins.saving || refresh === "refreshing" || (task.status === "completed" && refresh === "idle");
   const { onBusyChange } = props;
   useEffect(() => onBusyChange(busy), [onBusyChange, busy]);
   useEffect(() => () => latest.current.props.onBusyChange(false), []);
@@ -120,7 +127,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
   };
 
   const createPreview = async () => {
-    if (!canPreview || props.profileId === null) return;
+    if (!canPreview || !plugins.ready || props.profileId === null) return;
     const generation = ++previewGeneration.current;
     const request: EquipmentRetargetSelection = {
       gameId: props.gameId, profileId: props.profileId, modId: props.modId,
@@ -139,7 +146,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
   };
 
   const createReapplyPreview = async () => {
-    if (!canReapply || props.profileId === null) return;
+    if (!canReapply || !plugins.ready || props.profileId === null) return;
     const generation = ++previewGeneration.current;
     const request = { gameId: props.gameId, profileId: props.profileId, modId: props.modId };
     setPreview({ status: "loading" });
@@ -153,7 +160,7 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
   };
 
   const start = async () => {
-    if (!canStart || preview.status !== "ready" || taskRef.current.status === "starting" || taskRef.current.status === "running") return;
+    if (!canStart || !plugins.ready || preview.status !== "ready" || taskRef.current.status === "starting" || taskRef.current.status === "running") return;
     const generation = lifetime.current;
     const switching = preview.mode !== "initial";
     const failedPhase = switching ? "install.reinstall.failed" : "install.retarget.failed";
@@ -161,11 +168,13 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     setCancelError(null);
     trackTask({ status: "starting" });
     try {
+      const inventory = await plugins.confirm();
+      if (lifetime.current !== generation) return;
       const started = preview.mode === "reapply" && preview.value.status === "ready"
         ? await startEquipmentReapply(preview.request, preview.value.planToken)
         : preview.mode === "switch" && preview.value.status === "ready"
         ? await startEquipmentRetargetReinstall(preview.request, preview.value.planToken)
-        : preview.mode === "initial" ? await startEquipmentRetargetInstall(preview.request) : null;
+        : preview.mode === "initial" ? await startEquipmentRetargetInstall({ ...preview.request, ...(inventory ? { expectedRevisionId: inventory.revisionId } : {}) }) : null;
       if (lifetime.current !== generation) return;
       if (!started || started.kind !== "install" || started.status !== "queued") throw { code: "invalid_task_type" };
       const running: RetargetInstallTaskState = { status: "running", taskId: started.taskId, phase: switching ? "install.reinstall.queued" : "install.retarget.queued" };
@@ -200,6 +209,6 @@ export function useEquipmentRetargetWorkflow(props: ReplacementTargetPanelProps,
     }
   };
 
-  return { configuration, choices, choose, preview, task, busy, block, canPreview, canReapply, canStart, createPreview, createReapplyPreview, start,
+  return { configuration, choices, choose, preview, task, busy, block, plugins, canPreview: canPreview && plugins.ready, canReapply: canReapply && plugins.ready, canStart: canStart && plugins.ready, createPreview, createReapplyPreview, start,
     listener, retryListener: () => setListenerAttempt((value) => value + 1), refresh, refreshCompleted, cancel, cancelError, cancelTask };
 }

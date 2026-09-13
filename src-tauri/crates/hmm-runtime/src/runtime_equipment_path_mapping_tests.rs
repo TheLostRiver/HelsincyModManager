@@ -81,6 +81,17 @@ impl Fixture {
         }
     }
 
+    fn install_legacy(&self) {
+        install_fixture_revision(&self.state, &self.mod_id, &ProfileId::new("default"));
+        attachments::seed_legacy_attachment_files(
+            &self.app_data,
+            &self.game,
+            &self.mod_id,
+            self.manifests.as_ref(),
+            &[(PLUGIN, PLUGIN_BYTES)],
+        );
+    }
+
     fn choices(&self, destinations: &[(&str, &str)]) -> EquipmentRetargetReinstallRequest {
         let configuration = self
             .state
@@ -230,7 +241,7 @@ impl Fixture {
 #[test]
 fn nested_weapon_sources_swap_chain_and_move_independently_from_original_bytes() {
     let mut fixture = Fixture::new(FILES);
-    install_fixture_revision(&fixture.state, &fixture.mod_id, &ProfileId::new("default"));
+    fixture.install_legacy();
     for (choices, paths) in [
         (
             [("two028", "two020"), ("two020", "two028")],

@@ -22,6 +22,11 @@ pub(super) fn verify_retarget_inventory(
                 .iter()
                 .map(RetargetPolicyExcludedFile::package_file_id),
         )
+        .chain(
+            plan.plugin_selections
+                .iter()
+                .flat_map(|selection| selection.files().iter().map(|file| &file.package_file_id)),
+        )
         .collect::<BTreeSet<_>>();
     if manifest
         .entries
@@ -47,13 +52,60 @@ impl ReinstallPreviewService {
     ) -> Result<AttachmentRetention, ReinstallBlockingReason> {
         let mut counts = ReinstallAttachmentCounts::default();
         let mut retained_targets = Vec::new();
+        let plugin_files = plan
+            .plugin_selections
+            .iter()
+            .flat_map(|selection| {
+                selection
+                    .files()
+                    .iter()
+                    .map(|file| (file.package_file_id.clone(), file.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        for file in plugin_files.values() {
+            if !file.choice.is_included() {
+                counts.excluded = counts
+                    .excluded
+                    .checked_add(1)
+                    .ok_or(ReinstallBlockingReason::CandidateNotReady)?;
+                continue;
+            }
+            let unchanged = manifest.entries.iter().any(|entry| {
+                entry.mod_id == request.mod_id
+                    && entry.package_file_id == file.package_file_id
+                    && !entry.adopted
+                    && (entry.revision_id.as_ref() == Some(&candidate.revision_id)
+                        || (entry.revision_id.is_none() && verified_original))
+                    && entry
+                        .target_path
+                        .as_str()
+                        .eq_ignore_ascii_case(file.target_path.as_str())
+                    && entry.installed_file.as_ref() == Some(&file.source_file)
+            });
+            if unchanged {
+                counts.retained = counts
+                    .retained
+                    .checked_add(1)
+                    .ok_or(ReinstallBlockingReason::CandidateNotReady)?;
+                retained_targets.push(file.target_path.clone());
+            } else if file.choice == hmm_core::PluginFileChoiceKind::RetainInstalled {
+                return Err(ReinstallBlockingReason::InstalledAttachmentUnverified);
+            }
+        }
         let mut ids = plan
             .actions
             .iter()
             .map(|action| action.provider.package_file_id.clone())
             .collect::<BTreeSet<_>>();
         let mut paths = BTreeSet::new();
+        let mut exclusion_ids = BTreeSet::new();
         for file in exclusions {
+            if !exclusion_ids.insert(file.package_file_id()) {
+                return Err(ReinstallBlockingReason::CandidateNotReady);
+            }
+            if plugin_files.contains_key(file.package_file_id()) {
+                continue;
+            }
             match file.reason() {
                 hmm_core::RetargetExclusionReason::ExecutableOrScript => {}
             }

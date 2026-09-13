@@ -393,6 +393,7 @@ impl CliLifecycleAutomation {
         )?;
         let write_admission: Arc<dyn InstallWriteAdmission> =
             Arc::new(LifecycleInstallWriteAdmission {
+                app_data_dir: context.app_data_dir.clone(),
                 root_admission,
                 game_config_repository,
                 token_environment: context.token_environment,
@@ -599,6 +600,7 @@ impl CliLifecycleAutomation {
         )?;
         let write_admission: Arc<dyn InstallWriteAdmission> =
             Arc::new(LifecycleReinstallWriteAdmission {
+                app_data_dir: context.app_data_dir.clone(),
                 root_admission,
                 game_config_repository,
                 token_environment: context.token_environment,
@@ -817,6 +819,7 @@ fn write_admission_task_error_code(events: &[TaskProgressEvent]) -> Option<&'sta
 }
 
 struct LifecycleInstallWriteAdmission {
+    app_data_dir: PathBuf,
     root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
     token_environment: LifecycleTokenEnvironment,
@@ -865,7 +868,14 @@ impl InstallWriteAdmission for LifecycleInstallWriteAdmission {
             prerequisite_decision,
         )
         .map_err(|_| InstallWriteAdmissionError::SafetyRejected)?;
-        self.ensure_write_allowed(game_id, profile_id)
+        self.ensure_write_allowed(game_id, profile_id)?;
+        crate::plugin_selection::record_verified_plan_plugins(
+            &self.app_data_dir,
+            game_id,
+            profile_id,
+            mod_id,
+            plan,
+        )
     }
 }
 
@@ -927,6 +937,7 @@ impl LifecycleUninstallWriteAdmission {
 }
 
 struct LifecycleReinstallWriteAdmission {
+    app_data_dir: PathBuf,
     root_admission: LifecycleRootAdmission,
     game_config_repository: Arc<dyn GameConfigRepository>,
     token_environment: LifecycleTokenEnvironment,
@@ -940,6 +951,18 @@ struct LifecycleReinstallWriteAdmission {
 }
 
 impl InstallWriteAdmission for LifecycleReinstallWriteAdmission {
+    fn approve_reinstall_plugins(
+        &self,
+        approval: &hmm_app::ReinstallPluginApproval<'_>,
+    ) -> Result<(), InstallWriteAdmissionError> {
+        if approval.mod_id != &self.expected_mod_id
+            || approval.plan_token != self.expected_internal_plan_token
+        {
+            return Err(InstallWriteAdmissionError::SafetyRejected);
+        }
+        self.ensure_write_allowed(approval.game_id, approval.profile_id)?;
+        crate::plugin_selection::record_verified_reinstall_plugins(&self.app_data_dir, approval)
+    }
     fn ensure_write_allowed(
         &self,
         game_id: &GameId,

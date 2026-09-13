@@ -361,6 +361,7 @@ enum BatchRootGuard {
 }
 
 struct BatchWriteAdmission {
+    app_data_dir: PathBuf,
     root_guard: BatchRootGuard,
     game_config_repository: Arc<dyn hmm_ports::GameConfigRepository>,
     expected: Mutex<Option<ExpectedBatchPlans>>,
@@ -403,6 +404,13 @@ impl BatchWriteAdmission {
                     input.mod_id.clone(),
                     AllowedBatchPlan {
                         revision_id: input.revision_id.clone(),
+                        digest: item.single_plan_digest.clone(),
+                    },
+                )),
+                BatchItemInput::Reinstall(input) => Some((
+                    input.mod_id.clone(),
+                    AllowedBatchPlan {
+                        revision_id: input.candidate_revision_id.clone(),
                         digest: item.single_plan_digest.clone(),
                     },
                 )),
@@ -464,6 +472,32 @@ impl BatchWriteAdmission {
 }
 
 impl InstallWriteAdmission for BatchWriteAdmission {
+    fn approve_reinstall_plugins(
+        &self,
+        approval: &hmm_app::ReinstallPluginApproval<'_>,
+    ) -> Result<(), hmm_app::InstallWriteAdmissionError> {
+        let expected = self
+            .expected
+            .lock()
+            .map_err(|_| hmm_app::InstallWriteAdmissionError::SafetyRejected)?;
+        let Some((game, profile, allowed, root)) = expected.as_ref() else {
+            return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
+        };
+        let Some(item) = allowed.get(approval.mod_id) else {
+            return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
+        };
+        if item.digest != approval.batch_plan_digest {
+            return Err(hmm_app::InstallWriteAdmissionError::SafetyRejected);
+        }
+        self.revalidate_roots(
+            game,
+            profile,
+            root.as_ref(),
+            approval.game_id,
+            approval.profile_id,
+        )?;
+        crate::plugin_selection::record_verified_reinstall_plugins(&self.app_data_dir, approval)
+    }
     fn ensure_write_allowed(
         &self,
         game_id: &hmm_core::GameId,
@@ -523,6 +557,13 @@ impl InstallWriteAdmission for BatchWriteAdmission {
             expected_root.as_ref(),
             game_id,
             profile_id,
+        )?;
+        crate::plugin_selection::record_verified_plan_plugins(
+            &self.app_data_dir,
+            game_id,
+            profile_id,
+            mod_id,
+            plan,
         )
     }
 }
@@ -971,6 +1012,7 @@ fn build_write_context(
         JsonGameConfigRepository::new(context.data_root.join("config").join("games.json")),
     );
     let admission = Arc::new(BatchWriteAdmission {
+        app_data_dir: context.data_root.clone(),
         root_guard,
         game_config_repository,
         expected: Mutex::new(None),

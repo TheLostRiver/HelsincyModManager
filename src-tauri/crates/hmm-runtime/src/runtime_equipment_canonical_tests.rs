@@ -14,6 +14,7 @@ fn assert_normal_install_tracks_all_sources(files: &[(&str, &[u8])], source_coun
         .save_game_directory(GameId::mhw(), game.clone())
         .unwrap();
     let mod_id = import_equipment(&state, archive);
+    plugins::confirm_supported_plugins(&state, &mod_id, None);
     install_fixture_revision(&state, &mod_id, &ProfileId::new("default"));
     let manifest = read_fixture_manifest(&app_data);
     let mut expected = baseline.clone();
@@ -186,11 +187,9 @@ fn ordinary_install_records_both_armor_sources_without_changing_files() {
 
 #[test]
 fn ordinary_install_tracks_mixed_and_unknown_sources_without_dropping_plugins() {
+    let dll = plugins::synthetic_dll();
     let mut files = EQUIPMENT_FILES.to_vec();
-    files.push((
-        "nativePC/plugins/fixture_support.dll",
-        b"inert synthetic plugin bytes",
-    ));
+    files.push(("nativePC/plugins/fixture_support.dll", &dll));
     assert_normal_install_tracks_all_sources(&files, 3);
 }
 
@@ -279,21 +278,20 @@ fn ordinary_revision_reinstall_records_every_new_source_and_preserves_all_files(
     create_fixture_zip(&archive, EQUIPMENT_FILES);
     let (_, mod_id, revision) = import_initial_fixture_revision(&state, &archive);
     install_fixture_revision(&state, &mod_id, &ProfileId::new("default"));
+    let dll = plugins::synthetic_dll();
     let candidate_files: &[(&str, &[u8])] = &[
         ("nativePC/wp/one/one004/mod/one004.mod3", b"new weapon"),
         (
             "nativePC/pl/f_equip/pl078_0000/body/mod/f_body.mod3",
             b"new armor",
         ),
-        (
-            "nativePC/plugins/fixture_support.dll",
-            b"unchanged normal install policy",
-        ),
+        ("nativePC/plugins/fixture_support.dll", &dll),
     ];
     let candidate = temp.path().join("updated.zip");
     create_fixture_zip(&candidate, candidate_files);
     let (_, next_revision) =
         import_candidate_fixture_revision(&state, &candidate, &mod_id, &revision);
+    plugins::confirm_supported_plugins(&state, &mod_id, Some(next_revision.clone()));
     let profile = ProfileId::new("default");
     let preview = preview_fixture_reinstall(&state, &profile, &mod_id, &next_revision);
     assert_eq!(preview.status, ReinstallPreviewStatus::Ready);

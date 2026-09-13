@@ -169,8 +169,8 @@ test("admission and prerequisite failure phases have their own messages", () => 
 
 });
 
-// `install_failed:<phase>` 代码实际会发 15 种，其中 12 种有专属文案；
-// 另外 3 个 `write_admission_cancelled` / `_order_violation` / `_unavailable`
+// 安装规划、写入和插件选择的公开失败码各有专属文案；
+// `write_admission_cancelled` / `_order_violation` / `_unavailable`
 // 是取消与内部不变量，刻意回落到默认文案。
 //
 // 这个集合是**完整清单**而不是抽样：`getManagedInstallTaskFailureMessage` 缺 key 时
@@ -178,6 +178,12 @@ test("admission and prerequisite failure phases have their own messages", () => 
 // （早先版本用 `key 数 >= 8` 这种下限判断，删掉一个 key 照样通过——是条假护栏。）
 // **新增 phase 请先在这里登记，再补三语文案。**
 const requiredInstallFailurePhases = [
+  "plugin_selection_unavailable",
+  "plugin_source_unavailable",
+  "plugin_inventory_changed",
+  "plugin_selection_invalid",
+  "plugin_selection_required",
+  "plugin_manifest_unverified",
   "planning",
   "ambiguous_content_root",
   "empty_plan",

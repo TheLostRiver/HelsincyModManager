@@ -21,6 +21,9 @@ use hmm_ports::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+#[path = "batch_reinstall_plugin_tests.rs"]
+mod batch_plugins;
+
 #[test]
 fn preview_fixture_returns_expected_counts_without_mutation_or_sensitive_facts() {
     let fixture = Fixture::ready();
@@ -396,6 +399,7 @@ fn preview_blocks_plan_conflict_and_cross_mod_ownership() {
             ],
         }],
         replacement_bindings: Vec::new(),
+        plugin_selections: Vec::new(),
     });
     assert_blocked(
         &plan_conflict
@@ -1713,6 +1717,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
                 pre_reinstall_manifest: installed_manifest(),
                 original_install_evidence: None,
                 candidate_replacement_bindings: Vec::new(),
+                candidate_plugin_selections: Vec::new(),
                 targets: Vec::new(),
             }));
         }
@@ -1747,6 +1752,7 @@ impl ReinstallRecoveryTransactionRepository for FakeRecoveryTransactions {
             pre_reinstall_manifest: installed_manifest(),
             original_install_evidence: None,
             candidate_replacement_bindings: Vec::new(),
+            candidate_plugin_selections: Vec::new(),
             targets: Vec::new(),
         }])
     }

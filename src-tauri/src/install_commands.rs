@@ -42,17 +42,67 @@ pub fn preview_install_plan(
 }
 
 #[tauri::command]
-pub fn preview_imported_mod_install_plan(
+pub async fn preview_imported_mod_install_plan(
     request: PreviewImportedModInstallPlanRequestDto,
     state: State<'_, AppState>,
 ) -> Result<ImportedModInstallPreflightDto, CommandErrorDto> {
+    let profile_id = request
+        .profile_id
+        .clone()
+        .map(|id| {
+            crate::replacement_commands::required_id(
+                id,
+                "install_profile_id_invalid",
+                "profile id is required",
+            )
+            .map(ProfileId::new)
+        })
+        .transpose()?;
     let request = imported_mod_install_plan_request_from_dto(request)?;
-    let preflight = state
-        .install_preflight
-        .preview(request)
-        .map_err(install_planning_error_to_command_error)?;
-
-    Ok(preflight.into())
+    let preflight = state.install_preflight.clone();
+    let workflow = state.replacement_workflow.clone();
+    let plugins = state.plugin_selection.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = if let Some(profile_id) = profile_id {
+            let revision = workflow.current_install_revision(&request.mod_id).map_err(
+                crate::replacement_commands::replacement_workflow_error_to_command_error,
+            )?;
+            let mut result = preflight
+                .preview_revision(&request.game_id, &request.mod_id, &revision, &request.layer)
+                .map_err(install_planning_error_to_command_error)?;
+            plugins
+                .apply_to_plan(
+                    &hmm_core::PluginSelectionScope {
+                        game_id: request.game_id,
+                        profile_id,
+                        mod_id: request.mod_id,
+                        revision_id: revision,
+                    },
+                    &request.layer,
+                    false,
+                    &mut result.plan,
+                )
+                .map_err(crate::plugin_selection_commands::plugin_error)?;
+            result
+        } else {
+            let result = preflight
+                .preview(request.clone())
+                .map_err(install_planning_error_to_command_error)?;
+            if plugins.has_policy_files(&result.plan, &request.game_id) {
+                return Err(CommandErrorDto {
+                    code: "plugin_profile_invalid".to_owned(),
+                    message: "a profile is required for plugin choices".to_owned(),
+                });
+            }
+            result
+        };
+        Ok(result.into())
+    })
+    .await
+    .map_err(|_| CommandErrorDto {
+        code: "plugin_selection_unavailable".to_owned(),
+        message: "install preview is unavailable".to_owned(),
+    })?
 }
 
 #[tauri::command]
@@ -61,7 +111,13 @@ pub fn start_install_task(
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
+    let expected_revision = request.expected_revision_id.clone();
     let request = start_install_task_request_from_dto(request)?;
+    let expected_revision = crate::plugin_selection_commands::expected_current_revision(
+        expected_revision,
+        &request.mod_id,
+        &state.replacement_workflow,
+    )?;
     let runner_request = request.clone();
     let task = state
         .install_tasks
@@ -74,6 +130,7 @@ pub fn start_install_task(
         app_handle,
         task.task_id.clone(),
         runner_request,
+        expected_revision,
     );
 
     Ok(task.into())
@@ -217,10 +274,20 @@ fn spawn_install_runner(
     app_handle: AppHandle,
     task_id: String,
     request: StartInstallTaskRequest,
+    expected_revision: Option<hmm_core::ModRevisionId>,
 ) {
     std::thread::spawn(move || {
         let observer = TauriTaskProgressObserver::new(&app_handle);
-        let _ = runner.run_install_task_with_observer(&task_id, request, &observer);
+        match expected_revision {
+            Some(revision) => {
+                let _ = runner.run_install_revision_task_with_observer(
+                    &task_id, request, revision, &observer,
+                );
+            }
+            None => {
+                let _ = runner.run_install_task_with_observer(&task_id, request, &observer);
+            }
+        }
     });
 }
 
@@ -992,6 +1059,7 @@ mod tests {
                 providers: vec![provider_b, provider_c],
             }],
             replacement_bindings: Vec::new(),
+            plugin_selections: Vec::new(),
         };
 
         let dto: InstallPlanPreviewDto = plan.into();

@@ -80,12 +80,13 @@ test("mod library routes install and true reinstall through separate commands", 
   assert.match(page, /case\s+"install":[\s\S]*?startSelectedInstallTask\(\)/);
   assert.match(page, /case\s+"reinstall":[\s\S]*?openReinstall/);
   assert.doesNotMatch(page, /case\s+"reinstall":\s*startSelectedInstallTask\(\)/);
-  assert.match(page, /const previewGeneration = \+\+installPlanPreviewGenerationRef\.current/);
+  const preview = readSource("src/features/mods/ModInstallPreview.tsx");
+  assert.match(preview, /const current = \+\+generation\.current/);
   assert.match(
     page,
     /case\s+"reinstall":[\s\S]*?installPlanPreviewGenerationRef\.current \+= 1;[\s\S]*?openReinstall/,
   );
-  assert.match(page, /installPlanPreviewGenerationRef\.current !== previewGeneration/);
+  assert.match(preview, /generation\.current === current/);
   assert.match(data, /id:\s*"install"/);
   assert.match(data, /id:\s*"reinstall"/);
   assert.match(panel, /canReinstallSelection/);

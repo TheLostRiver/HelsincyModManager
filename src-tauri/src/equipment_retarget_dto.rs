@@ -91,6 +91,8 @@ pub enum EquipmentSlotIntentDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EquipmentRetargetSelectionRequestDto {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_revision_id: Option<String>,
     pub game_id: String,
     pub profile_id: String,
     pub mod_id: String,
@@ -196,10 +198,8 @@ impl From<hmm_app::InitialRetargetInstallPreflight> for EquipmentRetargetInstall
                 .collect(),
             warnings: preflight
                 .planned
-                .retarget_plans()
-                .iter()
-                .flat_map(|plan| plan.warnings())
-                .copied()
+                .warnings()
+                .into_iter()
                 .map(Into::into)
                 .collect(),
             install_plan: preflight.planned.install_plan().clone().into(),

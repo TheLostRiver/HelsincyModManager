@@ -630,12 +630,12 @@ replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacem
 | `get_mod_replacement_summary` | `gameId`、可选 `profileId`、`modId` | 只读 `{ gameId, modId, packageId, sources, installedTargets }`，供卡片悬浮展示 |
 | `list_replacement_target_occupancy` | `gameId`、`profileId`、`modId` | 该 profile 下**其他 Mod** 已占用的替换目标 `[{ targetId, modId, displayName }]` |
 | `preview_initial_retarget_install` | `gameId`、`profileId`、`modId`、`targetId`、layer | retarget action、warning 与 InstallPlan 冲突摘要 |
-| `start_retarget_install_task` | 与 preview 相同 | `TaskStartedDto` |
+| `start_retarget_install_task` | 与 preview 相同，可另带 `expectedRevisionId` 固定已确认版本 | `TaskStartedDto` |
 | `preview_retarget_reinstall` | `gameId`、`profileId`、`modId`、`targetId`、layer | `ReinstallPlanPreviewDto` 与 plan token |
 | `start_retarget_reinstall_task` | 与 preview 相同，另加 `planToken` | `TaskStartedDto` |
 | `get_equipment_retarget_configuration` | `gameId`、可选 `profileId`、`modId` | 每个源的名称、编号、原位身份、兼容目标及已安装目标映射 |
 | `preview_equipment_retarget_install` | `gameId`、`profileId`、`modId`、`slots`、layer | 全部选择的 targets、warnings、InstallPlan 摘要与 prerequisite |
-| `start_equipment_retarget_install_task` | 与多源首次预览相同 | `TaskStartedDto` |
+| `start_equipment_retarget_install_task` | 与多源首次预览相同，可另带 `expectedRevisionId` | `TaskStartedDto` |
 | `preview_equipment_retarget_reinstall` | `gameId`、`profileId`、`modId`、`slots`、layer | 整组 `ReinstallPlanPreviewDto` 与 plan token |
 | `start_equipment_retarget_reinstall_task` | `{ selection: 多源预览请求, planToken }` | `TaskStartedDto` |
 | `preview_equipment_reapply` | `gameId`、`profileId`、`modId` | 当前已安装完整目标的 `ReinstallPlanPreviewDto`；无变更时 `no_changes`，无写入 token |
@@ -667,7 +667,8 @@ target DTO 只返回展示名、alias、稳定 id/internal id 和 target type，
 installed_attachment_retained | plugin_candidate | policy_excluded`；`reason` 为 `target_mapping |
 original_target | texture_reference | unmapped_resource | ambiguous_resource_identity |
 conflicting_resource_identity | package_resource | installed_attachment |
-plugin_not_included | executable_policy`。插件候选只是未包含资源的说明，不是新安装授权。
+plugin_not_included | plugin_selected | executable_policy`。`plugin_selected` 表示插件选择已纳入候选；
+`plugin_candidate` 仍表示本次未包含，不能单凭候选标签取得新安装授权。
 多义或矛盾编号对应 `kept_in_place`，保留完整原路径和内容；前端展示后端原因，不执行改名。
 界面默认折叠明细、展开后分批显示；这些字段不能回传到开始请求，也不能进入任务进度或日志。
 
@@ -683,6 +684,46 @@ replaced／added／stale 均为零；前端不启动任务。确有差异时返�
 candidateRevisionId 相同，且不能同时提供 replacementTargets 或绑定快照。后端重新取得当前目标和层，
 完整来源及文件事实进入摘要；没有文件差异的 item 复核后完成，不写游戏文件／清单，也不创建单项
 重装事务。批量环境准入规则不变。当前 MHW 批量重新应用使用默认无内容转换的路径策略。
+
+插件选择使用统一命令，不从文件处置明细反向构造安装路径：
+
+| command | 请求 | 返回 |
+| --- | --- | --- |
+| `get_mod_plugin_selection` | `gameId`、`profileId`、`modId`、可选 `revisionId` | `PluginInventoryDto` 或 `null`（没有政策文件） |
+| `set_mod_plugin_selection` | `gameId`、`profileId`、`modId`、`revisionId`、`inventoryId`、`selectedFileIds` | 保存后重新核实的 `PluginInventoryDto` |
+
+`PluginInventoryDto` 为 `{ gameId, profileId, modId, revisionId, inventoryId, confirmationRequired, files }`。
+每项 file 为 `{ fileId, relativePath, sizeBytes, check, selected, selectable, managed, retainOnly,
+excludedByPackage }`。`relativePath` 只用于展示；`managed` 只表示该 Mod 存在对应记录，不单独证明文件健康。
+`check` 为 `supported | invalid_format | unsupported_architecture | not_dynamic_library | policy_excluded`，
+只描述位置／格式政策，不能解释为恶意代码检测通过。MHW 检查 `nativePC/plugins` 内 Windows x64 DLL，
+不加载或执行文件；根目录 loader 不属于这份选择。
+
+未指定 revision 时，已安装 Mod 使用记录版本，未安装 Mod 使用显示版本；新版本重装必须查询选中的
+candidate revision。`inventoryId` 由后端绑定 game/profile/Mod/revision、政策版本、完整文件 ID、路径、
+大小、SHA-256 和包级排除状态。修改包内容、内容根或包级排除后旧盘点失效。请求拒绝未知字段，不能
+提交绝对路径、bytes、SHA-256、选择快照、`confirmed` 或 `force`。保存只修改 pending 配置，不写游戏。
+
+新安装的合法插件默认勾选，但必须在既有安装预览中确认。已安装同 revision 的未管理插件默认跳过，
+只有显式选择才可补装；可信旧附件只能保留或明确移除，不能用保留资格授权新安装。受管文件缺失、
+被改动、接管或身份不符仍阻断。应用快照随 InstallPlan、manifest 和 recovery 事务提交；取消／失败
+恢复原 applied 快照与文件，pending 意图可以保留供重试。所有入口使用同一服务，不随卡片挂载扫描。
+
+配置页的草稿可以保存或放弃；保存后用重新应用预览检查实际变化。没有装备绑定的纯插件 Mod 也可
+使用 `preview_equipment_reapply`：同 revision、原层级和所有非插件文件必须保持，仅声明插件可变化。
+仅当全部 owned 文件都由可信插件事实覆盖且均被明确排除时，允许移除最后一个文件并恢复备份；
+不留下孤立 applied 快照。普通空安装和普通同版本重装的拒绝规则不变。
+
+批量界面可明确选择保持当前目标并重新应用；插件勾选改变会作废旧预览。CLI／批量仅在验证准确的
+lifecycle token／sealed item digest 和实际计划后记录批准的插件选择，不能把普通 GUI 的未确认选择
+当作授权。记录 pending 意图在游戏写锁外，实际提交仍核对选择、源摘要、目标、manifest 和备份。
+
+服务错误码为 `plugin_selection_unavailable`、`plugin_source_unavailable`、`plugin_inventory_changed`、
+`plugin_selection_invalid`、`plugin_selection_required`、`plugin_manifest_unverified`；输入校验另有
+`plugin_profile_invalid`、`plugin_mod_invalid`、`plugin_revision_invalid` 与既有 `game_id_invalid`。
+普通安装任务将服务码放在 `install_failed:<code>` 中；重装继续使用原有 phase 和安全失败分类。
+普通／单源／多源首次开始请求的可选 `expectedRevisionId` 必须匹配已确认版本；它只约束版本，不能
+替代插件确认或安装状态门禁。
 
 多源 `slots` 为 `[{ action: "keep", sourceId } | { action: "retarget", sourceId, targetId }]`。
 `keep` 表示作者设定的原位目标；已安装包的界面默认按每个源实际目标生成完整选择，因此修改一件装备
@@ -1629,7 +1670,7 @@ cancel_task(taskId)
 - 真实 commit 过程必须写 manifest，并能回滚或恢复。
 - 当前 `preview_install_plan` 只暴露只读计划预览壳，用于验证 Tauri DTO 与 `hmm-app` 计划服务边界；它返回相对目标路径摘要、来源 id、层级信息和阻断冲突，不创建目录、不复制文件、不删除文件、不写 manifest。
 - `preview_install_plan` 的 `allowedTargetRoots` 和 `files[].targetPath` 必须来自后端分析/adapter 结果或测试夹具；正式前端 UI 不得根据游戏名、Mod 内容或用户输入自行拼接最终安装路径。后续 package analyzer / game adapter 接入后，应优先让前端只提交后端生成的 `modId`、`packageId`、`profileId` 或 `targetId`。
-- `preview_imported_mod_install_plan` 是正式前端优先使用的后端驱动预览入口。前端只提交 `gameId`、`modId` 和 layer 摘要；后端通过已持久化导入记录定位受控 sandbox，只读枚举包内普通文件，并使用对应 game adapter 声明的允许安装根生成 `InstallPlan` 输入。
+- `preview_imported_mod_install_plan` 是正式前端优先使用的后端驱动预览入口。前端提交 `gameId`、`modId`、layer 摘要和可选 `profileId`；包含政策文件时必须提供 profile。后端通过已持久化导入记录定位受控 sandbox，在 blocking worker 中枚举文件并应用该 profile 的插件选择，生成最终 `InstallPlan`。
 - `preview_imported_mod_install_plan` 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径或游戏目录路径；DTO 和错误 message 不应包含完整本地路径或第三方 Mod 内容。
 - `preview_imported_mod_install_plan` 返回 flattened `InstallPlanPreviewDto` 加
   `prerequisiteDecision`。required missing、规则不可用/损坏、目录/存储不可用或 decision 无法证明时
@@ -1637,7 +1678,7 @@ cancel_task(taskId)
   保持只返回纯计划，不伪造 prerequisite decision。
 - `get_mod_package_contents` 是**只读**的包内容查询（`#354` 切片 D1）：不写盘、不建计划、不改任何既有行为。前端只提交 `gameId` 和 `modId`；后端定位受控 sandbox，返回包内文件的**扁平**清单加内容根解析结果。它存在的意义是让界面先看得见整包——玩家要挑内容根、挑装哪些文件，前提是知道包里有什么。
 - `get_mod_package_contents` 与 `preview_imported_mod_install_plan` 的关键差别是**覆盖面**：后者只列内容根之下的文件，且包内有多个 `nativePC` 时直接返回 `ambiguous_content_root` 而一个文件都不给。多个 `nativePC` 是**需要玩家决定**的状态而不是失败，所以本 command 照常列出整包，并把候选放进 `contentRoot.candidates`。
-- `get_mod_package_contents` 每条 entry 携带**三条互相独立的事实**：`targetPath`（相对内容根的安装路径，不在内容根之下或内容根未定时为 `null`）、`installable`（能否落进该 game adapter 声明的允许安装根）、`rejectedByGame`（命中该游戏的「绝不安装」清单）。**前端不得把它们合并成单一的「会不会装」**：拒绝清单当前只在重定向链路上强制执行，普通安装链路尚未套用，合并必然在其中一条链路上给出与实际相反的答案。
+- `get_mod_package_contents` 每条 entry 携带**三条互相独立的事实**：`targetPath`（相对内容根的安装路径，不在内容根之下或内容根未定时为 `null`）、`installable`（能否落进该 game adapter 声明的允许安装根）、`rejectedByGame`（命中游戏默认排除类型）。**前端不得把它们合并成单一的「会不会装」**：MHW 普通安装和重定向共用插件政策，合法候选可经显式选择包含，最终结果以插件选择和计划为准。
 - `get_mod_package_contents` 的 `contentRoot.kind` 三档必须分开呈现：`single`/`fallback` 的 `path` 是 sandbox 相对路径（`fallback` 为空串，表示内容根就是 sandbox 根本身），`ambiguous` 的 `path` 为 `null` 且候选在 `candidates` 里。`fallback` 与 `ambiguous` 不可混同——前者是「根已确定」，后者是「等玩家挑」。
 - `get_mod_package_contents` 返回的路径是 sandbox 相对路径与内容根相对路径，不含完整本地路径；错误 message 同样不得包含宿主绝对路径。
 - `get_mod_package_contents` 的 `candidates` 是这个包**允许**被选作内容根的全部目录，与 `contentRoot` 当前是哪个**无关**。两者必须分开呈现：玩家选定之后 `contentRoot` 会收敛成 `single`，`candidates` 若跟着消失他就改不了主意。
@@ -1646,16 +1687,16 @@ cancel_task(taskId)
 - 选择**按 package 持久化**：`start_install_task` 提交时会从 sandbox 重建 `InstallPlan`，重装同理，选择若只活在预览请求里，重建那一刻就没了，装出来的位置与玩家看到的预览不一致。
 - 选择对**建计划、重定向分析、外部状态扫描、CLI 自动化**四条链路一致生效——它们共用同一个扫描器实现。前端不得假设某条链路会忽略它。
 - `clear_mod_package_content_root` 撤销选择、回到自动解析；包内有多个 `nativePC` 时会重新变回 `ambiguous`（等玩家决定），这是预期行为而不是失败。
-- `set_mod_package_file_selection` 记下玩家勾掉的文件（`#354` 切片 D3）。前端提交的是**要排除的** `packageFileId` 清单，**不是要保留的**：空清单 = 整包都装 = 计划逐字不变。用「保留清单」的话，包重新解压出的新文件会**静默不装**，而少装一个文件装完不报错。
+- `set_mod_package_file_selection` 记下玩家勾掉的文件（`#354` 切片 D3）。前端提交的是**要排除的** `packageFileId` 清单，**不是要保留的**：空清单表示不额外排除文件，仍适用游戏文件政策和 profile 插件选择。新出现的普通文件不会因缺少历史勾选而静默漏装；新插件仍按版本及摘要确认。
 - `set_mod_package_file_selection` 与 `clear_mod_package_file_selection` 都**回读**并返回设置生效之后的 `PackageContentsDto`。
 - 勾掉的文件**仍然逐条列在 `entries` 里**，只是 `excludedByPlayer` 为 `true`——勾掉不等于看不见，否则玩家勾不回来。`excludedFiles` 是同一份事实的集合形式。
 - `entries[].excludedByPlayer` 与 `installable` / `rejectedByGame` 是**三条互相独立的事实**，前端不得合并：前者是「玩家要不要」，后两者是「本游戏允许不允许」。合并就说不清「它为什么不装」。
 - 排除项**不校验是否仍然存在**，与内容根刻意不同：陈旧的排除项最坏只是不命中任何文件，而陈旧的内容根会让路径从错误的根起算——后者必须 fail closed，前者不该。
-- `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId` 和 layer 摘要；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
+- `start_install_task` 是后端驱动的安装提交入口。前端只提交 `gameId`、`modId`、`profileId`、layer 摘要和可选 `expectedRevisionId`；后端从已持久化导入记录和受控 sandbox 重建 `InstallPlan`，再在同一 `gameId/profileId` 写锁下执行 `InstallPlan -> backup -> commit -> manifest`。该 command 不接受 `targetPath`、`allowedTargetRoots`、sandbox/cache 路径、导入包路径、游戏目录路径或备份/manifest 路径。
 - `start_install_task` 在锁外构建 plan 和 prerequisite decision，并在获取写锁前立即重读同一个
   provider。blocked 或 status/codes/rulesVersion 漂移时必须在 commit、manifest 和游戏目录写入前
   fail closed；锁内只重验已封存 plan/token、write admission 和当前写入状态。
-- `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。失败事件的 `error` 使用稳定前缀 `install_failed:<phase>`，当前 phase 可为 `planning`、`ambiguous_content_root`、`empty_plan`、`prerequisite`、`replacement_selection_pending`、`lock`、`commit`、`complete`、`recovery_pending`、`recovery_unavailable`、`write_safety_rejected`，或 `CrossProcessWriteAdmissionError::code()` 给出的 `write_admission_busy` / `write_admission_cancelled` / `write_admission_order_violation` / `write_admission_unavailable` 之一；`ambiguous_content_root` 表示包内有多个 `nativePC`（合集包），不替玩家挑一个，需要拆包后分别导入——它由 #284 R1 新增的扫描错误变体一路映射而来，**不得**与笼统的 `planning` 混为一谈（否则玩家只会看到「无法生成安装计划」，会以为包坏了），且只用于普通导入安装，revision 安装沿用 `planning`；`write_safety_rejected` 表示写入准入拒绝了本次操作（见 #273）；后五者均由**写入准入层**直接产生，其中四个 `write_admission_*` 的语义见 [跨进程写许可设计](CROSS_PROCESS_WRITE_ADMISSION_DESIGN.md)：`busy` 为等待 deadline 到达（另一进程/任务持有同一 game/profile 写 scope）、`cancelled` 为等待期间任务被取消、`order_violation` 为固定获取顺序校验失败（内部不变量）、`unavailable` 为其他平台错误（不输出原始错误）；`prerequisite` 表示前置依赖判定阻断或发生漂移；`replacement_selection_pending` 表示替换目标面板仍有未完成的选择意图，普通安装会 fail closed 并引导用户回到该面板；`recovery_pending` / `recovery_unavailable` 表示在 commit 前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed，`empty_plan` 表示计划内没有任何可安装文件（见 #285，例如包内 `nativePC` 套了包装目录导致文件全被过滤）。它在 commit 之前拦截，**不产生安装副作用**——无文件写入、无写锁、无 recovery 记录；但任务会被置为 failed，并通过 `fail_with_audit` 写一条审计，`action_count` 为 `0`、`result` 为 `failure` 而不是 `success`。该判定只用于普通导入安装：revision 安装（retarget / 重装）的空计划沿用 `install.rs` 的 `PlanHasInvalidRevisionIdentity`。**新增 phase 必须同步在前端 `installFailures` 补三语文案**——缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，后端单测与三语 key 检查都仍然全绿，只有真机看得见（#284 R5 的教训）。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
+- `start_install_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.queued` 事件；后台 runner 会发送 `install.plan.building`、`install.commit.processing`、`install.completed` 或 `install.failed`。失败事件的 `error` 使用稳定前缀 `install_failed:<phase>`，当前 phase 可为 `planning`、`plugin_selection_unavailable`、`plugin_source_unavailable`、`plugin_inventory_changed`、`plugin_selection_invalid`、`plugin_selection_required`、`plugin_manifest_unverified`、`ambiguous_content_root`、`empty_plan`、`prerequisite`、`replacement_selection_pending`、`lock`、`commit`、`complete`、`recovery_pending`、`recovery_unavailable`、`write_safety_rejected`，或 `CrossProcessWriteAdmissionError::code()` 给出的 `write_admission_busy` / `write_admission_cancelled` / `write_admission_order_violation` / `write_admission_unavailable` 之一；`ambiguous_content_root` 表示包内有多个 `nativePC`（合集包），不替玩家挑一个，需要拆包后分别导入——它由 #284 R1 新增的扫描错误变体一路映射而来，**不得**与笼统的 `planning` 混为一谈（否则玩家只会看到「无法生成安装计划」，会以为包坏了），且只用于普通导入安装，revision 安装沿用 `planning`；`write_safety_rejected` 表示写入准入拒绝了本次操作（见 #273）；后五者均由**写入准入层**直接产生，其中四个 `write_admission_*` 的语义见 [跨进程写许可设计](CROSS_PROCESS_WRITE_ADMISSION_DESIGN.md)：`busy` 为等待 deadline 到达（另一进程/任务持有同一 game/profile 写 scope）、`cancelled` 为等待期间任务被取消、`order_violation` 为固定获取顺序校验失败（内部不变量）、`unavailable` 为其他平台错误（不输出原始错误）；`prerequisite` 表示前置依赖判定阻断或发生漂移；`replacement_selection_pending` 表示替换目标面板仍有未完成的选择意图，普通安装会 fail closed 并引导用户回到该面板；`recovery_pending` / `recovery_unavailable` 表示在 commit 前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed，`empty_plan` 表示计划内没有任何可安装文件（见 #285，例如包内 `nativePC` 套了包装目录导致文件全被过滤）。它在 commit 之前拦截，**不产生安装副作用**——无文件写入、无写锁、无 recovery 记录；但任务会被置为 failed，并通过 `fail_with_audit` 写一条审计，`action_count` 为 `0`、`result` 为 `failure` 而不是 `success`。该判定只用于普通导入安装：revision 安装（retarget / 重装）的空计划沿用 `install.rs` 的 `PlanHasInvalidRevisionIdentity`。**新增 phase 必须同步在前端 `installFailures` 补三语文案**——缺 key 时 `getManagedInstallTaskFailureMessage` 会静默回落到 `installFailedDefault`，后端单测与三语 key 检查都仍然全绿，只有真机看得见（#284 R5 的教训）。事件 payload 不承载目标路径、完整本地路径、manifest 内容或第三方 Mod 内容。
 - `start_install_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id` 和 `action_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径或第三方 Mod 内容。安装已提交而审计写入失败时任务仍为 completed，`install.completed` 的 `error` 携带显式降级码 `install_audit_unavailable`（`install.uninstall.completed` / `install.reinstall.completed` 同口径；证据失败必须显式可见，不伪造回滚）；前端按完成处理并照常重查耐久状态。
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的条目（本工具新增的文件，或 #286 接管认领的文件）会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。接管条目没有可还原的原版，删除即删除——接管确认弹窗提前告知（见「外部 MOD 接管」一节），卸载确认弹窗再次告知：`get_install_manifest_status` / `scan_install_recovery` 的摘要携带 `adoptedFileCount`（该 MOD 清单条目中 `adopted: true` 的数量），前端在它大于 0 时必须展示「接管文件」指标与三语提示，并把它纳入确认态与当前摘要的漂移比对（漂移即阻断确认）。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。

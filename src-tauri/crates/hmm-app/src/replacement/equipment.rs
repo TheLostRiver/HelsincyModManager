@@ -325,7 +325,7 @@ impl ReplacementWorkflowService {
         if !changed && !reapply {
             return Err(ReplacementWorkflowError::TargetAlreadySelected);
         }
-        let install_plan = self
+        let mut install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(
                 &plans,
@@ -333,9 +333,21 @@ impl ReplacementWorkflowService {
                 Some(request.installed_revision_id.clone()),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        let plugin_effects = self.apply_plugin_selection(
+            hmm_core::PluginSelectionScope {
+                game_id: selection.game_id.clone(),
+                profile_id: selection.profile_id.clone(),
+                mod_id: selection.mod_id.clone(),
+                revision_id: request.installed_revision_id.clone(),
+            },
+            &selection.layer,
+            true,
+            &mut install_plan,
+        )?;
         let install_plan =
             self.append_cross_mod_target_conflicts(install_plan, &selection.profile_id)?;
         Ok(PlannedInitialRetargetInstall {
+            plugin_effects,
             package_id: resolved.package_id,
             revision_id: request.installed_revision_id,
             layer: selection.layer,
@@ -364,10 +376,16 @@ impl ReplacementWorkflowService {
             .replacement
             .build_retarget_install_plan_for_all(
                 &planned.retarget_plans,
-                planned.layer,
+                planned.layer.clone(),
                 Some(planned.revision_id),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        self.restore_planned_plugins(
+            &planned.install_plan.plugin_selections,
+            &planned.layer,
+            true,
+            &mut install_plan,
+        )?;
         install_plan.conflicts = planned.install_plan.conflicts;
         Ok(install_plan)
     }

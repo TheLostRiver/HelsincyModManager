@@ -9,6 +9,7 @@ mod game;
 mod install;
 mod mod_metadata;
 mod original_install;
+mod plugin_selection;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -85,6 +86,12 @@ pub use mod_metadata::{
 pub use original_install::{
     OriginalInstallEvidence, OriginalInstallEvidenceError, OriginalInstallFileEvidence,
 };
+pub use plugin_selection::{
+    is_complete_plugin_removal, is_same_revision_plugin_reapply,
+    plugin_reapply_targets_are_allowed, PluginFileChoice, PluginFileChoiceKind,
+    PluginSelectionError, PluginSelectionScope, PluginSelectionSnapshot,
+    PLUGIN_SELECTION_SCHEMA_VERSION,
+};
 pub use preview_image::{
     PreviewImageOutputFormat, PreviewImagePolicy, PreviewImagePolicyError,
     PreviewImageRejectionReason, PreviewImageStatus,
@@ -96,12 +103,13 @@ pub use profile::{
 };
 pub use reinstall::{
     classify_reinstall_targets, is_same_revision_replacement_target_switch,
-    replace_entries_and_bindings_for_mod, replace_entries_for_mod, resolve_installed_revision,
-    ReinstallClassificationError, ReinstallManifestError, ReinstallRecoveryTarget,
-    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus,
-    ReinstallRecoveryTransactionTransitionError, ReinstallRecoveryTransactionValidationError,
-    ReinstallSnapshotCleanupOwner, ReinstallSnapshotPurpose, ReinstallSnapshotState,
-    ReinstallTargetClass, ReinstallTargetClassification, ReinstallTargetState,
+    replace_entries_and_bindings_for_mod, replace_entries_bindings_and_plugins_for_mod,
+    replace_entries_for_mod, resolve_installed_revision, ReinstallClassificationError,
+    ReinstallManifestError, ReinstallRecoveryTarget, ReinstallRecoveryTransaction,
+    ReinstallRecoveryTransactionStatus, ReinstallRecoveryTransactionTransitionError,
+    ReinstallRecoveryTransactionValidationError, ReinstallSnapshotCleanupOwner,
+    ReinstallSnapshotPurpose, ReinstallSnapshotState, ReinstallTargetClass,
+    ReinstallTargetClassification, ReinstallTargetState,
 };
 pub use replacement::{
     ContentTransformInvocation, ContentTransformerIdentity, LocalizedText, ReplacementAdapterFacts,

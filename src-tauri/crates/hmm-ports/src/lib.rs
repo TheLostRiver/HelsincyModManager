@@ -17,6 +17,7 @@ mod mod_import_archive;
 mod mod_library_projection;
 mod mod_metadata;
 mod mod_storage;
+mod plugin_selection;
 mod preview_image;
 mod profile;
 mod reinstall;
@@ -127,6 +128,7 @@ pub use mod_storage::{
     MOD_STORAGE_MARKER_NAME, MOD_STORAGE_MARKER_SCHEMA, MOD_STORAGE_MIGRATION_JOURNAL_VERSION,
     MOD_STORAGE_SANDBOX_DIRECTORY,
 };
+pub use plugin_selection::{GamePluginPolicy, PluginFileCheck, PluginSelectionRepository};
 pub use preview_image::{
     PackagePreviewScanner, PreviewImageCandidate, PreviewImageProcessRequest,
     PreviewImageProcessingResult, PreviewImageProcessor, PreviewImageScanRequest,

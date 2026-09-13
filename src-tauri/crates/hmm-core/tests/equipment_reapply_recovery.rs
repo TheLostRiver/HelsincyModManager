@@ -37,6 +37,7 @@ fn summary(value: &str) -> InstalledFileSummary {
 fn transaction(source_count: usize) -> Value {
     let sources = &['a', 'b'][..source_count];
     let manifest = InstallManifest {
+        plugin_selections: Vec::new(),
         profile_id: ProfileId::new("profile"),
         manifest_id: "fixture-manifest".into(),
         schema_version: 2,

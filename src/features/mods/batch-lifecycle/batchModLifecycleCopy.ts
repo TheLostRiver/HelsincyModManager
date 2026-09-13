@@ -1,4 +1,5 @@
 import type { LocaleDictionary } from "../../../shared/i18n";
+import { pluginSelectionCopy } from "../../install-plugins/pluginSelectionCopy.ts";
 import type {
   BatchModLifecycleAttemptStatus,
   BatchModLifecycleCapabilityDto,
@@ -46,6 +47,7 @@ export type BatchModLifecycleCopy = {
     targetLabel: string;
     switchTo: (targetId: string) => string;
     keepCurrent: string;
+    reapplyCurrent: string;
     closeAria: string;
     generating: string;
     targetSelectionAria: string;
@@ -143,6 +145,7 @@ export const batchModLifecycleCopy = {
       recovery_required: "需要恢复",
     },
     errors: {
+      ...pluginSelectionCopy.zh_cn.errors,
       batch_no_applicable_items: "选中的 Mod 均不适用于该操作，或无法读取版本信息",
       batch_facts_unavailable: "无法读取安装状态或版本信息",
       batch_replacement_facts_unavailable: "同版本重装所需的目标信息不可用",
@@ -187,9 +190,10 @@ export const batchModLifecycleCopy = {
       closeAria: "关闭",
       generating: "正在生成批量计划…",
       targetSelectionAria: "批量重装目标选择",
-      targetSelectionTitle: "选择需要切换的外观目标",
-      targetSelectionHint: "同一版本的重装需要为每个可重定向 Mod 选择一个不同于当前目标的目标。",
-      targetUnavailable: "当前 Mod 没有可用的目标切换选项，无法参加本次同版本重装。",
+      reapplyCurrent: "保持当前装备目标，重新应用配置与插件选择",
+      targetSelectionTitle: "选择重新应用或切换目标",
+      targetSelectionHint: "保持当前装备可应用已保存的插件选择；也可以选择另一个装备目标。下一步将预览实际变更。",
+      targetUnavailable: "此 Mod 没有可切换的装备目标。可选择重新应用配置并查看预览。",
       targetGroupAria: (modId: string) => `${modId} 的替换目标`,
       excludedTitle: "不参与本次操作的项",
       excludedItem: (modId: string, reason: string) => `${modId}：${reason}`,
@@ -283,6 +287,7 @@ export const batchModLifecycleCopy = {
       recovery_required: "Recovery required",
     },
     errors: {
+      ...pluginSelectionCopy.en.errors,
       batch_no_applicable_items: "None of the selected mods are applicable to this operation, or revision info could not be read",
       batch_facts_unavailable: "Install status or revision info could not be read",
       batch_replacement_facts_unavailable: "Target info required for same-revision reinstall is unavailable",
@@ -327,9 +332,10 @@ export const batchModLifecycleCopy = {
       closeAria: "Close",
       generating: "Generating batch plan…",
       targetSelectionAria: "Batch reinstall target selection",
-      targetSelectionTitle: "Choose the appearance targets to switch",
-      targetSelectionHint: "A same-revision reinstall requires choosing, for each retargetable mod, a target different from its current one.",
-      targetUnavailable: "This mod has no available target switch options and cannot join this same-revision reinstall.",
+      reapplyCurrent: "Keep current equipment targets and reapply configuration and plugin choices",
+      targetSelectionTitle: "Choose reapply or a different target",
+      targetSelectionHint: "Keep current equipment to apply saved plugin choices, or choose a different target. The next step previews the actual changes.",
+      targetUnavailable: "This mod has no equipment targets to switch to. You can choose to reapply its configuration and preview the changes.",
       targetGroupAria: (modId: string) => `Replacement targets for ${modId}`,
       excludedTitle: "Items excluded from this operation",
       excludedItem: (modId: string, reason: string) => `${modId}: ${reason}`,
@@ -423,6 +429,7 @@ export const batchModLifecycleCopy = {
       recovery_required: "復旧が必要",
     },
     errors: {
+      ...pluginSelectionCopy.ja.errors,
       batch_no_applicable_items: "選択した Mod はいずれもこの操作に適用できないか、バージョン情報を読み取れません",
       batch_facts_unavailable: "インストール状態またはバージョン情報を読み取れません",
       batch_replacement_facts_unavailable: "同一バージョン再インストールに必要なターゲット情報を利用できません",
@@ -467,9 +474,10 @@ export const batchModLifecycleCopy = {
       closeAria: "閉じる",
       generating: "バッチプランを生成中…",
       targetSelectionAria: "一括再インストールのターゲット選択",
-      targetSelectionTitle: "切り替える外観ターゲットを選択",
-      targetSelectionHint: "同一バージョンの再インストールでは、リターゲット可能な各 Mod に現在と異なるターゲットを選ぶ必要があります。",
-      targetUnavailable: "この Mod には利用可能なターゲット切替オプションがなく、今回の同一バージョン再インストールに参加できません。",
+      reapplyCurrent: "現在の装備を維持し、設定とプラグインの選択を再適用",
+      targetSelectionTitle: "再適用または別のターゲットを選択",
+      targetSelectionHint: "現在の装備を維持して保存済みのプラグインの選択を適用するか、別の装備を選択します。次の手順で実際の変更を確認できます。",
+      targetUnavailable: "この Mod には切り替え先の装備がありません。設定の再適用を選択して変更を確認できます。",
       targetGroupAria: (modId: string) => `${modId} の置換ターゲット`,
       excludedTitle: "今回の操作の対象外の項目",
       excludedItem: (modId: string, reason: string) => `${modId}：${reason}`,
