@@ -332,6 +332,8 @@ mod tests {
                 }],
             ),
             original_install_evidence: None,
+            source_evidence_version: 1,
+            additional_sources_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 ReinstallRecoveryTarget {

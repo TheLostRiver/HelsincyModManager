@@ -22,7 +22,10 @@ pub struct ReplacementSummaryItem {
 pub struct ModReplacementSummary {
     pub game_id: GameId,
     pub mod_id: ModId,
+    /// 库详情的 display revision 身份，用于独立响应之间的一致性检查。
     pub package_id: String,
+    /// 实际分析的来源包；配置档仍安装旧版本时可与库详情不同。
+    pub source_package_id: String,
     pub sources: Vec<ReplacementSummaryItem>,
     /// None means no profile or unverified install facts, never "no retarget".
     pub installed_targets: Option<Vec<ReplacementSummaryItem>>,
@@ -46,7 +49,19 @@ impl ReplacementWorkflowService {
         request: AnalyzeImportedReplacementRequest,
         profile_id: Option<&ProfileId>,
     ) -> Result<ModReplacementSummary, ReplacementWorkflowError> {
-        let resolved = self.resolve_imported_replacement(&request.game_id, &request.mod_id)?;
+        let display = self
+            .result_repository
+            .get_mod(&request.mod_id)
+            .map_err(|_| ReplacementWorkflowError::ModRepositoryUnavailable)?
+            .ok_or(ReplacementWorkflowError::ModNotFound)?;
+        let display_revision = self
+            .result_repository
+            .get_revision(&display.display_revision_id)
+            .map_err(|_| ReplacementWorkflowError::ModRepositoryUnavailable)?
+            .filter(|revision| revision.mod_id == request.mod_id)
+            .ok_or(ReplacementWorkflowError::RevisionNotFound)?;
+        let resolved =
+            self.resolve_profiled_replacement(&request.game_id, &request.mod_id, profile_id)?;
         let catalog = self.catalog_for(&request.game_id).ok();
         let targets = self
             .list_targets(&request.game_id, None)
@@ -71,10 +86,20 @@ impl ReplacementWorkflowService {
                     items.into_values().collect()
                 })
         });
+        // 查询期间导入新版本时，不把旧详情身份与新分析拼成看似一致的响应。
+        let current = self
+            .result_repository
+            .get_mod(&request.mod_id)
+            .map_err(|_| ReplacementWorkflowError::ModRepositoryUnavailable)?
+            .ok_or(ReplacementWorkflowError::ModNotFound)?;
+        if current.display_revision_id != display.display_revision_id {
+            return Err(ReplacementWorkflowError::ModRepositoryUnavailable);
+        }
         Ok(ModReplacementSummary {
             game_id: request.game_id,
             mod_id: request.mod_id,
-            package_id: resolved.package_id,
+            package_id: display_revision.package_id,
+            source_package_id: resolved.package_id,
             sources,
             installed_targets,
         })

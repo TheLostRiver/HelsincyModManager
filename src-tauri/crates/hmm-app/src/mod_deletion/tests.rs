@@ -619,6 +619,8 @@ fn delete_fails_closed_when_reinstall_recovery_transaction_exists() {
             status: ReinstallRecoveryTransactionStatus::RepairRequired,
             pre_reinstall_manifest: manifest(InstallManifestStatus::Completed, &mod_id),
             original_install_evidence: None,
+            source_evidence_version: 1,
+            additional_sources_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             candidate_plugin_selections: Vec::new(),
             targets: Vec::new(),

@@ -133,6 +133,7 @@ pub struct ModReplacementSummaryDto {
     pub game_id: String,
     pub mod_id: String,
     pub package_id: String,
+    pub source_package_id: String,
     pub sources: Vec<ReplacementSummaryItemDto>,
     pub installed_targets: Option<Vec<ReplacementSummaryItemDto>>,
 }
@@ -154,6 +155,7 @@ impl From<hmm_app::ModReplacementSummary> for ModReplacementSummaryDto {
             game_id: summary.game_id.as_str().to_owned(),
             mod_id: summary.mod_id.as_str().to_owned(),
             package_id: summary.package_id,
+            source_package_id: summary.source_package_id,
             sources: summary.sources.into_iter().map(Into::into).collect(),
             installed_targets: summary
                 .installed_targets
@@ -218,6 +220,7 @@ mod replacement_dto_tests {
             game_id: hmm_core::GameId::mhw(),
             mod_id: hmm_core::ModId::new("mod-a"),
             package_id: "package-a".to_owned(),
+            source_package_id: "installed-package".to_owned(),
             sources: vec![hmm_app::ReplacementSummaryItem {
                 id: "source-a".to_owned(),
                 kind: "weapon".to_owned(),
@@ -235,6 +238,7 @@ mod replacement_dto_tests {
             actual,
             json!({
                 "gameId": "mhw", "modId": "mod-a", "packageId": "package-a",
+                "sourcePackageId": "installed-package",
                 "sources": [{ "id": "source-a", "kind": "weapon", "internalId": "001", "displayNames": { "zh_cn": "测试武器", "en": "Fixture weapon" } }],
                 "installedTargets": null,
             })
