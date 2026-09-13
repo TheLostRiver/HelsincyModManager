@@ -6,7 +6,7 @@
 ## MHW:I 装备与武器名称
 
 `src-tauri/crates/hmm-games-mhw/data/` 下的 catalog artifact 包含《怪物猎人：世界 冰原》
-（Monster Hunter: World — Iceborne）的装备名称。
+（Monster Hunter: World — Iceborne）的装备名称，包含武器、防具与猎虫。
 
 - 权利人：Capcom Co., Ltd.
 - 用途：指称性使用。这些名称仅作为绑定在重定向 catalog 上的功能性标识，
