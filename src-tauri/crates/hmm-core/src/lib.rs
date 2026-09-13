@@ -1,3 +1,4 @@
+mod additional_sources;
 mod app_version;
 mod batch;
 mod category;
@@ -21,6 +22,7 @@ mod save_backup;
 mod save_directory;
 mod save_restore;
 
+pub use additional_sources::AdditionalSourcesEvidence;
 pub use app_version::{
     decide_update, is_newer_version, parse_app_version, AppVersion, AppVersionError, UpdateDecision,
 };

@@ -11,10 +11,10 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OriginalInstallFileEvidence {
-    target_path: InstallTargetPath,
-    package_file_id: PackageFileId,
-    layer: FileLayer,
-    summary: InstalledFileSummary,
+    pub(crate) target_path: InstallTargetPath,
+    pub(crate) package_file_id: PackageFileId,
+    pub(crate) layer: FileLayer,
+    pub(crate) summary: InstalledFileSummary,
 }
 
 impl OriginalInstallFileEvidence {

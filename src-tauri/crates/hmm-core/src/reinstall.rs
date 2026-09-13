@@ -138,6 +138,11 @@ pub struct ReinstallRecoveryTransaction {
     pub pre_reinstall_manifest: InstallManifest,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original_install_evidence: Option<crate::OriginalInstallEvidence>,
+    /// 缺失为旧事务；新事务固定为 1，要求新增来源具有独立证据。
+    #[serde(default)]
+    pub source_evidence_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_sources_evidence: Option<crate::AdditionalSourcesEvidence>,
     #[serde(default)]
     pub candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -153,6 +158,8 @@ pub enum ReinstallRecoveryTransactionValidationError {
     InvalidEquipmentReapplyIntent,
     #[error("reinstall transaction original installation evidence is invalid")]
     InvalidOriginalInstallEvidence,
+    #[error("reinstall transaction additional source evidence is invalid")]
+    InvalidAdditionalSourcesEvidence,
     #[error("reinstall transaction profile does not match its pre-reinstall manifest")]
     ProfileMismatch,
     #[error("reinstall transaction old and candidate revisions must differ")]
@@ -177,6 +184,13 @@ pub enum ReinstallRecoveryTransactionValidationError {
 
 impl ReinstallRecoveryTransaction {
     pub fn validate(&self) -> Result<(), ReinstallRecoveryTransactionValidationError> {
+        if self.source_evidence_version > 1
+            || (self.source_evidence_version == 0 && self.additional_sources_evidence.is_some())
+        {
+            return Err(
+                ReinstallRecoveryTransactionValidationError::InvalidAdditionalSourcesEvidence,
+            );
+        }
         if self.profile_id != self.pre_reinstall_manifest.profile_id {
             return Err(ReinstallRecoveryTransactionValidationError::ProfileMismatch);
         }
@@ -194,6 +208,21 @@ impl ReinstallRecoveryTransaction {
                 ReinstallRecoveryTransactionValidationError::InvalidOriginalInstallEvidence,
             );
         }
+        if self
+            .additional_sources_evidence
+            .as_ref()
+            .is_some_and(|evidence| {
+                self.original_install_evidence.is_some()
+                    || evidence.mod_id() != &self.mod_id
+                    || evidence.revision_id() != &self.old_revision_id
+                    || self.old_revision_id != self.candidate_revision_id
+                    || evidence.validate(&self.pre_reinstall_manifest).is_err()
+            })
+        {
+            return Err(
+                ReinstallRecoveryTransactionValidationError::InvalidAdditionalSourcesEvidence,
+            );
+        }
         if self.intent == crate::ReinstallIntent::ReapplyEquipmentTargets
             && (self.old_revision_id != self.candidate_revision_id
                 || !(crate::is_same_revision_equipment_reapply(
@@ -209,6 +238,8 @@ impl ReinstallRecoveryTransaction {
                         &self.pre_reinstall_manifest,
                         &self.candidate_replacement_bindings,
                     )
+                }) || self.additional_sources_evidence.as_ref().is_some_and(|evidence| {
+                    evidence.allows_equipment_reapply(&self.pre_reinstall_manifest, &self.candidate_replacement_bindings)
                 }))
                 // 回滚会逐个移除已经恢复的目标，恢复中的空列表不代表最初没有文件变更。
                 || (matches!(self.status, ReinstallRecoveryTransactionStatus::Planned | ReinstallRecoveryTransactionStatus::Committing)
@@ -230,6 +261,15 @@ impl ReinstallRecoveryTransaction {
                         &self.candidate_replacement_bindings,
                     )
                 })
+            && !self
+                .additional_sources_evidence
+                .as_ref()
+                .is_some_and(|evidence| {
+                    evidence.allows_equipment_target_switch(
+                        &self.pre_reinstall_manifest,
+                        &self.candidate_replacement_bindings,
+                    )
+                })
             && !is_same_revision_replacement_target_switch(
                 &self.pre_reinstall_manifest,
                 &self.mod_id,
@@ -242,6 +282,13 @@ impl ReinstallRecoveryTransaction {
                 &self.candidate_revision_id,
                 &self.candidate_replacement_bindings,
             )
+            && !(self.source_evidence_version == 0
+                && crate::equipment_reinstall::is_legacy_equipment_target_switch(
+                    &self.pre_reinstall_manifest,
+                    &self.mod_id,
+                    &self.candidate_revision_id,
+                    &self.candidate_replacement_bindings,
+                ))
         {
             return Err(ReinstallRecoveryTransactionValidationError::RevisionUnchanged);
         }
@@ -1634,6 +1681,8 @@ mod tests {
             status,
             pre_reinstall_manifest: old_manifest,
             original_install_evidence: None,
+            source_evidence_version: 1,
+            additional_sources_evidence: None,
             candidate_replacement_bindings: Vec::new(),
             targets: vec![
                 target(

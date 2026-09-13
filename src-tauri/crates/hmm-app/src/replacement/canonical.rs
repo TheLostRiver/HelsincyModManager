@@ -3,6 +3,7 @@ use crate::{
     InstallPlanningService, ReinstallCandidatePlanError, ReinstallCandidatePlanRequest,
     ReinstallCandidatePlanner,
 };
+use std::collections::BTreeMap;
 
 impl ReplacementWorkflowService {
     /// 普通安装先确定不可变 revision，随后计划、来源记录和提交共用该版本。
@@ -124,6 +125,64 @@ impl CanonicalReinstallPlanner {
 }
 
 impl ReinstallCandidatePlanner for CanonicalReinstallPlanner {
+    fn original_source_inventory(
+        &self,
+        request: ReinstallCandidatePlanRequest<'_>,
+    ) -> Result<Option<crate::reinstall::OriginalSourceInventory>, ReinstallCandidatePlanError>
+    {
+        let game_id = request.game_id.clone();
+        let profile_id = request.profile_id.clone();
+        let mod_id = request.mod_id.clone();
+        let revision_id = request.candidate.revision_id.clone();
+        // 这里只盘点装备来源。插件选择仍由实际候选流程验证，不能让来源查询抢先吞掉插件的具体错误。
+        let plan = self.planning.build_candidate_plan(request)?;
+        let plan = self
+            .replacement
+            .bind_canonical_install_sources(&game_id, &profile_id, &mod_id, &revision_id, plan)
+            .map_err(|_| ReinstallCandidatePlanError::NotReady)?;
+        let assets = plan
+            .actions
+            .iter()
+            .map(|action| {
+                ReplacementAsset::new(
+                    action.provider.package_file_id.clone(),
+                    action.target_path.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut source_files = BTreeMap::new();
+        for binding in &plan.replacement_bindings {
+            let source_plan = self
+                .replacement
+                .replacement
+                .build_retarget_plan(RetargetPlanRequest {
+                    game_id: game_id.clone(),
+                    binding: binding.binding().clone(),
+                    assets: assets.clone(),
+                    carries_package_companions: false,
+                })
+                .map_err(|_| ReinstallCandidatePlanError::NotReady)?;
+            if source_plan.actions().iter().any(|action| {
+                action.source_relative_path() != action.target_relative_path()
+                    || action.content_transform().is_some()
+            }) {
+                return Err(ReinstallCandidatePlanError::NotReady);
+            }
+            source_files.insert(
+                binding.binding().source_id().clone(),
+                source_plan
+                    .actions()
+                    .iter()
+                    .map(|action| action.package_file_id().clone())
+                    .collect(),
+            );
+        }
+        Ok(Some(crate::reinstall::OriginalSourceInventory {
+            plan,
+            source_files,
+        }))
+    }
+
     fn build_candidate_plan(
         &self,
         request: ReinstallCandidatePlanRequest<'_>,
