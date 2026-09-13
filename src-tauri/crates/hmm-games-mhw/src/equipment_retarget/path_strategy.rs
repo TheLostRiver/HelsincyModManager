@@ -1,6 +1,9 @@
 use super::inventory::{is_texture, EquipmentRoot, PackageResources, Resource};
-use crate::weapon_retarget::{WeaponResourceMapper, WeaponResourceMapping};
-use crate::{ArmorResourcePath, MhwReplacementCatalog, WeaponAnalysisError, WeaponMainId};
+use super::numbered_identity::{NumberedId, NumberedRoot};
+use super::resource_path::{NumberedResourceMapper, NumberedResourceMapping};
+use crate::{
+    ArmorResourcePath, KinsectId, MhwReplacementCatalog, WeaponAnalysisError, WeaponMainId,
+};
 use hmm_core::{
     InstallTargetPath, ReplacementAdapterFacts, ReplacementWarning, RetargetAction,
     RetargetFileReason, RetargetPlan, REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
@@ -51,9 +54,13 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     let mut effects = Vec::new();
     let mut kept_unmapped = false;
     let mut moved = false;
-    let weapon_mapper = match &unit.root {
-        EquipmentRoot::Weapon(root) => Some(WeaponResourceMapper::new(
-            root,
+    let numbered_mapper = match &unit.root {
+        EquipmentRoot::Weapon(root) => Some(NumberedResourceMapper::new(
+            NumberedRoot::Weapon(root),
+            unit.resources.iter().map(|resource| &resource.path),
+        )),
+        EquipmentRoot::Kinsect(root) => Some(NumberedResourceMapper::new(
+            NumberedRoot::Kinsect(root),
             unit.resources.iter().map(|resource| &resource.path),
         )),
         EquipmentRoot::Armor(_) => None,
@@ -62,7 +69,12 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         let (destination, unmapped) = if identity || is_texture(&resource.path) {
             (resource.path.clone(), None)
         } else {
-            destination(weapon_mapper.as_ref(), resource, target.internal_id())?
+            destination(
+                &unit.root,
+                numbered_mapper.as_ref(),
+                resource,
+                target.internal_id(),
+            )?
         };
         moved |= destination != resource.path;
         kept_unmapped |= unmapped.is_some();
@@ -158,7 +170,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
         "mhw.equipment",
         "path-only-resource-preserving",
-        2,
+        3,
         closure,
         source,
         plan.content_transform_set_sha256(),
@@ -174,29 +186,44 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
 }
 
 fn destination(
-    weapon_mapper: Option<&WeaponResourceMapper<'_>>,
+    root: &EquipmentRoot,
+    mapper: Option<&NumberedResourceMapper<'_>>,
     resource: &Resource,
     target: &str,
 ) -> ReplacementAdapterResult<(InstallTargetPath, Option<RetargetFileReason>)> {
-    match weapon_mapper {
-        Some(mapper) => {
+    match root {
+        EquipmentRoot::Weapon(_) => {
             let target = WeaponMainId::parse(target)
                 .map_err(|_| ReplacementAdapterError::UnsupportedReplacementTarget)?;
-            match mapper.map(&resource.path, &target) {
-                Ok(WeaponResourceMapping::Relocated(path)) => Ok((path, None)),
-                Ok(WeaponResourceMapping::Kept(reason)) => {
-                    Ok((resource.path.clone(), Some(reason)))
-                }
-                Err(_) => Err(ReplacementAdapterError::UnsafeRetargetPath),
-            }
+            map_numbered(mapper, resource, NumberedId::Weapon(&target))
         }
-        None => {
+        EquipmentRoot::Kinsect(_) => {
+            let target = KinsectId::parse(target)
+                .map_err(|_| ReplacementAdapterError::UnsupportedReplacementTarget)?;
+            map_numbered(mapper, resource, NumberedId::Kinsect(&target))
+        }
+        EquipmentRoot::Armor(_) => {
             let path = ArmorResourcePath::parse(resource.path.as_str())
                 .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)?;
             path.retarget(target)
                 .map(|path| (path, None))
                 .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)
         }
+    }
+}
+
+fn map_numbered(
+    mapper: Option<&NumberedResourceMapper<'_>>,
+    resource: &Resource,
+    target: NumberedId<'_>,
+) -> ReplacementAdapterResult<(InstallTargetPath, Option<RetargetFileReason>)> {
+    match mapper
+        .ok_or(ReplacementAdapterError::InvalidRetargetPlan)?
+        .map(&resource.path, target)
+    {
+        Ok(NumberedResourceMapping::Relocated(path)) => Ok((path, None)),
+        Ok(NumberedResourceMapping::Kept(reason)) => Ok((resource.path.clone(), Some(reason))),
+        Err(_) => Err(ReplacementAdapterError::UnsafeRetargetPath),
     }
 }
 

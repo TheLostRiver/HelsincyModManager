@@ -157,7 +157,7 @@ fn legacy_v1_reapply_updates_nested_paths_keeps_targets_and_uninstalls_to_baseli
         assert_eq!(current.binding(), previous.binding());
         assert_eq!(current.target_internal_id(), previous.target_internal_id());
         assert_eq!(current.revision_id(), previous.revision_id());
-        assert_eq!(current.adapter_facts().unwrap().strategy_version(), 2);
+        assert_eq!(current.adapter_facts().unwrap().strategy_version(), 3);
     }
     assert_eq!(
         after

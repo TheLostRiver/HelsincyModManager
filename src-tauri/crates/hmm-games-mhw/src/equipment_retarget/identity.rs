@@ -1,4 +1,4 @@
-use crate::{ArmorResourcePath, WeaponResourceRoot};
+use crate::{ArmorResourcePath, KinsectResourceRoot, WeaponResourceRoot};
 use hmm_core::{GameId, LocalizedText, ReplacementSource, ReplacementTarget, ReplacementTargetId};
 use hmm_ports::{ReplacementCatalogError, ReplacementCatalogResult};
 use sha2::{Digest, Sha256};
@@ -13,6 +13,9 @@ pub(crate) fn original_target_identity(
     }
     let root = format!("nativePC/{}/{}", source.path_family(), source.internal_id());
     let valid = match source.source_type().as_str() {
+        "kinsect" => KinsectResourceRoot::parse(&root).is_ok_and(|root| {
+            root.id().as_str() == source.internal_id() && root.path_family() == source.path_family()
+        }),
         "weapon" => WeaponResourceRoot::parse(&root).is_ok_and(|root| {
             root.main_id().as_str() == source.internal_id()
                 && root.path_family() == source.path_family()

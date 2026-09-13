@@ -246,7 +246,7 @@ fn new_strategy_is_versioned_and_legacy_v1_facts_remain_readable() {
         "two029",
     );
     let facts = planned.adapter_facts().unwrap();
-    assert_eq!(facts.strategy_version(), 2);
+    assert_eq!(facts.strategy_version(), 3);
     let mut legacy = serde_json::to_value(facts).unwrap();
     legacy["strategy_version"] = serde_json::json!(1);
     let loaded: ReplacementAdapterFacts = serde_json::from_value(legacy.clone()).unwrap();
