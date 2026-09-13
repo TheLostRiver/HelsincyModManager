@@ -13,6 +13,8 @@ import {
 import { useId, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { ColorSchemePreference } from "../../app/appearance/colorSchemeTypes";
 import { useColorScheme } from "../../app/appearance/useColorScheme";
+import { useAppRoute } from "../../app/routing/useAppRoute";
+import type { StartPagePreference } from "../../app/routing/startPagePreference";
 import { GamePrerequisitePanel } from "../game-setup/GamePrerequisitePanel";
 import { useGamePrerequisites } from "../game-setup/useGamePrerequisites";
 import {
@@ -42,9 +44,7 @@ type ToggleSettingId =
   | "confirmBeforeConflict"
   | "backupReminder";
 
-type SettingsState = Record<ToggleSettingId, boolean> & {
-  startPage: "dashboard" | "mods" | "last";
-};
+type SettingsState = Record<ToggleSettingId, boolean>;
 
 type SettingSectionProps = {
   title: string;
@@ -60,11 +60,12 @@ const initialSettings: SettingsState = {
   previewAfterImport: true,
   confirmBeforeConflict: true,
   backupReminder: true,
-  startPage: "dashboard",
 };
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
+  const { startPagePreference, setStartPagePreference } = useAppRoute();
+  const [hasStartPagePreferenceError, setHasStartPagePreferenceError] = useState(false);
   const { preference: colorSchemePreference, setPreference: setColorSchemePreference } =
     useColorScheme();
   const {
@@ -92,8 +93,8 @@ export function SettingsPage() {
     setSettings((current) => ({ ...current, [id]: !current[id] }));
   };
 
-  const updateChoice = <TKey extends keyof SettingsState>(key: TKey, value: SettingsState[TKey]) => {
-    setSettings((current) => ({ ...current, [key]: value }));
+  const updateStartPagePreference = (value: StartPagePreference) => {
+    setHasStartPagePreferenceError(!setStartPagePreference(value));
   };
 
   const resetSessionPreview = () => {
@@ -205,16 +206,23 @@ export function SettingsPage() {
             checked={settings.reduceMotion}
             onChange={() => updateToggle("reduceMotion")}
           />
-          <ChoiceGroup
+          <ChoiceGroup<StartPagePreference>
             label={copy.appearance.startPage.label}
-            value={settings.startPage}
+            hint={copy.appearance.startPage.hint}
+            value={startPagePreference}
             options={[
               { value: "dashboard", label: copy.appearance.startPage.dashboard },
               { value: "mods", label: copy.appearance.startPage.mods },
               { value: "last", label: copy.appearance.startPage.last },
             ]}
-            onChange={(value) => updateChoice("startPage", value)}
+            onChange={updateStartPagePreference}
           />
+          {hasStartPagePreferenceError ? (
+            <div className="settings-callout" role="alert">
+              <Bell size={16} strokeWidth={2.1} />
+              <span>{copy.appearance.startPage.saveError}</span>
+            </div>
+          ) : null}
         </SettingsSection>
 
         <SettingsSection

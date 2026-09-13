@@ -155,7 +155,7 @@ AR4 按 Tauri thin shell、app workflow 与 feature-local frontend 边界落地�
 - 首次安装复用既有 install task、game/profile 写锁、Audit Log、backup、manifest、rollback/recovery；
   成功和失败/取消路径都会清理受控 staging。
 - `src/features/replacements/` 提供 typed API、taskId/phase 状态机和目标面板；主入口位于
-  `Mod 管理 -> Mod 详情 -> 替换目标` Tab，右键“MOD 文件修改”直达同一面板。
+  `Mod 管理 -> Mod 详情 -> 替换目标` Tab，右键“MOD 文件重定向”直达同一面板。
 - UI 对 missing profile、installed、cleanup/rollback/repair/unknown、listener failure 和 blocking
   conflicts fail closed；完成闩锁跨 Tab 保持，旧 preview promise 不能覆盖新 target。
 - 聚焦验证入口：`cargo test -p hmm-tauri replacement_dto_tests`、

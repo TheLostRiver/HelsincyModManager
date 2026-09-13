@@ -190,6 +190,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-hooks.ps1
 
 ## 前端改动
 
+启动页与侧栏导航的聚焦回归：
+
+```powershell
+node --test src/app/routing/startPageBehavior.test.mjs
+```
+
+使用内存 Storage、真实路由 provider 与设置页，验证三种启动选择、页面卸载与应用重启、最后页面、
+无效／不可用记录回退、预览重置不改变已保存偏好，以及存储读写失败。浏览器检查普通／悬浮侧栏不显示
+未接入的替换目标、游戏管理和任务队列；三语设置提示、宽窄布局和关闭进程后恢复偏好均须可用。
+
 开发服务器的监视边界由 `vite.config.ts` 管理。修改它时运行：
 
 ```powershell
