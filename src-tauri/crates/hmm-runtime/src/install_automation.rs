@@ -3,20 +3,20 @@ use crate::mod_storage::resolve_mod_storage_root;
 use crate::RuntimeEnvironment;
 use hmm_app::{
     BatchReinstallItemFactsReader, BatchReinstallItemFactsRequest, BatchReinstallPlanFactsProvider,
-    BatchUninstallPlanFactsProvider, BuildImportedModInstallPlanRequest, GamePrerequisiteDecision,
-    GamePrerequisiteDecisionProvider, GameSetupService, ImportedModInstallPreflightService,
-    InitialRetargetInstallStatusError, InitialRetargetInstallStatusReader,
-    InstallManifestQueryRequest, InstallManifestQueryService, InstallManifestStatus,
-    InstallPlanningError, InstallPlanningService, InstallRecoveryActionAvailability,
-    InstallRecoveryActionBlockReason, InstallRecoveryActionKind, InstallRecoveryActionPreview,
-    InstallRecoveryActionPreviewRequest, InstallRecoveryActionPreviewService, InstallRecoveryIssue,
-    InstallRecoveryScanRequest, InstallRecoveryScanService, InstallRecoveryStatus,
-    InstallRecoverySummary, InstalledReplacementReinstallResolution,
-    PreviewRetargetReinstallRequest, ReinstallBlockingReason, ReinstallBlockingReasonSummary,
-    ReinstallCandidateSourceReader, ReinstallPlanPreview, ReinstallPreparation,
-    ReinstallPreviewBatchItemFactsReader, ReinstallPreviewError, ReinstallPreviewRequest,
-    ReinstallPreviewService, ReinstallPreviewStatus, ReinstallRevisionSummary,
-    ReinstallTargetCounts, ReplacementWorkflowService,
+    BatchUninstallPlanFactsProvider, GamePrerequisiteDecision, GamePrerequisiteDecisionProvider,
+    GameSetupService, ImportedModInstallPreflightService, InitialRetargetInstallStatusError,
+    InitialRetargetInstallStatusReader, InstallManifestQueryRequest, InstallManifestQueryService,
+    InstallManifestStatus, InstallPlanningError, InstallPlanningService,
+    InstallRecoveryActionAvailability, InstallRecoveryActionBlockReason, InstallRecoveryActionKind,
+    InstallRecoveryActionPreview, InstallRecoveryActionPreviewRequest,
+    InstallRecoveryActionPreviewService, InstallRecoveryIssue, InstallRecoveryScanRequest,
+    InstallRecoveryScanService, InstallRecoveryStatus, InstallRecoverySummary,
+    InstalledReplacementReinstallResolution, PreviewRetargetReinstallRequest,
+    ReinstallBlockingReason, ReinstallBlockingReasonSummary, ReinstallCandidateSourceReader,
+    ReinstallPlanPreview, ReinstallPreparation, ReinstallPreviewBatchItemFactsReader,
+    ReinstallPreviewError, ReinstallPreviewRequest, ReinstallPreviewService,
+    ReinstallPreviewStatus, ReinstallRevisionSummary, ReinstallTargetCounts,
+    ReplacementWorkflowService,
 };
 use hmm_core::{
     BatchItemFacts, BatchPlanFacts, FileLayer, GameId, GameInstance, InstallManifest,
@@ -576,9 +576,11 @@ impl ReadOnlyInstallAutomation {
                 Arc::clone(&content_root_choices),
                 Arc::clone(&file_selection),
             ));
-        let file_reader: Arc<dyn ModPackageInstallFileReader> = Arc::new(
-            SandboxModPackageInstallFileScanner::new(content_root_choices, file_selection),
-        );
+        let file_reader: Arc<dyn ModPackageInstallFileReader> =
+            Arc::new(SandboxModPackageInstallFileScanner::new(
+                Arc::clone(&content_root_choices),
+                Arc::clone(&file_selection),
+            ));
         let prerequisite_rules: Arc<dyn GamePrerequisiteRuleRepository> =
             Arc::new(ReadOnlyJsonGamePrerequisiteRuleRepository::new(
                 app_data_dir
@@ -611,6 +613,15 @@ impl ReadOnlyInstallAutomation {
         let manifest_repository: Arc<dyn InstallManifestRepository> = Arc::new(
             JsonInstallManifestRepository::new(app_data_dir.join("install").join("manifests")),
         );
+        let plugin_selection = crate::plugin_selection::plugin_selection_service(
+            &app_data_dir,
+            Arc::clone(&catalog),
+            Arc::clone(&sandbox_locator),
+            content_root_choices,
+            file_selection,
+            Arc::clone(&manifest_repository),
+            true,
+        );
         let manifest_query = InstallManifestQueryService::new(Arc::clone(&manifest_repository));
         let install_recovery_repository: Arc<dyn InstallRecoveryRecordRepository> = Arc::new(
             JsonInstallRecoveryRecordRepository::new(app_data_dir.join("install").join("recovery")),
@@ -625,17 +636,20 @@ impl ReadOnlyInstallAutomation {
             vec![Arc::new(MhwReplacementAdapter)];
         let replacement_catalogs: Vec<Arc<dyn ReplacementCatalogProvider>> =
             vec![Arc::new(MhwReplacementCatalog)];
-        let replacement_workflow = Arc::new(ReplacementWorkflowService::new(
-            replacement_adapters,
-            replacement_catalogs,
-            Arc::clone(&catalog),
-            Arc::clone(&sandbox_locator),
-            file_scanner,
-            file_reader,
-            Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
-            Arc::clone(&manifest_repository),
-            Arc::new(SystemClock),
-        ));
+        let replacement_workflow = Arc::new(
+            ReplacementWorkflowService::new(
+                replacement_adapters,
+                replacement_catalogs,
+                Arc::clone(&catalog),
+                Arc::clone(&sandbox_locator),
+                file_scanner,
+                file_reader,
+                Arc::new(ReadOnlyInitialRetargetInstallStatusReader),
+                Arc::clone(&manifest_repository),
+                Arc::new(SystemClock),
+            )
+            .with_plugin_selection(plugin_selection),
+        );
 
         Ok(Self {
             app_data_dir,
@@ -755,14 +769,37 @@ impl ReadOnlyInstallAutomation {
             mod_id,
             ReadOnlyInstallAutomationError::ModIdInvalid,
         )?);
-        let preflight = self
+        let revision = self
+            .replacement_workflow
+            .current_install_revision(&mod_id)
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+        let mut preflight = self
             .preflight
-            .preview(BuildImportedModInstallPlanRequest {
-                game_id: game_id.clone(),
-                mod_id: mod_id.clone(),
-                layer: base_file_layer(),
-            })
+            .preview_revision(&game_id, &mod_id, &revision, &base_file_layer())
             .map_err(map_planning_error)?;
+        self.replacement_workflow
+            .apply_plugin_selection(
+                hmm_core::PluginSelectionScope {
+                    game_id: game_id.clone(),
+                    profile_id: profile_id.clone(),
+                    mod_id: mod_id.clone(),
+                    revision_id: revision.clone(),
+                },
+                &base_file_layer(),
+                false,
+                &mut preflight.plan,
+            )
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
+        preflight.plan = self
+            .replacement_workflow
+            .bind_canonical_install_sources(
+                &game_id,
+                &profile_id,
+                &mod_id,
+                &revision,
+                preflight.plan,
+            )
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
         Ok((
             game_id,
             profile_id,
@@ -807,10 +844,23 @@ impl ReadOnlyInstallAutomation {
             .preflight
             .preview_revision(&game_id, &mod_id, &revision_id, layer)
             .map_err(map_planning_error)?;
-        let plan = preflight.plan;
+        let mut plan = preflight.plan;
         if !plan.replacement_bindings.is_empty() {
             return Err(ReadOnlyInstallAutomationError::InstallPlanInvalid);
         }
+        self.replacement_workflow
+            .apply_plugin_selection(
+                hmm_core::PluginSelectionScope {
+                    game_id: game_id.clone(),
+                    profile_id: profile_id.clone(),
+                    mod_id: mod_id.clone(),
+                    revision_id: revision_id.clone(),
+                },
+                layer,
+                false,
+                &mut plan,
+            )
+            .map_err(|_| ReadOnlyInstallAutomationError::InstallPlanInvalid)?;
         let plan = self
             .replacement_workflow
             .bind_canonical_install_sources(&game_id, &profile_id, &mod_id, &revision_id, plan)

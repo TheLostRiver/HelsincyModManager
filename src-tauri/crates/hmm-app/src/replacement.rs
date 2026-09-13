@@ -32,6 +32,8 @@ use crate::InstallRecoveryStatus;
 
 #[path = "replacement/canonical.rs"]
 mod canonical;
+#[path = "replacement/plugins.rs"]
+mod plugins;
 #[path = "replacement/profile.rs"]
 mod profile;
 pub use canonical::CanonicalReinstallPlanner;
@@ -75,6 +77,8 @@ pub trait InitialRetargetInstallStatusReader: Send + Sync {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReplacementWorkflowError {
+    #[error("plugin selection failed")]
+    PluginSelection(#[from] crate::PluginSelectionServiceError),
     #[error("replacement is unsupported for the requested game")]
     UnsupportedGame,
     #[error("replacement target catalog is unavailable")]
@@ -210,6 +214,7 @@ pub struct RetargetReinstallRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedInitialRetargetInstall {
+    plugin_effects: Vec<hmm_core::RetargetFileEffect>,
     package_id: String,
     revision_id: ModRevisionId,
     layer: FileLayer,
@@ -222,6 +227,7 @@ pub struct PlannedInitialRetargetInstall {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedRetargetReinstall {
+    plugin_effects: Vec<hmm_core::RetargetFileEffect>,
     package_id: String,
     revision_id: ModRevisionId,
     layer: FileLayer,
@@ -233,7 +239,10 @@ pub struct PlannedRetargetReinstall {
 
 impl PlannedRetargetReinstall {
     pub fn file_effects(&self) -> Vec<hmm_core::RetargetFileEffect> {
-        self.retarget_plan.file_effects().to_vec()
+        plugins::merge_file_effects(
+            self.retarget_plan.file_effects().to_vec(),
+            &self.plugin_effects,
+        )
     }
     pub fn policy_exclusions(&self) -> Option<Vec<hmm_core::RetargetPolicyExcludedFile>> {
         self.retarget_plan
@@ -264,14 +273,42 @@ impl PlannedRetargetReinstall {
 }
 
 impl PlannedInitialRetargetInstall {
+    /// Effective user-facing warnings after the package plugin choices are applied.
+    /// The raw adapter exclusion inventory stays unchanged for source verification.
+    pub fn warnings(&self) -> Vec<hmm_core::ReplacementWarning> {
+        let excluded = self
+            .file_effects()
+            .iter()
+            .any(|file| file.target_path.is_none());
+        let mut warnings = Vec::new();
+        for warning in self
+            .retarget_plans
+            .iter()
+            .flat_map(|plan| plan.warnings())
+            .copied()
+        {
+            if warning == hmm_core::ReplacementWarning::PolicyExcludedResources
+                && !self.plugin_effects.is_empty()
+                && !excluded
+            {
+                continue;
+            }
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+        }
+        warnings
+    }
     pub fn layer(&self) -> &FileLayer {
         &self.layer
     }
     pub fn file_effects(&self) -> Vec<hmm_core::RetargetFileEffect> {
-        self.retarget_plans
+        let base = self
+            .retarget_plans
             .iter()
             .flat_map(|plan| plan.file_effects().iter().cloned())
-            .collect()
+            .collect();
+        plugins::merge_file_effects(base, &self.plugin_effects)
     }
     pub fn policy_exclusions(&self) -> Option<Vec<hmm_core::RetargetPolicyExcludedFile>> {
         self.retarget_plans
@@ -340,6 +377,14 @@ impl PlannedInitialRetargetInstall {
                 .merge(plan.source_routing())
                 .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
         }
+        for selection in &self.install_plan.plugin_selections {
+            // 排除项也显式声明原包读取，用于核对盘点摘要，不会产生安装动作。
+            for file in selection.files() {
+                routing
+                    .read_from_package(file.package_file_id.clone())
+                    .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+            }
+        }
         Ok(routing)
     }
 }
@@ -365,6 +410,7 @@ struct ResolvedImportedReplacement {
 }
 
 pub struct ReplacementWorkflowService {
+    plugin_selection: Option<Arc<crate::PluginSelectionService>>,
     replacement: ReplacementService,
     catalogs: Vec<Arc<dyn ReplacementCatalogProvider>>,
     result_repository: Arc<dyn ModImportResultRepository>,
@@ -596,6 +642,7 @@ impl ReplacementWorkflowService {
     ) -> Self {
         Self {
             replacement: ReplacementService::new(replacement_adapters),
+            plugin_selection: None,
             catalogs,
             result_repository,
             sandbox_locator,
@@ -785,7 +832,7 @@ impl ReplacementWorkflowService {
             retarget_plans.push(retarget_plan);
         }
 
-        let install_plan = self
+        let mut install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(
                 &retarget_plans,
@@ -793,9 +840,21 @@ impl ReplacementWorkflowService {
                 Some(resolved.revision_id.clone()),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        let plugin_effects = self.apply_plugin_selection(
+            hmm_core::PluginSelectionScope {
+                game_id: request.game_id.clone(),
+                profile_id: profile_id.clone(),
+                mod_id: mod_id.clone(),
+                revision_id: resolved.revision_id.clone(),
+            },
+            &request.layer,
+            false,
+            &mut install_plan,
+        )?;
         let install_plan = self.append_cross_mod_target_conflicts(install_plan, &profile_id)?;
 
         Ok(PlannedInitialRetargetInstall {
+            plugin_effects,
             package_id: resolved.package_id,
             revision_id: resolved.revision_id,
             layer: request.layer,
@@ -884,8 +943,18 @@ impl ReplacementWorkflowService {
         // 计划不变），保证 `plan_hash` 与预览阶段逐字一致。
         let mut install_plan = self
             .replacement
-            .build_retarget_install_plan_for_all(&planned.retarget_plans, layer, Some(revision_id))
+            .build_retarget_install_plan_for_all(
+                &planned.retarget_plans,
+                layer.clone(),
+                Some(revision_id),
+            )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        self.restore_planned_plugins(
+            &planned.install_plan.plugin_selections,
+            &layer,
+            false,
+            &mut install_plan,
+        )?;
         install_plan.conflicts = planned.install_plan.conflicts;
         Ok(MaterializedInitialRetargetInstall {
             install_plan,
@@ -897,6 +966,12 @@ impl ReplacementWorkflowService {
         &self,
         request: PreviewRetargetReinstallRequest,
     ) -> Result<PlannedRetargetReinstall, ReplacementWorkflowError> {
+        let plugin_scope = hmm_core::PluginSelectionScope {
+            game_id: request.game_id.clone(),
+            profile_id: request.profile_id.clone(),
+            mod_id: request.mod_id.clone(),
+            revision_id: request.installed_revision_id.clone(),
+        };
         let resolved = self.resolve_imported_revision(
             &request.game_id,
             &request.mod_id,
@@ -956,7 +1031,7 @@ impl ReplacementWorkflowService {
                 &content_reader,
             )
             .map_err(ReplacementWorkflowError::Analysis)?;
-        let install_plan = self
+        let mut install_plan = self
             .replacement
             .build_retarget_install_plan(
                 &retarget_plan,
@@ -964,8 +1039,11 @@ impl ReplacementWorkflowService {
                 Some(request.installed_revision_id.clone()),
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
+        let plugin_effects =
+            self.apply_plugin_selection(plugin_scope, &request.layer, true, &mut install_plan)?;
 
         Ok(PlannedRetargetReinstall {
+            plugin_effects,
             package_id: resolved.package_id,
             revision_id: request.installed_revision_id,
             layer: request.layer,
@@ -981,6 +1059,8 @@ impl ReplacementWorkflowService {
         staging: &dyn RetargetStagingMaterializer,
         planned: PlannedRetargetReinstall,
     ) -> Result<InstallPlan, ReplacementWorkflowError> {
+        let selections = planned.install_plan.plugin_selections.clone();
+        let layer = planned.layer.clone();
         let materialized = self
             .replacement
             .materialize_retarget(
@@ -992,7 +1072,9 @@ impl ReplacementWorkflowService {
                 },
             )
             .map_err(|_| ReplacementWorkflowError::PlanUnavailable)?;
-        Ok(materialized.into_parts().1)
+        let mut plan = materialized.into_parts().1;
+        self.restore_planned_plugins(&selections, &layer, true, &mut plan)?;
+        Ok(plan)
     }
 
     fn resolve_imported_replacement(

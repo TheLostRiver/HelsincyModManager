@@ -29,6 +29,8 @@ mod mod_library_read_model_benchmark_tests;
 mod mod_metadata_commands;
 mod mod_storage_commands;
 mod package_contents_commands;
+mod plugin_selection_commands;
+mod plugin_selection_dto;
 mod profile_commands;
 mod reinstall_commands;
 mod reinstall_dto;
@@ -101,6 +103,7 @@ use package_contents_commands::{
     clear_mod_package_content_root, clear_mod_package_file_selection, get_mod_package_contents,
     set_mod_package_content_root, set_mod_package_file_selection,
 };
+use plugin_selection_commands::{get_mod_plugin_selection, set_mod_plugin_selection};
 use profile_commands::{
     create_profile, delete_profile, get_active_profile, get_profile_save_settings, list_profiles,
     open_profile_directory, set_active_profile, set_profile_save_settings, update_profile,
@@ -231,6 +234,8 @@ pub fn run() {
             get_equipment_retarget_configuration,
             preview_equipment_retarget_install,
             preview_equipment_reapply,
+            get_mod_plugin_selection,
+            set_mod_plugin_selection,
             start_equipment_reapply_task,
             preview_equipment_retarget_reinstall,
             start_equipment_retarget_install_task,

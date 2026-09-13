@@ -72,6 +72,15 @@ impl Fixture {
         let mod_id = import_equipment(&state, archive);
         if ordinary {
             install_fixture_revision(&state, &mod_id, &ProfileId::new("default"));
+            // Seed pre-policy install facts. These intentionally invalid legacy files must
+            // still be retained, without making the current installer accept them as new DLLs.
+            seed_legacy_attachment_files(
+                &app_data,
+                &game,
+                &mod_id,
+                manifests.as_ref(),
+                &[(PLUGIN, PLUGIN_BYTES), (TOOL, TOOL_BYTES)],
+            );
         } else {
             install_equipment(&state, selection(&state, &mod_id, "one001", None));
         }
@@ -161,6 +170,49 @@ impl Fixture {
                 .unwrap();
         }
     }
+}
+
+pub(super) fn seed_legacy_attachment_files(
+    app_data: &Path,
+    game: &Path,
+    mod_id: &ModId,
+    manifests: &dyn InstallManifestRepository,
+    files: &[(&str, &[u8])],
+) {
+    use hmm_ports::InstallBackupStore;
+    use sha2::{Digest, Sha256};
+    let mut manifest = read_fixture_manifest(app_data);
+    let revision_id = manifest
+        .entries
+        .iter()
+        .find(|entry| entry.mod_id == *mod_id)
+        .unwrap()
+        .revision_id
+        .clone();
+    manifest.plugin_selections.clear();
+    let backups = hmm_infra::FileSystemInstallBackupStore::new(app_data.join("install/backups"));
+    for &(path, bytes) in files {
+        let target = InstallTargetPath::parse(path, ["nativePC"]).unwrap();
+        let backup_ref = fs::read(game.join(path))
+            .ok()
+            .map(|original| backups.store_backup(&target, &original).unwrap());
+        fs::create_dir_all(game.join(path).parent().unwrap()).unwrap();
+        fs::write(game.join(path), bytes).unwrap();
+        manifest.entries.push(hmm_core::InstallManifestEntry {
+            target_path: target,
+            mod_id: mod_id.clone(),
+            revision_id: revision_id.clone(),
+            package_file_id: PackageFileId::new(path),
+            layer: FileLayer::new("base", 0),
+            backup_ref,
+            adopted: false,
+            installed_file: Some(hmm_core::InstalledFileSummary {
+                size_bytes: bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            }),
+        });
+    }
+    manifests.save_manifest(&manifest).unwrap();
 }
 
 #[test]
@@ -373,11 +425,21 @@ fn unverified_attachment_metadata_or_bytes_block_without_deleting_player_files()
         }
         fixture.manifests.save_manifest(&manifest).unwrap();
         let before = snapshot_file_tree(&fixture.game);
-        assert_eq!(
-            fixture.preview().status,
-            ReinstallPreviewStatus::Blocked,
-            "accepted {problem}"
-        );
+        let preview = fixture
+            .state
+            .reinstall_executor
+            .preview_equipment_retarget_reinstall(fixture.request());
+        if ["game", "missing"].contains(&problem) {
+            assert_eq!(
+                preview.unwrap().status,
+                ReinstallPreviewStatus::Blocked,
+                "accepted {problem}"
+            );
+        } else {
+            assert!(matches!(preview, Err(crate::ConfiguredRetargetReinstallError::Replacement(
+                ReplacementWorkflowError::PluginSelection(hmm_app::PluginSelectionServiceError::ManifestUnverified)
+            ))), "unverified {problem} must fail before a plugin choice can authorize deletion: {preview:?}");
+        }
         assert_eq!(snapshot_file_tree(&fixture.game), before);
         assert_eq!(read_fixture_manifest(&fixture.app_data), manifest);
         assert_no_reinstall_recovery_transactions(&fixture.app_data);

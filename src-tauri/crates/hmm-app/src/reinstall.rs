@@ -596,7 +596,8 @@ impl ReinstallPreviewService {
         }
         if let Err(error) = manifest.validate() {
             let reason = match error {
-                InstallManifestValidationError::UnsupportedSchemaVersion { .. } => {
+                InstallManifestValidationError::UnsupportedSchemaVersion { .. }
+                | InstallManifestValidationError::InvalidPluginSelection => {
                     ReinstallBlockingReason::ManifestStateUnsafe
                 }
                 InstallManifestValidationError::RevisionedEntriesRequireSchemaV2
@@ -701,6 +702,14 @@ impl ReinstallPreviewService {
                 }
             },
         };
+        let plugin_only_reapply = matches!(switch_mode, ReplacementSwitchMode::Reapply)
+            && hmm_core::is_same_revision_plugin_reapply(
+                &manifest,
+                &request.mod_id,
+                &candidate_revision_id,
+                &plan.replacement_bindings,
+                &plan.plugin_selections,
+            );
 
         if !matches!(switch_mode, ReplacementSwitchMode::Disabled)
             && installed_revision_id == candidate_revision_id
@@ -709,6 +718,7 @@ impl ReinstallPreviewService {
                 .iter()
                 .all(|binding| binding.mod_id() != &request.mod_id)
             && original_install_evidence.is_none()
+            && !plugin_only_reapply
         {
             original_install_evidence = match self.verify_original_install(
                 &request.game_id,
@@ -748,7 +758,16 @@ impl ReinstallPreviewService {
                 ReinstallBlockingReason::PlanConflict,
             ));
         }
-        if plan.actions.is_empty() {
+        if plan.actions.is_empty()
+            && !(plugin_only_reapply
+                && hmm_core::is_complete_plugin_removal(
+                    &manifest,
+                    &request.mod_id,
+                    &candidate_revision_id,
+                    &plan.replacement_bindings,
+                    &plan.plugin_selections,
+                ))
+        {
             return Ok(blocked(
                 installed_summary,
                 candidate_summary,
@@ -765,6 +784,13 @@ impl ReinstallPreviewService {
                 .replacement_bindings
                 .iter()
                 .any(|snapshot| snapshot.mod_id() != &request.mod_id)
+            || plan
+                .validate_plugin_selections(&request.game_id, &request.profile_id)
+                .is_err()
+            || plan.plugin_selections.iter().any(|selection| {
+                selection.scope().mod_id != request.mod_id
+                    || selection.scope().revision_id != candidate_revision_id
+            })
         {
             return Ok(blocked(
                 installed_summary,
@@ -783,14 +809,16 @@ impl ReinstallPreviewService {
         }
         let reapply = matches!(switch_mode, ReplacementSwitchMode::Reapply);
         let same_revision_switch_allowed = if reapply {
-            hmm_core::is_same_revision_equipment_reapply(
-                &manifest,
-                &request.mod_id,
-                &candidate_revision_id,
-                &plan.replacement_bindings,
-            ) || original_install_evidence.as_ref().is_some_and(|evidence| {
-                evidence.allows_equipment_reapply(&manifest, &plan.replacement_bindings)
-            })
+            plugin_only_reapply
+                || hmm_core::is_same_revision_equipment_reapply(
+                    &manifest,
+                    &request.mod_id,
+                    &candidate_revision_id,
+                    &plan.replacement_bindings,
+                )
+                || original_install_evidence.as_ref().is_some_and(|evidence| {
+                    evidence.allows_equipment_reapply(&manifest, &plan.replacement_bindings)
+                })
         } else {
             original_install_evidence.as_ref().is_some_and(|evidence| {
                 evidence.allows_single_target_switch(&manifest, &plan.replacement_bindings)
@@ -899,6 +927,24 @@ impl ReinstallPreviewService {
                 return Ok(blocked(installed_summary, candidate_summary, reason));
             }
         };
+        if plan
+            .plugin_selections
+            .iter()
+            .flat_map(|selection| selection.files())
+            .filter(|file| file.choice.is_included())
+            .any(|file| {
+                !source_facts.iter().any(|source| {
+                    source.provider.package_file_id == file.package_file_id
+                        && source.summary == file.source_file
+                })
+            })
+        {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::SourceUnavailable,
+            ));
+        }
         let (installed_states, target_facts, backup_facts) = match self.preflight_installed(
             &request.mod_id,
             &installed_revision_id,
@@ -944,6 +990,20 @@ impl ReinstallPreviewService {
                     return Ok(blocked(installed_summary, candidate_summary, reason));
                 }
             };
+        if plugin_only_reapply
+            && !hmm_core::plugin_reapply_targets_are_allowed(
+                &plan.plugin_selections,
+                classifications
+                    .iter()
+                    .map(|target| (&target.target_path, target.class)),
+            )
+        {
+            return Ok(blocked(
+                installed_summary,
+                candidate_summary,
+                ReinstallBlockingReason::CandidateNotReady,
+            ));
+        }
 
         if attachments.retained_targets.iter().any(|target| {
             !classifications.iter().any(|item| {
@@ -982,6 +1042,7 @@ impl ReinstallPreviewService {
                 target_files: &target_facts,
                 backup_files: &backup_facts,
                 replacement_bindings: &plan.replacement_bindings,
+                plugin_selections: &plan.plugin_selections,
                 original_install_evidence: original_install_evidence.as_ref(),
                 attachment_counts: attachments.counts,
             },
@@ -1008,6 +1069,7 @@ impl ReinstallPreviewService {
             old_manifest: manifest,
             original_install_evidence,
             candidate_replacement_bindings: plan.replacement_bindings,
+            candidate_plugin_selections: plan.plugin_selections,
             source_files: source_facts,
             backup_files: backup_facts,
             targets,
@@ -1217,6 +1279,7 @@ pub struct PreparedReinstall {
     pub(crate) old_manifest: InstallManifest,
     pub(crate) original_install_evidence: Option<OriginalInstallEvidence>,
     pub(crate) candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    pub(crate) candidate_plugin_selections: Vec<hmm_core::PluginSelectionSnapshot>,
     pub(crate) source_files: Vec<PreparedSourceFile>,
     pub(crate) backup_files: BTreeMap<String, PreparedFile>,
     pub(crate) targets: Vec<PreparedReinstallTarget>,
@@ -1228,6 +1291,10 @@ pub struct PreparedReinstall {
 }
 
 impl PreparedReinstall {
+    pub fn plugin_selections(&self) -> &[hmm_core::PluginSelectionSnapshot] {
+        &self.candidate_plugin_selections
+    }
+
     pub fn is_noop_reapply(&self) -> bool {
         self.intent == hmm_core::ReinstallIntent::ReapplyEquipmentTargets
             && self
@@ -1323,7 +1390,8 @@ fn manifest_validation_blocking_reason(
     error: InstallManifestValidationError,
 ) -> ReinstallBlockingReason {
     match error {
-        InstallManifestValidationError::UnsupportedSchemaVersion { .. } => {
+        InstallManifestValidationError::UnsupportedSchemaVersion { .. }
+        | InstallManifestValidationError::InvalidPluginSelection => {
             ReinstallBlockingReason::ManifestStateUnsafe
         }
         InstallManifestValidationError::RevisionedEntriesRequireSchemaV2
@@ -1359,6 +1427,7 @@ struct CandidatePlanTokenFacts<'a> {
     target_files: &'a BTreeMap<InstallTargetPath, Option<PreparedFile>>,
     backup_files: &'a BTreeMap<String, PreparedFile>,
     replacement_bindings: &'a [ReplacementBindingSnapshot],
+    plugin_selections: &'a [hmm_core::PluginSelectionSnapshot],
     original_install_evidence: Option<&'a OriginalInstallEvidence>,
     attachment_counts: ReinstallAttachmentCounts,
 }
@@ -1419,6 +1488,7 @@ fn canonical_plan_token(
         hash_optional_summary(&mut hasher, entry.installed_file.as_ref());
     }
     hash_replacement_snapshots(&mut hasher, &manifest.replacement_bindings);
+    crate::plugin_facts::hash_selections(&mut hasher, &manifest.plugin_selections);
 
     let mut sources = candidate.source_files.to_vec();
     sources.sort_by(|left, right| {
@@ -1458,6 +1528,7 @@ fn canonical_plan_token(
         hash_summary(&mut hasher, &summary.summary);
     }
     hash_replacement_snapshots(&mut hasher, candidate.replacement_bindings);
+    crate::plugin_facts::hash_selections(&mut hasher, candidate.plugin_selections);
     if !candidate.attachment_counts.is_empty() {
         hash_field(&mut hasher, "installed-attachments-v1");
         hash_field(

@@ -140,11 +140,15 @@ pub struct ReinstallRecoveryTransaction {
     pub original_install_evidence: Option<crate::OriginalInstallEvidence>,
     #[serde(default)]
     pub candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_plugin_selections: Vec<crate::PluginSelectionSnapshot>,
     pub targets: Vec<ReinstallRecoveryTarget>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReinstallRecoveryTransactionValidationError {
+    #[error("reinstall transaction plugin selection does not match candidate files")]
+    InvalidCandidatePluginSelection,
     #[error("equipment reapply must preserve the installed revision and targets and change files")]
     InvalidEquipmentReapplyIntent,
     #[error("reinstall transaction original installation evidence is invalid")]
@@ -197,7 +201,10 @@ impl ReinstallRecoveryTransaction {
                     &self.mod_id,
                     &self.candidate_revision_id,
                     &self.candidate_replacement_bindings,
-                ) || self.original_install_evidence.as_ref().is_some_and(|evidence| {
+                ) || (crate::is_same_revision_plugin_reapply(&self.pre_reinstall_manifest, &self.mod_id,
+                    &self.candidate_revision_id, &self.candidate_replacement_bindings, &self.candidate_plugin_selections)
+                    && crate::plugin_reapply_targets_are_allowed(&self.candidate_plugin_selections, self.targets.iter().map(|target| (&target.target_path, target.class))))
+                || self.original_install_evidence.as_ref().is_some_and(|evidence| {
                     evidence.allows_equipment_reapply(
                         &self.pre_reinstall_manifest,
                         &self.candidate_replacement_bindings,
@@ -272,6 +279,9 @@ impl ReinstallRecoveryTransaction {
             }
         }
 
+        crate::plugin_selection::validate_recovery_plugins(self).map_err(|_| {
+            ReinstallRecoveryTransactionValidationError::InvalidCandidatePluginSelection
+        })?;
         let mut targets = BTreeSet::new();
         for target in &self.targets {
             if !targets.insert(target.target_path.clone()) {
@@ -579,13 +589,41 @@ pub fn replace_entries_and_bindings_for_mod(
     requested_mod_id: &ModId,
     legacy_provenance: &[ModRevisionId],
     candidate_revision_id: &ModRevisionId,
+    candidate_entries: Vec<InstallManifestEntry>,
+    candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
+) -> Result<InstallManifest, ReinstallManifestError> {
+    replace_entries_bindings_and_plugins_for_mod(
+        manifest,
+        requested_mod_id,
+        legacy_provenance,
+        candidate_revision_id,
+        candidate_entries,
+        candidate_replacement_bindings,
+        Vec::new(),
+    )
+}
+
+pub fn replace_entries_bindings_and_plugins_for_mod(
+    manifest: &InstallManifest,
+    requested_mod_id: &ModId,
+    legacy_provenance: &[ModRevisionId],
+    candidate_revision_id: &ModRevisionId,
     mut candidate_entries: Vec<InstallManifestEntry>,
     candidate_replacement_bindings: Vec<ReplacementBindingSnapshot>,
+    candidate_plugin_selections: Vec<crate::PluginSelectionSnapshot>,
 ) -> Result<InstallManifest, ReinstallManifestError> {
     let installed_entries = entries_for_mod(manifest, requested_mod_id)?;
     resolve_installed_revision(manifest, requested_mod_id, legacy_provenance)?;
 
-    if candidate_entries.is_empty() {
+    let complete_plugin_removal = candidate_entries.is_empty()
+        && crate::is_complete_plugin_removal(
+            manifest,
+            requested_mod_id,
+            candidate_revision_id,
+            &candidate_replacement_bindings,
+            &candidate_plugin_selections,
+        );
+    if candidate_entries.is_empty() && !complete_plugin_removal {
         return Err(ReinstallManifestError::CandidateEntriesEmpty);
     }
 
@@ -652,6 +690,21 @@ pub fn replace_entries_and_bindings_for_mod(
     updated
         .replacement_bindings
         .extend(candidate_replacement_bindings);
+    if candidate_plugin_selections.iter().any(|selection| {
+        selection.scope().mod_id != *requested_mod_id
+            || selection.scope().profile_id != manifest.profile_id
+            || selection.scope().revision_id != *candidate_revision_id
+    }) {
+        return Err(ReinstallManifestError::CandidateReplacementBindingMismatch);
+    }
+    updated
+        .plugin_selections
+        .retain(|selection| selection.scope().mod_id != *requested_mod_id);
+    if !complete_plugin_removal {
+        updated
+            .plugin_selections
+            .extend(candidate_plugin_selections);
+    }
     updated
         .validate()
         .map_err(|_| ReinstallManifestError::CandidateReplacementBindingMismatch)?;
@@ -1519,6 +1572,7 @@ mod tests {
 
     fn manifest(entries: Vec<InstallManifestEntry>) -> InstallManifest {
         InstallManifest {
+            plugin_selections: Vec::new(),
             profile_id: ProfileId::new("default"),
             manifest_id: "manifest-1".to_owned(),
             schema_version: 1,
@@ -1569,6 +1623,7 @@ mod tests {
             };
 
         ReinstallRecoveryTransaction {
+            candidate_plugin_selections: Vec::new(),
             profile_id: ProfileId::new("default"),
             intent: Default::default(),
             mod_id: ModId::new("mod-a"),
