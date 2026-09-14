@@ -1650,6 +1650,10 @@ fn canonical_plan_token(
         );
     }
 
+    finalize_plan_token(hasher)
+}
+
+fn finalize_plan_token(hasher: Sha256) -> String {
     format!("reinstall-preview-v1:{:x}", hasher.finalize())
 }
 

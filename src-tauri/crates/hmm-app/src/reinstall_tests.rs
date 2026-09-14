@@ -24,6 +24,9 @@ use std::sync::{Arc, Mutex};
 #[path = "batch_reinstall_plugin_tests.rs"]
 mod batch_plugins;
 
+#[path = "reinstall_token_tests.rs"]
+mod plan_tokens;
+
 #[test]
 fn preview_fixture_returns_expected_counts_without_mutation_or_sensitive_facts() {
     let fixture = Fixture::ready();
