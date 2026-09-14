@@ -74,6 +74,8 @@ export type ModLibraryCopy = {
   toolbar: {
     showLabels: string;
     hideLabels: string;
+    showHover: string;
+    hideHover: string;
     searchPlaceholder: string;
     searchAria: string;
     viewSwitchAria: string;
@@ -305,6 +307,8 @@ export const modLibraryCopy = {
     toolbar: {
       showLabels: "显示分类标签",
       hideLabels: "隐藏分类标签",
+      showHover: "显示卡片悬浮信息",
+      hideHover: "隐藏卡片悬浮信息",
       searchPlaceholder: "搜索 Mod 名称、作者或标签…",
       searchAria: "搜索 Mod",
       viewSwitchAria: "排版视图切换",
@@ -534,6 +538,8 @@ export const modLibraryCopy = {
     toolbar: {
       showLabels: "Show category labels",
       hideLabels: "Hide category labels",
+      showHover: "Show card hover details",
+      hideHover: "Hide card hover details",
       searchPlaceholder: "Search mod names, authors, or tags…",
       searchAria: "Search mods",
       viewSwitchAria: "Layout view switch",
@@ -763,6 +769,8 @@ export const modLibraryCopy = {
     toolbar: {
       showLabels: "カテゴリラベルを表示",
       hideLabels: "カテゴリラベルを非表示",
+      showHover: "カードのホバー情報を表示",
+      hideHover: "カードのホバー情報を非表示",
       searchPlaceholder: "Mod 名・作者・タグを検索…",
       searchAria: "Mod を検索",
       viewSwitchAria: "レイアウト切り替え",
