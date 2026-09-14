@@ -6,36 +6,26 @@ function readSource(path) {
   return readFileSync(path, "utf8");
 }
 
-test("Mod detail unified panel owns the replacement target tab", () => {
+test("Mod actions route retargeting into a standalone dialog with the existing workflow", () => {
   assert.equal(existsSync("src/features/replacements/ReplacementTargetPanel.tsx"), true);
   const dialog = readSource("src/features/mods/ModDetailDialog.tsx");
-  const dialogCss = readSource("src/features/mods/ModDetailDialog.css");
+  const retargetDialog = readSource("src/features/replacements/EquipmentRetargetDialog.tsx");
   const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
 
   assert.match(dialog, /type ModDetailDialogTab = "details" \| "replacement"/);
-  assert.match(dialog, /role="tablist"/);
+  assert.match(dialog, /props\.initialTab === "replacement"/);
+  assert.match(dialog, /<EquipmentRetargetDialog key=\{JSON\.stringify\(\[props\.gameId, props\.profileId, props\.modId\]\)\}/);
   assert.match(dialog, /createPortal\([\s\S]*document\.body/);
-  assert.match(dialog, /mod-detail-dialog__body[^\n]*is-replacement/);
+  assert.doesNotMatch(dialog, /role="tablist"|<ReplacementTargetPanel/);
+  assert.doesNotMatch(retargetDialog, /<img|previewImage|getModCategories|listCategories/);
+  assert.match(retargetDialog, /<ModalSurface[\s\S]*busy=\{busy\}/);
+  assert.match(retargetDialog, /<EquipmentRetargetPanel/);
+  assert.match(retargetDialog, /completedLocally=\{completedLocally\}/);
+  assert.match(retargetDialog, /installStatus=\{currentInstallStatus\}/);
   assert.match(
-    dialogCss,
-    /@media \(max-width: 760px\)[\s\S]*\.mod-detail-dialog__body\.is-replacement[\s\S]*order:\s*-1/,
+    retargetDialog,
+    /await onSaved\(\);[\s\S]*setCurrentInstallStatus\("installed"\);[\s\S]*setCompletedLocally\(false\)/,
   );
-  assert.match(dialog, /dialogCopy\.tabReplacement/);
-  assert.match(
-    readSource("src/features/mods/modDetailDialogCopy.ts"),
-    /tabReplacement: "替换目标"/,
-  );
-  assert.match(dialog, /<ReplacementTargetPanel/);
-  assert.match(dialog, /replacementCompletedLocally/);
-  assert.match(dialog, /completedLocally=\{replacementCompletedLocally\}/);
-  assert.match(dialog, /installStatus=\{replacementInstallStatus\}/);
-  assert.match(
-    dialog,
-    /await onSaved\(\);[\s\S]*setReplacementInstallStatus\("installed"\);[\s\S]*setReplacementCompletedLocally\(false\)/,
-  );
-  const tabs = dialog.match(/<div className="mod-detail-dialog__tabs"[\s\S]*?<\/div>/);
-  assert.ok(tabs, "expected details and replacement tabs");
-  assert.equal(tabs[0].match(/disabled=\{dialogBusy\}/g)?.length, 2);
   assert.match(panel, /listReplacementTargets/);
   assert.match(panel, /analyzeImportedModReplacement/);
   assert.match(panel, /previewInitialRetargetInstall/);

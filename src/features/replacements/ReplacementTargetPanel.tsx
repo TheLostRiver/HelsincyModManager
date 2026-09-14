@@ -74,6 +74,7 @@ import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetar
 import type { RetargetInstallTaskStarted } from "./replacementTypes";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
+import { RetargetWorkspace } from "./RetargetWorkspace";
 
 export type ReplacementTargetPanelProps = {
   gameId: GameId;
@@ -581,19 +582,19 @@ export function ReplacementTargetPanel({
 
   if (loadState.status === "loading") {
     return (
-      <div className="replacement-panel">
+      <RetargetWorkspace previewStatus="idle" selection={<>
         {contextPanel}
         <div className="replacement-panel__state" role="status">
           <LoaderCircle className="replacement-panel__spinner" size={20} aria-hidden="true" />
           <span>{rCopy.panel.analyzing}</span>
         </div>
-      </div>
+      </>} preview={null} feedback={null} actions={null} />
     );
   }
 
   if (loadState.status === "error") {
     return (
-      <div className="replacement-panel">
+      <RetargetWorkspace previewStatus="idle" selection={<>
         {contextPanel}
         <div className="replacement-panel__state is-error" role="alert">
           <ShieldAlert size={20} aria-hidden="true" />
@@ -603,12 +604,12 @@ export function ReplacementTargetPanel({
             {rCopy.panel.retry}
           </button>
         </div>
-      </div>
+      </>} preview={null} feedback={null} actions={null} />
     );
   }
 
   return (
-    <div className="replacement-panel">
+    <RetargetWorkspace previewStatus={previewState.status} selection={<>
       {contextPanel}
       <PluginSelectionPanel controller={plugins} disabled={taskActive} />
       {installStatus === "installed" && analysis?.retargetable && !installedTargetId
@@ -747,6 +748,7 @@ export function ReplacementTargetPanel({
         </section>
       ) : null}
 
+      </>} preview={<>
       {previewState.status !== "idle" ? (
         <section className="replacement-panel__preview" aria-live="polite">
           {previewState.status === "loading" ? (
@@ -894,12 +896,13 @@ export function ReplacementTargetPanel({
                   )}
                 </>
               )}
-              <RetargetFileDetails files={previewState.preview.fileEffects} sourceLabels={Object.fromEntries((analysis?.sources ?? []).map((source) => [source.id, replacementIdentityLabel(source, locale)]))} />
+              <RetargetFileDetails defaultOpen files={previewState.preview.fileEffects} sourceLabels={Object.fromEntries((analysis?.sources ?? []).map((source) => [source.id, replacementIdentityLabel(source, locale)]))} />
             </>
           ) : null}
         </section>
       ) : null}
 
+      </>} feedback={<>
       {listenerStatus === "failed" ? (
         <div className="replacement-panel__notice is-blocked" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />
@@ -1009,7 +1012,7 @@ export function ReplacementTargetPanel({
         </div>
       ) : null}
 
-      <div className="replacement-panel__actions">
+      </>} actions={<>
         <button
           type="button"
           className="is-secondary"
@@ -1063,8 +1066,7 @@ export function ReplacementTargetPanel({
         {targetSwitch && <button type="button" className="is-secondary" onClick={createReapplyPreview} disabled={!plugins.ready || profileId === null || blockMessage !== null || previewState.status === "loading" || taskActive}>
           <RotateCcw size={16} aria-hidden="true" />{fileCopy.previewReapply}
         </button>}
-      </div>
-    </div>
+      </>} />
   );
 }
 

@@ -7,12 +7,12 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import { FilePenLine, ImageIcon, Info, Save, Tag, Target, X } from "lucide-react";
+import { FilePenLine, ImageIcon, Info, Save, Tag, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useModalFocusTrap } from "../../shared/feedback/useModalFocusTrap";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
-import { EquipmentRetargetPanel as ReplacementTargetPanel } from "../replacements/EquipmentRetargetPanel";
+import { EquipmentRetargetDialog } from "../replacements/EquipmentRetargetDialog";
 import { modOriginLabel } from "./modOriginView";
 import { supportsExternalAdoption } from "./externalAdoptView";
 import type { ExternalModStateDto } from "./externalStateApi";
@@ -62,17 +62,26 @@ type CategoryLoadState = "idle" | "ready" | "unavailable";
  */
 const DIALOG_EXIT_DURATION_MS = 160;
 
-export function ModDetailDialog({
+export function ModDetailDialog(props: ModDetailDialogProps) {
+  if (props.initialTab === "replacement") {
+    return <EquipmentRetargetDialog key={JSON.stringify([props.gameId, props.profileId, props.modId])}
+      gameId={props.gameId} profileId={props.profileId} modId={props.modId}
+      modName={props.fallbackItem?.name ?? props.modId} installStatus={props.installStatus}
+      onClose={props.onClose} onSaved={props.onSaved} />;
+  }
+  return <ModInfoDialog {...props} />;
+}
+
+function ModInfoDialog({
   modId,
   fallbackItem,
-  initialTab,
   gameId,
   profileId,
   installStatus,
   onClose,
   onSaved,
   onExternalStateResult,
-}: ModDetailDialogProps) {
+}: Omit<ModDetailDialogProps, "initialTab">) {
   const { locale } = useI18n();
   const dialogCopy = resolveCopy(modDetailDialogCopy, locale);
   // 加载副作用经 ref 取词，避免语言切换重新拉取详情。
@@ -96,14 +105,11 @@ export function ModDetailDialog({
   const [saving, setSaving] = useState(false);
   const [categoryLoadState, setCategoryLoadState] = useState<CategoryLoadState>("idle");
   const [message, setMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ModDetailDialogTab>(initialTab);
-  const [replacementBusy, setReplacementBusy] = useState(false);
-  const [replacementCompletedLocally, setReplacementCompletedLocally] = useState(false);
-  const [replacementInstallStatus, setReplacementInstallStatus] =
+  const [currentInstallStatus, setCurrentInstallStatus] =
     useState<InstallManifestStatus | undefined>(installStatus);
   // #286 adopt 进行中：清单写入不可被关弹窗打断（终态事件要回到这里刷新安装状态）。
   const [externalAdoptBusy, setExternalAdoptBusy] = useState(false);
-  const dialogBusy = saving || replacementBusy || externalAdoptBusy;
+  const dialogBusy = saving || externalAdoptBusy;
   const [exiting, setExiting] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
 
@@ -149,24 +155,11 @@ export function ModDetailDialog({
   });
 
   useEffect(() => {
-    setActiveTab(initialTab);
-    setReplacementBusy(false);
-    setReplacementCompletedLocally(false);
-  }, [initialTab, modId]);
-
-  useEffect(() => {
-    setReplacementInstallStatus(installStatus);
+    setCurrentInstallStatus(installStatus);
   }, [installStatus, modId]);
 
-  const handleReplacementInstallCompleted = useCallback(async () => {
-    setReplacementCompletedLocally(true);
-    await onSaved();
-    setReplacementInstallStatus("installed");
-    setReplacementCompletedLocally(false);
-  }, [onSaved]);
-
   /*
-   * #286 adopt 完成：与替换安装完成同一套路——先让页面重拉库列表（卡片变「已安装」），
+   * #286 adopt 完成：先让页面重拉库列表（卡片变「已安装」），
    * 再把本地安装状态置为 installed（installStatus prop 是打开时的冻结快照，不会自己变）。
    * 区块随之卸载，成功说明留在弹窗的消息位上。
    */
@@ -174,7 +167,7 @@ export function ModDetailDialog({
     async ({ notice }: ExternalAdoptCompletedResult) => {
       setMessage(notice);
       await onSaved();
-      setReplacementInstallStatus("installed");
+      setCurrentInstallStatus("installed");
     },
     [onSaved],
   );
@@ -260,10 +253,6 @@ export function ModDetailDialog({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (activeTab !== "details") {
-      return;
-    }
-
     const nexusModId = parseNexusModId(form.nexusModId);
     if (nexusModId === null) {
       setMessage(dialogCopy.messages.nexusIdInvalid);
@@ -330,7 +319,7 @@ export function ModDetailDialog({
         <header className="mod-detail-dialog__header">
           <div className="mod-detail-dialog__title-block">
             <span className="mod-detail-dialog__icon" aria-hidden="true">
-              {activeTab === "replacement" ? <Target size={18} /> : <Info size={18} />}
+              <Info size={18} />
             </span>
             {/*
              * 层级以用户关心的信息为主：Mod 名称作为标题，"Mod 详情" 降为上方小字说明。
@@ -346,34 +335,7 @@ export function ModDetailDialog({
           </button>
         </header>
 
-        <div className="mod-detail-dialog__tabs" role="tablist" aria-label={dialogCopy.tablistAria}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "details"}
-            className={activeTab === "details" ? "is-active" : undefined}
-            onClick={() => setActiveTab("details")}
-            disabled={dialogBusy}
-          >
-            <Info size={15} aria-hidden="true" />
-            {dialogCopy.tabDetails}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "replacement"}
-            className={activeTab === "replacement" ? "is-active" : undefined}
-            onClick={() => setActiveTab("replacement")}
-            disabled={dialogBusy}
-          >
-            <Target size={15} aria-hidden="true" />
-            {dialogCopy.tabReplacement}
-          </button>
-        </div>
-
-        <div
-          className={`mod-detail-dialog__body${activeTab === "replacement" ? " is-replacement" : ""}`}
-        >
+        <div className="mod-detail-dialog__body">
           <aside className="mod-detail-dialog__preview" aria-label={dialogCopy.previewAria}>
             {previewThumbnail ? (
               <img src={previewThumbnail.thumbnailUrl} alt="" />
@@ -402,8 +364,6 @@ export function ModDetailDialog({
           </aside>
 
           <main className="mod-detail-dialog__content">
-            {activeTab === "details" ? (
-              <>
             <section className="mod-detail-dialog__section">
               <div className="mod-detail-dialog__section-title">
                 <FilePenLine size={16} aria-hidden="true" />
@@ -477,54 +437,32 @@ export function ModDetailDialog({
               )}
             </section>
 
-            {replacementInstallStatus === "not_installed" ? (
+            {currentInstallStatus === "not_installed" ? (
               <ExternalStateSection
                 gameId={gameId}
                 profileId={profileId}
                 modId={modId}
                 modName={displayModName}
-                active={activeTab === "details"}
+                active
                 allowAdopt={!loading && detail?.id === modId && supportsExternalAdoption(detail.origin)}
                 onResult={onExternalStateResult}
                 onBusyChange={setExternalAdoptBusy}
                 onAdoptCompleted={handleExternalAdoptCompleted}
               />
             ) : null}
-              </>
-            ) : (
-              <section className="mod-detail-dialog__section is-replacement">
-                <ReplacementTargetPanel
-                  gameId={gameId}
-                  modId={modId}
-                  profileId={profileId}
-                  installStatus={replacementInstallStatus}
-                  completedLocally={replacementCompletedLocally}
-                  onBusyChange={setReplacementBusy}
-                  onInstallCompleted={handleReplacementInstallCompleted}
-                />
-              </section>
-            )}
           </main>
         </div>
 
-        {activeTab === "details" && message ? <div className="mod-detail-dialog__message" role="status">{message}</div> : null}
+        {message ? <div className="mod-detail-dialog__message" role="status">{message}</div> : null}
 
         <footer className="mod-detail-dialog__footer">
-          {activeTab === "details" ? (
-            <>
-              <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
-                {dialogCopy.cancel}
-              </button>
-              <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || dialogBusy}>
-                <Save size={16} aria-hidden="true" />
-                {saving ? dialogCopy.saving : dialogCopy.save}
-              </button>
-            </>
-          ) : (
-            <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
-              {dialogCopy.closeButton}
-            </button>
-          )}
+          <button className="mod-detail-dialog__button is-secondary" type="button" onClick={requestClose} disabled={dialogBusy || exiting}>
+            {dialogCopy.cancel}
+          </button>
+          <button className="mod-detail-dialog__button is-primary" type="submit" disabled={loading || dialogBusy}>
+            <Save size={16} aria-hidden="true" />
+            {saving ? dialogCopy.saving : dialogCopy.save}
+          </button>
         </footer>
       </form>
     </div>,

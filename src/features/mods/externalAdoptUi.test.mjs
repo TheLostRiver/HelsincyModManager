@@ -288,13 +288,13 @@ test("确认弹窗：alertdialog、点遮罩不关、初始焦点在取消、正
   assert.match(confirmSource, /skippedTotal > 0 \? <p>\{copy\.confirm\.skipped\(counts\)\}<\/p> : null/);
 });
 
-test("弹窗：接管进行中计入 dialogBusy；完成后先刷库再置 installed（与替换安装完成同一套路）", () => {
-  assert.match(dialogSource, /const dialogBusy = saving \|\| replacementBusy \|\| externalAdoptBusy;/);
+test("信息弹窗：接管进行中计入 dialogBusy；完成后先刷库再置 installed", () => {
+  assert.match(dialogSource, /const dialogBusy = saving \|\| externalAdoptBusy;/);
   assert.match(dialogSource, /onBusyChange=\{setExternalAdoptBusy\}/);
   assert.match(dialogSource, /onAdoptCompleted=\{handleExternalAdoptCompleted\}/);
   assert.match(dialogSource, /modName=\{displayModName\}/);
   assert.match(
     dialogSource,
-    /const handleExternalAdoptCompleted = useCallback\([\s\S]*?setMessage\(notice\);\s*await onSaved\(\);\s*setReplacementInstallStatus\("installed"\);/,
+    /const handleExternalAdoptCompleted = useCallback\([\s\S]*?setMessage\(notice\);\s*await onSaved\(\);\s*setCurrentInstallStatus\("installed"\);/,
   );
 });

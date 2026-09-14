@@ -823,8 +823,9 @@ ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `Replaceme
 纯 `RetargetPlan`。AR3 已在独立 staging port/infra adapter 中实现受控 batch materialize：先写 sibling
 `.partial`，完整成功后原子发布，失败清理；最终 target 进入 `InstallPlan`，原 `PackageFileId`
 provenance 保留，binding snapshot 随 plan/manifest/reinstall recovery 原子保存。Tauri/frontend wiring
-已由 AR4 通过四个窄 command 和 feature-local typed API 接入；入口位于 Mod 管理的 Mod 详情
-“替换目标”Tab，右键“MOD 文件重定向”直达。前端只提交 game/Mod/profile/target/layer identity，首次
+已由 AR4 通过四个窄 command 和 feature-local typed API 接入；Mod 管理的“MOD 文件重定向”
+打开独立悬浮窗口，单源／多源共用目标选择、文件预览与固定操作栏，不展示 Mod 预览图。
+前端只提交 game/Mod/profile/target/layer identity，首次
 retarget install 继续走 task id、game/profile 写锁、Audit Log、backup、manifest 和 rollback/recovery
 链路，并对 installed/unsafe/unknown 状态 fail closed。AR5 在同一入口增加两个窄 command：后端从
 manifest 解析 installed revision，同 revision 且 target 确实变化时复用真正重装事务原子替换旧

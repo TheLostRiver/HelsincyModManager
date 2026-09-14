@@ -27,7 +27,7 @@
 
 .mod-detail-dialog__panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   width: min(980px, 100%);
   max-height: min(820px, calc(100vh - 48px));
   overflow: hidden;
@@ -164,73 +164,6 @@
 .mod-detail-dialog__close:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-
-/* ---------- 视图切换 ---------- */
-
-/*
- * 与页头同为白底、只保留一条下边框：原实现给 tabs 单独加浅底和上下边框，
- * 与页头下边框、页脚上边框叠成四条横带，把内容切得很碎。
- */
-.mod-detail-dialog__tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--color-border-muted);
-}
-
-.mod-detail-dialog__tabs button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 0 10px;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  transition: color 160ms ease;
-}
-
-/* 指示条用伪元素压在容器下边框上，不让它参与按钮自身的盒模型。 */
-.mod-detail-dialog__tabs button::after {
-  content: "";
-  position: absolute;
-  right: 10px;
-  bottom: -1px;
-  left: 10px;
-  height: 2px;
-  background: var(--color-accent);
-  border-radius: 2px 2px 0 0;
-  opacity: 0;
-  transition: opacity 160ms ease;
-}
-
-.mod-detail-dialog__tabs button:hover:not(:disabled) {
-  color: var(--color-text);
-}
-
-.mod-detail-dialog__tabs button.is-active {
-  color: var(--color-accent);
-}
-
-.mod-detail-dialog__tabs button.is-active::after {
-  opacity: 1;
-}
-
-.mod-detail-dialog__tabs button:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -3px;
-  border-radius: 8px;
-}
-
-.mod-detail-dialog__tabs button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 /* ---------- 内容区 ---------- */
@@ -593,10 +526,6 @@
     grid-template-columns: 1fr;
   }
 
-  .mod-detail-dialog__body.is-replacement .mod-detail-dialog__content {
-    order: -1;
-  }
-
   .mod-detail-dialog__preview {
     grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
     align-items: start;
@@ -640,8 +569,6 @@
   }
 
   .mod-detail-dialog__close,
-  .mod-detail-dialog__tabs button,
-  .mod-detail-dialog__tabs button::after,
   .mod-detail-dialog__form-grid input,
   .mod-detail-dialog__form-grid textarea,
   .mod-detail-dialog__category-chip,

@@ -1,14 +1,11 @@
 import type { LocaleDictionary } from "../../shared/i18n";
 
-// Mod 详情对话框（右键菜单「Mod 信息 / Mod 修改」入口）的全部用户可见文案。
+// Mod 信息对话框的全部用户可见文案；重定向窗口的文案位于 replacements feature。
 // 保存/加载的结果语义在 modDetailDialogWorkflow 里，文本一律在渲染时取。
 
 export type ModDetailDialogCopy = {
   eyebrow: string;
   closeAria: string;
-  tablistAria: string;
-  tabDetails: string;
-  tabReplacement: string;
   previewAria: string;
   noPreview: string;
   packageIdLabel: string;
@@ -31,7 +28,6 @@ export type ModDetailDialogCopy = {
   cancel: string;
   save: string;
   saving: string;
-  closeButton: string;
   messages: {
     detailLoadFailed: string;
     categoryLoadFailed: string;
@@ -46,9 +42,6 @@ export const modDetailDialogCopy = {
   zh_cn: {
     eyebrow: "Mod 详情",
     closeAria: "关闭",
-    tablistAria: "Mod 详情视图",
-    tabDetails: "基本信息",
-    tabReplacement: "替换目标",
     previewAria: "Mod 预览图",
     noPreview: "暂无预览图",
     packageIdLabel: "Package ID",
@@ -72,7 +65,6 @@ export const modDetailDialogCopy = {
     cancel: "取消",
     save: "保存",
     saving: "保存中",
-    closeButton: "关闭",
     messages: {
       detailLoadFailed: "详情读取失败，已使用列表中的基础信息。",
       categoryLoadFailed: "分类读取失败，本次保存不会改动分类关联。",
@@ -86,9 +78,6 @@ export const modDetailDialogCopy = {
     originUnspecified: "Unknown origin",
     eyebrow: "Mod Details",
     closeAria: "Close",
-    tablistAria: "Mod detail views",
-    tabDetails: "Details",
-    tabReplacement: "Replacement Target",
     previewAria: "Mod preview image",
     noPreview: "No preview image",
     packageIdLabel: "Package ID",
@@ -111,7 +100,6 @@ export const modDetailDialogCopy = {
     cancel: "Cancel",
     save: "Save",
     saving: "Saving",
-    closeButton: "Close",
     messages: {
       detailLoadFailed: "Failed to load details; showing basic info from the list instead.",
       categoryLoadFailed: "Failed to load categories; this save will not change category assignments.",
@@ -125,9 +113,6 @@ export const modDetailDialogCopy = {
     originUnspecified: "不明なインポート元",
     eyebrow: "Mod 詳細",
     closeAria: "閉じる",
-    tablistAria: "Mod 詳細ビュー",
-    tabDetails: "基本情報",
-    tabReplacement: "置換ターゲット",
     previewAria: "Mod プレビュー画像",
     noPreview: "プレビュー画像なし",
     packageIdLabel: "Package ID",
@@ -150,7 +135,6 @@ export const modDetailDialogCopy = {
     cancel: "キャンセル",
     save: "保存",
     saving: "保存中",
-    closeButton: "閉じる",
     messages: {
       detailLoadFailed: "詳細の読み込みに失敗したため、リストの基本情報を表示しています。",
       categoryLoadFailed: "カテゴリの読み込みに失敗しました。今回の保存ではカテゴリ割り当ては変更されません。",

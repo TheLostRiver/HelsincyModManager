@@ -18,6 +18,10 @@ use tauri::{AppHandle, State};
 const PLAN_TOKEN_PREFIX: &str = "reinstall-preview-v1:";
 const PLAN_TOKEN_DIGEST_LENGTH: usize = 64;
 
+#[cfg(test)]
+#[path = "reinstall_preview_contract_tests.rs"]
+mod preview_contract_tests;
+
 #[tauri::command]
 pub fn get_mod_revisions(
     mod_id: String,
@@ -262,7 +266,15 @@ mod tests {
 
     #[test]
     fn start_parser_rejects_empty_and_malformed_plan_tokens() {
-        for plan_token in ["", "opaque", "reinstall-preview-v1:abc"] {
+        for plan_token in [
+            String::new(),
+            "opaque".to_owned(),
+            "reinstall-preview-v1:abc".to_owned(),
+            "a".repeat(64),
+            format!("reinstall-preview-v2:{}", "a".repeat(64)),
+            format!("reinstall-preview-v1:{}", "g".repeat(64)),
+            format!("reinstall-preview-v1:{}", "a".repeat(65)),
+        ] {
             let request: StartReinstallTaskRequestDto = serde_json::from_value(json!({
                 "gameId": "mhw",
                 "profileId": "default",

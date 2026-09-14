@@ -222,7 +222,7 @@ test("dialog exit animation duration stays in sync with the component's close de
   // 所有关闭入口都必须走 requestClose，否则那条路径不会播退场动画。
   assert.match(component, /const requestClose = useCallback/);
   assert.match(component, /onRequestClose: requestClose/);
-  assert.equal(component.match(/onClick=\{requestClose\}/g)?.length, 3);
+  assert.equal(component.match(/onClick=\{requestClose\}/g)?.length, 2);
   assert.equal(component.match(/onClose\(\)/g)?.length, 1);
   // 退场期间屏蔽交互，避免点到正在消失的控件。
   assert.match(css, /\.mod-detail-dialog__backdrop\.is-exiting\s*\{[\s\S]*?pointer-events:\s*none/);
