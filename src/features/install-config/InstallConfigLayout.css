@@ -1,0 +1,81 @@
+.feedback-modal.install-config-modal {
+  width: min(1440px, calc(100vw - 32px));
+  height: min(1040px, calc(100dvh - 32px));
+}
+
+.feedback-modal.install-config-modal .feedback-modal__body {
+  min-height: 0;
+  padding: 14px 20px 18px;
+  overflow: hidden;
+}
+
+.install-config-modal .install-config { flex: 1 1 auto; gap: 10px; min-height: 0; }
+.install-config__overview { display: flex; align-items: flex-start; gap: 12px; flex: none; min-width: 0; }
+.install-config__overview .install-config__content-root { flex: 1; min-width: 0; padding: 8px 12px; gap: 0; }
+.install-config__root-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+.install-config__root-details { max-height: min(260px, 34dvh); overflow: auto; padding-top: 10px; scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+.install-config__root-details .install-config__content-root-reset { float: right; margin-inline-start: 12px; }
+.install-config__root-details .install-config__candidates { clear: both; }
+.install-config__root-details .install-config__content-root-detail:last-child { margin-top: 8px; font-size: 11px; }
+.install-config-attachments { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 0 1 auto; max-width: 44%; padding-top: 3px; font-size: 12px; }
+.install-config-attachments p { margin: 0; overflow-wrap: anywhere; }
+.install-config-attachments [role="alert"] { color: var(--color-danger-text); }
+.install-config-attachments button { font: inherit; }
+
+.install-config-modal .install-config__summary { gap: 8px 14px; font-size: 12px; margin: 0; }
+.install-config-modal .install-config__plan { flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; gap: 6px; }
+.install-config-modal .install-config__plan-head { gap: 10px; }
+.install-config-modal .install-config__plan-count { margin: 0; font-size: 12px; font-weight: 600; color: var(--color-text); }
+.install-config-modal .install-config__plan-count.is-stale { color: var(--color-text-muted); }
+.install-config-modal .install-config__plan-stale { padding: 6px 8px; font-size: 12px; }
+.install-config-modal .install-config__plan-prerequisite { margin: 0; padding: 6px 8px; font-size: 12px; }
+
+.install-config .retarget-workspace { flex: 1 1 auto; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; }
+.install-config .retarget-workspace__selection { min-height: 0; padding: 0; overflow: hidden; }
+.install-config .retarget-workspace__selection > .install-config-browser { flex: 1; min-height: 0; }
+.install-config .retarget-workspace__preview { min-height: 0; }
+.install-config .retarget-workspace__footer { padding: 10px 0 0; background: transparent; }
+.install-config .retarget-workspace__feedback:empty { display: none; }
+.install-config .retarget-workspace__feedback p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.install-config .retarget-workspace__controls { flex: 1; min-width: 0; }
+.install-config .replacement-panel__actions { flex: 1; min-width: 0; margin: 0; }
+.install-config .install-config__actions { flex: 1; min-width: 0; flex-wrap: wrap; gap: 8px; }
+.install-config .install-config__actions-note { flex: 1 1 180px; min-width: 0; font-size: 12px; }
+.install-config .install-config__button { width: auto; min-height: 32px; padding: 5px 12px; font-size: 12px; }
+.install-config .install-config__close-confirm { flex: none; }
+
+.install-config-browser { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; gap: 8px; position: relative; }
+.install-config-browser__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: none; }
+.install-config-browser__search { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; min-width: 100px; min-height: 34px; padding: 4px 10px; color: var(--color-text-muted); background: var(--color-surface); border: 1px solid var(--color-border-muted); border-radius: 8px; }
+.install-config-browser__search:focus-within { border-color: var(--color-accent); }
+.install-config-browser__search input { flex: 1; width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: var(--color-text); font: inherit; font-size: 13px; }
+.install-config-browser__search input::-webkit-search-cancel-button { display: none; }
+.install-config-browser__search button { display: grid; place-items: center; flex: none; padding: 2px; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.install-config-browser__filters { display: flex; flex: none; gap: 3px; border: 1px solid var(--color-border-muted); border-radius: 8px; padding: 3px; background: var(--color-surface-muted); }
+.install-config-browser__filters button { min-height: 26px; border: 0; border-radius: 5px; background: transparent; color: var(--color-text-soft); padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+.install-config-browser__filters button[aria-pressed="true"] { background: var(--color-surface); color: var(--color-accent); box-shadow: var(--shadow-soft); }
+.install-config-browser button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.install-config-browser__hint { flex: none; font-size: 11px; color: var(--color-text-muted); margin: 0; }
+.install-config-browser .install-config-tree { flex: 1 1 0; min-height: 96px; max-height: none; overscroll-behavior: contain; }
+.install-config-browser__empty { position: absolute; inset: 50% 12px auto; margin: 0; text-align: center; pointer-events: none; color: var(--color-text-muted); font-size: 13px; }
+.install-config-browser .install-config-tree__checkbox { appearance: none; width: 16px; height: 16px; margin: 0; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); position: relative; cursor: pointer; }
+.install-config-browser .install-config-tree__checkbox:checked,
+.install-config-browser .install-config-tree__checkbox:indeterminate { background: var(--color-accent); border-color: var(--color-accent); }
+.install-config-browser .install-config-tree__checkbox:checked::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--color-accent-contrast, white); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.install-config-browser .install-config-tree__checkbox:indeterminate::after { content: ""; position: absolute; inset: 6px 3px; background: var(--color-accent-contrast, white); }
+.install-config-browser .install-config-tree__facts { max-width: 45%; }
+.install-config-browser .install-config-fact { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 880px) {
+  .install-config__overview { flex-wrap: wrap; gap: 6px; }
+  .install-config__overview .install-config__content-root { flex-basis: 100%; }
+  .install-config-attachments { max-width: 100%; }
+  .feedback-modal.install-config-modal .feedback-modal__body { padding: 10px 12px 12px; }
+  .install-config .retarget-workspace__footer { gap: 6px; }
+}
+
+@media (max-width: 600px) {
+  .feedback-modal.install-config-modal { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
+  .install-config__content-root-head { flex-wrap: wrap; }
+  .install-config .install-config__actions-note { flex-basis: 100%; }
+}

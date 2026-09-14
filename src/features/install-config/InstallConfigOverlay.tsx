@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { Dialog } from "../../shared/feedback";
@@ -6,12 +6,11 @@ import { installConfigCopy, type InstallConfigCopy } from "./installConfigCopy";
 import { getModPackageContents } from "./packageContentsApi";
 import {
   buildPackageContentTree,
-  flattenVisibleRows,
   indexNodesByPath,
   resolveInitialExpandedPaths,
   summarizeTree,
 } from "./packageContentTree";
-import { PackageContentTreeView } from "./PackageContentTreeView";
+import { PackageContentBrowser } from "./PackageContentBrowser";
 import { ContentRootPanel } from "./ContentRootPanel";
 import {
   computeDirectorySelection,
@@ -36,10 +35,15 @@ import { classifyPackageContentsError, type PackageContentsFailure } from "./pac
 import type { InstallConfigTarget } from "./InstallConfigTargetProvider";
 import type { PackageContents } from "./packageContentsTypes";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
-import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
-import { PluginReapplyActions } from "../install-plugins/PluginReapplyActions";
+import { PluginReapplyActions, PluginReapplyFeedback, PluginReapplyResult } from "../install-plugins/PluginReapplyActions";
+import { usePluginReapply } from "../install-plugins/usePluginReapply";
 import { usePluginSelection } from "../install-plugins/usePluginSelection";
 import { pluginSelectionCopy } from "../install-plugins/pluginSelectionCopy";
+import { RetargetWorkspace } from "../replacements/RetargetWorkspace";
+import { InstallConfigAttachments } from "./InstallConfigAttachments";
+import { installConfigLayoutCopy } from "./installConfigLayoutCopy";
+import "./InstallConfigOverlay.css";
+import "./InstallConfigLayout.css";
 
 /*
  * 「安装配置」的悬浮覆盖层（`#354` 切片 D4）。
@@ -68,6 +72,7 @@ type InstallConfigOverlayProps = {
 export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(installConfigCopy, locale);
+  const layoutCopy = resolveCopy(installConfigLayoutCopy, locale);
   /*
    * 前置条件的文案与码表复用 Mod 生命周期那一套：三语已穷尽 14 个 `GamePrerequisiteDecisionCode`，
    * 在这个 feature 里再抄一份只会随后端加码而漂移。
@@ -75,7 +80,6 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
   const pluginCopy = resolveCopy(pluginSelectionCopy, locale);
   const { activeProfileId } = useActiveProfile();
-  const [reapplyBusy, setReapplyBusy] = useState(false);
   const savePending = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -177,7 +181,6 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
     () => (state.status === "ready" ? buildPackageContentTree(state.contents.entries) : []),
     [state],
   );
-  const rows = useMemo(() => flattenVisibleRows(tree, expandedPaths), [tree, expandedPaths]);
   const summary = useMemo(() => summarizeTree(tree), [tree]);
 
   const nodesByPath = useMemo(() => indexNodesByPath(tree), [tree]);
@@ -189,7 +192,10 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const savedExcluded = state.status === "ready" ? state.contents.excludedFiles : [];
   const packageDirty = !isSameSelection(draftExcluded, savedExcluded);
   const isDirty = packageDirty || plugins.dirty;
-  const busy = saving || plugins.saving || reapplyBusy;
+  const reapply = usePluginReapply({ profileId: activeProfileId, modId, plugins,
+    disabled: state.status !== "ready" || isDirty || saving || contentRootBusy, refreshToken: planToken,
+    onCompleted: () => { plugins.reload(); setPlanToken((token) => token + 1); } });
+  const busy = saving || plugins.saving || reapply.active || contentRootBusy;
   /*
    * 计划预览读的是后端持久化状态，看不见草稿。差几处就如实说几处——笼统的「可能已过期」
    * 玩家没法判断值不值得先保存一下再看。
@@ -349,23 +355,11 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
       open
       panelClassName="install-config-modal"
       icon={<SlidersHorizontal size={18} />}
-      title={target.modName}
+      title={`${layoutCopy.title} · ${target.modName}`}
       description={copy.page.description}
       onClose={handleRequestClose}
       // 保存写盘期间不许关闭：关掉不会取消已经发出的写入，只会让玩家看不到结果。
       busy={busy}
-      footer={
-        state.status === "ready" ? (
-          <SelectionActions
-            copy={copy}
-            isDirty={isDirty}
-            saving={busy}
-            saveFailed={saveFailed}
-            onSave={handleSave}
-            onDiscard={handleDiscard}
-          />
-        ) : undefined
-      }
     >
       <div className="install-config">
         {confirmingClose ? (
@@ -419,6 +413,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
           )
         ) : (
           <>
+            <div className="install-config__overview">
             <ContentRootPanel
               contents={state.contents}
               copy={copy}
@@ -427,15 +422,15 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
               onChoose={handleChooseContentRoot}
               onReset={handleResetContentRoot}
             />
+            {activeProfileId ? <InstallConfigAttachments controller={plugins} disabled={busy} /> : <p role="status">{pluginCopy.noProfile}</p>}
+            </div>
 
             <div className="install-config__summary" role="status">
-              <span>
-                {copy.page.summary({
+              <span title={copy.page.summary({
                   fileCount: summary.fileCount,
                   installableCount: summary.installableCount,
-                })}
-              </span>
-              {summary.rejectedByGameCount > 0 ? (
+                })}>{layoutCopy.files(summary.fileCount)}</span>
+              {summary.rejectedByGameCount > 0 && !plugins.inventory ? (
                 <span className="install-config-fact install-config-fact--warning">
                   {copy.page.summaryRejected(summary.rejectedByGameCount)}
                 </span>
@@ -447,31 +442,6 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
                   {copy.page.summaryExcluded(draftExcluded.size)}
                 </span>
               ) : null}
-            </div>
-
-            {summary.fileCount === 0 ? (
-              <p className="install-config__status">{copy.states.empty}</p>
-            ) : (
-              <PackageContentTreeView
-                rows={rows}
-                onToggle={handleToggle}
-                selectionStates={selectionStates}
-                excludedFiles={draftExcluded}
-                onToggleSelection={handleToggleSelection}
-                // 「算不出目标路径」的两种成因只有靠包级的内容根状态才分得开。
-                contentRootKind={state.contents.contentRoot.kind}
-                copy={copy}
-              />
-            )}
-
-            {activeProfileId ? <>
-              <PluginSelectionPanel controller={plugins} disabled={busy || contentRootBusy} />
-              <PluginReapplyActions key={`${activeProfileId}:${modId}`}
-                profileId={activeProfileId} modId={modId} plugins={plugins}
-                disabled={isDirty || saving || contentRootBusy} refreshToken={planToken}
-                onBusyChange={setReapplyBusy} onCompleted={() => { plugins.reload(); setPlanToken((token) => token + 1); }} />
-            </> : <p role="status">{pluginCopy.noProfile}</p>}
-
             <InstallPlanPreviewPanel
               state={plan}
               copy={copy}
@@ -480,6 +450,25 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
               saving={busy}
               onSaveAndRefresh={() => void handleSave()}
               onRetry={() => setPlanToken((token) => token + 1)}
+            />
+            </div>
+            <RetargetWorkspace labels={layoutCopy.workspace} previewStatus={reapply.previewStatus}
+              selection={summary.fileCount === 0 ? <p className="install-config__status">{copy.states.empty}</p> : <PackageContentBrowser
+                key={modId}
+                tree={tree}
+                expandedPaths={expandedPaths}
+                onToggle={handleToggle}
+                selectionStates={selectionStates}
+                excludedFiles={draftExcluded}
+                onToggleSelection={handleToggleSelection}
+                // 「算不出目标路径」的两种成因只有靠包级的内容根状态才分得开。
+                contentRootKind={state.contents.contentRoot.kind}
+                copy={copy}
+              />}
+              preview={<PluginReapplyResult workflow={reapply} />}
+              feedback={<><PluginReapplyFeedback workflow={reapply} />{reapply.preview?.status === "blocked" && <p role="alert">{layoutCopy.blocked}</p>}</>}
+              actions={<SelectionActions copy={copy} isDirty={isDirty} saving={busy} saveFailed={saveFailed}
+                onSave={handleSave} onDiscard={handleDiscard} extraActions={<PluginReapplyActions workflow={reapply} />} />}
             />
           </>
         )}
@@ -573,6 +562,7 @@ function SelectionActions({
   saveFailed,
   onSave,
   onDiscard,
+  extraActions,
 }: {
   copy: InstallConfigCopy;
   isDirty: boolean;
@@ -580,6 +570,7 @@ function SelectionActions({
   saveFailed: boolean;
   onSave: () => void;
   onDiscard: () => void;
+  extraActions?: ReactNode;
 }) {
   return (
     <div className="install-config__actions">
@@ -606,6 +597,7 @@ function SelectionActions({
       >
         {saving ? copy.actions.saving : copy.actions.save}
       </button>
+      {extraActions}
     </div>
   );
 }

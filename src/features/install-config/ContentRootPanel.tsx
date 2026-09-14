@@ -1,4 +1,7 @@
-import { RotateCcw } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
+import { useId, useState } from "react";
+import { resolveCopy, useI18n } from "../../shared/i18n";
+import { installConfigLayoutCopy } from "./installConfigLayoutCopy";
 import { isActiveContentRoot, resolveContentRootDetailKind } from "./contentRootChoice";
 import type { InstallConfigCopy } from "./installConfigCopy";
 import type { PackageContents } from "./packageContentsTypes";
@@ -39,6 +42,11 @@ export function ContentRootPanel({
   // 分档与选中判断都在 `contentRootChoice` 里（那里钉住了「空串 ≠ null」这个陷阱）。
   const detailKind = resolveContentRootDetailKind(contentRoot, candidates);
   const isAmbiguous = detailKind === "ambiguous";
+  const { locale } = useI18n();
+  const layoutCopy = resolveCopy(installConfigLayoutCopy, locale);
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+  const showDetails = expanded || isAmbiguous || failed;
 
   return (
     <section
@@ -47,13 +55,21 @@ export function ContentRootPanel({
     >
       <div className="install-config__content-root-head">
         <span className="install-config__content-root-heading">{copy.contentRoot.heading}</span>
+        {!isAmbiguous && <span className="install-config__root-path" title={contentRoot.path || copy.contentRoot.candidateRoot}>{contentRoot.path || copy.contentRoot.candidateRoot}</span>}
         <span
           className={`install-config-fact install-config-fact--${isAmbiguous ? "warning" : "neutral"}`}
         >
-          {copy.contentRoot.kind[contentRoot.kind]}
+          {copy.contentRoot.kind[isAmbiguous ? "ambiguous" : "single"]}
         </span>
         {/* 恢复自动解析。放在这里而不是候选清单里当一个选项：DTO 分不出「自动解析到 X」
             与「玩家显式选了 X」，硬塞进单选组会出现两个都该高亮的项。 */}
+        <button type="button" className="install-config__content-root-reset" aria-expanded={showDetails} aria-controls={detailsId}
+          onClick={() => setExpanded((value) => !value)} disabled={isAmbiguous || failed}>
+          <ChevronDown size={13} aria-hidden="true" />{showDetails ? layoutCopy.closeRoot : layoutCopy.rootSettings}
+        </button>
+      </div>
+
+      {showDetails && <div id={detailsId} className="install-config__root-details">
         {!isAmbiguous ? (
           <button
             type="button"
@@ -65,7 +81,6 @@ export function ContentRootPanel({
             {copy.contentRoot.reset}
           </button>
         ) : null}
-      </div>
 
       <p className="install-config__content-root-detail" role={isAmbiguous ? "alert" : undefined}>
         {detailKind === "ambiguous"
@@ -107,6 +122,8 @@ export function ContentRootPanel({
           </div>
         </fieldset>
       ) : null}
+      <p className="install-config__content-root-detail">{layoutCopy.rootImmediate}</p>
+      </div>}
     </section>
   );
 }

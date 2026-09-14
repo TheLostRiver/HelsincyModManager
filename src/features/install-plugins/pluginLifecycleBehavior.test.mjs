@@ -9,6 +9,8 @@ registerReactTestModules({
   "shared/feedback/index.ts": `import React from "react"; export const Dialog = (props) => React.createElement("section", null, React.createElement("button", { onClick: props.onClose, "data-close": true }, "close"), props.children, props.footer);`,
   "features/profiles/ActiveProfileProvider.tsx": `export const useActiveProfile = () => ({ activeProfileId: globalThis.__pluginFlows.profileId });`,
   "features/mods/ModLifecycleFeedback.tsx": `import React from "react"; export const InstallPlanDetailSheet = ({ state, children }) => React.createElement("section", { "data-state": state.status }, children);`,
+  // Floating positioning/focus is covered by the browser suite; keep open/closed content here.
+  "features/replacements/RetargetPopover.tsx": `import React, { useState } from "react"; export function RetargetPopover({ trigger, children, feedback }) { const [open, setOpen] = useState(false); return React.createElement("section", null, React.createElement("button", { onClick: () => setOpen(!open), "aria-expanded": open }, trigger), feedback, open ? children : null); }`,
 }, {
   "@tauri-apps/api/core": `export const invoke = (command, input) => globalThis.__pluginFlows.invoke(command, input);`,
   "@tauri-apps/api/event": `export const listen = async (_, callback) => { const api = globalThis.__pluginFlows; api.listeners.add(callback); return () => api.listeners.delete(callback); };`,
@@ -21,6 +23,8 @@ const { useModReinstallWorkflow } = await import("../mods/useModReinstallWorkflo
 const { useBatchModLifecycleWorkflow } = await import("../mods/batch-lifecycle/useBatchModLifecycleWorkflow.ts");
 const { pluginSelectionCopy } = await import("./pluginSelectionCopy.ts");
 const { installConfigCopy } = await import("../install-config/installConfigCopy.ts");
+const { installConfigLayoutCopy } = await import("../install-config/installConfigLayoutCopy.ts");
+const { ContentRootPanel } = await import("../install-config/ContentRootPanel.tsx");
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const options = { concurrency: false, timeout: 5000 };
@@ -28,6 +32,7 @@ const target = { gameId: "mhw", profileId: "profile-a", modId: "mod-a", modName:
 const prerequisiteDecision = { status: "ready", codes: [], rulesVersion: 1 };
 const copy = pluginSelectionCopy.zh_cn;
 const configCopy = installConfigCopy.zh_cn;
+const layoutCopy = installConfigLayoutCopy.zh_cn;
 const textOf = (node) => typeof node === "string" ? node : Array.isArray(node) ? node.map(textOf).join("") : (node?.children ?? []).map(textOf).join("");
 const button = (root, text) => root.root.findAllByType("button").find((node) => textOf(node) === text);
 const pluginCheckbox = (root) => root.root.findAllByType("input").find((node) => node.parent?.type === "label" && textOf(node.parent).includes("fixture.dll"));
@@ -123,6 +128,7 @@ test("ordinary preview cannot confirm an empty install plan", options, async (t)
 
 test("configuration keeps plugin edits as drafts and discard restores the saved choice", options, async (t) => {
   const { api, root } = await mount(t, (api) => React.createElement(InstallConfigOverlay, { target, onClose: () => api.closed++ }));
+  await act(async () => button(root, layoutCopy.attachments(1)).props.onClick());
   await act(async () => pluginCheckbox(root).props.onChange({ target: { checked: false } }));
   assert.equal(api.calls.some((call) => call.command === "set_mod_plugin_selection"), false);
   assert.ok(textOf(root.toJSON()).includes(configCopy.plan.stale(1)));
@@ -136,6 +142,7 @@ test("configuration keeps plugin edits as drafts and discard restores the saved 
 
 test("configuration blocks closing during an unsaved choice and does not hide a stale save", options, async (t) => {
   const { api, root } = await mount(t, (api) => React.createElement(InstallConfigOverlay, { target, onClose: () => api.closed++ }));
+  await act(async () => button(root, layoutCopy.attachments(1)).props.onClick());
   await act(async () => pluginCheckbox(root).props.onChange({ target: { checked: false } }));
   await act(async () => root.root.findByProps({ "data-close": true }).props.onClick());
   assert.equal(api.closed, 0);
@@ -149,6 +156,7 @@ test("configuration blocks closing during an unsaved choice and does not hide a 
 
 test("a package change cannot silently approve a plugin draft against a new inventory", options, async (t) => {
   const { api, root } = await mount(t, (api) => React.createElement(InstallConfigOverlay, { target, onClose: () => api.closed++ }));
+  await act(async () => button(root, layoutCopy.attachments(1)).props.onClick());
   const planReadsBefore = api.calls.filter((call) => call.command === "preview_imported_mod_install_plan").length;
   await act(async () => root.root.findByType(PackageContentTreeView).props.onToggleSelection("nativePC/resource.bin"));
   await act(async () => pluginCheckbox(root).props.onChange({ target: { checked: false } }));
@@ -184,6 +192,51 @@ function ReinstallHarness({ api, profileId }) {
     writeTaskActive: false, refreshLibrary: () => { api.refreshed++; } });
   return null;
 }
+
+test("configuration details and preview preserve the file search without rescanning or saving", options, async (t) => {
+  const { api, root } = await mount(t, (api) => { api.installed = true; return React.createElement(InstallConfigOverlay, { target, onClose() {} }); });
+  const before = api.calls.filter((call) => call.command === "get_mod_package_contents" || call.command === "get_mod_plugin_selection").length;
+  assert.equal(root.root.findByType(ContentRootPanel).findAllByType("fieldset").length, 0);
+  await act(async () => button(root, layoutCopy.rootSettings).props.onClick());
+  assert.equal(root.root.findByType(ContentRootPanel).findAllByType("fieldset").length, 1);
+  await act(async () => button(root, layoutCopy.closeRoot).props.onClick());
+  await act(async () => root.root.findByProps({ type: "search", "aria-label": layoutCopy.search }).props.onChange({ target: { value: "resource" } }));
+  await act(async () => button(root, copy.preview).props.onClick());
+  assert.equal(root.root.findByProps({ className: "replacement-panel retarget-workspace" }).props["data-preview-open"], true);
+  await act(async () => button(root, layoutCopy.workspace.collapsePreview).props.onClick());
+  assert.equal(root.root.findByProps({ className: "replacement-panel retarget-workspace" }).props["data-preview-open"], false);
+  assert.equal(root.root.findByProps({ type: "search", "aria-label": layoutCopy.search }).props.value, "resource");
+  assert.equal(api.calls.filter((call) => call.command === "get_mod_package_contents" || call.command === "get_mod_plugin_selection").length, before);
+  assert.equal(api.calls.some((call) => /^(set_|start_)/.test(call.command)), false);
+});
+
+test("configuration reapply ignores a late preview after the profile changes", options, async (t) => {
+  let finishPreview;
+  const { api, root, update } = await mount(t, (api) => { api.installed = true; return React.createElement(InstallConfigOverlay, { target, onClose() {} }); }, {},
+    (command) => command === "preview_equipment_reapply" ? new Promise((resolve) => { finishPreview = resolve; }) : undefined);
+  await act(async () => button(root, copy.preview).props.onClick());
+  api.profileId = "profile-b";
+  await update({});
+  await act(async () => finishPreview(preview()));
+  assert.equal(button(root, copy.apply), undefined);
+  assert.equal(root.root.findByProps({ className: "replacement-panel retarget-workspace" }).props["data-preview-open"], false);
+  assert.equal(api.calls.some((call) => call.command.startsWith("start_")), false);
+});
+
+test("changing the starting directory prevents closing until the saved result returns", options, async (t) => {
+  let finishRoot;
+  const base = { contentRoot: { kind: "fallback", path: "", candidates: [] }, candidates: ["", "wrapper"], excludedFiles: [], entries: [] };
+  const { api, root } = await mount(t, (api) => React.createElement(InstallConfigOverlay, { target, onClose: () => api.closed++ }), {},
+    (command) => command === "get_mod_package_contents" ? base : command === "set_mod_package_content_root" ? new Promise((resolve) => { finishRoot = resolve; }) : undefined);
+  await act(async () => button(root, layoutCopy.rootSettings).props.onClick());
+  await act(async () => { root.root.findByProps({ type: "radio", value: "wrapper" }).props.onChange(); });
+  await act(async () => root.root.findByProps({ "data-close": true }).props.onClick());
+  assert.equal(api.closed, 0);
+  assert.equal(button(root, configCopy.actions.saving).props.disabled, true);
+  await act(async () => finishRoot({ ...base, contentRoot: { kind: "single", path: "wrapper", candidates: [] } }));
+  await act(async () => root.root.findByProps({ "data-close": true }).props.onClick());
+  assert.equal(api.closed, 1);
+});
 
 test("reinstall queries the candidate revision and drops a late preview after a profile switch", options, async (t) => {
   let finishPreview;
