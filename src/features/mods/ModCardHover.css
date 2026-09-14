@@ -4,19 +4,47 @@
   width: min(400px, calc(100vw - 24px));
   max-height: min(540px, calc(100dvh - 24px));
   overflow: auto;
-  padding: 14px 16px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  padding: 16px 18px;
   color: var(--color-text);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-soft);
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: var(--radius-card);
+  box-shadow:
+    var(--shadow-panel),
+    inset 0 1px 0 color-mix(in srgb, var(--color-surface) 70%, transparent);
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mod-hover-card {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-surface) 78%, transparent),
+      color-mix(in srgb, var(--color-surface-subtle) 68%, transparent)
+    );
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .mod-hover-card {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 .mod-hover-card h3 {
   margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
   font-size: 16px;
   line-height: 1.4;
 }
@@ -42,7 +70,15 @@
 .mod-hover-card dt,
 .mod-hover-card small,
 .mod-hover-card p {
-  color: var(--color-text-muted);
+  color: var(--color-text-soft);
+}
+
+.mod-hover-card dt {
+  font-size: 12px;
+}
+
+.mod-hover-card > p[role="status"] {
+  margin-top: 10px;
 }
 
 .mod-hover-card__notes {
@@ -55,7 +91,7 @@
 .mod-hover-card__replacements {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid var(--color-border-muted);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
 }
 
 .mod-hover-card h4 {
@@ -76,8 +112,11 @@
 
 .mod-hover-card li {
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   gap: 8px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--color-surface) 32%, transparent);
+  border-radius: var(--radius-inner);
 }
 
 .mod-hover-card small {
