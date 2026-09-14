@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { LoaderCircle, RefreshCw, Target } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
+import type { InstallManifestStatus } from "../mods/modInstallPlanTypes";
 import { getModReplacementSummary } from "./replacementApi";
 import { replacementCopy } from "./replacementCopy";
 import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
 import { buildReplacementTargetOptions } from "./replacementTargetOptions";
+import { retargetDialogCopy } from "./retargetDialogCopy";
+import { RetargetPopover } from "./RetargetPopover";
 import type { ModReplacementSummary, ReplacementSummaryItem, ReplacementTarget } from "./replacementTypes";
 import "./ReplacementContextPanel.css";
 
@@ -14,10 +17,11 @@ type ContextState =
   | { status: "ready"; scope: string; summary: ModReplacementSummary }
   | { status: "failed"; scope: string };
 
-export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, targets, sourceItems, onRetry }: {
+export function ReplacementContextPanel({ gameId, modId, profileId, installStatus, reloadKey, targets, sourceItems, onRetry }: {
   gameId: GameId;
   modId: string;
   profileId: string | null;
+  installStatus?: InstallManifestStatus;
   reloadKey: number;
   targets: readonly ReplacementTarget[];
   sourceItems?: readonly ReplacementSummaryItem[];
@@ -25,6 +29,7 @@ export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, t
 }) {
   const { locale } = useI18n();
   const copy = resolveCopy(replacementCopy, locale).panel;
+  const dialogCopy = resolveCopy(retargetDialogCopy, locale);
   const scope = JSON.stringify([gameId, modId, profileId, reloadKey]);
   const [state, setState] = useState<ContextState>({ status: "loading", scope });
 
@@ -72,28 +77,38 @@ export function ReplacementContextPanel({ gameId, modId, profileId, reloadKey, t
         <dd>
           <strong>{replacementIdentityLabel(item, locale)}</strong>
           {!named ? <small>{copy.contextNameUnknown}</small> : null}
-          {sharedNames.length > 0 ? <div className="replacement-context__shared">
-            <small>{copy.contextSharedNames}</small>
-            <ul>{sharedNames.map((name) => <li key={name}>{name}</li>)}</ul>
-          </div> : null}
+          {sharedNames.length > 0 ? <RetargetPopover title={copy.contextSharedNames} trigger={copy.selectedAliasesCount(sharedNames.length + 1)}>
+            <ul>{[replacementIdentityLabel(item, locale), ...sharedNames].map((name) => <li key={name}>{name}</li>)}</ul>
+          </RetargetPopover> : null}
         </dd>
       </div>;
     })}</dl>;
   const { installedTargets } = state.summary;
   const sources = sourceItems ?? state.summary.sources;
+  // 仅比较后端给出的类型、编号和展示名；合并说明不用于选择或推导安装目标。
+  const identityKey = (item: ReplacementSummaryItem) => JSON.stringify([item.kind, item.internalId, replacementIdentityLabel(item, locale)]);
+  const currentKeys = installedTargets?.map(identityKey).sort() ?? [];
+  const sourceKeys = sources.map(identityKey).sort();
+  const sameTargets = sourceKeys.length > 0 && currentKeys.length === sourceKeys.length
+    && sourceKeys.every((key, index) => key === currentKeys[index]);
   return <section className="replacement-context">
+    {sameTargets ? <div className="replacement-context__combined">
+      <span className="replacement-context__label" title={copy.defaultTargetsHint}>{dialogCopy.currentAndDefault}</span>
+      {renderItems(sources)}
+    </div> : <>
     {installedTargets !== null && installedTargets.length > 0 ? (
       <div className="replacement-context__current">
-        <h3><Target size={17} aria-hidden="true" />{copy.currentTargetsTitle}</h3>
-        <p>{copy.currentTargetsHint}</p>
+        <span className="replacement-context__label" title={copy.currentTargetsHint}>{dialogCopy.current}</span>
         {renderItems(installedTargets)}
       </div>
     ) : null}
-    {profileId !== null && installedTargets === null ? <p className="replacement-context__unknown" role="status">{copy.currentTargetsUnknown}</p> : null}
+    {profileId !== null && installedTargets?.length === 0 && installStatus === "not_installed" ? <p className="replacement-context__not-installed">{dialogCopy.notInstalled}</p> : null}
+    {profileId !== null && (installedTargets === null || (installedTargets.length === 0 && installStatus !== "not_installed"))
+      ? <p className="replacement-context__unknown" role="status">{copy.currentTargetsUnknown}</p> : null}
     <div className="replacement-context__default">
-      <h3><Target size={17} aria-hidden="true" />{copy.defaultTargetsTitle}</h3>
-      <p>{copy.defaultTargetsHint}</p>
+      <span className="replacement-context__label" title={copy.defaultTargetsHint}>{dialogCopy.original}</span>
       {renderItems(sources)}
     </div>
+    </>}
   </section>;
 }

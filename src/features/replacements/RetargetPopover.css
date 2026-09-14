@@ -1,0 +1,49 @@
+.retarget-popover__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
+  color: var(--color-text-soft);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retarget-popover__trigger:hover,
+.retarget-popover__trigger[aria-expanded="true"] { color: var(--color-accent); border-color: var(--color-accent-alpha-40); }
+.retarget-popover__trigger:focus-visible,
+.retarget-popover button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.retarget-popover {
+  z-index: calc(var(--z-feedback-dialog) + 1);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(500px, calc(100vw - 24px));
+  max-height: min(520px, var(--retarget-popover-height, calc(100dvh - 24px)));
+  overflow: hidden;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
+  font-family: var(--font-family);
+  font-size: 13px;
+}
+
+.retarget-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--color-border-muted); }
+.retarget-popover h4 { margin: 0; font-size: 13px; }
+.retarget-popover > header button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: var(--color-text-muted); background: var(--color-surface-subtle); border: 0; border-radius: 7px; cursor: pointer; }
+.retarget-popover__body { min-height: 0; padding: 14px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+.retarget-popover__body p { margin: 0 0 10px; line-height: 1.6; }
+.retarget-popover__body ul { margin: 0; padding-inline-start: 20px; line-height: 1.8; overflow-wrap: anywhere; }
+.retarget-popover__body .plugin-selection { padding: 0; border: 0; }
+.retarget-popover__body .plugin-selection > h4 { display: none; }
+.retarget-popover__body .plugin-selection ul { max-height: none; padding: 0; overflow: visible; }
+.retarget-popover__body .plugin-selection p { margin: 0; }
+.retarget-popover__body > .retarget-plugins__error,
+.retarget-popover__body > .retarget-plugins__status { display: block; margin-bottom: 12px; }

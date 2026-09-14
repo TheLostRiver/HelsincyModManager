@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLifecycleCopy } from "../mods/modLifecycleCopy";
 import { modReinstallCopy } from "../mods/modReinstallCopy";
@@ -8,18 +8,17 @@ import { ReplacementTargetPanel, type ReplacementTargetPanelProps } from "./Repl
 import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { RetargetFileDetails } from "./RetargetFileDetails";
-import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
+import { RetargetPluginSelection } from "./RetargetPluginSelection";
 import { retargetFileCopy } from "./retargetFileCopy";
 import { getEquipmentRetargetConfiguration } from "./equipmentRetargetApi";
-import { equipmentRetargetCopy } from "./equipmentRetargetCopy";
-import type { EquipmentRetargetConfiguration, EquipmentSourceConfiguration, EquipmentTargetChoice } from "./equipmentRetargetTypes";
+import type { EquipmentRetargetConfiguration } from "./equipmentRetargetTypes";
 import { replacementCopy } from "./replacementCopy";
 import { replacementErrorMessage } from "./replacementErrorText";
-import { replacementIdentityLabel, replacementKindLabel } from "./replacementIdentityLabel";
-import { buildReplacementTargetOptions, replacementTargetOption } from "./replacementTargetOptions";
+import { replacementIdentityLabel } from "./replacementIdentityLabel";
 import { canCancelRetargetInstallTaskPhase } from "./replacementWorkflow";
 import { useEquipmentRetargetWorkflow } from "./useEquipmentRetargetWorkflow";
 import { RetargetWorkspace } from "./RetargetWorkspace";
+import { EquipmentSourceSelection } from "./EquipmentSourceSelection";
 import "./EquipmentRetargetPanel.css";
 
 type LoadState = { scope: string; data: EquipmentRetargetConfiguration } | { scope: string; error: unknown } | null;
@@ -43,7 +42,7 @@ export function EquipmentRetargetPanel(props: ReplacementTargetPanelProps) {
   }, [gameId, modId, profileId, scope, retry]);
   if (load?.scope !== scope) return <div className="replacement-panel__state" role="status">{copy.panel.analyzing}</div>;
   if ("error" in load) return <div className="replacement-panel">
-    <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId} reloadKey={retry} targets={[]}
+    <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId} installStatus={props.installStatus} reloadKey={retry} targets={[]}
       onRetry={() => setRetry((value) => value + 1)} />
     <div className="replacement-panel__state is-error" role="alert">
       {replacementErrorMessage(load.error, copy.events.analysisFallback, copy.errors)}
@@ -57,7 +56,6 @@ export function EquipmentRetargetPanel(props: ReplacementTargetPanelProps) {
 export function EquipmentRetargetGroup({ initialConfiguration, ...props }: ReplacementTargetPanelProps & { initialConfiguration: EquipmentRetargetConfiguration }) {
   const { locale } = useI18n();
   const copy = resolveCopy(replacementCopy, locale);
-  const groupCopy = resolveCopy(equipmentRetargetCopy, locale);
   const fileCopy = resolveCopy(retargetFileCopy, locale);
   const prerequisiteCopy = resolveCopy(modLifecycleCopy, locale).prerequisite;
   const reinstallCopy = resolveCopy(modReinstallCopy, locale).task;
@@ -67,18 +65,9 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
   const prerequisite = preview.status === "ready" ? preview.value.prerequisiteDecision : null;
   const warnings = preview.status === "ready" && preview.mode === "initial" ? [...new Set(preview.value.warnings)] : [];
   const failedSource = preview.status === "error" ? configuration.sources.find(({ source }) => source.id === preview.sourceId) : undefined;
-  return <RetargetWorkspace previewStatus={preview.status} selection={<div className="equipment-retarget">
-    <div className="replacement-panel__section-heading"><h3>{groupCopy.title}</h3></div>
-    <p className="equipment-retarget__hint">{groupCopy.hint}</p>
-    {switching && configuration.installedTargets !== null && Object.keys(configuration.installedTargets).length === 0
-      && <p className="replacement-panel__notice" role="status">{copy.panel.originRecoveryHint}</p>}
-    {configuration.sources.map((item) => <EquipmentSourcePicker key={item.source.id} item={item}
-      choice={workflow.choices[item.source.id] ?? null} installedTargetId={configuration.installedTargets?.[item.source.id]}
-      installed={switching} disabled={workflow.busy || task.status === "completed"}
-      onChoose={(choice) => workflow.choose(item.source.id, choice)} />)}
-    <PluginSelectionPanel controller={workflow.plugins} disabled={workflow.busy || task.status === "completed"} />
-    {workflow.block && <p className="replacement-panel__notice is-blocked" role="status">{workflow.block}</p>}
-    </div>} preview={<>
+  return <RetargetWorkspace previewStatus={preview.status} selection={<EquipmentSourceSelection configuration={configuration} choices={workflow.choices}
+    installStatus={props.installStatus} disabled={workflow.busy || task.status === "completed"} onChoose={workflow.choose}
+    tools={<RetargetPluginSelection controller={workflow.plugins} disabled={workflow.busy || task.status === "completed"} />} />} preview={<>
     {preview.status === "loading" && <p role="status">{copy.panel.previewLoading}</p>}
     {preview.status === "error" && <p className="replacement-panel__notice" role="alert">
       <span>{failedSource && <strong>{replacementIdentityLabel(failedSource.source, locale)}: </strong>}{preview.message}</span>
@@ -110,6 +99,9 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
       <RetargetFileDetails defaultOpen files={preview.value.fileEffects} sourceLabels={Object.fromEntries(configuration.sources.map(({ source }) => [source.id, replacementIdentityLabel(source, locale)]))} />
     </div>}
     </>} feedback={<>
+    {switching && configuration.installedTargets !== null && Object.keys(configuration.installedTargets).length === 0
+      && <p className="replacement-panel__notice" role="status">{copy.panel.originRecoveryHint}</p>}
+    {workflow.block && <p className="replacement-panel__notice is-blocked" role="status">{workflow.block}</p>}
     {workflow.listener === "failed" && <div className="replacement-panel__notice" role="alert">
       {copy.panel.listenerUnavailable}<button type="button" onClick={workflow.retryListener}>{copy.panel.retryListener}</button>
     </div>}
@@ -133,40 +125,4 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
         {workflow.cancel === "requesting" ? copy.panel.cancelling : copy.panel.cancelTask}
       </button>}
     </>} />;
-}
-
-function EquipmentSourcePicker({ item, choice, installedTargetId, installed, disabled, onChoose }: {
-  item: EquipmentSourceConfiguration; choice: EquipmentTargetChoice; installedTargetId: string | undefined;
-  installed: boolean; disabled: boolean; onChoose: (choice: EquipmentTargetChoice) => void;
-}) {
-  const { locale } = useI18n();
-  const copy = resolveCopy(replacementCopy, locale);
-  const groupCopy = resolveCopy(equipmentRetargetCopy, locale);
-  const [query, setQuery] = useState("");
-  const selectedTarget = item.targets.find((target) => target.id === choice?.targetId);
-  const selectedOption = selectedTarget ? replacementTargetOption(selectedTarget, locale, choice?.alias ?? null) : null;
-  const options = useMemo(() => buildReplacementTargetOptions(item.targets, locale, query), [item.targets, locale, query]);
-  const visible = selectedOption && !options.some((option) => option.key === selectedOption.key) ? [selectedOption, ...options] : options;
-  const currentTarget = item.targets.find((target) => target.id === installedTargetId);
-  const currentLabel = installedTargetId === item.originalTargetId ? replacementIdentityLabel(item.source, locale)
-    : currentTarget ? replacementIdentityLabel(currentTarget, locale) : copy.panel.currentTargetsUnknown;
-  const shared = selectedTarget ? buildReplacementTargetOptions([selectedTarget], locale) : [];
-  return <fieldset className="equipment-retarget__source" disabled={disabled}>
-    <legend>{replacementKindLabel(item.source.sourceType, locale)} · {replacementIdentityLabel(item.source, locale)}</legend>
-    <p className="equipment-retarget__hint">{copy.panel.defaultTargetsTitle}：{replacementIdentityLabel(item.source, locale)}</p>
-    {installed && <p>{groupCopy.current}：{currentLabel}</p>}
-    <label>{copy.panel.searchAria}<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={copy.panel.searchPlaceholder} /></label>
-    <label>{groupCopy.selection}<select value={selectedOption?.key ?? ""} onChange={(event) => {
-      const option = visible.find((candidate) => candidate.key === event.target.value);
-      onChoose(option ? { targetId: option.target.id, alias: option.alias } : null);
-    }}>
-      <option value="" disabled={item.originalTargetId === null}>{groupCopy.keep} · {replacementIdentityLabel(item.source, locale)}</option>
-      {visible.map((option) => <option key={option.key} value={option.key}>{replacementIdentityLabel(option.target, locale, option.displayName)}</option>)}
-    </select></label>
-    {query.trim() && options.length === 0 && <p role="status">{copy.panel.noMatches}</p>}
-    {shared.length > 1 && <details><summary>{copy.panel.selectedAliasesCount(shared.length)}</summary>
-      <p className="equipment-retarget__hint">{copy.panel.selectedAliasesHint}</p>
-      <ul>{shared.map((option) => <li key={option.key}>{replacementIdentityLabel(option.target, locale, option.displayName)}</li>)}</ul>
-    </details>}
-  </fieldset>;
 }
