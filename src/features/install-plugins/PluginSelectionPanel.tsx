@@ -16,12 +16,12 @@ export function PluginSelectionPanel({ controller, disabled = false, showFeedbac
     {showFeedback && controller.error !== null && <div role="alert" className="plugin-selection__error">{pluginErrorMessage(controller.error, copy)} <button type="button" onClick={controller.reload} disabled={controller.saving}>{copy.retry}</button></div>}
     {controller.inventory && <>
       <ul>{controller.inventory.files.map((file) => <li key={file.fileId}>
-        <label><input type="checkbox" checked={file.selected} disabled={disabled || controller.saving || !file.selectable}
-          onChange={(event) => { void controller.choose(file.fileId, event.target.checked).catch(() => {}); }} />
+        <label>{(file.selectable || file.selected || file.retainOnly) && <input type="checkbox" checked={file.selected} disabled={disabled || controller.saving || !file.selectable}
+          onChange={(event) => { void controller.choose(file.fileId, event.target.checked).catch(() => {}); }} />}
           <span><code>{file.relativePath}</code><small>{file.excludedByPackage ? copy.packageExcluded : file.retainOnly ? copy.retained : copy.checks[file.check]}{file.managed ? ` · ${copy.managed}` : ""}</small></span>
         </label>
       </li>)}</ul>
-      <p className="plugin-selection__hint">{copy.dependency}</p>
+      {controller.inventory.files.some((file) => file.selectable || file.retainOnly) && <p className="plugin-selection__hint">{copy.dependency}</p>}
     </>}
     {showFeedback && controller.saving && <p role="status">{copy.saving}</p>}
   </section>;

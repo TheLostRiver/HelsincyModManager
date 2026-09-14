@@ -48,7 +48,9 @@ test("supported default choices need one confirmation and wrapper submits only s
   const { api, root } = await mount(t);
   assert.ok(api.controller.ready);
   assert.equal(api.calls.filter((call) => call.command === "set_mod_plugin_selection").length, 0);
-  assert.equal(root.root.findAllByType("input")[1].props.disabled, true);
+  assert.equal(root.root.findAllByType("input").length, 1);
+  assert.ok(content(root.toJSON()).includes("fixture.exe"));
+  assert.ok(content(root.toJSON()).includes(pluginSelectionCopy.zh_cn.checks.policy_excluded));
   await act(async () => { await api.controller.confirm(); await api.controller.confirm(); });
   const saves = api.calls.filter((call) => call.command === "set_mod_plugin_selection");
   assert.equal(saves.length, 1);
@@ -57,6 +59,13 @@ test("supported default choices need one confirmation and wrapper submits only s
   assert.deepEqual(api.calls.at(-1).request, saves[0].request);
   await getModPluginSelection({ ...scope, gameRoot: "outside" });
   assert.deepEqual(api.calls.at(-1).request, scope);
+});
+
+test("a tools-only inventory has a reason instead of disabled choices or plugin dependency warnings", options, async (t) => {
+  const { root } = await mount(t, {}, (_command, request) => ({ ...inventory(request), files: inventory(request).files.filter((file) => file.check === "policy_excluded") }));
+  assert.equal(root.root.findAllByType("input").length, 0);
+  assert.ok(content(root.toJSON()).includes(pluginSelectionCopy.zh_cn.checks.policy_excluded));
+  assert.equal(content(root.toJSON()).includes(pluginSelectionCopy.zh_cn.dependency), false);
 });
 
 test("draft changes can be reversed or discarded without saving and only Save persists", options, async (t) => {
