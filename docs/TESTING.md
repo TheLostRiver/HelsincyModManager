@@ -1,5 +1,25 @@
 # 测试指南
 
+## 重定向预览提交与独立窗口
+
+```powershell
+cargo test -p hmm-app --lib reinstall
+cargo test -p hmm-runtime --lib core_mod_lifecycle_tests::equipment
+# 新 Windows 工作树先按下文准备 ignored development sidecars。
+cargo test -p hmm-tauri --lib reinstall_commands
+node --test "src/features/replacements/*.test.mjs" src/features/mods/modDetailDialog.test.mjs
+```
+
+Tauri 契约回归使用临时游戏根和人工包，从生产 runtime 生成武器／防具切换及重新应用预览，经过
+实际 DTO 序列化与提交解析后执行，断言文件去向和最终卸载基线。不能用手写合法 token 代替生成链路。
+App 回归验证追加文件处置／原始源摘要仍保留版本前缀，事实变化改变 token，等价顺序不改变 token；
+提交解析继续拒绝裸摘要、非法十六进制、错误长度和未知版本。Runtime 验证 stale 拒绝、回滚与恢复。
+
+前端验证独立重定向入口不展示预览图、不加载分类；单源／多源工作流仍保持任务和配置档隔离。
+`retargetWorkspaceBehavior.test.mjs` 验证预览完成／失败后展示并聚焦结果，普通重渲染不打断滚动，
+预览不会自动提交，明细默认展开且可折叠／筛选。浏览器检查宽窄窗口、深浅主题、三语、长列表、
+固定操作栏、焦点约束，以及安装期间关闭按钮与 Esc 不会卸载当前任务视图。
+
 ## MHW 装备资源保留与多源切换
 
 独立猎虫与旧绑定追加来源的聚焦检查：

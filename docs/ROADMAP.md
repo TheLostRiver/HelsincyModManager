@@ -237,7 +237,7 @@ primary/fallback target、target-only blocker 和 route-change 推进已落地�
 - 已完成单 source `f_equip` 严格路径分析和纯 `RetargetPlan` 外观替换映射。
 - 已完成受控 batch staging materialize、containment 与失败清理。
 - 已把 retarget final targets 交给 InstallPlan，并持久化 Mod/profile/revision-owned binding snapshot。
-- 已完成六个窄 Tauri command、feature-local typed API，以及 `Mod 详情 -> 替换目标` Tab/右键直达；
+- 已完成六个窄 Tauri command、feature-local typed API，以及右键“MOD 文件重定向”直达的独立悬浮窗口；
   首次安装只接受稳定 identity，已安装 target switch 只走 Gate A 真正重装，两者均对不安全状态
   fail closed。
 - 已完成 AR5 同 revision target switch、重启恢复、manifest 卸载与当前 installed target 呈现；最终
