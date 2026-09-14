@@ -1,3 +1,5 @@
+.equipment-retarget { display: grid; gap: 18px; min-width: 0; }
+
 .equipment-retarget__hint {
   margin: 0;
   color: var(--color-text-muted);

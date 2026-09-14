@@ -19,11 +19,12 @@ import { replacementIdentityLabel, replacementKindLabel } from "./replacementIde
 import { buildReplacementTargetOptions, replacementTargetOption } from "./replacementTargetOptions";
 import { canCancelRetargetInstallTaskPhase } from "./replacementWorkflow";
 import { useEquipmentRetargetWorkflow } from "./useEquipmentRetargetWorkflow";
+import { RetargetWorkspace } from "./RetargetWorkspace";
 import "./EquipmentRetargetPanel.css";
 
 type LoadState = { scope: string; data: EquipmentRetargetConfiguration } | { scope: string; error: unknown } | null;
 
-/** Only mounted when the user opens the replacement tab. */
+/** Only mounted when the user opens the retargeting dialog. */
 export function EquipmentRetargetPanel(props: ReplacementTargetPanelProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(replacementCopy, locale);
@@ -66,7 +67,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
   const prerequisite = preview.status === "ready" ? preview.value.prerequisiteDecision : null;
   const warnings = preview.status === "ready" && preview.mode === "initial" ? [...new Set(preview.value.warnings)] : [];
   const failedSource = preview.status === "error" ? configuration.sources.find(({ source }) => source.id === preview.sourceId) : undefined;
-  return <section className="replacement-panel equipment-retarget" aria-label={groupCopy.title}>
+  return <RetargetWorkspace previewStatus={preview.status} selection={<div className="equipment-retarget">
     <div className="replacement-panel__section-heading"><h3>{groupCopy.title}</h3></div>
     <p className="equipment-retarget__hint">{groupCopy.hint}</p>
     {switching && configuration.installedTargets !== null && Object.keys(configuration.installedTargets).length === 0
@@ -77,6 +78,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
       onChoose={(choice) => workflow.choose(item.source.id, choice)} />)}
     <PluginSelectionPanel controller={workflow.plugins} disabled={workflow.busy || task.status === "completed"} />
     {workflow.block && <p className="replacement-panel__notice is-blocked" role="status">{workflow.block}</p>}
+    </div>} preview={<>
     {preview.status === "loading" && <p role="status">{copy.panel.previewLoading}</p>}
     {preview.status === "error" && <p className="replacement-panel__notice" role="alert">
       <span>{failedSource && <strong>{replacementIdentityLabel(failedSource.source, locale)}: </strong>}{preview.message}</span>
@@ -105,8 +107,9 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
         {prerequisite.codes.map((code) => <p key={code}>{getPrerequisiteDecisionCodeLabel(code, prerequisiteCopy)}</p>)}
       </div>}
       {warnings.length > 0 && <ul aria-label={copy.panel.warningsAria}>{warnings.map((warning) => <li key={warning}>{copy.warnings[warning]}</li>)}</ul>}
-      <RetargetFileDetails files={preview.value.fileEffects} sourceLabels={Object.fromEntries(configuration.sources.map(({ source }) => [source.id, replacementIdentityLabel(source, locale)]))} />
+      <RetargetFileDetails defaultOpen files={preview.value.fileEffects} sourceLabels={Object.fromEntries(configuration.sources.map(({ source }) => [source.id, replacementIdentityLabel(source, locale)]))} />
     </div>}
+    </>} feedback={<>
     {workflow.listener === "failed" && <div className="replacement-panel__notice" role="alert">
       {copy.panel.listenerUnavailable}<button type="button" onClick={workflow.retryListener}>{copy.panel.retryListener}</button>
     </div>}
@@ -117,7 +120,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
       {copy.events.refreshFailed}<button type="button" onClick={() => void workflow.refreshCompleted()}>{copy.panel.retryRefresh}</button>
     </div>}
     {workflow.cancelError && <p role="alert">{workflow.cancelError}</p>}
-    <div className="replacement-panel__actions">
+    </>} actions={<>
       <button type="button" className="is-secondary" disabled={!workflow.canPreview || preview.status === "loading"} onClick={() => void workflow.createPreview()}>
         {switching ? copy.panel.previewSwitch : copy.panel.generatePreview}
       </button>
@@ -129,8 +132,7 @@ export function EquipmentRetargetGroup({ initialConfiguration, ...props }: Repla
         disabled={workflow.cancel === "requesting"} onClick={() => void workflow.cancelTask()}>
         {workflow.cancel === "requesting" ? copy.panel.cancelling : copy.panel.cancelTask}
       </button>}
-    </div>
-  </section>;
+    </>} />;
 }
 
 function EquipmentSourcePicker({ item, choice, installedTargetId, installed, disabled, onChoose }: {
