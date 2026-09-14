@@ -14,6 +14,7 @@ import { resolveCopy, useI18n } from "../../shared/i18n";
 import { BackToTopButton } from "./BackToTopButton";
 import { CompactActionPanel } from "./CompactActionPanel";
 import { LibraryToolbar } from "./LibraryToolbar";
+import { useModCardHoverPreference } from "./useModCardHoverPreference";
 import {
   modLibraryCopy,
   renderModSelectionNotice,
@@ -330,6 +331,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   );
   const [viewMode, setViewMode] = useState<ModViewMode>("classic");
   const [showCardCategoryLabels, setShowCardCategoryLabels] = useState(readInitialCardCategoryLabelsVisibility);
+  const { showCardHover, toggleCardHover } = useModCardHoverPreference();
   const [selectionState, dispatchSelection] = useReducer(
     reduceModSelection,
     createInitialModSelectionState(),
@@ -1745,10 +1747,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             filterChips={filterChips}
             viewMode={viewMode}
             showCardCategoryLabels={showCardCategoryLabels}
+            showCardHover={showCardHover}
             onQueryChange={handleQueryChange}
             onQuerySubmit={libraryQuery.flushSearch}
             onFilterChange={handleFilterChange}
             onToggleCardCategoryLabels={toggleCardCategoryLabels}
+            onToggleCardHover={toggleCardHover}
             onViewModeChange={handleViewModeChange}
           />
         </div>
@@ -1942,6 +1946,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   onContextMenu={handleContextMenu}
                   index={index}
                   showCategoryLabels={showCardCategoryLabels}
+                  showHoverDetails={showCardHover}
                   externalState={externalStateResults.get(item.id) ?? null}
                 />
               ))}
