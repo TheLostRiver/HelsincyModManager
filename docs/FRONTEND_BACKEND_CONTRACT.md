@@ -617,8 +617,9 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 ## Equipment Replacement AR4/AR5/WR-04 契约
 
-AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件重定向”只负责用
-replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
+Mod 管理的“MOD 文件重定向”入口打开独立悬浮窗口，与 Mod 信息编辑分开，不展示预览图。
+单源与多源共用目标选择、文件变更预览和固定操作栏布局；窄窗口分区切换，生成预览后自动展示结果。
+只有显式打开窗口才加载装备配置，不在卡片挂载时触发查询。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
 替换目标 command 的请求只使用稳定身份：
@@ -670,13 +671,16 @@ conflicting_resource_identity | package_resource | installed_attachment |
 plugin_not_included | plugin_selected | executable_policy`。`plugin_selected` 表示插件选择已纳入候选；
 `plugin_candidate` 仍表示本次未包含，不能单凭候选标签取得新安装授权。
 多义或矛盾编号对应 `kept_in_place`，保留完整原路径和内容；前端展示后端原因，不执行改名。
-界面默认折叠明细、展开后分批显示；这些字段不能回传到开始请求，也不能进入任务进度或日志。
+独立重定向窗口生成预览后默认展开文件明细，支持折叠、搜索及分批显示；其他使用方保留按需展开。
+这些字段不能回传到开始请求，也不能进入任务进度或日志。
 
 重新应用请求不接受 slots、目标 ID、revision、layer、intent 或安装证据。后端使用当前已安装 revision、
 完整目标集合及原文件层级；普通目标切换仍拒绝同目标。`no_changes` 响应含相同的 installedRevision／
 candidateRevision、retained 计数、空 blockingReasons、可选附件计数和 fileEffects，planToken 为 null，
 replaced／added／stale 均为零；前端不启动任务。确有差异时返回 ready，开始请求仍须消费对应 token。
 意图、文件处置和用于暂存的原始文件摘要参与预览／批量摘要，提交复核源文件与实际游戏文件。
+单项重装预览 token 始终保持 `reinstall-preview-v1:` 加 64 位十六进制摘要；追加文件处置或源摘要后
+也使用同一格式。开始请求严格校验格式，执行时仍重建并比对事实；裸摘要和未知版本不接受。
 持久事务的可选 intent 为 `standard | reapply_equipment_targets`；省略表示旧流程，旧事务仍可恢复。
 重新应用必须保持来源和物理目标，不能通过换意图或回放普通切换 token 改变目标。
 

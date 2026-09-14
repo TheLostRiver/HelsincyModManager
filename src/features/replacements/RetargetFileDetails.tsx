@@ -4,13 +4,14 @@ import { retargetFileCopy } from "./retargetFileCopy";
 import type { RetargetFilePreview } from "./retargetFileTypes";
 import "./RetargetFileDetails.css";
 
-export function RetargetFileDetails({ files, sourceLabels = {} }: {
+export function RetargetFileDetails({ files, sourceLabels = {}, defaultOpen = false }: {
   files?: readonly RetargetFilePreview[];
   sourceLabels?: Readonly<Record<string, string>>;
+  defaultOpen?: boolean;
 }) {
   const { locale } = useI18n();
   const copy = resolveCopy(retargetFileCopy, locale);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(100);
   if (!files?.length) return null;
@@ -22,13 +23,13 @@ export function RetargetFileDetails({ files, sourceLabels = {} }: {
     result[file.disposition] = (result[file.disposition] ?? 0) + 1;
     return result;
   }, {});
-  return <details className="retarget-files" onToggle={(event) => setOpen(event.currentTarget.open)}>
+  return <details className="retarget-files" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary>{copy.title(files.length)}</summary>
     {open && <div className="retarget-files__body">
       <div className="retarget-files__counts">{Object.entries(counts).map(([kind, count]) => <span key={kind}>
         {copy.dispositions[kind as keyof typeof copy.dispositions] ?? copy.unknown} <strong>{count}</strong>
       </span>)}</div>
-      <label className="retarget-files__search">{copy.search}<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setLimit(100); }} /></label>
+      <label className="retarget-files__search"><span>{copy.search}</span><input type="search" placeholder={copy.search} value={query} onChange={(event) => { setQuery(event.target.value); setLimit(100); }} /></label>
       <p className="retarget-files__shown" role="status">{copy.shown(visible.length, matches.length)}</p>
       {matches.length === 0 && <p>{copy.empty}</p>}
       <ul className="retarget-files__list">{visible.map((file) => <li key={file.fileId}>
