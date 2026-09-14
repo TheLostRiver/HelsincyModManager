@@ -7,7 +7,7 @@ cargo test -p hmm-app --lib reinstall
 cargo test -p hmm-runtime --lib core_mod_lifecycle_tests::equipment
 # 新 Windows 工作树先按下文准备 ignored development sidecars。
 cargo test -p hmm-tauri --lib reinstall_commands
-node --test "src/features/replacements/*.test.mjs" src/features/mods/modDetailDialog.test.mjs
+node --test "src/features/replacements/*.test.mjs" "src/features/install-plugins/*.test.mjs" src/features/mods/modDetailDialog.test.mjs src/shared/feedback/modalFocusBehavior.test.mjs
 ```
 
 Tauri 契约回归使用临时游戏根和人工包，从生产 runtime 生成武器／防具切换及重新应用预览，经过
@@ -16,9 +16,14 @@ App 回归验证追加文件处置／原始源摘要仍保留版本前缀，事�
 提交解析继续拒绝裸摘要、非法十六进制、错误长度和未知版本。Runtime 验证 stale 拒绝、回滚与恢复。
 
 前端验证独立重定向入口不展示预览图、不加载分类；单源／多源工作流仍保持任务和配置档隔离。
-`retargetWorkspaceBehavior.test.mjs` 验证预览完成／失败后展示并聚焦结果，普通重渲染不打断滚动，
-预览不会自动提交，明细默认展开且可折叠／筛选。浏览器检查宽窄窗口、深浅主题、三语、长列表、
-固定操作栏、焦点约束，以及安装期间关闭按钮与 Esc 不会卸载当前任务视图。
+`retargetWorkspaceBehavior.test.mjs` 验证预览完成／失败后展示并聚焦结果，收起／重开不重挂选择组件，
+普通重渲染不打断滚动，预览不会自动提交，明细默认展开且可折叠／筛选。来源切换须保留独立搜索、
+别名选择与完整目标集合；当前／默认相同可合并，未知、不同和旧无绑定安装不得错误标记。
+浏览器夹具必须包含 232 个名称、同模型独立选项、长名称、可选插件、排除工具与长附件路径，不能让
+附件查询始终返回空。检查 1440×900、1366×768、1280×800、窄窗与高 DPI；首屏至少 8 行普通候选，
+搜索、底部操作栏固定，选择区仅列表滚动，预览首条文件无需滚动即可查看。另测深浅主题、三语、
+附件失败／重试、迟到响应、刷新失败及任务取消。`modalFocusBehavior.test.mjs` 验证子浮层消费的 Esc
+不会被后执行的父监听器重复处理；浏览器还须覆盖附件保存结束后 Esc／Tab 的焦点范围和任务期间关闭保护。
 
 ## MHW 装备资源保留与多源切换
 

@@ -7,7 +7,6 @@ import {
   LoaderCircle,
   RefreshCw,
   RotateCcw,
-  Search,
   ShieldAlert,
   Tags,
   Target,
@@ -16,7 +15,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
-import { matchedHiddenReplacementTargetNames } from "./replacementTargetMatch";
 import { resolveReplacementTargetAliases } from "./replacementTargetNames";
 import { buildReplacementTargetOptions, replacementTargetOption } from "./replacementTargetOptions";
 import type { GameId } from "../game-setup/gameSetupTypes";
@@ -68,13 +66,16 @@ import { ReplacementContextPanel } from "./ReplacementContextPanel";
 import { RetargetAttachmentNotice } from "./RetargetAttachmentNotice";
 import { RetargetFileDetails } from "./RetargetFileDetails";
 import { retargetFileCopy } from "./retargetFileCopy";
-import { PluginSelectionPanel } from "../install-plugins/PluginSelectionPanel";
+import { RetargetPluginSelection } from "./RetargetPluginSelection";
 import { usePluginSelection } from "../install-plugins/usePluginSelection";
 import { previewEquipmentReapply, startEquipmentReapply } from "./equipmentRetargetApi";
 import type { RetargetInstallTaskStarted } from "./replacementTypes";
 import { useAppRoute } from "../../app/routing/useAppRoute";
 import { recoveryCenterCopy } from "../install-recovery/recoveryCenterCopy";
 import { RetargetWorkspace } from "./RetargetWorkspace";
+import { ReplacementTargetCatalog } from "./ReplacementTargetCatalog";
+import { RetargetPopover } from "./RetargetPopover";
+import { retargetDialogCopy } from "./retargetDialogCopy";
 
 export type ReplacementTargetPanelProps = {
   gameId: GameId;
@@ -574,7 +575,7 @@ export function ReplacementTargetPanel({
       });
   };
 
-  const contextPanel = <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId}
+  const contextPanel = <ReplacementContextPanel gameId={gameId} modId={modId} profileId={profileId} installStatus={installStatus}
     sourceItems={installStatus === "installed" ? analysis?.sources.map((source) => ({
       id: source.id, kind: source.sourceType, internalId: source.internalId, displayNames: source.displayNames ?? {},
     })) : undefined}
@@ -583,7 +584,7 @@ export function ReplacementTargetPanel({
   if (loadState.status === "loading") {
     return (
       <RetargetWorkspace previewStatus="idle" selection={<>
-        {contextPanel}
+        <div className="retarget-workspace__summary">{contextPanel}</div>
         <div className="replacement-panel__state" role="status">
           <LoaderCircle className="replacement-panel__spinner" size={20} aria-hidden="true" />
           <span>{rCopy.panel.analyzing}</span>
@@ -595,7 +596,7 @@ export function ReplacementTargetPanel({
   if (loadState.status === "error") {
     return (
       <RetargetWorkspace previewStatus="idle" selection={<>
-        {contextPanel}
+        <div className="retarget-workspace__summary">{contextPanel}</div>
         <div className="replacement-panel__state is-error" role="alert">
           <ShieldAlert size={20} aria-hidden="true" />
           <span>{loadState.message}</span>
@@ -610,131 +611,17 @@ export function ReplacementTargetPanel({
 
   return (
     <RetargetWorkspace previewStatus={previewState.status} selection={<>
-      {contextPanel}
-      <PluginSelectionPanel controller={plugins} disabled={taskActive} />
-      {installStatus === "installed" && analysis?.retargetable && !installedTargetId
-        ? <p className="replacement-panel__notice" role="status">{rCopy.panel.originRecoveryHint}</p> : null}
-      {blockMessage ? (
-        <div className="replacement-panel__notice is-blocked" role="status">
-          <ShieldAlert size={18} aria-hidden="true" />
-          <span>{blockMessage}</span>
-        </div>
-      ) : null}
-
-      {displayWarnings.length ? (
-        <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
-          {displayWarnings.map((warning) => (
-            <li key={warning}>
-              <AlertTriangle size={14} aria-hidden="true" />
-              {rCopy.warnings[warning]}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <section className="replacement-panel__catalog" aria-labelledby="replacement-catalog-title">
-        <div className="replacement-panel__section-heading">
-          <h3 id="replacement-catalog-title">{rCopy.panel.targetsTitle}</h3>
-          <span>{rCopy.panel.targetCount(filteredOptions.length)}</span>
-        </div>
-        <label className="replacement-panel__search">
-          <Search size={16} aria-hidden="true" />
-          <input
-            type="search"
-            aria-label={rCopy.panel.searchAria}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={rCopy.panel.searchPlaceholder}
-            disabled={taskActive}
-          />
-        </label>
-        {filteredOptions.length ? (
-          <div className="replacement-panel__target-list" role="radiogroup" aria-label={rCopy.panel.targetsAria}>
-            {filteredOptions.map((option) => {
-              const target = option.target;
-              const currentInstalled = isCurrentInstalledReplacementTarget(
-                target.id,
-                installedTargetId,
-              );
-              const occupied = occupancyByTarget.get(target.id) ?? null;
-              const matchHint = matchedHiddenReplacementTargetNames(target, option, query);
-              const aliasCount = resolveReplacementTargetAliases(target.aliasesByLocale, locale).length;
-              return (
-                <label
-                  className="replacement-panel__target-row"
-                  data-installed={currentInstalled}
-                  data-occupied={occupied ? "true" : "false"}
-                  data-selected={option.key === selectedOption?.key}
-                  data-target-id={target.id}
-                  key={option.key}
-                >
-                  <input
-                    type="radio"
-                    name="replacement-target"
-                    value={option.key}
-                    checked={option.key === selectedOption?.key}
-                    onChange={() => selectTarget(target.id, option.alias)}
-                    disabled={
-                      !analysis?.retargetable ||
-                      previewState.status === "loading" ||
-                      taskActive ||
-                      installCompletedLocally ||
-                      currentInstalled
-                    }
-                  />
-                  <span className="replacement-panel__target-name">
-                    <strong>{option.displayName}</strong>
-                    {option.secondaryName ? <small>{option.secondaryName}</small> : null}
-                    {matchHint ? (
-                      <small className="replacement-panel__target-match">
-                        <Search size={11} aria-hidden="true" />
-                        <span>{rCopy.panel.matchedNames(matchHint.names)}</span>
-                        {matchHint.hiddenCount > 0 ? (
-                          <em>{rCopy.panel.matchedNamesMore(matchHint.hiddenCount)}</em>
-                        ) : null}
-                      </small>
-                    ) : null}
-                  </span>
-                  <span className="replacement-panel__target-facts">
-                    {currentInstalled ? (
-                      <span className="replacement-panel__target-status is-installed">
-                        <CheckCircle2 size={13} aria-hidden="true" />
-                        {rCopy.panel.currentInstalled}
-                      </span>
-                    ) : null}
-                    {occupied ? (
-                      <span className="replacement-panel__target-status is-occupied">
-                        <ShieldAlert size={13} aria-hidden="true" />
-                        {rCopy.panel.targetOccupiedTag}
-                      </span>
-                    ) : null}
-                    {aliasCount > 0 ? (
-                      <span
-                        className="replacement-panel__target-status is-aliases"
-                        title={rCopy.panel.aliasCountTitle}
-                      >
-                        <Tags size={13} aria-hidden="true" />
-                        {rCopy.panel.aliasCount(aliasCount)}
-                      </span>
-                    ) : null}
-                    <code>{target.internalId}</code>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="replacement-panel__empty">{rCopy.panel.noMatches}</p>
-        )}
-      </section>
+      <div className="retarget-workspace__summary">
+        {contextPanel}
+        <RetargetPluginSelection controller={plugins} disabled={taskActive} />
+      </div>
+      <ReplacementTargetCatalog options={filteredOptions} selectedOption={selectedOption} query={query} onQueryChange={setQuery}
+        onSelect={selectTarget} installedTargetId={installedTargetId} disableInstalled occupancyByTarget={occupancyByTarget} searchDisabled={taskActive}
+        disabled={!analysis?.retargetable || previewState.status === "loading" || taskActive || installCompletedLocally} />
 
       {selectedTarget && selectedOption && selectedAliases.length > 0 ? (
-        <section className="replacement-panel__aliases" aria-labelledby="replacement-aliases-title">
-          <div className="replacement-panel__section-heading">
-            <Tags size={17} aria-hidden="true" />
-            <h3 id="replacement-aliases-title">{rCopy.panel.selectedAliasesTitle}</h3>
-            <span>{rCopy.panel.selectedAliasesCount(selectedAliases.length)}</span>
-          </div>
+        <section className="replacement-panel__aliases" aria-label={rCopy.panel.selectedAliasesTitle}>
+          <RetargetPopover title={rCopy.panel.selectedAliasesTitle} trigger={<><Tags size={14} aria-hidden="true" />{rCopy.panel.selectedAliasesCount(selectedAliases.length)}</>}>
           <p className="replacement-panel__aliases-target">
             <strong>{selectedOption.displayName}</strong>
             <code>{selectedTarget.internalId}</code>
@@ -745,6 +632,7 @@ export function ReplacementTargetPanel({
             ))}
           </ul>
           <p className="replacement-panel__aliases-hint">{rCopy.panel.selectedAliasesHint}</p>
+          </RetargetPopover>
         </section>
       ) : null}
 
@@ -903,6 +791,13 @@ export function ReplacementTargetPanel({
       ) : null}
 
       </>} feedback={<>
+      {selectedTarget && selectedOption && <p className="retarget-workspace__chosen">{resolveCopy(retargetDialogCopy, locale).selected}：<strong>{replacementIdentityLabel(selectedTarget, locale, selectedOption.displayName)}</strong></p>}
+      {installStatus === "installed" && analysis?.retargetable && !installedTargetId
+        ? <p className="replacement-panel__notice" role="status">{rCopy.panel.originRecoveryHint}</p> : null}
+      {blockMessage ? <div className="replacement-panel__notice is-blocked" role="status"><ShieldAlert size={18} aria-hidden="true" /><span>{blockMessage}</span></div> : null}
+      {displayWarnings.length ? <ul className="replacement-panel__warnings" aria-label={rCopy.panel.warningsAria}>
+        {displayWarnings.map((warning) => <li key={warning}><AlertTriangle size={14} aria-hidden="true" />{rCopy.warnings[warning]}</li>)}
+      </ul> : null}
       {listenerStatus === "failed" ? (
         <div className="replacement-panel__notice is-blocked" role="alert">
           <AlertTriangle size={17} aria-hidden="true" />

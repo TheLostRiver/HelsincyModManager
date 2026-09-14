@@ -1,4 +1,4 @@
-import { ArrowRightLeft, ListChecks, Target } from "lucide-react";
+import { ListChecks, PanelRightClose } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { retargetDialogCopy } from "./retargetDialogCopy";
@@ -16,47 +16,62 @@ type RetargetWorkspaceProps = {
 export function RetargetWorkspace({ selection, preview, feedback, actions, previewStatus }: RetargetWorkspaceProps) {
   const { locale } = useI18n();
   const copy = resolveCopy(retargetDialogCopy, locale);
-  const [activePane, setActivePane] = useState<"selection" | "preview">("selection");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const previewRef = useRef<HTMLElement | null>(null);
+  const selectionRef = useRef<HTMLElement | null>(null);
+  const restoreSelectionFocus = useRef(false);
+  const resetPreviewScroll = useRef(true);
   const selectionId = useId();
   const previewId = useId();
 
   useEffect(() => {
-    if (previewStatus !== "idle") setActivePane("preview");
+    resetPreviewScroll.current = true;
+    setPreviewOpen(previewStatus !== "idle");
   }, [previewStatus]);
 
   useEffect(() => {
-    if (activePane === "preview" && (previewStatus === "ready" || previewStatus === "error")) {
+    if (previewOpen && (previewStatus === "ready" || previewStatus === "error")) {
       const pane = previewRef.current;
       if (pane) {
-        pane.scrollTop = 0;
+        if (resetPreviewScroll.current) pane.scrollTop = 0;
+        resetPreviewScroll.current = false;
         pane.focus({ preventScroll: true });
       }
     }
-  }, [activePane, previewStatus]);
+  }, [previewOpen, previewStatus]);
 
-  return <div className="replacement-panel retarget-workspace">
-    <nav className="retarget-workspace__navigation" aria-label={copy.title}>
-      <button type="button" aria-pressed={activePane === "selection"} aria-controls={selectionId} onClick={() => setActivePane("selection")}>
-        <Target size={16} aria-hidden="true" />{copy.selection}
-      </button>
-      <button type="button" aria-pressed={activePane === "preview"} aria-controls={previewId} onClick={() => setActivePane("preview")}>
-        <ListChecks size={16} aria-hidden="true" />{copy.preview}
-      </button>
-    </nav>
-    <section id={selectionId} className="retarget-workspace__selection" data-active={activePane === "selection"} aria-label={copy.selection}>
+  const hasPreview = previewStatus !== "idle";
+  const showPreview = hasPreview && previewOpen;
+  useEffect(() => {
+    if (showPreview || !restoreSelectionFocus.current) return;
+    restoreSelectionFocus.current = false;
+    const search = Array.from(selectionRef.current?.querySelectorAll<HTMLInputElement>('input[type="search"]') ?? [])
+      .find((input) => !input.disabled && input.getClientRects().length > 0);
+    (search ?? selectionRef.current)?.focus({ preventScroll: true });
+  }, [showPreview]);
+  const collapsePreview = () => {
+    restoreSelectionFocus.current = true;
+    setPreviewOpen(false);
+  };
+
+  return <div className="replacement-panel retarget-workspace" data-preview-open={showPreview}>
+    <section id={selectionId} ref={selectionRef} className="retarget-workspace__selection" data-active={!showPreview} aria-label={copy.selection} tabIndex={-1}>
       {selection}
     </section>
-    <section id={previewId} ref={previewRef} className="retarget-workspace__preview" data-active={activePane === "preview"} aria-label={copy.preview} tabIndex={-1}>
-      {previewStatus === "idle" ? <div className="retarget-workspace__empty">
-        <span className="retarget-workspace__empty-icon"><ArrowRightLeft size={28} aria-hidden="true" /></span>
-        <h3>{copy.emptyTitle}</h3>
-        <p>{copy.emptyDescription}</p>
-      </div> : preview}
+    <section id={previewId} ref={previewRef} className="retarget-workspace__preview" hidden={!showPreview} data-active={showPreview} aria-label={copy.preview} tabIndex={-1}>
+      <div className="retarget-workspace__preview-heading">
+        <span><ListChecks size={16} aria-hidden="true" />{copy.preview}</span>
+        <button type="button" aria-controls={selectionId} onClick={collapsePreview}><PanelRightClose size={16} aria-hidden="true" />{copy.collapsePreview}</button>
+      </div>
+      {preview}
     </section>
     {feedback || actions ? <footer className="retarget-workspace__footer">
       <div className="retarget-workspace__feedback">{feedback}</div>
-      <div className="replacement-panel__actions">{actions}</div>
+      <div className="retarget-workspace__controls">
+        {hasPreview && !showPreview && <button type="button" className="retarget-workspace__show-preview" aria-expanded={showPreview} aria-controls={previewId}
+          onClick={() => setPreviewOpen(true)}><ListChecks size={16} aria-hidden="true" />{copy.showPreview}</button>}
+        <div className="replacement-panel__actions">{actions}</div>
+      </div>
     </footer> : null}
   </div>;
 }

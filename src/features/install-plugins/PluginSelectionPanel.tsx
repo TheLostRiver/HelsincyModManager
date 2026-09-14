@@ -5,7 +5,7 @@ import "./PluginSelectionPanel.css";
 
 export type PluginSelectionView = Pick<PluginSelectionController, "status" | "inventory" | "error" | "saving" | "draft" | "reload" | "choose">;
 
-export function PluginSelectionPanel({ controller, disabled = false }: { controller: PluginSelectionView; disabled?: boolean }) {
+export function PluginSelectionPanel({ controller, disabled = false, showFeedback = true }: { controller: PluginSelectionView; disabled?: boolean; showFeedback?: boolean }) {
   const { locale } = useI18n();
   const copy = resolveCopy(pluginSelectionCopy, locale);
   if (controller.status === "loading") return <p role="status" className="plugin-selection__hint">{copy.loading}</p>;
@@ -13,7 +13,7 @@ export function PluginSelectionPanel({ controller, disabled = false }: { control
   return <section className="plugin-selection" aria-label={copy.title}>
     <h4>{copy.title}</h4>
     <p className="plugin-selection__hint">{controller.draft ? copy.draftHint : copy.hint}</p>
-    {controller.error !== null && <div role="alert" className="plugin-selection__error">{pluginErrorMessage(controller.error, copy)} <button type="button" onClick={controller.reload} disabled={controller.saving}>{copy.retry}</button></div>}
+    {showFeedback && controller.error !== null && <div role="alert" className="plugin-selection__error">{pluginErrorMessage(controller.error, copy)} <button type="button" onClick={controller.reload} disabled={controller.saving}>{copy.retry}</button></div>}
     {controller.inventory && <>
       <ul>{controller.inventory.files.map((file) => <li key={file.fileId}>
         <label><input type="checkbox" checked={file.selected} disabled={disabled || controller.saving || !file.selectable}
@@ -23,6 +23,6 @@ export function PluginSelectionPanel({ controller, disabled = false }: { control
       </li>)}</ul>
       <p className="plugin-selection__hint">{copy.dependency}</p>
     </>}
-    {controller.saving && <p role="status">{copy.saving}</p>}
+    {showFeedback && controller.saving && <p role="status">{copy.saving}</p>}
   </section>;
 }
