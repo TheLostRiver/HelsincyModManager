@@ -119,7 +119,7 @@ impl ReinstallPreparation {
         hash_field(&mut hasher, "retarget-file-effects-v1");
         hash_field(&mut hasher, &prepared.plan_token);
         hasher.update(serialized);
-        prepared.plan_token = format!("{:x}", hasher.finalize());
+        prepared.plan_token = finalize_plan_token(hasher);
         prepared.plan_hash = prepared.plan_token.clone();
         prepared.file_effects = previews;
         Ok(self)
