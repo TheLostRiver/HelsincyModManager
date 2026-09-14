@@ -27,6 +27,7 @@ type ModPosterCardProps = {
   onContextMenu?: (id: string, x: number, y: number) => void;
   index?: number;
   showCategoryLabels?: boolean;
+  showHoverDetails?: boolean;
   /** 本会话的外部状态扫描结果（#286 3b-2）；null 表示本会话没扫过。 */
   externalState?: ExternalModStateDto | null;
 };
@@ -91,6 +92,7 @@ export function ModPosterCard({
   onContextMenu,
   index = 0,
   showCategoryLabels = true,
+  showHoverDetails = false,
   externalState = null,
 }: ModPosterCardProps) {
   const { locale } = useI18n();
@@ -107,12 +109,13 @@ export function ModPosterCard({
   // check mark (reads as "installed") nor a warning (nothing is broken) fits;
   // the lock says the paths are taken.
   const externalBadgeOccupied = externalBadge?.case === "occupied";
-  // 「需要用户留意」的判定换警示图标；installed / not_installed 维持对勾基线。
+  // 需要留意的外部状态用警示图标；对勾只表示已安装。
   const externalBadgeAlerts =
     externalBadge !== null &&
     !externalBadgeOccupied &&
     externalBadge.case !== "installed" &&
     externalBadge.case !== "not_installed";
+  const showInstalledCheck = (externalBadge?.case ?? item.status) === "installed";
   // Adapter display names live in externalImportCopy (single source for the
   // hunting-box label); the card only projects id -> label, never re-derives.
   const externalImportHistory = resolveCopy(externalImportCopy, locale).history;
@@ -197,7 +200,7 @@ export function ModPosterCard({
   }, [previewThumbnail?.thumbnailUrl]);
 
   return (
-    <ModCardHover item={item} gameId={gameId} profileId={profileId}>
+    <ModCardHover item={item} gameId={gameId} profileId={profileId} enabled={showHoverDetails}>
     <div
       role={batchSelectionActive ? "checkbox" : "button"}
       tabIndex={0}
@@ -238,9 +241,11 @@ export function ModPosterCard({
       data-status={item.status}
       data-selection-mode={selectionMode}
     >
-      <div className="mod-card__selection-indicator" aria-hidden="true">
-        <Check size={14} strokeWidth={3} className="mod-card__check-icon" />
-      </div>
+      {batchSelectionActive ? (
+        <div className="mod-card__selection-indicator" aria-hidden="true">
+          <Check size={14} strokeWidth={3} className="mod-card__check-icon" />
+        </div>
+      ) : null}
 
       {/* TECH 视图：彻底不展示封面 */}
       {isTech ? null : (
@@ -279,9 +284,9 @@ export function ModPosterCard({
               <Lock size={13} strokeWidth={2.6} aria-hidden="true" />
             ) : externalBadgeAlerts ? (
               <TriangleAlert size={13} strokeWidth={2.6} aria-hidden="true" />
-            ) : (
+            ) : showInstalledCheck ? (
               <Check size={13} strokeWidth={2.6} aria-hidden="true" />
-            )}
+            ) : null}
             <span className="mod-card__status-label">
               {externalBadge ? externalBadge.text : statusLabelForItem(item, card)}
             </span>
