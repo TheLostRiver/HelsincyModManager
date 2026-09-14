@@ -309,6 +309,10 @@ src/
 
 ## 会话缓存与拖拽导入
 
+启动页偏好与最后访问的路由 ID 由 `app/routing` 保存为本地 UI 偏好，设置页通过路由 context 修改，
+不与会话预览选项混用。路由初始化只接受已注册且可用的页面，缺失、损坏或不可用的记录回退工作台；
+修改偏好不立即跳走当前页，导航提交后记忆最后页面。普通与悬浮侧栏共用唯一导航定义，未接入入口隐藏。
+
 Mod 库的会话缓存由路由之上的 `ModLibrarySessionCacheProvider` 持有。分页、搜索及 profile 槽位
 只缓存已完成的查询；缓存 generation 在已知写入开始/终态及写后刷新时推进，旧 generation 的响应
 不得提交到页面或重新写回缓存。查询订阅失效后主动重新取数；查询错误只移除对应缓存与旧页面，不
@@ -820,7 +824,7 @@ ARMOR_RETARGET AR1 已在 `hmm-ports::replacement` 落地独立只读 `Replaceme
 `.partial`，完整成功后原子发布，失败清理；最终 target 进入 `InstallPlan`，原 `PackageFileId`
 provenance 保留，binding snapshot 随 plan/manifest/reinstall recovery 原子保存。Tauri/frontend wiring
 已由 AR4 通过四个窄 command 和 feature-local typed API 接入；入口位于 Mod 管理的 Mod 详情
-“替换目标”Tab，右键“MOD 文件修改”直达。前端只提交 game/Mod/profile/target/layer identity，首次
+“替换目标”Tab，右键“MOD 文件重定向”直达。前端只提交 game/Mod/profile/target/layer identity，首次
 retarget install 继续走 task id、game/profile 写锁、Audit Log、backup、manifest 和 rollback/recovery
 链路，并对 installed/unsafe/unknown 状态 fail closed。AR5 在同一入口增加两个窄 command：后端从
 manifest 解析 installed revision，同 revision 且 target 确实变化时复用真正重装事务原子替换旧
