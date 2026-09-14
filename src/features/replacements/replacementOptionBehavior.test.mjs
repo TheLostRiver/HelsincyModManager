@@ -149,8 +149,10 @@ test("expanded names select one row, preview the chosen name, and start using th
   await act(async () => h.buttons()[0].props.onClick());
   assert.equal(h.api.calls.find((call) => call.kind === "preview").input.targetId, weapon.id);
   assert.ok(text(h.root.root.findByProps({ className: "replacement-panel__preview-facts" })).includes("最终刀 (bs_swo001)"));
-  const impact = text(h.root.root.findByProps({ className: "replacement-panel__aliases" }));
-  for (const name of ["原型刀", "升级刀", "最终刀"]) assert.ok(impact.includes(name));
+  const impact = h.root.root.findByProps({ className: "replacement-panel__aliases" });
+  assert.equal(String(impact.findByType("button").props["aria-expanded"]), "false", "shared names should not take up the target list by default");
+  const rows = h.root.root.findAllByProps({ className: "replacement-panel__target-row" }).map(text);
+  for (const name of ["原型刀", "升级刀", "最终刀"]) assert.ok(rows.some((row) => row.includes(name)));
   assert.equal(h.buttons()[1].props.disabled, false);
   await act(async () => h.buttons()[1].props.onClick());
   assert.deepEqual(h.api.calls.find((call) => call.kind === "start").input, {
@@ -245,11 +247,24 @@ test("changing profile clears the selected name and rejects late preview results
 test("default replacement names are shown before preview, install, or HMM retargeting", options, async (t) => {
   const h = await mount(t);
   const original = text(h.root.root.findByProps({ className: "replacement-context__default" }));
-  assert.ok(original.includes("Mod 默认替换对象"));
+  assert.ok(original.includes("作者默认"));
   assert.ok(original.includes("另一把刀 (swo002)"));
   assert.equal(h.root.root.findAllByProps({ className: "replacement-context__current" }).length, 0);
   assert.equal(h.api.calls.filter((call) => call.kind === "context").length, 1, "StrictMode does not duplicate the read-only context query");
   assert.equal(h.api.calls.filter((call) => ["preview", "start", "switchStart"].includes(call.kind)).length, 0);
+});
+
+test("matching current and original equipment share one summary without losing names or IDs", options, async (t) => {
+  const h = await mount(t, { installed: true, analysisSources: [{ id: "source-a", sourceType: "weapon", internalId: weapon.internalId, supported: true, displayNames: weapon.displayNames }] });
+  const summary = () => text(h.root.root.findByProps({ className: "replacement-context" }));
+  assert.ok(summary().includes("当前 · 作者默认"));
+  assert.equal(summary().split("原型刀 (bs_swo001)").length - 1, 1);
+  assert.equal(h.root.root.findAllByProps({ className: "replacement-context__default" }).length, 0);
+  const reads = h.api.calls.filter((call) => call.kind === "context").length;
+  await h.choose(null, another.id);
+  assert.ok(summary().includes("原型刀 (bs_swo001)"));
+  assert.ok(!summary().includes("另一把刀"));
+  assert.equal(h.api.calls.filter((call) => call.kind === "context").length, reads);
 });
 
 test("blocked initial retargeting preserves default equipment names and the recovery center route", options, async (t) => {
@@ -291,6 +306,14 @@ test("unknown installation facts do not claim that the original target is curren
   assert.ok(text(h.root.root.findByProps({ className: "replacement-context__default" })).includes("另一把刀"));
 });
 
+test("an installed package without confirmed target entries is not labeled uninstalled", options, async (t) => {
+  const h = await mount(t, { installed: true, legacy: true });
+  const summary = text(h.root.root.findByProps({ className: "replacement-context" }));
+  assert.ok(summary.includes("当前安装对象暂不可确认"));
+  assert.ok(!summary.includes("尚未安装"));
+  assert.ok(summary.includes("另一把刀 (swo002)"));
+});
+
 test("an unmapped resource keeps its real reported ID and never receives a fabricated equipment name", options, async (t) => {
   const h = await mount(t, { contextOverride: { sources: [{ id: "unmapped", kind: "weapon", internalId: "unmapped-id", displayNames: {} }] } });
   const defaults = text(h.root.root.findByProps({ className: "replacement-context__default" }));
@@ -306,7 +329,7 @@ test("late context responses from another profile cannot overwrite current insta
   assert.equal(h.api.contexts.length, 2);
   await act(async () => h.api.contexts[1].resolve(h.api.contexts[1].summary));
   await act(async () => h.api.contexts[0].resolve(h.api.contexts[0].summary));
-  const current = text(h.root.root.findByProps({ className: "replacement-context__current" }));
+  const current = text(h.root.root.findByProps({ className: "replacement-context__combined" }));
   assert.ok(current.includes("另一把刀 (swo002)"));
   assert.ok(!current.includes("原型刀"));
 });

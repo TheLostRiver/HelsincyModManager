@@ -26,7 +26,8 @@ export function useModalFocusTrap({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Tab") {
+      // 嵌套浮层关闭时可能同步卸载；同一 document 上后执行的监听器不能再次消费该按键。
+      if (event.defaultPrevented || (event.key !== "Escape" && event.key !== "Tab")) {
         return;
       }
 

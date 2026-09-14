@@ -44,7 +44,7 @@ test("Mod actions route retargeting into a standalone dialog with the existing w
   assert.match(errorCopy, /task_cannot_be_cancelled/);
   assert.match(errorCopy, /当前目标已安装/);
   assert.match(panel, /install\.reinstall/);
-  assert.match(panel, /data-installed=\{currentInstalled\}/);
+  assert.match(readSource("src/features/replacements/ReplacementTargetCatalog.tsx"), /data-installed=\{currentInstalled\}/);
   assert.match(panel, /analysis\.installedTargetId/);
   assert.match(panel, /rCopy\.panel\.countRetained/);
   assert.match(panel, /rCopy\.panel\.countReplaced/);
@@ -68,7 +68,7 @@ test("Mod actions route retargeting into a standalone dialog with the existing w
   assert.match(panel, /occupancyByTarget/);
   assert.match(panel, /selectedOccupancy/);
   assert.match(panel, /rCopy\.panel\.targetOccupied\(selectedOccupancy\.displayName\)/);
-  assert.match(panel, /rCopy\.panel\.targetOccupiedTag/);
+  assert.match(readSource("src/features/replacements/ReplacementTargetCatalog.tsx"), /rCopy\.panel\.targetOccupiedTag/);
   assert.match(panel, /copyOccupantName\(selectedOccupancy\)/);
   assert.match(panel, /navigator\.clipboard[\s\S]*writeText\(occupancy\.displayName\)/);
   assert.match(panel, /rCopy\.panel\.occupantNameCopiedTitle/);
@@ -89,6 +89,7 @@ test("Mod actions route retargeting into a standalone dialog with the existing w
 
 test("搜索命中别名或其他语言展示名时，目标行给出「匹配：…」提示（#274）", () => {
   const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
+  const catalog = readSource("src/features/replacements/ReplacementTargetCatalog.tsx");
   const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
   const options = readSource("src/features/replacements/replacementTargetOptions.ts");
 
@@ -97,16 +98,16 @@ test("搜索命中别名或其他语言展示名时，目标行给出「匹配�
   assert.match(panel, /buildReplacementTargetOptions\(targets, locale, query\)/);
   assert.doesNotMatch(panel, /toLocaleLowerCase\(\)\.includes\(keyword\)/);
   // 行内：按当前语言解析一次名字，再用同一份「已渲染的名字」判断哪些命中没显示出来。
-  assert.match(panel, /const matchHint = matchedHiddenReplacementTargetNames\(target, option, query\);/);
-  assert.match(panel, /<strong>\{option\.displayName\}<\/strong>/);
-  const hint = panel.match(
-    /\{matchHint \? \(\s*<small className="replacement-panel__target-match">([\s\S]*?)<\/small>\s*\) : null\}/,
+  assert.match(catalog, /const matchHint = matchedHiddenReplacementTargetNames\(target, option, query\);/);
+  assert.match(catalog, /<strong>\{option\.displayName\}<\/strong>/);
+  const hint = catalog.match(
+    /\{matchHint \?\s*<small className="replacement-panel__target-match">([\s\S]*?)<\/small>\s*: null\}/,
   );
   assert.ok(hint, "提示行必须只在 matchHint 非空时渲染");
   assert.match(hint[1], /rCopy\.panel\.matchedNames\(matchHint\.names\)/);
   assert.match(
     hint[1],
-    /\{matchHint\.hiddenCount > 0 \? \(\s*<em>\{rCopy\.panel\.matchedNamesMore\(matchHint\.hiddenCount\)\}<\/em>\s*\) : null\}/,
+    /\{matchHint\.hiddenCount > 0 \?\s*<em>\{rCopy\.panel\.matchedNamesMore\(matchHint\.hiddenCount\)\}<\/em>\s*: null\}/,
   );
   // 单行省略：提示不得把行撑成多行，列表一屏可见行数不因搜索而缩水。
   const matchRule = panelCss.match(/\.replacement-panel__target-match > span\s*\{([\s\S]*?)\}/)?.[1] ?? "";
@@ -119,8 +120,9 @@ test("搜索命中别名或其他语言展示名时，目标行给出「匹配�
   );
 });
 
-test("目标行显示本语言别名计数药丸，选中后在列表下方铺开共用同一模型的名字（#274 PR 2）", () => {
+test("目标行显示本语言别名计数，完整共用模型名称通过浮层查看", () => {
   const panel = readSource("src/features/replacements/ReplacementTargetPanel.tsx");
+  const catalog = readSource("src/features/replacements/ReplacementTargetCatalog.tsx");
   const panelCss = readSource("src/features/replacements/ReplacementTargetPanel.css");
   const types = readSource("src/features/replacements/replacementTypes.ts");
 
@@ -129,31 +131,32 @@ test("目标行显示本语言别名计数药丸，选中后在列表下方铺�
   assert.match(panel, /resolveReplacementTargetAliases/);
   // 行内：按界面语言取本语言别名数，只在 > 0 时渲染中性药丸，带说明性 title。
   assert.match(
-    panel,
+    catalog,
     /const aliasCount = resolveReplacementTargetAliases\(target\.aliasesByLocale, locale\)\.length;/,
   );
-  const pill = panel.match(
-    /\{aliasCount > 0 \? \(\s*<span\s+className="replacement-panel__target-status is-aliases"\s+title=\{rCopy\.panel\.aliasCountTitle\}\s*>([\s\S]*?)<\/span>\s*\) : null\}/,
+  const pill = catalog.match(
+    /\{aliasCount > 0 \?\s*<span\s+className="replacement-panel__target-status is-aliases"\s+title=\{rCopy\.panel\.aliasCountTitle\}\s*>([\s\S]*?)<\/span>\s*: null\}/,
   );
   assert.ok(pill, "别名计数药丸必须只在 aliasCount > 0 时渲染并带 title");
   assert.match(pill[1], /rCopy\.panel\.aliasCount\(aliasCount\)/);
-  // 摘要条：只在选中且本语言有别名时渲染，列出全部别名与「共用模型」说明。
+  // 只在选中且本语言有别名时提供入口，完整名称与说明移入按需打开的浮层。
   assert.match(panel, /selectedModelOptions\.map\(\(option\) => option\.displayName\)/);
   const summary = panel.match(
     /\{selectedTarget && selectedOption && selectedAliases\.length > 0 \? \(\s*<section className="replacement-panel__aliases"([\s\S]*?)<\/section>\s*\) : null\}/,
   );
   assert.ok(summary, "别名摘要条必须只在选中目标且有本语言别名时渲染");
   assert.match(summary[1], /rCopy\.panel\.selectedAliasesTitle/);
+  assert.match(summary[1], /<RetargetPopover/);
   assert.match(summary[1], /rCopy\.panel\.selectedAliasesCount\(selectedAliases\.length\)/);
   assert.match(summary[1], /\{selectedAliases\.map\(\(alias\) => \(\s*<li key=\{alias\}>\{alias\}<\/li>/);
   assert.match(summary[1], /rCopy\.panel\.selectedAliasesHint/);
   assert.match(summary[1], /<code>\{selectedTarget\.internalId\}<\/code>/);
   // 摘要条位置：在目标列表（catalog）之后、预览区之前。
-  const catalogIndex = panel.indexOf('className="replacement-panel__catalog"');
+  const catalogIndex = panel.indexOf('<ReplacementTargetCatalog');
   const summaryIndex = panel.indexOf('className="replacement-panel__aliases"');
   const previewIndex = panel.indexOf('className="replacement-panel__preview"');
   assert.ok(catalogIndex !== -1 && summaryIndex > catalogIndex && previewIndex > summaryIndex);
-  // CSS：药丸用中性色（不是成功绿 / 警示琥珀）；摘要条与其他分区同样的顶部分隔；chip 换行。
+  // 基础样式中的药丸仍用中性色；浮层中的名称 chip 仍可换行。
   const pillRule = panelCss.match(/\.replacement-panel__target-status\.is-aliases\s*\{([\s\S]*?)\}/)?.[1] ?? "";
   assert.match(pillRule, /color:\s*var\(--color-neutral-text\)/);
   assert.match(pillRule, /background:\s*var\(--color-neutral-bg\)/);
