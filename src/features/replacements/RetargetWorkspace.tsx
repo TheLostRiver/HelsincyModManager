@@ -18,6 +18,7 @@ export function RetargetWorkspace({ selection, preview, feedback, actions, previ
   const { locale } = useI18n();
   const copy = labels ?? resolveCopy(retargetDialogCopy, locale);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const narrow = useNarrowWorkspace();
   const previewRef = useRef<HTMLElement | null>(null);
   const selectionRef = useRef<HTMLElement | null>(null);
   const restoreSelectionFocus = useRef(false);
@@ -39,10 +40,11 @@ export function RetargetWorkspace({ selection, preview, feedback, actions, previ
         pane.focus({ preventScroll: true });
       }
     }
-  }, [previewOpen, previewStatus]);
+  }, [previewOpen, previewStatus, narrow]);
 
   const hasPreview = previewStatus !== "idle";
   const showPreview = hasPreview && previewOpen;
+  const selectionHidden = narrow && showPreview;
   useEffect(() => {
     if (showPreview || !restoreSelectionFocus.current) return;
     restoreSelectionFocus.current = false;
@@ -56,16 +58,20 @@ export function RetargetWorkspace({ selection, preview, feedback, actions, previ
   };
 
   return <div className="replacement-panel retarget-workspace" data-preview-open={showPreview}>
-    <section id={selectionId} ref={selectionRef} className="retarget-workspace__selection" data-active={!showPreview} aria-label={copy.selection} tabIndex={-1}>
+    <section id={selectionId} ref={selectionRef} className="retarget-workspace__selection" data-active={!showPreview}
+      inert={selectionHidden} aria-hidden={selectionHidden || undefined} aria-label={copy.selection} tabIndex={-1}>
       {selection}
     </section>
-    <section id={previewId} ref={previewRef} className="retarget-workspace__preview" hidden={!showPreview} data-active={showPreview} aria-label={copy.preview} tabIndex={-1}>
-      <div className="retarget-workspace__preview-heading">
-        <span><ListChecks size={16} aria-hidden="true" />{copy.preview}</span>
-        <button type="button" aria-controls={selectionId} onClick={collapsePreview}><PanelRightClose size={16} aria-hidden="true" />{copy.collapsePreview}</button>
-      </div>
-      {preview}
-    </section>
+    <div className="retarget-workspace__preview-frame">
+      <section id={previewId} ref={previewRef} className="retarget-workspace__preview" data-active={showPreview}
+        inert={!showPreview} aria-hidden={!showPreview} aria-label={copy.preview} tabIndex={-1}>
+        <div className="retarget-workspace__preview-heading">
+          <span><ListChecks size={16} aria-hidden="true" />{copy.preview}</span>
+          <button type="button" aria-controls={selectionId} onClick={collapsePreview}><PanelRightClose size={16} aria-hidden="true" />{copy.collapsePreview}</button>
+        </div>
+        {preview}
+      </section>
+    </div>
     {feedback || actions ? <footer className="retarget-workspace__footer">
       <div className="retarget-workspace__feedback">{feedback}</div>
       <div className="retarget-workspace__controls">
@@ -75,4 +81,21 @@ export function RetargetWorkspace({ selection, preview, feedback, actions, previ
       </div>
     </footer> : null}
   </div>;
+}
+
+/** 与 CSS 的窄窗断点同步：离场区立即退出键盘导航，视觉过渡由 CSS 自行完成。 */
+function useNarrowWorkspace() {
+  const query = "(max-width: 900px)";
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(query);
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return narrow;
 }
