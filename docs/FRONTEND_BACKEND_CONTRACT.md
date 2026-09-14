@@ -617,7 +617,7 @@ export function previewRetargetPlan(input: PreviewRetargetPlanInput) {
 
 ## Equipment Replacement AR4/AR5/WR-04 契约
 
-AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件修改”只负责用
+AR4 的入口固定在 `Mod 管理 -> Mod 详情统一面板 -> 替换目标 Tab`。右键“MOD 文件重定向”只负责用
 replacement Tab 打开同一个详情面板，不新增孤立页面。`/replacements` 仍保留给后续全局 binding、
 占用和冲突总览。
 
