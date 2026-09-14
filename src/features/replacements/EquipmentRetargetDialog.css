@@ -1,19 +1,19 @@
 .feedback-modal.equipment-retarget-dialog {
   width: min(1240px, calc(100vw - 48px));
-  height: min(920px, calc(100dvh - 64px));
+  height: min(920px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
   grid-template-rows: auto minmax(0, 1fr);
   border-radius: 20px;
 }
 
-.equipment-retarget-dialog > .feedback-modal__header { padding: 20px 24px; }
-.equipment-retarget-dialog > .feedback-modal__header h2 { font-size: 20px; }
-.equipment-retarget-dialog > .feedback-modal__header p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.equipment-retarget-dialog > .feedback-modal__header { padding: 14px 20px; }
+.equipment-retarget-dialog > .feedback-modal__header h2 { font-size: 18px; }
+.equipment-retarget-dialog > .feedback-modal__header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .equipment-retarget-dialog > .feedback-modal__body { min-width: 0; min-height: 0; padding: 0; overflow: hidden; }
 .equipment-retarget-dialog > .feedback-modal__body > .replacement-panel__state { height: 100%; }
 .equipment-retarget-dialog > .feedback-modal__body > .replacement-panel:not(.retarget-workspace) { max-height: 100%; padding: 24px; overflow: auto; }
 
 @media (max-width: 900px) {
   .feedback-modal.equipment-retarget-dialog { width: calc(100vw - 32px); height: calc(100dvh - 32px); border-radius: 16px; }
-  .equipment-retarget-dialog > .feedback-modal__header { padding: 16px 20px; }
+  .equipment-retarget-dialog > .feedback-modal__header { padding: 12px 16px; }
 }

@@ -90,8 +90,14 @@ async function mount(t, overrides = {}) {
   await act(async () => { root = TestRenderer.create(tree()); });
   t.after(async () => { await act(async () => root.unmount()); delete globalThis.__equipment; });
   const buttons = () => root.root.findByProps({ className: "replacement-panel__actions" }).findAllByType("button");
-  return { api, root, buttons,
-    choose: async (index, id, alias = null) => act(async () => root.root.findAllByType("select")[index].props.onChange({ target: { value: JSON.stringify([id, alias]) } })),
+  const source = (index) => root.root.findAllByProps({ className: "equipment-retarget__source" })[index];
+  const activate = (index) => root.root.findByProps({ className: "equipment-retarget__sources" }).findAllByType("button")[index].props.onClick();
+  return { api, root, buttons, source,
+    choose: async (index, id, alias = null) => act(async () => {
+      activate(index);
+      source(index).findByProps({ type: "radio", value: JSON.stringify([id, alias]) }).props.onChange();
+    }),
+    keep: async (index) => act(async () => { activate(index); source(index).findByProps({ className: "equipment-retarget__keep" }).props.onClick(); }),
     click: async (index) => act(async () => { await buttons()[index].props.onClick(); }),
     update: async (next = {}) => act(async () => { props = { ...props, ...next }; root.update(tree()); }),
   };
@@ -121,9 +127,9 @@ for (const mode of ["initial", "switch", "reapply"]) {
     assert.ok(text(alert).includes("保持作者原位"));
     assert.ok(!text(alert).includes("armor-a"));
     assert.equal(h.buttons()[1].props.disabled, true);
-    assert.equal(h.root.root.findAllByType("select")[1].props.value, JSON.stringify(["armor-b", null]));
+    assert.equal(h.source(1).findByProps({ type: "radio", value: JSON.stringify(["armor-b", null]) }).props.checked, true);
     h.api.previewFailure = null;
-    await act(async () => h.root.root.findAllByType("select")[0].props.onChange({ target: { value: "" } }));
+    await h.keep(0);
     assert.equal(h.root.root.findAllByProps({ role: "alert" }).length, 0);
     await h.click(0);
     const next = h.api.calls.filter((call) => call.kind === "preview" || call.kind === "switchPreview").at(-1);
@@ -173,8 +179,8 @@ test("equipment preview shows attachment retention and discards its notice on a 
 
 test("group selection sends every source and all names still map to the real target", options, async (t) => {
   const h = await mount(t);
-  const labels = h.root.root.findAllByType("option").map(text);
-  assert.ok(labels.includes("升级武器 (weapon-b)"));
+  const labels = h.root.root.findAllByProps({ className: "replacement-panel__target-row" }).map(text);
+  assert.ok(labels.some((label) => label.includes("升级武器") && label.includes("weapon-b")));
   await h.choose(0, "weapon-b", "升级武器");
   await h.click(0);
   const request = h.api.calls.find((call) => call.kind === "preview").input;
@@ -189,6 +195,40 @@ test("group selection sends every source and all names still map to the real tar
   assert.deepEqual(h.api.calls.find((call) => call.kind === "start").input, request);
 });
 
+test("source navigation preserves independent searches and selections without reloading configuration", options, async (t) => {
+  const h = await mount(t);
+  await h.choose(0, "weapon-b", "升级武器");
+  await act(async () => h.source(0).findByProps({ type: "search" }).props.onChange({ target: { value: "weapon-b" } }));
+  await h.choose(1, "armor-b");
+  await act(async () => h.source(1).findByProps({ type: "search" }).props.onChange({ target: { value: "armor-b" } }));
+  const navigation = h.root.root.findByProps({ className: "equipment-retarget__sources" }).findAllByType("button");
+  await act(async () => navigation[0].props.onClick());
+  assert.equal(h.source(0).props.hidden, false);
+  assert.equal(h.source(1).props.hidden, true);
+  assert.equal(h.source(0).findByProps({ type: "search" }).props.value, "weapon-b");
+  assert.equal(h.source(1).findByProps({ type: "search" }).props.value, "armor-b");
+  assert.equal(h.source(0).findByProps({ type: "radio", value: JSON.stringify(["weapon-b", "升级武器"]) }).props.checked, true);
+  assert.equal(h.api.calls.filter((call) => call.kind === "configuration").length, 0);
+  await h.click(0);
+  assert.deepEqual(h.api.calls.find((call) => call.kind === "preview").input.slots, [
+    { action: "retarget", sourceId: "source-weapon", targetId: "weapon-b" },
+    { action: "retarget", sourceId: "source-armor", targetId: "armor-b" },
+  ]);
+});
+
+test("unknown group installation or missing catalog target never claims an uninstalled/default target", options, async (t) => {
+  const config = structuredClone(configuration);
+  config.installedTargets = { "source-weapon": "missing-target" };
+  const h = await mount(t, { config });
+  await h.update({ installStatus: "unknown" });
+  const context = text(h.source(0).findByProps({ className: "equipment-retarget__context" }));
+  assert.ok(context.includes("当前安装对象暂不可确认"));
+  assert.ok(!context.includes("尚未安装"));
+  const sourceButton = h.root.root.findByProps({ className: "equipment-retarget__sources" }).findAllByType("button")[0];
+  assert.ok(text(sourceButton.findByType("span")).includes("所选目标暂不可确认"));
+  assert.equal(h.buttons()[1].props.disabled, true);
+});
+
 test("kinsect sources show localized original names and submit aliases using backend target identity", options, async (t) => {
   const kinsect = { ...target("mus024", "kinsect"), aliases: ["人工猎虫·攻", "Artificial Kinsect Forz", "人工猟虫・攻"],
     aliasesByLocale: { zh_cn: ["人工猎虫·攻"], en: ["Artificial Kinsect Forz"], ja: ["人工猟虫・攻"] } };
@@ -197,7 +237,7 @@ test("kinsect sources show localized original names and submit aliases using bac
     displayNames: { zh_cn: "人工猎虫", en: "Artificial Kinsect", ja: "人工猟虫" } }, originalTargetId: "mus001", targets: [target("mus001", "kinsect"), kinsect] });
   const h = await mount(t, { config });
   assert.ok(text(h.root.toJSON()).includes("猎虫 · 人工猎虫 (mus001)"));
-  assert.ok(h.root.root.findAllByType("option").map(text).includes("人工猎虫·攻 (mus024)"));
+  assert.ok(h.root.root.findAllByProps({ className: "replacement-panel__target-row" }).map(text).some((label) => label.includes("人工猎虫·攻") && label.includes("mus024")));
   await h.choose(2, "mus024", "人工猎虫·攻");
   await h.click(0);
   assert.deepEqual(h.api.calls.find((call) => call.kind === "preview").input.slots, [

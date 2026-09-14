@@ -4,8 +4,17 @@ type RetargetDialogCopy = {
   title: string;
   selection: string;
   preview: string;
-  emptyTitle: string;
-  emptyDescription: string;
+  showPreview: string;
+  collapsePreview: string;
+  closeDetails: string;
+  currentAndDefault: string;
+  current: string;
+  original: string;
+  notInstalled: string;
+  selected: string;
+  unavailableTarget: string;
+  attachments: (selected: number, excluded: number) => string;
+  sources: (count: number) => string;
 };
 
 export const retargetDialogCopy = {
@@ -13,21 +22,48 @@ export const retargetDialogCopy = {
     title: "MOD 文件重定向",
     selection: "选择目标",
     preview: "文件变更预览",
-    emptyTitle: "先选择目标，再预览文件变更",
-    emptyDescription: "预览会在这里列出安装、保留与移除的文件，确认后才会应用。",
+    showPreview: "查看预览",
+    collapsePreview: "收起预览",
+    closeDetails: "关闭详情",
+    currentAndDefault: "当前 · 作者默认",
+    current: "当前",
+    original: "作者默认",
+    notInstalled: "尚未安装",
+    selected: "已选目标",
+    unavailableTarget: "所选目标暂不可确认，请重新选择",
+    attachments: (selected, excluded) => `附件 · 已选 ${selected} / 排除 ${excluded}`,
+    sources: (count) => `包内 ${count} 件装备`,
   },
   en: {
     title: "MOD file retargeting",
     selection: "Choose targets",
     preview: "File changes",
-    emptyTitle: "Choose a target to preview file changes",
-    emptyDescription: "Review files to install, keep and remove here before confirming the changes.",
+    showPreview: "Show preview",
+    collapsePreview: "Hide preview",
+    closeDetails: "Close details",
+    currentAndDefault: "Current · Original",
+    current: "Current",
+    original: "Original",
+    notInstalled: "Not installed",
+    selected: "Selected target",
+    unavailableTarget: "Selected target unavailable. Choose again.",
+    attachments: (selected, excluded) => `Files · ${selected} selected / ${excluded} excluded`,
+    sources: (count) => `${count} items in this package`,
   },
   ja: {
     title: "MOD ファイルのリターゲット",
     selection: "対象を選択",
     preview: "ファイル変更のプレビュー",
-    emptyTitle: "対象を選んでファイル変更を確認",
-    emptyDescription: "インストール・保持・削除するファイルをここで確認できます。変更は確定後に適用されます。",
+    showPreview: "プレビューを表示",
+    collapsePreview: "プレビューを閉じる",
+    closeDetails: "詳細を閉じる",
+    currentAndDefault: "現在 · 作者の設定",
+    current: "現在",
+    original: "作者の設定",
+    notInstalled: "未インストール",
+    selected: "選択した対象",
+    unavailableTarget: "選択した対象を確認できません。再選択してください。",
+    attachments: (selected, excluded) => `付属ファイル · 選択 ${selected} / 除外 ${excluded}`,
+    sources: (count) => `パッケージ内の装備 ${count} 件`,
   },
 } satisfies LocaleDictionary<RetargetDialogCopy>;
