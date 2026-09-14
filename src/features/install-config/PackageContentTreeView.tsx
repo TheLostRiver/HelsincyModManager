@@ -30,6 +30,8 @@ const OVERSCAN = 6;
 
 type PackageContentTreeViewProps = {
   rows: readonly PackageTreeRow[];
+  /** 筛选或显示模式变化时回到结果开头；预览折叠不改变此键。 */
+  viewKey?: string;
   onToggle: (path: string) => void;
   /** 目录三态；不含可勾选文件的目录不在表里，因此不渲染勾选框。 */
   selectionStates: ReadonlyMap<string, SelectionState>;
@@ -48,6 +50,7 @@ type PackageContentTreeViewProps = {
 
 export function PackageContentTreeView({
   rows,
+  viewKey,
   onToggle,
   selectionStates,
   excludedFiles,
@@ -61,6 +64,12 @@ export function PackageContentTreeView({
   const [activeIndex, setActiveIndex] = useState(0);
   // 只在键盘驱动焦点时才把 DOM 焦点搬过去；否则每次滚动重渲染都会把焦点抢回树里。
   const shouldFocusRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setScrollTop(0);
+    setActiveIndex(0);
+  }, [viewKey]);
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -80,6 +89,14 @@ export function PackageContentTreeView({
   useEffect(() => {
     setActiveIndex((current) => Math.max(0, Math.min(current, rows.length - 1)));
   }, [rows.length]);
+
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const top = Math.min(element.scrollTop, Math.max(0, rows.length * ROW_HEIGHT - element.clientHeight));
+    element.scrollTop = top;
+    setScrollTop(top);
+  }, [rows.length, viewportHeight]);
 
   const window_ = resolveVisibleWindow({
     scrollTop,
@@ -102,6 +119,8 @@ export function PackageContentTreeView({
     } else if (bottom > element.scrollTop + element.clientHeight) {
       element.scrollTop = bottom - element.clientHeight;
     }
+    // 键盘跳到虚拟窗口之外时，先渲染目标行，再由焦点 effect 定位。
+    setScrollTop(element.scrollTop);
   }, []);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -137,6 +156,8 @@ export function PackageContentTreeView({
   });
 
   const visibleRows = rows.slice(window_.startIndex, window_.endIndex);
+  const tabStopIndex = activeIndex >= window_.startIndex && activeIndex < window_.endIndex
+    ? activeIndex : Math.min(rows.length - 1, Math.ceil(scrollTop / ROW_HEIGHT));
 
   return (
     <div
@@ -159,7 +180,9 @@ export function PackageContentTreeView({
               key={row.node.path}
               row={row}
               index={index}
-              isActive={index === activeIndex}
+              isActive={index === tabStopIndex}
+              excluded={excludedFiles.has(row.node.path)}
+              onFocus={() => setActiveIndex(index)}
               selectionState={resolveRowSelection(row, selectionStates, excludedFiles)}
               onActivate={() => {
                 shouldFocusRef.current = true;
@@ -201,6 +224,8 @@ type TreeRowProps = {
   row: PackageTreeRow;
   index: number;
   isActive: boolean;
+  excluded: boolean;
+  onFocus: () => void;
   selectionState: SelectionState | null;
   onActivate: () => void;
   onToggle: (path: string) => void;
@@ -213,6 +238,8 @@ function TreeRow({
   row,
   index,
   isActive,
+  excluded,
+  onFocus,
   selectionState,
   onActivate,
   onToggle,
@@ -240,7 +267,7 @@ function TreeRow({
       title={
         targetPathState !== null && targetPathState.kind === "resolved"
           ? copy.tree.targetPathTitle(targetPathState.targetPath)
-          : undefined
+          : node.path
       }
       role="treeitem"
       aria-level={row.level}
@@ -265,6 +292,7 @@ function TreeRow({
           : node.name
       }
       tabIndex={isActive ? 0 : -1}
+      onFocus={onFocus}
       style={{
         top: `${index * ROW_HEIGHT}px`,
         paddingInlineStart: `${row.level * INDENT_PER_LEVEL}px`,
@@ -298,7 +326,7 @@ function TreeRow({
       {node.kind === "directory" ? (
         <span className="install-config-tree__meta">{copy.tree.fileCount(node.stats.fileCount)}</span>
       ) : (
-        <FileFacts entry={node.entry} contentRootKind={contentRootKind} copy={copy} />
+        <FileFacts entry={node.entry} excluded={excluded} contentRootKind={contentRootKind} copy={copy} />
       )}
     </div>
   );
@@ -346,10 +374,12 @@ function TriStateCheckbox({ state, onToggle }: { state: SelectionState; onToggle
  */
 function FileFacts({
   entry,
+  excluded,
   contentRootKind,
   copy,
 }: {
   entry: PackageContentEntry;
+  excluded: boolean;
   contentRootKind: PackageContentRootKind;
   copy: InstallConfigCopy;
 }) {
@@ -364,7 +394,7 @@ function FileFacts({
           {copy.facts.rejectedByGame.label}
         </span>
       ) : null}
-      {entry.excludedByPlayer ? (
+      {excluded ? (
         <span
           className="install-config-fact install-config-fact--accent"
           title={copy.facts.excludedByPlayer.detail}
