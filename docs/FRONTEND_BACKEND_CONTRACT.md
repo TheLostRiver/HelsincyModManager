@@ -1698,6 +1698,12 @@ cancel_task(taskId)
 - `clear_mod_package_content_root` 撤销选择、回到自动解析；包内有多个 `nativePC` 时会重新变回 `ambiguous`（等玩家决定），这是预期行为而不是失败。
 - `set_mod_package_file_selection` 记下玩家勾掉的文件（`#354` 切片 D3）。前端提交的是**要排除的** `packageFileId` 清单，**不是要保留的**：空清单表示不额外排除文件，仍适用游戏文件政策和 profile 插件选择。新出现的普通文件不会因缺少历史勾选而静默漏装；新插件仍按版本及摘要确认。
 - `set_mod_package_file_selection` 与 `clear_mod_package_file_selection` 都**回读**并返回设置生效之后的 `PackageContentsDto`。
+- 安装配置窗口的单目录链压缩、文件搜索和排除筛选只改变展示，仍以原始 `packageFileId` 和完整
+  目录节点处理选择；过滤后的列表不得缩小目录级联操作的范围。内容根正常态为紧凑摘要，歧义和
+  失败时展开候选；保存仍沿用原 command。附件和安装位置按需展开，不重新挂载查询控制器。
+- 安装配置中的“保存配置”不写游戏文件，普通安装计划仍只反映已保存事实，草稿变化必须明确标记
+  计划未更新。已安装配置的“预览安装变更”继续调用 `preview_equipment_reapply`；结果按需显示，
+  确认应用仍提交其 token，不能因布局调整跳过原授权、任务隔离或再次校验。
 - 勾掉的文件**仍然逐条列在 `entries` 里**，只是 `excludedByPlayer` 为 `true`——勾掉不等于看不见，否则玩家勾不回来。`excludedFiles` 是同一份事实的集合形式。
 - `entries[].excludedByPlayer` 与 `installable` / `rejectedByGame` 是**三条互相独立的事实**，前端不得合并：前者是「玩家要不要」，后两者是「本游戏允许不允许」。合并就说不清「它为什么不装」。
 - 排除项**不校验是否仍然存在**，与内容根刻意不同：陈旧的排除项最坏只是不命中任何文件，而陈旧的内容根会让路径从错误的根起算——后者必须 fail closed，前者不该。

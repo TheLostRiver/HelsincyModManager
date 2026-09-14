@@ -126,7 +126,7 @@ export type InstallConfigCopy = {
 export const installConfigCopy = {
   zh_cn: {
     page: {
-      description: "看清这个包里有什么，再决定装哪些、从哪一层开始装。",
+      description: "选择需要安装的文件和附件。保存配置后，预览并确认才能更新游戏文件。",
       treeAria: "包内容树",
       summary: ({ fileCount, installableCount }) =>
         `共 ${fileCount} 个文件，其中 ${installableCount} 个在安装范围内`,
@@ -134,7 +134,7 @@ export const installConfigCopy = {
       summaryExcluded: (count) => `${count} 个已被你勾掉`,
     },
     contentRoot: {
-      heading: "内容根",
+      heading: "起始目录",
       kind: {
         single: "已确定",
         fallback: "包的根目录",
@@ -193,18 +193,18 @@ export const installConfigCopy = {
       empty: "按当前选择，这个包不会安装任何文件。",
       targetsLabel: "落点",
       targetGroup: ({ prefix, fileCount }) => `${prefix}（${fileCount}）`,
-      stale: (driftCount) => `有 ${driftCount} 处未保存的勾选改动，下面的计划还没算上。`,
+      stale: (driftCount) => `${driftCount} 处改动未保存，当前计划尚未更新。`,
       staleAction: "保存并刷新",
       needsContentRoot: "先在上方选定内容根，才能算出这个包会装到哪里。",
       failed: "算不出安装计划。",
       retry: "重新计算",
     },
     actions: {
-      save: "保存选择",
+      save: "保存配置",
       saveAndClose: "保存并关闭",
       saving: "正在保存…",
       discard: "放弃改动",
-      saved: "选择已保存，安装时按此执行。",
+      saved: "配置已保存；更新已安装文件需预览并确认。",
       unsaved: "有未保存的改动。",
       saveFailed: "保存未完成，请检查提示后重试。",
       confirmCloseDetail: "有未保存的改动，关掉就没了。",
@@ -225,7 +225,7 @@ export const installConfigCopy = {
   },
   en: {
     page: {
-      description: "See what is inside the package, then decide what to install and where it starts from.",
+      description: "Choose files and attachments. Save the configuration, then preview and confirm to update game files.",
       treeAria: "Package contents tree",
       summary: ({ fileCount, installableCount }) =>
         `${fileCount} files, ${installableCount} of them within the install scope`,
@@ -233,7 +233,7 @@ export const installConfigCopy = {
       summaryExcluded: (count) => `${count} excluded by you`,
     },
     contentRoot: {
-      heading: "Content root",
+      heading: "Starting directory",
       kind: {
         single: "Resolved",
         fallback: "Package root",
@@ -290,18 +290,18 @@ export const installConfigCopy = {
       targetsLabel: "Lands in",
       targetGroup: ({ prefix, fileCount }) => `${prefix} (${fileCount})`,
       stale: (driftCount) =>
-        `${driftCount} unsaved selection change${driftCount === 1 ? "" : "s"} are not reflected in the plan below.`,
+        `${driftCount} unsaved change${driftCount === 1 ? "" : "s"}; the current plan has not been updated.`,
       staleAction: "Save and refresh",
       needsContentRoot: "Pick a content root above to see where this package lands.",
       failed: "The install plan could not be computed.",
       retry: "Recompute",
     },
     actions: {
-      save: "Save selection",
+      save: "Save configuration",
       saveAndClose: "Save and close",
       saving: "Saving…",
       discard: "Discard changes",
-      saved: "Selection saved; installs will follow it.",
+      saved: "Configuration saved. Preview and confirm to update installed files.",
       unsaved: "You have unsaved changes.",
       saveFailed: "Saving is incomplete. Check the messages and try again.",
       confirmCloseDetail: "You have unsaved changes. Closing discards them.",
@@ -322,7 +322,7 @@ export const installConfigCopy = {
   },
   ja: {
     page: {
-      description: "パッケージの中身を確認してから、何をどこから入れるか決めます。",
+      description: "ファイルと付属品を選択します。設定を保存し、変更を確認してからゲームに適用します。",
       treeAria: "パッケージ内容ツリー",
       summary: ({ fileCount, installableCount }) =>
         `全 ${fileCount} ファイル中 ${installableCount} 件がインストール対象範囲内`,
@@ -330,7 +330,7 @@ export const installConfigCopy = {
       summaryExcluded: (count) => `${count} 件を除外済み`,
     },
     contentRoot: {
-      heading: "コンテンツルート",
+      heading: "起点ディレクトリ",
       kind: {
         single: "確定済み",
         fallback: "パッケージのルート",
@@ -387,18 +387,18 @@ export const installConfigCopy = {
       targetsLabel: "配置先",
       targetGroup: ({ prefix, fileCount }) => `${prefix}（${fileCount}）`,
       stale: (driftCount) =>
-        `未保存の選択変更が ${driftCount} 件あり、下の計画には反映されていません。`,
+        `未保存の変更が ${driftCount} 件あります。現在の計画は未更新です。`,
       staleAction: "保存して更新",
       needsContentRoot: "上でコンテンツルートを指定すると、配置先を算出できます。",
       failed: "インストール計画を算出できません。",
       retry: "再計算",
     },
     actions: {
-      save: "選択を保存",
+      save: "設定を保存",
       saveAndClose: "保存して閉じる",
       saving: "保存中…",
       discard: "変更を破棄",
-      saved: "選択を保存しました。インストールはこの内容に従います。",
+      saved: "設定を保存しました。既存ファイルの更新はプレビュー確認後に適用します。",
       unsaved: "未保存の変更があります。",
       saveFailed: "保存が完了していません。表示された内容を確認して再試行してください。",
       confirmCloseDetail: "未保存の変更があります。閉じると失われます。",

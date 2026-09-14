@@ -10,12 +10,13 @@ type RetargetWorkspaceProps = {
   feedback: ReactNode;
   actions: ReactNode;
   previewStatus: "idle" | "loading" | "ready" | "error";
+  labels?: { selection: string; preview: string; collapsePreview: string; showPreview: string };
 };
 
 /** 单来源和多来源共用布局；安装判断与任务状态仍由各自工作流提供。 */
-export function RetargetWorkspace({ selection, preview, feedback, actions, previewStatus }: RetargetWorkspaceProps) {
+export function RetargetWorkspace({ selection, preview, feedback, actions, previewStatus, labels }: RetargetWorkspaceProps) {
   const { locale } = useI18n();
-  const copy = resolveCopy(retargetDialogCopy, locale);
+  const copy = labels ?? resolveCopy(retargetDialogCopy, locale);
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewRef = useRef<HTMLElement | null>(null);
   const selectionRef = useRef<HTMLElement | null>(null);
