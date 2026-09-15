@@ -31,6 +31,7 @@ pub fn start_external_mod_adopt(
     app_handle: AppHandle,
 ) -> Result<ExternalModAdoptStartedDto, CommandErrorDto> {
     let (game_id, profile_id, mod_id) = parse_external_state_ids(game_id, profile_id, mod_id)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &profile_id)?;
     let layer = parse_layer(layer_name, layer_priority)?;
 
     let launch = state

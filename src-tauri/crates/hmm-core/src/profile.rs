@@ -1,6 +1,6 @@
 pub const DEFAULT_PROFILE_ID: &str = "default";
 
-/// A user-editable mod loadout scope.
+/// A user-editable Steam account, save-directory and save-backup configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,

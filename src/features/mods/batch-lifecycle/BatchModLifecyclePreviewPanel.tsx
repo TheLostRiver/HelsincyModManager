@@ -205,7 +205,7 @@ export function BatchModLifecyclePreviewPanel({
             type="button"
             className="batch-panel__close"
             aria-label={panelCopy.closeAria}
-          onClick={onClose}
+            onClick={onClose}
             disabled={pluginSaving || workflowState.status === "confirming"}
           >
             <X size={16} aria-hidden="true" />
@@ -346,7 +346,8 @@ export function BatchModLifecyclePreviewPanel({
         </div>
 
         <footer className="batch-panel__footer">
-          <button type="button" className="batch-panel__cancel" onClick={onClose}>
+          <button type="button" className="batch-panel__cancel"
+            disabled={pluginSaving || workflowState.status === "confirming"} onClick={onClose}>
             {panelCopy.cancel}
           </button>
           {targetSelection !== null ? (

@@ -214,8 +214,8 @@ partial failure/retry、recovery、批量卸载和 exact baseline，并于 2026-
 
 已完成能力继续保留。Gate A/B 直接需要的最小 manifest/preflight/UI 子集、T19 产品化加固、T18
 Slice 1/2/3/4A/4B/4C、T17 Slice 1/2/3/4A/4B/4C/5 与 T13 Slice A-D 均已完成。批量破坏性操作继续
-受 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 约束，只在显式 Sandbox capability
-下开放；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
+受 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 约束，正式桌面与显式 Sandbox 均须
+通过数据根、token、写锁和恢复门禁；T17 保持 Windows + MHW:I 与 import-only 边界，不扩张到 Linux/Steam Deck 或更多游戏。
 CAT-01 装备数据治理、WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer 与
 WR-03B staging/InstallPlan/manifest 集成和 WR-04 受控 Tauri/UI/Gate D 均已完成，Gate D 为
 `certified`；AR6/WR-02B 已于 2026-08-21 依 `game_terminology` 许可边界入库，LOG-01 Task/Audit

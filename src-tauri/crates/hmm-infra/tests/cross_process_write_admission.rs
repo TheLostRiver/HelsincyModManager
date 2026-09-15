@@ -111,6 +111,29 @@ fn background_scope_times_out_while_profile_scopes_remain_available() {
 }
 
 #[test]
+fn game_writes_in_different_namespaces_contend_across_processes() {
+    let fixture = AdmissionFixture::new();
+    let mut holder = fixture.spawn_helper_for_scope("hold", "game", "old-account");
+    wait_for_file(&holder.ready_path, &mut holder.child, CHILD_WAIT_LIMIT);
+    let admission = fixture.admission();
+    let result = admission.acquire(
+        &game_scope("installation-b"),
+        Duration::from_millis(150),
+        &NeverCancelled,
+    );
+    assert!(matches!(result, Err(CrossProcessWriteAdmissionError::Busy)));
+    holder.finish();
+    let released = admission
+        .acquire(
+            &game_scope("installation-b"),
+            Duration::ZERO,
+            &NeverCancelled,
+        )
+        .unwrap();
+    drop(released);
+}
+
+#[test]
 fn cancellation_interrupts_a_cross_process_wait() {
     let fixture = AdmissionFixture::new();
     let mut holder = fixture.spawn_helper("hold", "profile-a");
@@ -189,6 +212,7 @@ fn cross_process_write_admission_helper() {
     let scope = match scope_kind.as_str() {
         "background" => CrossProcessWriteScope::background_registration(),
         "save" => save_scope(&profile_id),
+        "game" => game_scope(&profile_id),
         _ => panic!("unknown helper scope kind"),
     };
     let guard = admission

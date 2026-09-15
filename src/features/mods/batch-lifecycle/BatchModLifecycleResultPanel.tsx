@@ -161,7 +161,7 @@ export function BatchModLifecycleRunningPanel({
   const bCopy = resolveCopy(batchModLifecycleCopy, locale);
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const starting = workflowState.status === "starting";
+  const starting = workflowState.status === "starting" || workflowState.status === "retrying";
   useModalFocusTrap({
     active: true,
     containerRef: panelRef,
@@ -176,7 +176,7 @@ export function BatchModLifecycleRunningPanel({
   const operation =
     workflowState.status === "starting"
       ? (workflowState.request.operation as "install" | "uninstall" | "reinstall")
-      : "install";
+      : workflowState.status === "retrying" ? workflowState.operation : "install";
 
   return (
     <div className="batch-panel__backdrop" role="presentation">

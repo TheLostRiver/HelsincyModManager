@@ -859,11 +859,17 @@ fn unsupported_game_returns_usage_envelope() {
 #[test]
 fn sandbox_install_plan_returns_safe_relative_targets_in_json() {
     let sandbox = tempfile::tempdir().expect("sandbox");
+    let game_root = create_game_fixture(sandbox.path(), true);
+    write_game_config(sandbox.path(), &game_root);
     write_mod_catalog_and_sandbox(sandbox.path());
 
-    let output = hmm_install_in_sandbox(sandbox.path(), "json", &["plan", "--mod", "mod-a"]);
+    let output = hmm_install_in_sandbox(
+        sandbox.path(),
+        "json",
+        &["plan", "--installation-scope", "auto", "--mod", "mod-a"],
+    );
 
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0), "{}", stdout_text(&output));
     assert_eq!(stderr_text(&output), "");
     let stdout = stdout_text(&output);
     assert!(!stdout.contains(&sandbox.path().to_string_lossy().to_string()));
@@ -879,6 +885,20 @@ fn sandbox_install_plan_returns_safe_relative_targets_in_json() {
         "nativePC/models/player.mod3"
     );
     assert!(value["result"]["actions"][0].get("packageFileId").is_none());
+}
+
+#[test]
+fn sandbox_install_plan_requires_a_game_directory_to_resolve_the_installation() {
+    let sandbox = tempfile::tempdir().expect("sandbox");
+    write_mod_catalog_and_sandbox(sandbox.path());
+    let before = tree_snapshot(sandbox.path());
+
+    let output = hmm_install_in_sandbox(sandbox.path(), "json", &["plan", "--mod", "mod-a"]);
+
+    assert_eq!(output.status.code(), Some(3));
+    let value: Value = serde_json::from_str(&stdout_text(&output)).expect("scope error json");
+    assert_eq!(value["error"]["code"], "game_instance_unavailable");
+    assert_eq!(tree_snapshot(sandbox.path()), before);
 }
 
 #[test]

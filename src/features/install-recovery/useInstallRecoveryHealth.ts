@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { scanInstallRecovery } from "../mods/modInstallPlanApi";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "../mods/ModInstallationProvider";
 import { deriveInstallRecoveryHealth, type InstallRecoveryHealth } from "./installRecoveryHealth";
 import { subscribeInstallRecoveryRefresh } from "./installRecoveryRefresh";
 
@@ -17,7 +17,7 @@ type UseInstallRecoveryHealthInput = {
 };
 
 export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): InstallRecoveryHealthLoadState {
-  const { activeProfile, activeProfileId } = useActiveProfile();
+  const { installationScope, installationScopeId } = useModInstallation();
   const [state, setState] = useState<InstallRecoveryHealthLoadState>({ status: "idle" });
   const [refreshToken, setRefreshToken] = useState(0);
 
@@ -32,7 +32,7 @@ export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): 
   }, [input.enabled]);
 
   useEffect(() => {
-    if (!input.enabled || activeProfile.status !== "ready" || activeProfileId === null) {
+    if (!input.enabled || installationScope.status !== "ready" || installationScopeId === null) {
       setState({ status: "idle" });
       return undefined;
     }
@@ -42,7 +42,7 @@ export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): 
 
     void scanInstallRecovery({
       gameId: input.gameId,
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       modIds: [],
     })
       .then((summaries) => {
@@ -59,7 +59,7 @@ export function useInstallRecoveryHealth(input: UseInstallRecoveryHealthInput): 
     return () => {
       cancelled = true;
     };
-  }, [activeProfile.status, activeProfileId, input.enabled, input.gameId, refreshToken]);
+  }, [installationScope.status, installationScopeId, input.enabled, input.gameId, refreshToken]);
 
   return state;
 }

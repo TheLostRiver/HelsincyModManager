@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { GameId } from "../game-setup/gameSetupTypes";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "../mods/ModInstallationProvider";
 import {
   previewRecoveryAction,
   startRecoveryActionTask,
@@ -68,7 +68,7 @@ type UseRecoveryRollbackInput = {
 
 export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
   const { gameId, onCompleted } = input;
-  const { activeProfile, activeProfileId } = useActiveProfile();
+  const { installationScope, installationScopeId } = useModInstallation();
   const [state, setStateValue] = useState<RecoveryRollbackState>({ status: "idle" });
   const [actionKind, setActionKind] = useState<InstallRecoveryActionKind>("rollback_install");
   const [listenerReady, setListenerReady] = useState(false);
@@ -97,7 +97,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
       }
       setActionKind(requestedActionKind);
 
-      if (activeProfile.status !== "ready" || activeProfileId === null) {
+      if (installationScope.status !== "ready" || installationScopeId === null) {
         setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
         return;
       }
@@ -112,7 +112,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
 
       void previewRecoveryAction({
         gameId,
-        profileId: activeProfileId,
+        profileId: installationScopeId,
         modId,
         actionKind: requestedActionKind,
       })
@@ -121,7 +121,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
             return;
           }
 
-          if (preview.profileId !== activeProfileId || preview.modId !== modId || preview.actionKind !== requestedActionKind
+          if (preview.profileId !== installationScopeId || preview.modId !== modId || preview.actionKind !== requestedActionKind
             || (preview.availability === "available" && requestedActionKind === "uninstall_missing_targets"
               && (!(typeof preview.planToken === "string" && preview.planToken.length > 0)
                 || !Number.isSafeInteger(preview.missingFileCount) || (preview.missingFileCount ?? 0) < 1))) {
@@ -141,7 +141,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           }
         });
     },
-    [activeProfile.status, activeProfileId, gameId, listenerReady, setState],
+    [installationScope.status, installationScopeId, gameId, listenerReady, setState],
   );
 
   const confirmRollback = useCallback(() => {
@@ -151,7 +151,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
     }
 
     const { modId } = current;
-    if (activeProfile.status !== "ready" || activeProfileId === null || current.preview.profileId !== activeProfileId) {
+    if (installationScope.status !== "ready" || installationScopeId === null || current.preview.profileId !== installationScopeId) {
       setState({ status: "failed", modId, reason: "profile_not_ready", backendMessage: null });
       return;
     }
@@ -160,7 +160,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
 
     void startRecoveryActionTask({
       gameId,
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       modId,
       actionKind: current.preview.actionKind,
       ...(current.preview.planToken ? { planToken: current.preview.planToken } : {}),
@@ -205,7 +205,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
           setState({ status: "failed", modId, reason: "start_failed", backendMessage: null });
         }
       });
-  }, [activeProfile.status, activeProfileId, gameId, markCompleted, setState]);
+  }, [installationScope.status, installationScopeId, gameId, markCompleted, setState]);
 
   const dismiss = useCallback(() => {
     if (stateRef.current.status === "starting" || stateRef.current.status === "running") return;
@@ -217,7 +217,7 @@ export function useRecoveryRollback(input: UseRecoveryRollbackInput) {
     requestSequenceRef.current += 1;
     if (stateRef.current.status !== "starting" && stateRef.current.status !== "running") setState({ status: "idle" });
     return () => { requestSequenceRef.current += 1; };
-  }, [activeProfileId, gameId, setState]);
+  }, [installationScopeId, gameId, setState]);
 
   useEffect(() => {
     let disposed = false;

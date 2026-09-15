@@ -97,7 +97,7 @@ export type ExternalStateSectionCopy = {
   occupiedNotice: (names: string[], claimedFileCount: number) => string;
   /** Per-file-row claim tag; `name` is already display-name-or-id resolved. */
   fileClaimedBy: (name: string) => string;
-  /** Shown instead of the action when no profile is selected. */
+  /** Shown when the game installation context is unavailable. */
   profileRequired: string;
   fileListCaption: string;
   fileHeaderPath: string;
@@ -191,7 +191,7 @@ export const externalStateCopy = {
           "没有可接管的文件：需要文件与导入包一致，且未被其他 MOD 占用。",
         external_mod_adopt_already_installed: "该 MOD 已由 HMM 管理，不需要接管；如需更新请使用重装。",
         external_mod_adopt_manifest_not_trusted:
-          "该配置档的安装记录处于进行中或异常状态，请先到恢复中心处理。",
+          "当前游戏的安装记录处于进行中或异常状态，请先到恢复中心处理。",
         external_mod_adopt_manifest_unavailable: "读取安装记录失败，请稍后重试。",
         external_mod_adopt_manifest_write_failed: "写入安装记录失败，未做任何更改，可直接重试。",
         external_mod_adopt_game_file_unavailable: "无法读取游戏目录的文件信息，请稍后重试。",
@@ -258,7 +258,7 @@ export const externalStateCopy = {
     occupiedNotice: (names, claimedFileCount) =>
       `比对集中有 ${claimedFileCount} 个文件已被 HMM 名下的 MOD 占用：${names.join("、")}。它们是 HMM 管理的安装内容，不是外部安装的文件。`,
     fileClaimedBy: (name) => `已被「${name}」占用`,
-    profileRequired: "当前没有可用的配置档，无法检查。",
+    profileRequired: "当前游戏安装信息不可用，暂时无法检查。",
     fileListCaption: "文件明细",
     fileHeaderPath: "文件",
     fileHeaderState: "状态",
@@ -322,7 +322,7 @@ export const externalStateCopy = {
         external_mod_adopt_already_installed:
           "This mod is already managed by HMM; use reinstall to update it.",
         external_mod_adopt_manifest_not_trusted:
-          "This profile's install record is in progress or in an abnormal state. Resolve it in the recovery center first.",
+          "This game's install record is in progress or in an abnormal state. Resolve it in the recovery center first.",
         external_mod_adopt_manifest_unavailable: "Reading the install record failed. Try again later.",
         external_mod_adopt_manifest_write_failed:
           "Writing the install record failed; nothing was changed. You can retry right away.",
@@ -395,7 +395,7 @@ export const externalStateCopy = {
     occupiedNotice: (names, claimedFileCount) =>
       `${claimedFileCount} of the compared files are claimed by HMM-managed mods: ${names.join(", ")}. They are managed installs, not external content.`,
     fileClaimedBy: (name) => `Claimed by "${name}"`,
-    profileRequired: "No profile is available, so the check cannot run.",
+    profileRequired: "The game installation is unavailable, so the check cannot run.",
     fileListCaption: "File details",
     fileHeaderPath: "File",
     fileHeaderState: "State",
@@ -461,7 +461,7 @@ export const externalStateCopy = {
         external_mod_adopt_already_installed:
           "この MOD はすでに HMM が管理しています。更新する場合は再インストールを使用してください。",
         external_mod_adopt_manifest_not_trusted:
-          "このプロファイルの導入記録が処理中または異常な状態です。先にリカバリーセンターで対処してください。",
+          "このゲームの導入記録が処理中または異常な状態です。先にリカバリーセンターで対処してください。",
         external_mod_adopt_manifest_unavailable: "導入記録の読み取りに失敗しました。後で再試行してください。",
         external_mod_adopt_manifest_write_failed:
           "導入記録の書き込みに失敗しました。変更は行われていないため、すぐに再試行できます。",
@@ -534,7 +534,7 @@ export const externalStateCopy = {
     occupiedNotice: (names, claimedFileCount) =>
       `比較対象のうち ${claimedFileCount} 件は HMM 管理下の MOD が占有しています：${names.join("、")}。外部導入の内容ではなく、HMM が管理するファイルです。`,
     fileClaimedBy: (name) => `「${name}」が占有中`,
-    profileRequired: "利用可能なプロファイルがないため、確認できません。",
+    profileRequired: "ゲームのインストール情報を取得できないため、確認できません。",
     fileListCaption: "ファイル詳細",
     fileHeaderPath: "ファイル",
     fileHeaderState: "状態",

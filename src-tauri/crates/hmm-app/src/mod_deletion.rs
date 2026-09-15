@@ -1,7 +1,7 @@
 //! Mod 库删除：从库中移除 logical Mod 并回收其全部存储（#276）。
 //!
 //! 门禁（全部后端判定，fail closed）：
-//! - 任一 profile 的安装清单在可信状态下仍有该 Mod 的条目 → 该 Mod 的文件还在
+//! - 任一游戏安装作用域的清单在可信状态下仍有该 Mod 的条目 → 该 Mod 的文件还在
 //!   游戏目录，删除被拒（`blocked_installed`），玩家须先卸载；
 //! - 安装清单处于不可信/失败态（planned/committing/rollback/repair）或存在
 //!   reinstall recovery 事务 → 状态未决，删除被拒（`blocked_recovery`）。
@@ -12,11 +12,12 @@
 //! 约定 append-only 保留，删除只追加事件。
 
 use crate::{ModStorageWriteGate, ModStorageWriteGateError};
-use hmm_core::{InstallManifestStatusConsumption, ModId, Profile, ProfileId};
+use hmm_core::{InstallManifestStatusConsumption, ModId, ProfileId};
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, CategoryRepository, InstallManifestRepository,
-    ModImportResultRepository, ModImportSandboxLocator, ModMetadataRepository, ProfileRepository,
-    ReinstallRecoveryTransactionRepository, ReplacementSelectionRepository, ThumbnailStore,
+    InstallRecoveryRecordRepository, ModImportResultRepository, ModImportSandboxLocator,
+    ModInstallationScopeIndex, ModMetadataRepository, ReinstallRecoveryTransactionRepository,
+    ReplacementSelectionRepository, ThumbnailStore,
 };
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use thiserror::Error;
 pub enum ModDeletionError {
     #[error("mod is not present in the library")]
     ModNotFound,
-    #[error("mod is still installed in profiles: {profiles}")]
+    #[error("mod is still installed in installation scopes: {profiles}")]
     BlockedInstalled { profiles: String },
     #[error("mod has pending install or recovery state and cannot be deleted")]
     BlockedRecovery,
@@ -56,7 +57,7 @@ pub struct ModDeletionPreview {
     pub display_name: String,
     pub revision_count: usize,
     pub category_labels: Vec<String>,
-    /// 该 Mod 在哪些 profile 的安装清单里有条目（含未决/失败态）。
+    /// 该 Mod 在哪些安装作用域的清单里有条目（含未决/失败态）；字段名保留兼容。
     pub affected_profiles: Vec<String>,
 }
 
@@ -68,8 +69,9 @@ pub struct ModDeletionResult {
 }
 
 pub struct ModDeletionService {
-    profiles: Arc<dyn ProfileRepository>,
+    scopes: Arc<dyn ModInstallationScopeIndex>,
     install_manifests: Arc<dyn InstallManifestRepository>,
+    install_recovery: Arc<dyn InstallRecoveryRecordRepository>,
     reinstall_recovery: Arc<dyn ReinstallRecoveryTransactionRepository>,
     replacement_selections: Arc<dyn ReplacementSelectionRepository>,
     import_results: Arc<dyn ModImportResultRepository>,
@@ -85,8 +87,9 @@ pub struct ModDeletionService {
 impl ModDeletionService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        profiles: Arc<dyn ProfileRepository>,
+        scopes: Arc<dyn ModInstallationScopeIndex>,
         install_manifests: Arc<dyn InstallManifestRepository>,
+        install_recovery: Arc<dyn InstallRecoveryRecordRepository>,
         reinstall_recovery: Arc<dyn ReinstallRecoveryTransactionRepository>,
         replacement_selections: Arc<dyn ReplacementSelectionRepository>,
         import_results: Arc<dyn ModImportResultRepository>,
@@ -98,8 +101,9 @@ impl ModDeletionService {
         clock: Arc<dyn AppClock>,
     ) -> Self {
         Self {
-            profiles,
+            scopes,
             install_manifests,
+            install_recovery,
             reinstall_recovery,
             replacement_selections,
             import_results,
@@ -119,7 +123,7 @@ impl ModDeletionService {
         self
     }
 
-    /// 删除确认弹窗的数据源：删除什么、影响哪些 profile。
+    /// 删除确认弹窗的数据源：删除什么、影响哪些游戏安装记录。
     pub fn preview_mod_deletion(
         &self,
         mod_id: &ModId,
@@ -182,10 +186,10 @@ impl ModDeletionService {
         }
 
         // ① 选择意图：该 Mod 已不存在于面板流程，意图一并清除（尽力而为）。
-        for profile in &self.profile_list()? {
+        for scope_id in &self.scope_list()? {
             let _ = self
                 .replacement_selections
-                .remove_selection(&Self::profile_id(profile), mod_id);
+                .remove_selection(scope_id, mod_id);
         }
 
         // ② 存储回收（权威目录删除之前，失败则整体干净失败）。
@@ -225,27 +229,34 @@ impl ModDeletionService {
         })
     }
 
-    /// 跨 profile 安装门禁：返回 (已安装事实 profile, 未决/失败态 profile)。
+    /// 跨安装作用域门禁；不依赖存档配置档是否存在或处于活动状态。
     fn installation_gate(&self, mod_id: &ModId) -> Result<InstallationGate, ModDeletionError> {
         let mut gate = InstallationGate::default();
-        for profile in &self.profile_list()? {
-            let profile_id = Self::profile_id(profile);
-
+        for profile_id in &self.scope_list()? {
+            if self
+                .install_recovery
+                .list_records(profile_id)
+                .map_err(|_| ModDeletionError::StoreUnavailable)?
+                .iter()
+                .any(|record| &record.mod_id == mod_id)
+            {
+                gate.recovery_profiles.push(profile_id.as_str().to_owned());
+            }
             // reinstall recovery 事务未决：target switch 的中间状态，
             // 删除会撕碎恢复语义，一律 fail closed。独立于清单存在性判定。
             if self
                 .reinstall_recovery
-                .list_transactions(&profile_id)
+                .list_transactions(profile_id)
                 .map_err(|_| ModDeletionError::StoreUnavailable)?
                 .iter()
                 .any(|transaction| &transaction.mod_id == mod_id)
             {
-                gate.recovery_profiles.push(profile.id.clone());
+                gate.recovery_profiles.push(profile_id.as_str().to_owned());
             }
 
             let Some(manifest) = self
                 .install_manifests
-                .load_manifest(&profile_id)
+                .load_manifest(profile_id)
                 .map_err(|_| ModDeletionError::StoreUnavailable)?
             else {
                 continue;
@@ -254,9 +265,9 @@ impl ModDeletionService {
             if has_entries {
                 match manifest.status.consumption() {
                     InstallManifestStatusConsumption::TrustEntries => {
-                        gate.installed_profiles.push(profile.id.clone());
+                        gate.installed_profiles.push(profile_id.as_str().to_owned());
                     }
-                    _ => gate.recovery_profiles.push(profile.id.clone()),
+                    _ => gate.recovery_profiles.push(profile_id.as_str().to_owned()),
                 }
             }
         }
@@ -265,14 +276,10 @@ impl ModDeletionService {
         Ok(gate)
     }
 
-    fn profile_list(&self) -> Result<Vec<Profile>, ModDeletionError> {
-        self.profiles
-            .list_all()
+    fn scope_list(&self) -> Result<Vec<ProfileId>, ModDeletionError> {
+        self.scopes
+            .list_scope_ids()
             .map_err(|_| ModDeletionError::StoreUnavailable)
-    }
-
-    fn profile_id(profile: &Profile) -> ProfileId {
-        ProfileId::new(&profile.id)
     }
 
     fn display_revision(&self, mod_id: &ModId) -> Option<hmm_ports::StoredModRevision> {

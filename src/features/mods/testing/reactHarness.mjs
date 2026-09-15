@@ -80,7 +80,7 @@ registerHooks({
 });
 
 export const loadFeature = (name) => import(new URL(name, featureUrl).href);
-const { ModImportDropProvider } = await loadFeature("ModImportDropProvider.tsx");
+const { ModImportDropProvider, useModImportDrop } = await loadFeature("ModImportDropProvider.tsx");
 const { ModLibrarySessionCacheProvider, useModLibrarySessionCache } = await loadFeature("ModLibrarySessionCacheProvider.tsx");
 const { useModLibraryQuery } = await loadFeature("useModLibraryQuery.ts");
 export { act };
@@ -128,21 +128,22 @@ function runtime(listenerFails = false) {
   return api;
 }
 
-export async function mountDrop(t, { cacheListenerFails = false, webviewUnavailable = false } = {}) {
-  const api = runtime();
+export async function mountDrop(t, { cacheListenerFails = false, webviewUnavailable = false, listenerFails = false } = {}) {
+  const api = runtime(listenerFails);
   api.cacheListenerFails = cacheListenerFails;
   api.webviewUnavailable = webviewUnavailable;
   function Capture({ children }) { api.cache = useModLibrarySessionCache(); return children; }
+  function CaptureDrop() { api.dropContext = useModImportDrop(); return null; }
   const tree = (route) => React.createElement(React.StrictMode, null,
     React.createElement(ModLibrarySessionCacheProvider, null,
       React.createElement(Capture, null,
-        React.createElement(ModImportDropProvider, null, React.createElement("route", { key: route })))));
+        React.createElement(ModImportDropProvider, null, React.createElement(CaptureDrop), React.createElement("route", { key: route })))));
   let root;
   await act(async () => { root = TestRenderer.create(tree("mods")); });
   t.after(async () => { await act(async () => root.unmount()); });
   assert.equal(api.drop.size, webviewUnavailable ? 0 : 1);
-  assert.equal(api.progress.size, cacheListenerFails ? 1 : 2, "One cache observer and one queue watcher survive StrictMode");
-  assert.equal(api.overlay.listenerReady, true);
+  assert.equal(api.progress.size, listenerFails ? 0 : cacheListenerFails ? 1 : 2, "One cache observer and one queue watcher survive StrictMode");
+  assert.equal(api.overlay.listenerReady, !listenerFails);
   return { api, changeRoute: async (route) => { await act(async () => root.update(tree(route))); } };
 }
 

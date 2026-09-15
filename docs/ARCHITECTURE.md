@@ -1,5 +1,13 @@
 # 架构设计
 
+## Mod 安装与存档配置档
+
+Mod 安装、选择与恢复状态按游戏安装目录管理；存档配置档只管理 Steam 账号、存档目录和备份设置。
+`ModInstallationScopeService` 负责后端目录身份，`ModInstallationProvider` 为 Mod 界面提供独立作用域。
+旧安装格式中的 `profile_id` 保留为安装命名空间，不查询存档配置档表；删除库条目直接枚举安装与
+恢复记录。进程内、跨进程游戏写锁均不因存档账号不同而分叉。兼容登记和拒绝边界见
+[Mod 安装作用域](MOD_INSTALLATION_SCOPE.md)。下文历史设计中的 Mod/profile 组合均按此边界解释。
+
 ## 项目定位
 
 Helsincy Mod Manager 不是一个简单的压缩包解压工具，而是一个本地游戏 Mod 管理平台。
@@ -183,9 +191,10 @@ start/retry 的最终 admission 在 SQLite `BEGIN IMMEDIATE` 短事务内验证 
 game/profile 的 `queued/running/stopping` attempt，并原子完成 sealed -> queued。两个独立进程因此
 最多一个能取得同 scope 的 batch admission；retry 在竞争失败时只回收仍 sealed、没有 item result
 且 verifier 匹配的未执行新 attempt。`result` 不执行 scope reconciliation，只读取调用方明确指定的
-batch/attempt，使遗留 active attempt 的诊断结果保持可读。该原子性只覆盖 Sandbox batch journal，
-不等于 Production 通用写 admission；batch 的 Production 请求在 automation 边界继续
-fail closed（开放前置 per-installation secret，不随 CLI-3B 单项命令解禁）。
+batch/attempt，使遗留 active attempt 的诊断结果保持可读。Production 批量已使用独立随机签名凭据
+与游戏根复核；桌面确认 automation 和 GUI 数据根一致后，复用 GUI 数据库查询 journal。
+同数据库的临时 runtime 与 GUI 共用投影重建协调，清单更新使状态筛选失效；批量 admission
+与单项游戏写锁、安装作用域、备份和恢复门禁共同生效。
 
 Slice C 的 runtime 按 sealed operation 路由 facts provider、item executor、runner 和 retry，不让 CLI
 循环单项 command。跨 revision reinstall 与 uninstall 复用 T13-03/T13-04 的 app executor；
@@ -321,9 +330,14 @@ Mod 库的会话缓存由路由之上的 `ModLibrarySessionCacheProvider` 持有
 触发无限自动重试。应用级任务观察覆盖导入、安装和外部接管，活跃写任务期间不保留分页缓存，任务
 观察不可用时停用缓存但保留直接查询。分类响应写回也必须匹配发起时的 generation。
 
-拖拽清单保留结构化任务终态，失败分类、取消及源包保留降级码与预检状态分开保存；隐藏后的结果
-入口保留到用户清除相应行。归档预检只在 blocking worker 内执行 I/O 和 RAR 锁等待，调用边界先验证
-全部路径及最多 100 项的请求上限，不解包、不改变归档安全门禁。
+拖拽导入由路由之上的 `ModImportDropProvider` 持有会话草稿、已确认批次和串行执行队列。待导入、
+进行中与导入记录分别展示；每次确认只消费当前草稿，未选项记为跳过，新增文件确认后按批次排队。
+预检请求绑定草稿及条目身份，关闭或移除后迟到的结果不能恢复旧行；后端任务仍按 `taskId` 识别终态。
+关闭未提交清单会丢弃草稿；收起进行中视图和隐藏进度通知不取消任务，Mod 管理的固定入口可重开。
+取消尚未开始项只移除排队工作，记录为取消，不退回待选清单。结束后发布短通知，成功、失败、取消
+与跳过分别计数，失败原因和源包保留降级码仍可查。历史仅保留本次运行最近 50 个结束批次，不淘汰
+活跃批次；清除历史不删除 Mod 或归档，不提供跨重启队列恢复。归档预检只在 blocking worker 内执行
+I/O 和 RAR 锁等待，调用边界先验证全部路径及最多 100 项的请求上限，不解包、不改变归档安全门禁。
 
 ## 多游戏扩展边界
 

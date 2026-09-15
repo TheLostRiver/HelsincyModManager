@@ -1,5 +1,56 @@
 # 测试指南
 
+## 安装筛选与正式桌面批量操作
+
+```powershell
+node --test "src/features/mods/batch-lifecycle/*.test.mjs" src/features/mods/modLibrarySessionStore.test.mjs
+```
+
+新 Windows 工作树先运行 `node scripts/prepare-windows-sidecars.mjs --debug`，再在 `src-tauri` 下运行：
+
+```powershell
+cargo test -p hmm-runtime --lib core_mod_lifecycle_tests
+cargo test -p hmm-runtime --lib mod_library::tests
+cargo test -p hmm-runtime --lib batch_automation
+cargo test -p hmm-app --lib batch_
+cargo test -p hmm-tauri --lib batch_mod_lifecycle_commands
+cargo test -p hmm-tauri --lib state::tests
+```
+
+状态回归在同一个 runtime 中先预热“全部／已安装／未安装”查询，再执行普通安装、首次重定向、
+目标切换和卸载，断言卡片摘要、筛选成员与数量同时更新。不得在操作之间重启来掩盖失效遗漏。
+Production 语义仅通过 crate 内测试构造器指向临时应用数据和人工游戏目录；GUI 保持 WAL 活跃。
+双 Mod 用例覆盖批量安装、幂等重复 start、升级重装、卸载恢复原始字节、单项失败继续执行和
+只重试失败项。原包保持不变，签名凭据在临时数据根生成，不读取真实玩家数据。
+
+前端行为测试直接挂载真实 hook，验证确认／执行／重试中阻止重复请求，筛选变化不关闭结果，
+写入或结果查询失败后缓存仍失效，旧作用域迟到结果不能覆盖当前界面。浏览器另检查实际快捷按钮、
+预览确认、执行中关闭保护、部分失败结果与重试；运行中取消仍未开放。
+完整候选须执行 `scripts/verify.ps1`，真实游戏内效果由后续人工验收确认。
+
+## Mod 菜单与安装作用域
+
+```powershell
+node --test src/features/mods/modContextMenuPosition.test.mjs src/features/mods/modInstallationBehavior.test.mjs src/features/profiles/activeProfileInstallRecovery.test.mjs
+cargo test -p hmm-app mod_shortcuts --lib
+cargo test -p hmm-app mod_deletion --lib
+cargo test -p hmm-infra mod_directory_opener --lib
+cargo test -p hmm-infra mod_installation --lib
+cargo test -p hmm-runtime mod_installation --lib
+cargo test -p hmm-infra --test cross_process_write_admission
+```
+
+Rust 命令在 `src-tauri` 下运行。全部自动检查使用人工包、临时游戏目录和临时应用数据。
+验证存档配置档切换／删除不改变 Mod 作用域和清单，唯一非默认旧命名空间在重启后仍可卸载并
+恢复安装前文件；未完成恢复记录独立存在时也能阻止删除包。不同游戏目录必须分离，注册副本
+不一致、目录 junction 和旧记录归属不明时不能写错目录；只读 CLI 预览不新增登记或锁文件。
+前端需覆盖游戏目录变化后立即失效、迟到响应丢弃、失败提示和重试，不能固定传入 `default`。
+
+菜单视觉检查覆盖窗口右下角、多行禁用原因、窗口调整和极小视口；最后一项可滚动、可用 End
+聚焦，Escape 关闭后恢复焦点。“打开 MOD 文件夹”从逻辑 Mod 的展示版本解析受控包目录，目录
+缺失或 junction 时拒绝；NexusMods 链接只使用后端保存的正整数 ID，覆盖缺失、零值和大整数。
+跨层或写入边界的完整候选仍须执行一次 `scripts/verify.ps1`。
+
 ## 安装配置窗口与文件选择
 
 ```powershell
@@ -9,7 +60,7 @@ node --test "src/features/install-config/*.test.mjs" "src/features/install-plugi
 验证单目录链只压缩展示、不改文件身份或目录选择范围；搜索保留祖先，“已排除”读取当前草稿，
 完整层级与压缩显示共用原始选择。目录已确定时折叠说明，待选择或失败时保持可见；目录保存期间
 禁止关闭。插件仅随包工具时不显示可勾选暗示和泛化依赖提示，旧已安装附件仍按后端选择能力显示。
-配置保存、部分失败、丢弃、预览过期、跨配置档迟到响应和确认只启动一次均需行为回归。
+配置保存、部分失败、丢弃、预览过期、跨游戏安装作用域迟到响应和确认只启动一次均需行为回归。
 浏览器使用人工包和实际组件覆盖 1366×768、1280×800、窄窗口、高 DPI、三语及深浅主题；首屏应
 优先显示文件列表，目录/附件/结果展开不触发额外扫描，预览首条文件与确认动作无需手动滚动。
 大包继续虚拟化，搜索、选择和列表位置在预览收起后保留；阻断、保存失败和任务进度不能藏在浮层内。
@@ -388,13 +439,21 @@ node --test src/app/onboarding/onboardingLanguageBehavior.test.mjs src/app/onboa
 Provider、hook 和 runner，仅替换 IPC 与展示叶子。正式用例通过 `pnpm test` 一并执行：
 
 ```powershell
-node --test src/features/mods/modImportDropBehavior.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
+node --test "src/features/mods/modImportDrop*.test.mjs" src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
 ```
 
-覆盖 StrictMode 单次确认、跨页/追加/停止、早到终态、失败原因与源包保留警告、终态重开、缓存
-generation、失效后重新取数、错误退出与手动重试、乱序响应及跨页写任务。渲染器不验证真实 WebView2
+覆盖 StrictMode 与同 tick 重复确认、草稿关闭/清空/逐项移除、乱序预检与关闭后的迟到成功/错误、
+跨页及执行中追加、独立批次分母、取消排队不影响运行项、历史隔离/清除/有界保留、失败重新预检、
+多次拖入形成的大批次重试仍遵守单次预检上限且分段迟到结果不能恢复草稿、
+通知隐藏后不复活及固定入口重开。早到终态、存储冻结、监听失败、失败原因与源包保留警告、缓存
+generation、失效后重新取数、错误退出与手动重试及跨页写任务也必须保留。渲染器不验证真实 WebView2
 拖放、视觉布局或玩家文件；其弃用提示不是用例失败。归档预检的线程切换、请求上限与路径准入由
 `mod_import_commands.rs` 的 `archive_preview_*` Rust 测试验证，JS 接线断言不能替代这些行为测试。
+
+浏览器使用真实 Provider/组件与假预检/任务事件，检查 1440×900、1366×768、1280×800、960×640 和
+390×844、深浅主题、三语、键盘页签与焦点范围。确认新清单不显示历史，主操作固定且只有列表滚动，
+关闭未提交草稿后没有常驻通知；执行中收起、隐藏通知和取消新增草稿都不终止旧批次。失败重试应先
+回到待确认清单，批次结束的短通知不替代可重开的结果。高 DPI 与减少动态效果也应保持操作可见。
 
 ### T19 Feedback UI U1
 

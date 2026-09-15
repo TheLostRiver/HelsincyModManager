@@ -131,7 +131,7 @@ impl TaskScopedModImportSandboxLocator {
         &self.sandbox_root
     }
 
-    fn open_existing_sandbox_root(&self) -> Result<Dir> {
+    pub(crate) fn open_existing_sandbox_root(&self) -> Result<Dir> {
         match self.storage_root.as_deref() {
             Some(storage_root) => open_managed_sandbox_root(storage_root, false),
             None => open_existing_directory_nofollow(&self.sandbox_root, "mod import sandbox root"),

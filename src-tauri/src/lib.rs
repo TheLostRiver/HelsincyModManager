@@ -22,11 +22,13 @@ mod log_storage_commands;
 mod mod_deletion_commands;
 mod mod_import_commands;
 mod mod_import_settings_commands;
+mod mod_installation_commands;
 mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
 mod mod_library_read_model_benchmark_tests;
 mod mod_metadata_commands;
+mod mod_shortcut_commands;
 mod mod_storage_commands;
 mod package_contents_commands;
 mod plugin_selection_commands;
@@ -93,8 +95,10 @@ use mod_import_commands::{
     start_import_mod_revision_task, start_import_mod_task,
 };
 use mod_import_settings_commands::{get_mod_import_settings, set_mod_import_settings};
+use mod_installation_commands::get_mod_installation_context;
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
+use mod_shortcut_commands::{open_mod_folder, open_mod_nexus_page};
 use mod_storage_commands::{
     get_mod_storage_settings, set_mod_storage_dir, start_mod_storage_migration_task,
     validate_mod_storage_dir,
@@ -249,6 +253,9 @@ pub fn run() {
             get_mod_library,
             query_mod_library,
             get_mod_detail,
+            get_mod_installation_context,
+            open_mod_folder,
+            open_mod_nexus_page,
             get_mod_dependency_graph,
             get_mod_detail_preview_image,
             get_preview_image_diagnostics,
