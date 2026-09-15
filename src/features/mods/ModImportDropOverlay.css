@@ -1,290 +1,200 @@
-/* 拖拽导入的窗口级提示与待导入清单浮层（T22 / #366）。
-
-   两层都是 position: fixed 覆盖整个窗口——Tauri 的拖放事件是窗口级的，
-   没有「某个元素被拖入」这回事，提示范围必须与事件范围一致，否则玩家会以为
-   只有高亮的那块能接收。 */
-
 .mod-import-drop__hint {
   position: fixed;
   inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 只是提示，不该拦住底下的拖放事件。 */
+  z-index: var(--z-feedback-dialog);
+  display: grid;
+  place-items: center;
   pointer-events: none;
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-  backdrop-filter: blur(1px);
+  backdrop-filter: blur(2px);
 }
 
 .mod-import-drop__hint-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
   padding: 28px 40px;
   border: 2px dashed var(--color-accent);
   border-radius: 16px;
   background: var(--color-surface);
   box-shadow: var(--shadow-soft);
-  color: var(--color-accent-strong, var(--color-accent));
+  color: var(--color-accent);
   font-weight: 600;
 }
 
-.mod-import-drop__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgb(0 0 0 / 45%);
+.feedback-modal.mod-import-drop__panel {
+  width: min(960px, calc(100vw - 32px));
+  height: min(740px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 32px);
+  border-radius: 20px;
 }
 
-/* 首版是 560px 且每行挤成一条横线，结果整句中文提示被截成省略号。
-   读不到「为什么装不了」等于没有提示。加宽只是一半，另一半是让提示语独占一行（见下）。 */
-.mod-import-drop__panel {
+.mod-import-drop__panel > .feedback-modal__header { padding: 16px 22px; }
+.mod-import-drop__panel > .feedback-modal__header h2 { font-size: 18px; }
+.mod-import-drop__panel > .feedback-modal__body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: min(860px, 100%);
-  max-height: min(78vh, 760px);
-  padding: 22px 24px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-soft);
-  color: var(--color-text);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
 }
+.mod-import-drop__panel > .feedback-modal__footer { display: block; padding: 12px 22px; }
 
-/* 打开时会被 focus()（否则 Tab 走到底下被遮住的控件上），但那是「把焦点收进来」
-   而不是「这块可点」，所以不画焦点框。里面每个控件自己的 :focus-visible 照旧。 */
-.mod-import-drop__panel:focus {
-  outline: none;
-}
-
-.mod-import-drop__header {
+.mod-import-drop__tabs {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mod-import-drop__title {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
-}
-
-.mod-import-drop__checking {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-.mod-import-drop__summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 8px;
+  flex: 0 0 auto;
+  gap: 18px;
+  padding: 0 22px;
   border-bottom: 1px solid var(--color-border-muted);
 }
-
-.mod-import-drop__select-all {
+.mod-import-drop__tab {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  min-height: 48px;
+  padding: 10px 3px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
-
-.mod-import-drop__select-all:has(input:disabled) {
-  cursor: default;
-  opacity: 0.55;
-}
-
-.mod-import-drop__counts {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.mod-import-drop__rows {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  /* 清单是这里唯一会长的东西，滚动条给它而不是给整个浮层。 */
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* 行是**两行块**而不是一条横线：第一行定长信息，第二行提示语。 */
-.mod-import-drop__row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 8px;
-  border-radius: 8px;
-}
-
-.mod-import-drop__row:hover {
+.mod-import-drop__tab[aria-selected="true"] { border-bottom-color: var(--color-accent); color: var(--color-accent); font-weight: 650; }
+.mod-import-drop__tab > span,
+.mod-import-drop__entry-count {
+  padding: 1px 6px;
+  border-radius: 6px;
   background: var(--color-surface-subtle);
-}
-
-.mod-import-drop__row[data-status="blocked"] {
   color: var(--color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
+.mod-import-drop__tab[aria-selected="true"] > span { background: var(--color-accent-weak); color: var(--color-accent); }
 
-/* 已跑完的行淡下去，正在跑的不淡——一眼能看出队列走到哪。 */
-.mod-import-drop__row[data-phase="succeeded"],
-.mod-import-drop__row[data-phase="failed"] {
-  opacity: 0.72;
+.mod-import-drop__view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+  padding: 18px 22px;
 }
-
-.mod-import-drop__row-head {
+.mod-import-drop__background {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.mod-import-drop__row-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  /* 文件名要能被挤压，否则长名把右侧信息顶出面板。 */
-  min-width: 0;
-  flex: 1 1 auto;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 9px;
+  color: var(--color-accent);
+  background: var(--color-accent-weak);
+  text-align: start;
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
+.mod-import-drop__summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mod-import-drop__select-all { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.mod-import-drop__select-all:has(input:disabled) { cursor: default; opacity: 0.55; }
+.mod-import-drop__counts { color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: end; }
+.mod-import-drop__rows { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
 
-.mod-import-drop__row-main:has(input:disabled) {
-  cursor: default;
+.mod-import-drop__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
-
-.mod-import-drop__file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mod-import-drop__scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.mod-import-drop__scroll::-webkit-scrollbar-track { background: transparent; }
+.mod-import-drop__scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: var(--color-border);
+  background-clip: padding-box;
 }
+.mod-import-drop__scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); background-clip: padding-box; }
 
-.mod-import-drop__size {
-  flex: 0 0 auto;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.mod-import-drop__phase {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-}
-
-/* 提示语：**整句显示，允许换行**。这里绝不能出现 nowrap / ellipsis——
-   被截断的失败原因等于没有原因，玩家只能看到半句话然后自己猜。 */
+.mod-import-drop__row { display: flex; flex-direction: column; gap: 3px; padding: 10px; border-radius: 9px; }
+.mod-import-drop__row:hover { background: var(--color-surface-subtle); }
+.mod-import-drop__row[data-status="blocked"] { color: var(--color-text-muted); }
+.mod-import-drop__row-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mod-import-drop__row-main { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto; }
+label.mod-import-drop__row-main { cursor: pointer; }
+label.mod-import-drop__row-main:has(input:disabled) { cursor: default; }
+.mod-import-drop__row-main > svg { flex: 0 0 auto; color: var(--color-text-muted); }
+.mod-import-drop__file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.mod-import-drop__size { flex: 0 0 auto; color: var(--color-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mod-import-drop__phase { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; color: var(--color-text-muted); font-size: 11px; }
+.mod-import-drop__phase[data-phase="running"] { color: var(--color-accent); }
+.mod-import-drop__phase[data-phase="succeeded"] { color: var(--color-success-text, var(--color-success-dot)); }
+.mod-import-drop__phase[data-phase="failed"] { color: var(--color-danger-text, var(--color-danger-dot)); }
 .mod-import-drop__row-note {
   margin: 0;
-  /* 与第一行的复选框 + 图标对齐，读起来是「这一行的说明」而不是新的一条。 */
-  padding-left: 30px;
+  padding-inline-start: 25px;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
+  font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
+.mod-import-drop__row[data-status="warned"] .mod-import-drop__row-note { color: var(--color-warning-text, var(--color-text-muted)); }
+.mod-import-drop__remove { display: grid; place-items: center; flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.mod-import-drop__remove:hover { background: var(--color-surface-muted); color: var(--color-text); }
 
-.mod-import-drop__row[data-status="warned"] .mod-import-drop__row-note {
-  color: var(--color-warning-text, var(--color-text-muted));
-}
+.mod-import-drop__batches { display: flex; flex-direction: column; gap: 12px; }
+.mod-import-drop__batch { flex: 0 0 auto; min-width: 0; border: 1px solid var(--color-border-muted); border-radius: 12px; background: color-mix(in srgb, var(--color-surface) 85%, transparent); }
+.mod-import-drop__batch-heading { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; cursor: pointer; list-style: none; }
+.mod-import-drop__batch-heading::-webkit-details-marker { display: none; }
+.mod-import-drop__batch-heading > svg { flex: 0 0 auto; color: var(--color-text-muted); }
+.mod-import-drop__batch-copy { display: grid; flex: 1 1 auto; min-width: 0; gap: 5px; }
+.mod-import-drop__batch-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.mod-import-drop__batch-title time { color: var(--color-text-muted); font-size: 11px; }
+.mod-import-drop__batch-status { color: var(--color-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.mod-import-drop__batch[open] .mod-import-drop__chevron { transform: rotate(180deg); }
+.mod-import-drop__batch .mod-import-drop__rows { padding: 5px 10px 10px; border-top: 1px solid var(--color-border-muted); }
+.mod-import-drop__batch-progress { display: block; width: calc(100% - 28px); height: 4px; margin: 0 14px 12px; border: 0; border-radius: 99px; overflow: hidden; background: var(--color-surface-muted); accent-color: var(--color-accent); }
+.mod-import-drop__batch-progress::-webkit-progress-bar { background: var(--color-surface-muted); }
+.mod-import-drop__batch-progress::-webkit-progress-value { background: var(--color-accent); }
+.mod-import-drop__batch-result { margin: 0; padding: 0 14px 12px; color: var(--color-text-muted); font-size: 12px; }
+.mod-import-drop__batch-actions { display: flex; justify-content: flex-end; padding: 0 14px 12px; }
+.mod-import-drop__status { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; margin: 0; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.mod-import-drop__empty { margin: auto; padding: 36px 20px; color: var(--color-text-muted); font-size: 13px; text-align: center; line-height: 1.7; }
+.mod-import-drop__footer { width: 100%; min-width: 0; }
+.mod-import-drop__discard-hint { margin: 0 0 10px; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.mod-import-drop__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.mod-import-drop__button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 12px; cursor: pointer; }
+.mod-import-drop__button:hover:not(:disabled) { background: var(--color-surface-muted); }
+.mod-import-drop__button.is-quiet { margin-inline-end: auto; border-color: transparent; color: var(--color-text-muted); background: transparent; }
+.mod-import-drop__button.is-primary { border-color: transparent; background: var(--color-primary-action-bg); color: var(--color-primary-action-text); box-shadow: var(--shadow-primary-action); }
+.mod-import-drop__button.is-primary:hover:not(:disabled) { background: var(--color-primary-action-bg-hover); box-shadow: var(--shadow-primary-action-hover); }
+.mod-import-drop__button:disabled { cursor: default; opacity: 0.5; box-shadow: none; }
+.mod-import-drop__panel button:focus-visible,
+.mod-import-drop__batch-heading:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.mod-import-drop__spinner { animation: mod-import-drop-spin 1s linear infinite; }
+@keyframes mod-import-drop-spin { to { transform: rotate(360deg); } }
 
-.mod-import-drop__ok {
-  flex: 0 0 auto;
-  color: var(--color-accent);
-}
-
-.mod-import-drop__bad {
-  flex: 0 0 auto;
-  color: var(--color-warning-text, var(--color-text-muted));
-}
-
-.mod-import-drop__status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-.mod-import-drop__spinner {
-  animation: mod-import-drop-spin 1s linear infinite;
-}
-
-@keyframes mod-import-drop-spin {
-  to {
-    transform: rotate(360deg);
-  }
+@media (max-width: 600px) {
+  .feedback-modal.mod-import-drop__panel { width: calc(100vw - 24px); height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); border-radius: 14px; }
+  .mod-import-drop__panel > .feedback-modal__header,
+  .mod-import-drop__panel > .feedback-modal__footer { padding: 12px; }
+  .mod-import-drop__tabs { gap: 0; padding: 0 10px; }
+  .mod-import-drop__tab { flex: 1 1 0; gap: 5px; font-size: 12px; }
+  .mod-import-drop__view { padding: 12px; }
+  .mod-import-drop__summary { align-items: flex-start; }
+  .mod-import-drop__row { padding: 8px 3px; }
+  .mod-import-drop__row-head { gap: 6px; }
+  .mod-import-drop__size { display: none; }
+  .mod-import-drop__actions > .is-quiet { flex-basis: 100%; justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mod-import-drop__spinner {
-    animation: none;
-  }
-}
-
-.mod-import-drop__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.mod-import-drop__button {
-  padding: 7px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.mod-import-drop__button:hover:not(:disabled) {
-  background: var(--color-surface-muted);
-}
-
-/* 「清除已完成」是收纳动作，不该和「确认导入」抢注意力。 */
-.mod-import-drop__button.is-quiet {
-  margin-right: auto;
-  border-color: transparent;
-  color: var(--color-text-muted);
-}
-
-.mod-import-drop__button.is-primary {
-  border-color: transparent;
-  background: var(--color-primary-action-bg);
-  color: var(--color-primary-action-text);
-  box-shadow: var(--shadow-primary-action);
-}
-
-.mod-import-drop__button.is-primary:hover:not(:disabled) {
-  background: var(--color-primary-action-bg-hover);
-  box-shadow: var(--shadow-primary-action-hover);
-}
-
-.mod-import-drop__button:disabled {
-  cursor: default;
-  opacity: 0.5;
-  box-shadow: none;
-}
-
-.mod-import-drop__button:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: 2px;
+  .mod-import-drop__spinner { animation: none; }
 }

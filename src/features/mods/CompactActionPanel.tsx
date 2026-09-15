@@ -14,6 +14,7 @@ import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { ExternalImportAction } from "./external-import/ExternalImportAction";
 import { ModImportAction } from "./ModImportAction";
+import { ModImportDropAction } from "./ModImportDropAction";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { getCompactActionDisabledReason } from "./compactActionAvailability";
@@ -167,6 +168,7 @@ export function CompactActionPanel({
             tourId="mods.import-action"
           />
         ) : null}
+        <ModImportDropAction />
         <ExternalImportAction onImported={onImportCompleted} disabledReason={storageWriteFreezeReason} />
         {addRevisionAction ? (
           <ModImportAction

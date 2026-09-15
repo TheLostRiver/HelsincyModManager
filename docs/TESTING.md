@@ -439,13 +439,21 @@ node --test src/app/onboarding/onboardingLanguageBehavior.test.mjs src/app/onboa
 Provider、hook 和 runner，仅替换 IPC 与展示叶子。正式用例通过 `pnpm test` 一并执行：
 
 ```powershell
-node --test src/features/mods/modImportDropBehavior.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
+node --test "src/features/mods/modImportDrop*.test.mjs" src/features/mods/modLibrarySessionBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs
 ```
 
-覆盖 StrictMode 单次确认、跨页/追加/停止、早到终态、失败原因与源包保留警告、终态重开、缓存
-generation、失效后重新取数、错误退出与手动重试、乱序响应及跨页写任务。渲染器不验证真实 WebView2
+覆盖 StrictMode 与同 tick 重复确认、草稿关闭/清空/逐项移除、乱序预检与关闭后的迟到成功/错误、
+跨页及执行中追加、独立批次分母、取消排队不影响运行项、历史隔离/清除/有界保留、失败重新预检、
+多次拖入形成的大批次重试仍遵守单次预检上限且分段迟到结果不能恢复草稿、
+通知隐藏后不复活及固定入口重开。早到终态、存储冻结、监听失败、失败原因与源包保留警告、缓存
+generation、失效后重新取数、错误退出与手动重试及跨页写任务也必须保留。渲染器不验证真实 WebView2
 拖放、视觉布局或玩家文件；其弃用提示不是用例失败。归档预检的线程切换、请求上限与路径准入由
 `mod_import_commands.rs` 的 `archive_preview_*` Rust 测试验证，JS 接线断言不能替代这些行为测试。
+
+浏览器使用真实 Provider/组件与假预检/任务事件，检查 1440×900、1366×768、1280×800、960×640 和
+390×844、深浅主题、三语、键盘页签与焦点范围。确认新清单不显示历史，主操作固定且只有列表滚动，
+关闭未提交草稿后没有常驻通知；执行中收起、隐藏通知和取消新增草稿都不终止旧批次。失败重试应先
+回到待确认清单，批次结束的短通知不替代可重开的结果。高 DPI 与减少动态效果也应保持操作可见。
 
 ### T19 Feedback UI U1
 
