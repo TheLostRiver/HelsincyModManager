@@ -12,8 +12,43 @@ use hmm_ports::{
     CategoryRepository, InstallManifestRepository, ModImportResultRepository,
     ModLibraryProjectionQueryRepository, ModLibraryProjectionRepository, ModMetadataRepository,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+
+// Batch commands compose short-lived runtimes alongside the GUI. They must use the same
+// refresh/write guard, otherwise a GUI rebuild can erase a batch writer's dirty marker.
+fn shared_freshness_guard(
+    db: &Arc<Mutex<rusqlite::Connection>>,
+) -> Result<Arc<ModLibraryProjectionFreshnessGuard>, String> {
+    static GUARDS: OnceLock<Mutex<HashMap<PathBuf, Weak<ModLibraryProjectionFreshnessGuard>>>> =
+        OnceLock::new();
+    let database_path = db
+        .lock()
+        .map_err(|_| "Mod library database lock is unavailable")?
+        .path()
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from);
+    let Some(database_path) = database_path else {
+        return Ok(Arc::new(ModLibraryProjectionFreshnessGuard::default()));
+    };
+    let key = database_path
+        .canonicalize()
+        .map_err(|_| "Mod library database identity is unavailable")?;
+    #[cfg(windows)]
+    let key = PathBuf::from(key.to_string_lossy().to_lowercase());
+    let mut guards = GUARDS
+        .get_or_init(Mutex::default)
+        .lock()
+        .map_err(|_| "Mod library projection coordination is unavailable")?;
+    guards.retain(|_, guard| guard.strong_count() > 0);
+    if let Some(guard) = guards.get(&key).and_then(Weak::upgrade) {
+        return Ok(guard);
+    }
+    let guard = Arc::new(ModLibraryProjectionFreshnessGuard::default());
+    guards.insert(key, Arc::downgrade(&guard));
+    Ok(guard)
+}
 
 pub(super) struct ModLibraryComposition {
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
@@ -38,7 +73,7 @@ impl ModLibraryComposition {
             .map_err(|error| format!("failed to invalidate Mod library projection: {error}"))?;
         let projection_query_repository: Arc<dyn ModLibraryProjectionQueryRepository> =
             projection_repository;
-        let freshness_guard = Arc::new(ModLibraryProjectionFreshnessGuard::default());
+        let freshness_guard = shared_freshness_guard(db)?;
 
         let mod_import_result_repository: Arc<dyn ModImportResultRepository> =
             Arc::new(ProjectionTrackingModImportResultRepository::new(
@@ -115,5 +150,35 @@ impl ModLibraryComposition {
             Arc::clone(&self.projection_query_repository),
             refresh_service,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtimes_on_the_same_database_share_projection_refresh_and_write_coordination() {
+        let temp = tempfile::tempdir().expect("temporary projection databases");
+        let path = temp.path().join("hmm.db");
+        let first_db = Arc::new(Mutex::new(hmm_infra::open_database(&path).unwrap()));
+        let second_db = Arc::new(Mutex::new(
+            hmm_infra::open_database(&temp.path().join(".").join("hmm.db")).unwrap(),
+        ));
+        let other_db = Arc::new(Mutex::new(
+            hmm_infra::open_database(&temp.path().join("other.db")).unwrap(),
+        ));
+        let results = temp.path().join("results.json");
+        let first = ModLibraryComposition::new(&first_db, results.clone()).unwrap();
+        let second = ModLibraryComposition::new(&second_db, results.clone()).unwrap();
+        let other = ModLibraryComposition::new(&other_db, results).unwrap();
+        assert!(
+            Arc::ptr_eq(&first.freshness_guard, &second.freshness_guard),
+            "batch and GUI runtimes must not rebuild over each other's dirty markers"
+        );
+        assert!(
+            !Arc::ptr_eq(&first.freshness_guard, &other.freshness_guard),
+            "an unavailable projection in another data root must stay isolated"
+        );
     }
 }
