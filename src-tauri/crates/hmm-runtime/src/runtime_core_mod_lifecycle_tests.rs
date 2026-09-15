@@ -29,6 +29,12 @@ use zip::write::SimpleFileOptions;
 #[path = "runtime_equipment_retarget_tests.rs"]
 mod equipment;
 
+#[path = "runtime_install_status_tests.rs"]
+mod install_status;
+
+#[path = "runtime_batch_lifecycle_tests.rs"]
+mod batch_lifecycle;
+
 const OVERWRITTEN_TARGET: &str = "nativePC/lifecycle/overwritten.bin";
 const BASELINE_BYTES: &[u8] = b"game-baseline-original\n";
 const ARMOR_SOURCE_TARGET: &str = "nativePC/pl/f_equip/pl121_0000/arm/mod/f_body.mod3";
