@@ -22,6 +22,8 @@ mod weapon_retarget;
 
 pub use plugin_policy::MhwPluginPolicy;
 
+pub const MHW_NEXUS_MOD_PAGE_BASE_URL: &str = "https://www.nexusmods.com/monsterhunterworld/mods/";
+
 pub use armor_retarget::{
     normalize_armor_display_text, normalize_armor_search_text, ArmorPathError, ArmorResourcePath,
     MhwArmorCatalog, MhwArmorReplacementAdapter,
