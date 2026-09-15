@@ -2,6 +2,29 @@ use super::*;
 use hmm_core::{OriginalInstallEvidence, OriginalInstallEvidenceError};
 
 impl ReinstallPreviewService {
+    /// 仅由后端已验证的重定向计划提供；原位证据继续核验原包，候选允许这些精确内容产出。
+    pub fn with_content_transforms(
+        mut self,
+        transforms: BTreeMap<PackageFileId, hmm_core::ContentTransformInvocation>,
+    ) -> Self {
+        self.content_transforms = transforms;
+        self
+    }
+
+    pub(super) fn matches_original_content(
+        &self,
+        file_id: &PackageFileId,
+        original: &InstalledFileSummary,
+        candidate: &InstalledFileSummary,
+    ) -> bool {
+        self.content_transforms
+            .get(file_id)
+            .map_or(original == candidate, |transform| {
+                transform.source_content_sha256() == original.sha256
+                    && transform.output_content_sha256() == candidate.sha256
+            })
+    }
+
     pub fn with_original_install_source(
         mut self,
         source: Arc<dyn ReinstallCandidateSourceReader>,

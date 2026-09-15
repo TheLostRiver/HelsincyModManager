@@ -27,6 +27,9 @@ mod batch_plugins;
 #[path = "reinstall_token_tests.rs"]
 mod plan_tokens;
 
+#[path = "reinstall_origin_transform_tests.rs"]
+mod origin_transforms;
+
 #[test]
 fn preview_fixture_returns_expected_counts_without_mutation_or_sensitive_facts() {
     let fixture = Fixture::ready();

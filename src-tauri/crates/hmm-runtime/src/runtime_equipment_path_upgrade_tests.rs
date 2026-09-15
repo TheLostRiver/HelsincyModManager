@@ -9,7 +9,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 const CURRENT: [&str; 5] = [
     "nativePC/wp/two/two029/mod/two029/two029.mod3",
     "nativePC/wp/two/two029/mod/two029/custom.mrl3",
-    "nativePC/wp/two/two028/mod/two028/skin.tex",
+    "nativePC/wp/two/two029/mod/two029/skin.tex",
     "nativePC/wp/two/two003/mod/two003/two003.mod3",
     "nativePC/wp/two/two003/mod/two003/custom.mrl3",
 ];
@@ -117,7 +117,7 @@ fn legacy_v1_reapply_updates_nested_paths_keeps_targets_and_uninstalls_to_baseli
         .preview_equipment_retarget_reinstall(fixture.reapply())
         .unwrap();
     assert_eq!(preview.status, ReinstallPreviewStatus::Ready);
-    assert_eq!((preview.counts.added, preview.counts.stale), (4, 4));
+    assert_eq!((preview.counts.added, preview.counts.stale), (5, 5));
     fixture.assert_layout(&LEGACY);
     for (legacy, current) in LEGACY
         .into_iter()
@@ -157,7 +157,7 @@ fn legacy_v1_reapply_updates_nested_paths_keeps_targets_and_uninstalls_to_baseli
         assert_eq!(current.binding(), previous.binding());
         assert_eq!(current.target_internal_id(), previous.target_internal_id());
         assert_eq!(current.revision_id(), previous.revision_id());
-        assert_eq!(current.adapter_facts().unwrap().strategy_version(), 3);
+        assert_eq!(current.adapter_facts().unwrap().strategy_version(), 4);
     }
     assert_eq!(
         after

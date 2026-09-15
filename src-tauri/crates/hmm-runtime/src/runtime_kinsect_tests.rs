@@ -15,7 +15,7 @@ const FILES: &[(&str, &[u8])] = &[
     (MUS_MODEL, b"artificial kinsect one"),
     (
         "nativePC/wp/mus/mus001/mod/mus001.mrl3",
-        b"unchanged artificial material references",
+        &single_texture_material("wp/mus/mus001/mod/mus001_BML"),
     ),
     (
         "nativePC/wp/mus/mus001/mod/mus001_BML.tex",
@@ -263,7 +263,15 @@ fn independent_kinsect_installs_retargets_and_uninstalls_to_the_backup_baseline(
         FILES[1].1
     );
     assert!(!f.game.join(MUS_MODEL).exists());
-    assert_eq!(fs::read(f.game.join(FILES[3].0)).unwrap(), FILES[3].1);
+    assert!(!f.game.join(FILES[3].0).exists());
+    assert_eq!(
+        fs::read(f.game.join("nativePC/wp/mus/mus003/mod/mus003_BML.tex")).unwrap(),
+        FILES[3].1
+    );
+    assert_eq!(
+        fs::read(f.game.join("nativePC/wp/mus/mus003/mod/mus003.mrl3")).unwrap(),
+        single_texture_material("wp/mus/mus003/mod/mus003_BML")
+    );
     assert_eq!(snapshot_file_tree(&f.package), original);
     f.uninstall();
 }

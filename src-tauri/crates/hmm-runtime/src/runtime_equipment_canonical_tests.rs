@@ -115,11 +115,20 @@ fn assert_normal_install_tracks_all_sources(files: &[(&str, &[u8])], source_coun
         let destination = match *path {
             "nativePC/wp/one/one001/mod/one001.mod3" => "nativePC/wp/one/one002/mod/one002.mod3",
             "nativePC/wp/one/one001/mod/one001.mrl3" => "nativePC/wp/one/one002/mod/one002.mrl3",
+            "nativePC/wp/one/one001/mod/one001_BML.tex" => {
+                "nativePC/wp/one/one002/mod/one002_BML.tex"
+            }
+            "nativePC/wp/one/one001/mod/custom.mod3" => "nativePC/wp/one/one002/mod/custom.mod3",
             "nativePC/wp/one/one001/mod/ya001.mod3" => "nativePC/wp/one/one002/mod/ya002.mod3",
             ARMOR_SOURCE_TARGET if !moving_weapon => ARMOR_RETARGETED_TARGET,
             path => path,
         };
-        switched.insert(destination.to_owned(), bytes.to_vec());
+        let content = if *path == "nativePC/wp/one/one001/mod/one001.mrl3" {
+            single_texture_material("wp/one/one002/mod/one002_BML").to_vec()
+        } else {
+            bytes.to_vec()
+        };
+        switched.insert(destination.to_owned(), content);
     }
     assert_eq!(
         snapshot_file_tree(&game),
