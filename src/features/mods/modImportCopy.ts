@@ -85,6 +85,34 @@ export type ModImportCopy = {
     donePartial: (succeeded: number, failed: number) => string;
     doneAllFailed: (count: number) => string;
     previewFailed: string;
+    tabPending: string;
+    tabActive: string;
+    tabHistory: string;
+    tabsLabel: string;
+    openTasks: string;
+    activeCount: (count: number) => string;
+    confirmCount: (count: number) => string;
+    appendCount: (count: number) => string;
+    cancelDraft: string;
+    discardHint: string;
+    removeFile: (name: string) => string;
+    clearDraft: string;
+    addedSummary: (added: number, duplicates: number) => string;
+    backgroundSummary: (batches: number, remaining: number) => string;
+    waitingCount: (count: number) => string;
+    batchTitle: (number: number) => string;
+    batchResult: (succeeded: number, failed: number, cancelled: number, skipped: number) => string;
+    finishedTitle: string;
+    emptyActive: string;
+    emptyHistory: string;
+    historyHint: (limit: number) => string;
+    retryFailed: (count: number) => string;
+    hideNotice: string;
+    phaseSucceeded: string;
+    phaseFailed: string;
+    phaseCancelled: string;
+    phaseSkipped: string;
+    cancelledBeforeStart: string;
   };
   /** #275 ④：导入成功但源压缩包没删时的提示，按 mod_import_archive_kept_* 码取词。 */
   archiveKept: Record<ModImportArchiveKeptCode, string>;
@@ -161,11 +189,11 @@ export const modImportCopy = {
     },
     drop: {
       hint: "松开鼠标，加入待导入清单",
-      title: "待导入的压缩包",
+      title: "导入 Mod",
       checking: (count) => `正在检查 ${count} 个文件…`,
       selectAll: "全选",
       selectedSummary: (selected, total) => `已选 ${selected} / ${total} 个`,
-      blockedSummary: (count) => `${count} 个读不了，已跳过`,
+      blockedSummary: (count) => `${count} 个暂时无法导入`,
       confirm: "开始导入",
       cancel: "取消",
       close: "关闭",
@@ -174,9 +202,9 @@ export const modImportCopy = {
       warnNoGameContent: "没找到本游戏的内容目录，可能装不出东西。确认没问题就勾上，照样能导入。",
       phaseQueued: "排队中",
       phaseRunning: "导入中",
-      stopQueued: "停止排队",
-      clearFinished: "清除已完成",
-      closeKeepRunning: "关闭（后台继续）",
+      stopQueued: "取消尚未开始的导入",
+      clearFinished: "清除导入记录",
+      closeKeepRunning: "收起（后台继续）",
       emptyList: "清单是空的。把 Mod 压缩包拖进窗口就会出现在这里。",
       backgroundProgress: (index, total) => `正在后台导入第 ${index} / ${total} 个。`,
       reopenList: "查看清单",
@@ -185,6 +213,37 @@ export const modImportCopy = {
       donePartial: (succeeded, failed) => `${succeeded} 个已导入，${failed} 个失败。`,
       doneAllFailed: (count) => `${count} 个都没能导入。`,
       previewFailed: "检查拖入的文件时出错了，重新拖一次试试。",
+      tabPending: "待导入",
+      tabActive: "进行中",
+      tabHistory: "导入记录",
+      tabsLabel: "导入清单视图",
+      openTasks: "导入任务",
+      activeCount: (count) => `${count} 个待完成`,
+      confirmCount: (count) => `开始导入（${count}）`,
+      appendCount: (count) => `加入队列（${count}）`,
+      cancelDraft: "取消本次添加",
+      discardHint: "关闭会放弃本次尚未提交的文件。",
+      removeFile: (name) => `移除 ${name}`,
+      clearDraft: "清空本次",
+      addedSummary: (added, duplicates) => `新增 ${added} 个文件${duplicates > 0 ? ` · ${duplicates} 个已在清单或队列中` : ""}`,
+      backgroundSummary: (batches, remaining) => `${batches} 批正在处理 · ${remaining} 个待完成`,
+      waitingCount: (count) => `${count} 个等待导入`,
+      batchTitle: (number) => `第 ${number} 批`,
+      batchResult: (succeeded, failed, cancelled, skipped) => [
+        succeeded > 0 ? `${succeeded} 个成功` : "", failed > 0 ? `${failed} 个失败` : "",
+        cancelled > 0 ? `${cancelled} 个取消` : "", skipped > 0 ? `${skipped} 个跳过` : "",
+      ].filter(Boolean).join(" · "),
+      finishedTitle: "本批导入已结束",
+      emptyActive: "没有正在导入或排队的文件。",
+      emptyHistory: "本次运行还没有导入记录。",
+      historyHint: (limit) => `保留本次运行最近 ${limit} 批记录。清除记录不会移除 Mod。`,
+      retryFailed: (count) => `重试失败（${count}）`,
+      hideNotice: "隐藏导入进度",
+      phaseSucceeded: "已导入",
+      phaseFailed: "失败",
+      phaseCancelled: "已取消",
+      phaseSkipped: "已跳过",
+      cancelledBeforeStart: "尚未开始，已从队列中取消。",
     },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "原始压缩包不是普通文件（目录、链接或联接点），已保留。",
@@ -267,11 +326,11 @@ export const modImportCopy = {
     },
     drop: {
       hint: "Drop to add these to the import list",
-      title: "Archives to import",
+      title: "Import Mods",
       checking: (count) => `Checking ${count} file(s)…`,
       selectAll: "Select all",
       selectedSummary: (selected, total) => `${selected} of ${total} selected`,
-      blockedSummary: (count) => `${count} unreadable, skipped`,
+      blockedSummary: (count) => `${count} cannot be imported yet`,
       confirm: "Start import",
       cancel: "Cancel",
       close: "Close",
@@ -280,9 +339,9 @@ export const modImportCopy = {
       warnNoGameContent: "No game content folder found — this may install nothing. Tick it anyway if you know it is fine.",
       phaseQueued: "Queued",
       phaseRunning: "Importing",
-      stopQueued: "Stop queue",
-      clearFinished: "Clear finished",
-      closeKeepRunning: "Close (keeps running)",
+      stopQueued: "Cancel imports that have not started",
+      clearFinished: "Clear import history",
+      closeKeepRunning: "Hide (keep importing)",
       emptyList: "The list is empty. Drop mod archives onto the window and they show up here.",
       backgroundProgress: (index, total) => `Importing ${index} of ${total} in the background.`,
       reopenList: "View list",
@@ -291,6 +350,37 @@ export const modImportCopy = {
       donePartial: (succeeded, failed) => `${succeeded} imported, ${failed} failed.`,
       doneAllFailed: (count) => `None of the ${count} could be imported.`,
       previewFailed: "Could not check the dropped files. Try dropping them again.",
+      tabPending: "To import",
+      tabActive: "In progress",
+      tabHistory: "Import history",
+      tabsLabel: "Import list views",
+      openTasks: "Import tasks",
+      activeCount: (count) => `${count} remaining`,
+      confirmCount: (count) => `Start import (${count})`,
+      appendCount: (count) => `Add to queue (${count})`,
+      cancelDraft: "Cancel these additions",
+      discardHint: "Closing discards files you have not submitted.",
+      removeFile: (name) => `Remove ${name}`,
+      clearDraft: "Clear selection list",
+      addedSummary: (added, duplicates) => `${added} added${duplicates > 0 ? ` · ${duplicates} already in the list or queue` : ""}`,
+      backgroundSummary: (batches, remaining) => `${batches} batch(es) in progress · ${remaining} remaining`,
+      waitingCount: (count) => `${count} waiting to import`,
+      batchTitle: (number) => `Batch ${number}`,
+      batchResult: (succeeded, failed, cancelled, skipped) => [
+        succeeded > 0 ? `${succeeded} imported` : "", failed > 0 ? `${failed} failed` : "",
+        cancelled > 0 ? `${cancelled} cancelled` : "", skipped > 0 ? `${skipped} skipped` : "",
+      ].filter(Boolean).join(" · "),
+      finishedTitle: "Import batch finished",
+      emptyActive: "No files are importing or queued.",
+      emptyHistory: "No import history in this session yet.",
+      historyHint: (limit) => `The latest ${limit} batches from this session. Clearing history does not remove Mods.`,
+      retryFailed: (count) => `Retry failed (${count})`,
+      hideNotice: "Hide import progress",
+      phaseSucceeded: "Imported",
+      phaseFailed: "Failed",
+      phaseCancelled: "Cancelled",
+      phaseSkipped: "Skipped",
+      cancelledBeforeStart: "Cancelled from the queue before starting.",
     },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "The original archive is not a regular file (directory, link or junction); it was kept.",
@@ -374,11 +464,11 @@ export const modImportCopy = {
     },
     drop: {
       hint: "ドロップしてインポート一覧に追加",
-      title: "インポートする書庫",
+      title: "Mod をインポート",
       checking: (count) => `${count} 件を確認しています…`,
       selectAll: "すべて選択",
       selectedSummary: (selected, total) => `${total} 件中 ${selected} 件を選択`,
-      blockedSummary: (count) => `${count} 件は読み込めないためスキップ`,
+      blockedSummary: (count) => `${count} 件は現在インポートできません`,
       confirm: "インポート開始",
       cancel: "キャンセル",
       close: "閉じる",
@@ -387,9 +477,9 @@ export const modImportCopy = {
       warnNoGameContent: "ゲームのコンテンツフォルダーが見つかりません。何もインストールされない可能性がありますが、問題なければチェックしてインポートできます。",
       phaseQueued: "待機中",
       phaseRunning: "インポート中",
-      stopQueued: "キューを停止",
-      clearFinished: "完了分をクリア",
-      closeKeepRunning: "閉じる（処理は継続）",
+      stopQueued: "未開始のインポートをキャンセル",
+      clearFinished: "インポート履歴を消去",
+      closeKeepRunning: "しまう（処理は継続）",
       emptyList: "一覧は空です。Mod の書庫をウィンドウにドロップすると表示されます。",
       backgroundProgress: (index, total) => `バックグラウンドで ${total} 件中 ${index} 件目をインポート中。`,
       reopenList: "一覧を表示",
@@ -398,6 +488,37 @@ export const modImportCopy = {
       donePartial: (succeeded, failed) => `${succeeded} 件成功、${failed} 件失敗。`,
       doneAllFailed: (count) => `${count} 件すべてインポートできませんでした。`,
       previewFailed: "ドロップしたファイルを確認できませんでした。もう一度ドロップしてください。",
+      tabPending: "インポート前",
+      tabActive: "進行中",
+      tabHistory: "インポート履歴",
+      tabsLabel: "インポート一覧の表示",
+      openTasks: "インポートタスク",
+      activeCount: (count) => `残り ${count} 件`,
+      confirmCount: (count) => `インポート開始（${count}）`,
+      appendCount: (count) => `キューに追加（${count}）`,
+      cancelDraft: "今回の追加をキャンセル",
+      discardHint: "閉じると未送信のファイル一覧を破棄します。",
+      removeFile: (name) => `${name} を一覧から削除`,
+      clearDraft: "今回の一覧をクリア",
+      addedSummary: (added, duplicates) => `${added} 件追加${duplicates > 0 ? ` · ${duplicates} 件は一覧またはキューに存在します` : ""}`,
+      backgroundSummary: (batches, remaining) => `${batches} バッチ処理中 · 残り ${remaining} 件`,
+      waitingCount: (count) => `${count} 件がインポート待ち`,
+      batchTitle: (number) => `バッチ ${number}`,
+      batchResult: (succeeded, failed, cancelled, skipped) => [
+        succeeded > 0 ? `${succeeded} 件成功` : "", failed > 0 ? `${failed} 件失敗` : "",
+        cancelled > 0 ? `${cancelled} 件キャンセル` : "", skipped > 0 ? `${skipped} 件スキップ` : "",
+      ].filter(Boolean).join(" · "),
+      finishedTitle: "バッチの処理が終了しました",
+      emptyActive: "進行中または待機中のファイルはありません。",
+      emptyHistory: "今回の起動中のインポート履歴はありません。",
+      historyHint: (limit) => `今回の起動中の最新 ${limit} バッチを保持します。履歴を消去しても Mod は削除されません。`,
+      retryFailed: (count) => `失敗分を再試行（${count}）`,
+      hideNotice: "インポート進捗を非表示",
+      phaseSucceeded: "インポート済み",
+      phaseFailed: "失敗",
+      phaseCancelled: "キャンセル済み",
+      phaseSkipped: "スキップ済み",
+      cancelledBeforeStart: "開始前にキューからキャンセルしました。",
     },
     archiveKept: {
       mod_import_archive_kept_not_regular_file: "元のアーカイブが通常のファイルではない（フォルダー、リンク、ジャンクション）ため保持しました。",
