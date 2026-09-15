@@ -1,5 +1,6 @@
 import { modImportStartFailureKind, nextModImportTaskStateFromProgress, type ModImportTaskState, type ModImportTerminalState } from "./modImportTaskState.ts";
 import type { TaskProgressEventDto } from "./modImportTypes";
+import type { DropImportQueueItem } from "./modImportDropSession";
 
 // 拖拽批量导入的执行引擎（T22 / #366）。
 //
@@ -87,15 +88,14 @@ export class ModImportTaskWatcher {
 export type DropImportPumpDeps = {
   watcher: ModImportTaskWatcher;
   /**
-   * 取下一个要跑的路径；没有就返回 `null`。
+   * 同步取下一个已确认的批次条目；没有就返回 null。
    *
-   * **必须同步**。循环靠「同一个 tick 内取到 null 就退出并清标志」来避免竞态，
-   * 见 [`runDropImportPump`] 的说明。
+   * 调用者在整个泵结束后释放运行标志并重新检查队列，避免交接时遗漏追加项。
    */
-  takeNext: () => string | null;
+  takeNext: () => DropImportQueueItem | null;
   startImport: (archivePath: string) => Promise<StartedImportTask>;
-  onStarted: (archivePath: string) => void;
-  onSettled: (archivePath: string, outcome: DropImportOutcome) => void;
+  onStarted: (item: DropImportQueueItem) => void;
+  onSettled: (item: DropImportQueueItem, outcome: DropImportOutcome) => void;
 };
 
 /** 起一个导入并等它的终态。起不来（抛错或状态不对）直接算这一条失败。 */
@@ -133,18 +133,16 @@ async function runOne(
  *
  * ## 退出与入队的竞态
  *
- * `takeNext()` 返回 `null` 时循环就结束了，调用方随后会把「正在跑」标志清掉。如果这中间
- * 有人入队，那一项就没人管了。解法是**要求 `takeNext` 同步**：JS 单线程下「取到 null」
- * 与「清标志」处在同一个 tick，中间插不进任何入队操作。调用方只要在入队后调一次
- * `ensurePumpRunning` 即可，不需要额外加锁。
+ * takeNext 返回 null 只表示本轮消费结束；调用者应在 finally 中释放运行标志并复查队列。
+ * 这样结束前的追加仍由当前泵接手，结束后的追加可以唤醒下一轮，旧泵也不会清除新泵的标志。
  */
 export async function runDropImportPump(deps: DropImportPumpDeps): Promise<void> {
   for (;;) {
-    const archivePath = deps.takeNext();
-    if (archivePath === null) return;
+    const item = deps.takeNext();
+    if (item === null) return;
 
-    deps.onStarted(archivePath);
-    const outcome = await runOne(archivePath, deps);
-    deps.onSettled(archivePath, outcome);
+    deps.onStarted(item);
+    const outcome = await runOne(item.archivePath, deps);
+    deps.onSettled(item, outcome);
   }
 }

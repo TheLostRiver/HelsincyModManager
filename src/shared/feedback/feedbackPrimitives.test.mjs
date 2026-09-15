@@ -51,11 +51,13 @@ test("任务通知能带一个动作按钮，且存的是文案＋回调而不�
   assert.match(provider, /onClick=\{action\.onClick\}/);
 });
 
-test("后台导入通知必须带「查看清单」入口——关掉之后没有别的路能回去", () => {
-  // 再拖一个包是「开新的」不是「重开」。没有这个按钮，玩家看不到还剩几个、哪个失败了。
+test("后台导入通知带重开入口，隐藏后仍可从固定入口查看任务", () => {
+  // 通知可以隐藏，但不能失去查看任务进度和失败原因的入口。
   const dropProvider = readSource("src/features/mods/ModImportDropProvider.tsx");
 
   assert.match(dropProvider, /action: \{ label: copy\.drop\.reopenList, onClick: openDropList \}/);
+  assert.match(dropProvider, /dismiss: \{ label: copy\.drop\.hideNotice, onClick: hideNotice \}/);
+  assert.match(readSource("src/features/mods/ModImportDropAction.tsx"), /onClick=\{openDropList\}/);
 
   // openDropList 必须声明在这个 effect 之前：它进了 effect 的依赖数组，而依赖数组在
   // 渲染时求值，声明在后就是暂时性死区。

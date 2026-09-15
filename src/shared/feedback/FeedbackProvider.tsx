@@ -30,7 +30,7 @@ export type FeedbackTaskNoticeAction = {
   onClick: () => void;
 };
 
-type FeedbackTaskNoticeInput = Pick<TaskNoticeProps, "taskId" | "title" | "message" | "tone"> & {
+type FeedbackTaskNoticeInput = Pick<TaskNoticeProps, "taskId" | "title" | "message" | "tone" | "dismiss"> & {
   action?: FeedbackTaskNoticeAction;
 };
 const FeedbackActionsContext = createContext<{
