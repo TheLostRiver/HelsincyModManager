@@ -7,171 +7,25 @@
 }
 
 .mod-library-pagination__layout {
-  display: grid;
-  grid-template-columns: minmax(104px, 1fr) auto minmax(120px, 1fr);
-  align-items: center;
-  gap: 8px;
-  block-size: 52px;
-  min-width: 0;
-  padding-inline: 8px;
-}
-
-.mod-library-pagination__page-size {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  block-size: 44px;
   min-width: 0;
-  justify-self: start;
-}
-
-.mod-library-pagination__segment-label,
-.mod-library-pagination__range-compact,
-.mod-library-pagination__busy {
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.mod-library-pagination__segment-label {
-  color: var(--color-text-muted);
-}
-
-.mod-library-pagination__page-size-trigger,
-.mod-library-pagination__page-size-option,
-.mod-library-pagination__icon-button,
-.mod-library-pagination__page-button {
-  margin: 0;
-  border: 1px solid transparent;
-  font: inherit;
-  color: var(--color-text-soft);
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color 140ms ease,
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.mod-library-pagination__page-size-trigger:focus-visible,
-.mod-library-pagination__page-size-option:focus-visible,
-.mod-library-pagination__icon-button:focus-visible,
-.mod-library-pagination__page-button:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
-.mod-library-pagination__page-size-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  min-inline-size: 72px;
-  block-size: 34px;
-  padding-inline: 8px 6px;
-  border-color: var(--color-border);
-  border-radius: 10px;
-  background: var(--color-surface-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mod-library-pagination__page-size-trigger:hover:not([aria-disabled="true"]),
-.mod-library-pagination__page-size-trigger.is-open {
-  border-color: var(--color-accent-alpha-40);
-  color: var(--color-accent-strong);
-  background: var(--color-accent-weak);
-}
-
-.mod-library-pagination__page-size-trigger[aria-disabled="true"] {
-  border-color: var(--color-border-muted);
-  color: var(--color-text-muted);
-  background: var(--color-surface-subtle);
-  cursor: default;
-  opacity: 0.55;
-}
-
-.mod-library-pagination__page-size-trigger svg {
-  transition: transform 140ms ease;
-}
-
-.mod-library-pagination__page-size-trigger.is-open svg {
-  transform: rotate(180deg);
-}
-
-/* 定位锚点：浮层相对触发器本身对齐，不再依赖"每页"两字宽度的硬偏移。 */
-.mod-library-pagination__page-size-anchor {
-  position: relative;
-  display: inline-flex;
-}
-
-.mod-library-pagination__page-size-listbox {
-  position: absolute;
-  z-index: 80;
-  bottom: calc(100% + 8px);
-  left: 0;
-  display: grid;
-  gap: 2px;
-  min-inline-size: 92px;
-  padding: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-surface);
-}
-
-.mod-library-pagination__page-size-option {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 14px;
-  align-items: center;
-  gap: 8px;
-  min-inline-size: 0;
-  block-size: 34px;
-  padding-inline: 9px;
-  border-radius: 8px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.mod-library-pagination__page-size-option svg {
-  opacity: 0;
-  color: var(--color-accent);
-}
-
-.mod-library-pagination__page-size-option:hover,
-.mod-library-pagination__page-size-option:focus-visible {
-  background: var(--color-surface-subtle);
-  color: var(--color-text);
-}
-
-.mod-library-pagination__page-size-option.is-selected {
-  background: var(--color-accent-weak);
-  color: var(--color-accent-strong);
-}
-
-.mod-library-pagination__page-size-option.is-selected svg {
-  opacity: 1;
+  padding-inline: 8px;
 }
 
 .mod-library-pagination__navigation,
 .mod-library-pagination__page-list {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.mod-library-pagination__navigation {
   gap: 4px;
   min-width: 0;
 }
 
 .mod-library-pagination__navigation > .mod-library-control-tooltip {
-  flex: 0 0 34px;
-  inline-size: 34px;
-}
-
-.mod-library-pagination__page-list {
-  gap: 4px;
+  flex: 0 0 32px;
+  inline-size: 32px;
 }
 
 .mod-library-pagination__icon-button,
@@ -180,25 +34,33 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 34px;
-  inline-size: 34px;
-  block-size: 34px;
+  flex: 0 0 32px;
+  inline-size: 32px;
+  block-size: 32px;
+  margin: 0;
+  border: 1px solid transparent;
   border-radius: 10px;
+  color: var(--color-text-soft);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 
 .mod-library-pagination__icon-button,
-.mod-library-pagination__page-button {
-  font-size: 13px;
-  font-weight: 600;
+.mod-library-pagination__page-button,
+.mod-library-pagination__ellipsis.is-interactive {
+  cursor: pointer;
 }
 
-/* 等宽数字：页码在 1 与 11 之间切换时按钮宽度不变，整条不会抖动。 */
 .mod-library-pagination__page-button {
   font-variant-numeric: tabular-nums;
 }
 
 .mod-library-pagination__icon-button:hover:not([aria-disabled="true"]),
-.mod-library-pagination__page-button:hover:not([aria-disabled="true"]) {
+.mod-library-pagination__page-button:hover:not([aria-disabled="true"]),
+.mod-library-pagination__ellipsis.is-interactive:hover:not([aria-disabled="true"]) {
   border-color: var(--color-border);
   background: var(--color-surface-subtle);
   color: var(--color-text);
@@ -211,7 +73,8 @@
 }
 
 .mod-library-pagination__icon-button[aria-disabled="true"],
-.mod-library-pagination__page-button[aria-disabled="true"] {
+.mod-library-pagination__page-button[aria-disabled="true"],
+.mod-library-pagination__ellipsis[aria-disabled="true"] {
   opacity: 0.42;
   cursor: default;
 }
@@ -222,148 +85,25 @@
 
 .mod-library-pagination__ellipsis {
   color: var(--color-text-muted);
-  font-size: 13px;
   user-select: none;
 }
 
-/*
- * 可跳转的省略号。它本就占着一个按钮位，做成纯装饰是浪费——想去中间页只能连点上一页。
- * 静态外观与不可交互时保持一致，仅在悬停/聚焦时显露可点性，避免在页码行里多出一个抢眼元素。
- */
-.mod-library-pagination__ellipsis.is-interactive {
-  margin: 0;
-  border: 1px solid transparent;
-  font: inherit;
-  font-size: 13px;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color 140ms ease,
-    background-color 140ms ease,
-    border-color 140ms ease;
-}
-
-.mod-library-pagination__ellipsis.is-interactive:hover:not([aria-disabled="true"]) {
-  color: var(--color-accent);
-  background: var(--color-accent-weak);
-  border-color: var(--color-accent-alpha-40);
-}
-
+.mod-library-pagination__icon-button:focus-visible,
+.mod-library-pagination__page-button:focus-visible,
 .mod-library-pagination__ellipsis.is-interactive:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
-.mod-library-pagination__ellipsis.is-interactive[aria-disabled="true"] {
-  opacity: 0.42;
-  cursor: default;
-}
-
-.mod-library-pagination__range {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-
-.mod-library-pagination__range-compact {
-  overflow: hidden;
-  color: var(--color-text-muted);
-  text-overflow: ellipsis;
-}
-
-.mod-library-pagination__busy {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--color-accent-strong);
-}
-
-.mod-library-pagination__busy-indicator {
-  inline-size: 10px;
-  block-size: 10px;
-  border: 2px solid var(--color-accent-alpha-25);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  animation: mod-library-pagination-spin 700ms linear infinite;
-}
-
-.mod-library-pagination__range-live {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-@keyframes mod-library-pagination-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@container (max-width: 680px) {
-  .mod-library-pagination__layout {
-    grid-template-columns: minmax(98px, 1fr) auto minmax(104px, 1fr);
-    gap: 6px;
-    padding-inline: 6px;
+@container (max-width: 580px) {
+  .mod-library-pagination__navigation > .mod-library-control-tooltip:first-child,
+  .mod-library-pagination__navigation > .mod-library-control-tooltip:last-child {
+    display: none;
   }
 
   .mod-library-pagination__navigation,
   .mod-library-pagination__page-list {
     gap: 2px;
-  }
-
-  .mod-library-pagination__range,
-  .mod-library-pagination__page-size {
-    gap: 4px;
-  }
-
-  /*
-   * 窄容器只留转圈指示，隐藏文字。原先用 font-size: 0 抹掉文本——那会连带影响
-   * 该元素内所有继承字号的内容，而且"把字缩到 0"并不表达"隐藏这段文字"的意图。
-   */
-  .mod-library-pagination__busy-label {
-    display: none;
-  }
-}
-
-@container (max-width: 580px) {
-  .mod-library-pagination__layout {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    row-gap: 4px;
-    block-size: auto;
-    min-block-size: 80px;
-    padding-block: 6px;
-  }
-
-  .mod-library-pagination__navigation {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    justify-self: center;
-  }
-
-  .mod-library-pagination__page-size {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .mod-library-pagination__range {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .mod-library-pagination__navigation
-    > .mod-library-control-tooltip:first-child,
-  .mod-library-pagination__navigation
-    > .mod-library-control-tooltip:last-child {
-    display: none;
   }
 
   .mod-library-pagination__navigation > .mod-library-control-tooltip,
@@ -379,11 +119,6 @@
   .mod-library-pagination__ellipsis {
     block-size: 30px;
   }
-
-  .mod-library-pagination__page-size-listbox {
-    bottom: calc(100% + 44px);
-    left: 0;
-  }
 }
 
 @container (max-width: 390px) {
@@ -398,7 +133,8 @@
 
   .mod-library-pagination__navigation > .mod-library-control-tooltip,
   .mod-library-pagination__icon-button,
-  .mod-library-pagination__page-button {
+  .mod-library-pagination__page-button,
+  .mod-library-pagination__ellipsis.is-interactive {
     flex-basis: 26px;
     inline-size: 26px;
   }
@@ -409,32 +145,12 @@
     block-size: 26px;
     border-radius: 8px;
   }
-
-  /*
-   * 装饰态的省略号可以收窄让位给页码；可交互态必须保住完整点击区，
-   * 12px 宽的按钮在最窄断点上已经点不准了。
-   */
-  .mod-library-pagination__ellipsis.is-interactive {
-    flex-basis: 26px;
-    inline-size: 26px;
-  }
-
-  .mod-library-pagination__ellipsis {
-    flex-basis: 12px;
-    inline-size: 12px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mod-library-pagination__page-size-trigger,
-  .mod-library-pagination__page-size-option,
   .mod-library-pagination__icon-button,
   .mod-library-pagination__page-button,
-  .mod-library-pagination__page-size-trigger svg {
+  .mod-library-pagination__ellipsis {
     transition: none;
-  }
-
-  .mod-library-pagination__busy-indicator {
-    animation: none;
   }
 }
