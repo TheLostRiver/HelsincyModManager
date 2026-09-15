@@ -122,6 +122,8 @@ import {
 } from "./modSelection";
 import { modLibraryItems as fallbackModLibraryItems } from "./modsLibraryData";
 import { ModContextMenu } from "./ModContextMenu";
+import { openModFolder, openModNexusPage } from "./modShortcutApi";
+import { modShortcutCopy, modShortcutErrorMessage } from "./modShortcutCopy";
 import { PreviewImageDialog } from "./PreviewImageDialog";
 import { previewImageViewCopy } from "./previewImageViewCopy";
 import { useActiveProfile } from "../profiles/ActiveProfileProvider";
@@ -1646,11 +1648,30 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
   };
 
+  const openModShortcut = async (action: "open-folder" | "open-nexus", modId: string) => {
+    try {
+      await (action === "open-folder" ? openModFolder(modId) : openModNexusPage(modId));
+    } catch (error) {
+      if (!pageMountedRef.current) return;
+      const shortcutCopy = resolveCopy(modShortcutCopy, locale);
+      pushToast({
+        eventKey: `mod-library.${action}.${modId}`,
+        title: action === "open-folder" ? shortcutCopy.folderTitle : shortcutCopy.nexusTitle,
+        message: modShortcutErrorMessage(error, shortcutCopy),
+        tone: "danger",
+      });
+    }
+  };
+
   const handleContextMenuAction = (actionId: string, modId: string) => {
     if (libraryQueryBusy || selectionInteractionLocked) {
       return;
     }
     switch (actionId) {
+      case "open-folder":
+      case "open-nexus":
+        void openModShortcut(actionId, modId);
+        break;
       case "install":
         startSelectedInstallTask(modId);
         break;

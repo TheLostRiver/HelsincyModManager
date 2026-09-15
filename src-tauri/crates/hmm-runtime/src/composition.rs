@@ -171,6 +171,7 @@ impl HmmRuntimeBuilder {
 }
 
 pub struct HmmRuntime {
+    pub mod_shortcuts: Arc<hmm_app::ModShortcutService>,
     pub game_setup: Arc<GameSetupService>,
     pub game_launch: Arc<GameLaunchService>,
     pub mod_library: Arc<ModLibraryService>,
@@ -608,6 +609,15 @@ impl HmmRuntime {
             Arc::clone(&mod_storage_write_gate),
         )?;
         let mod_library = mod_library_composition.library_service();
+        let mod_shortcuts = Arc::new(hmm_app::ModShortcutService::new(
+            Arc::clone(&mod_import_result_repository),
+            Arc::clone(&mod_metadata_repository),
+            Arc::new(hmm_infra::SandboxModDirectoryOpener::new(
+                mod_storage.root.clone(),
+                Arc::new(SystemShellDirectoryOpener::new()),
+            )),
+            hmm_games_mhw::MHW_NEXUS_MOD_PAGE_BASE_URL,
+        ));
         let mod_dependency_graph = Arc::new(ModDependencyGraphService::new(Arc::clone(
             &mod_import_result_repository,
         )));
@@ -1096,6 +1106,7 @@ impl HmmRuntime {
             package_contents_query,
             install_manifest_query,
             replacement_occupancy,
+            mod_shortcuts,
             mod_deletion: Arc::new(
                 ModDeletionService::new(
                     Arc::clone(&profile_repository_for_profiles),
