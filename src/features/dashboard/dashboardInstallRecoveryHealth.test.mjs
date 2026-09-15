@@ -25,12 +25,12 @@ test("dashboard recovery health hook uses profile-wide readonly scan without pat
 
   assert.match(hookSource, /scanInstallRecovery/);
   assert.match(hookSource, /subscribeInstallRecoveryRefresh/);
-  assert.match(hookSource, /useActiveProfile/);
-  assert.match(hookSource, /activeProfile\.status\s*!==\s*"ready"/);
+  assert.match(hookSource, /useModInstallation/);
+  assert.match(hookSource, /installationScope\.status\s*!==\s*"ready"/);
   assert.match(hookSource, /gameId:\s*input\.gameId/);
-  assert.match(hookSource, /profileId:\s*activeProfileId/);
+  assert.match(hookSource, /profileId:\s*installationScopeId/);
   assert.match(hookSource, /modIds:\s*\[\]/);
-  assert.match(hookSource, /\[activeProfile\.status,\s*activeProfileId,\s*input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
+  assert.match(hookSource, /\[installationScope\.status,\s*installationScopeId,\s*input\.enabled,\s*input\.gameId,\s*refreshToken\]/);
   assert.doesNotMatch(
     hookSource,
     /targetPath|allowedTargetRoots|archivePath|sandbox|cache|rawPath|manifestPath|manifestRoot|backupRoot|backupRef/i,

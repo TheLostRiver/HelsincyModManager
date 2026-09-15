@@ -4,7 +4,8 @@
 > app runner、SQLite lifecycle journal、retry 和故障证据已实现；T13-03 的 app 层批量卸载
 > facts/executor 与锁内 manifest snapshot revalidation 已实现；T13-04 的 app 层批量真正重装
 > facts/executor、Mod 级稳定摘要与结构化 recovery 分类已实现；T13-05 已通过 Sandbox runtime/CLI
-> 暴露三种 operation。Tauri、typed API、UI 与 Production CLI 写入仍未开放。
+> 暴露三种 operation。Tauri、typed API 和 UI 已接入，正式桌面环境复用既有批量服务；
+> 当前 transport 行为以[前后端契约](FRONTEND_BACKEND_CONTRACT.md)为准。
 >
 > 日期：2026-08-02
 >
@@ -717,7 +718,7 @@ Task observer/result channel 失败同样不能伪造 rollback；当前 item 收
 
 ## Planned transport contract
 
-T13-06 已将下列 command 接入 Tauri（仅 Sandbox 模式可用，`HMM_SANDBOX_DATA_DIR`）：
+下列 command 已接入 Tauri，支持与 GUI 数据根一致的 Production 和显式 Sandbox 环境：
 
 ```text
 get_batch_mod_lifecycle_capability()
@@ -730,8 +731,9 @@ cancel_task(taskId)
 ```
 
 `get_batch_mod_lifecycle_capability` 只返回 backend-owned 的 `previewAvailable` /
-`writeAvailable` / `unavailableReasonCode`，用于 Production 在 UI 层禁用批量 preview/write
-入口；它不是写入授权，后续 preview/seal/start/retry 仍必须在 command 层逐次重验 Sandbox 环境。
+`writeAvailable` / `unavailableReasonCode`，用于 UI 展示批量入口可用性；它不是写入授权。
+数据根不匹配时以 `batch_data_root_mismatch` 拒绝；后续 preview/seal/start/retry 仍复核
+游戏安装作用域、token、事实和根目录准入，journal 读取复用已确认同根的 GUI 数据库连接。
 
 seal/start 由 hmm-runtime 的 `seal_request`/`start_request` 提供：seal 只持久化 attempt 0 并返回
 planToken，start 消费 batchId+planToken 执行批次；CLI `apply` 仍为 seal+run 一体化路径。start/retry

@@ -184,6 +184,12 @@ pub trait ModImportPackagePreparer: Send + Sync {
     }
 }
 
+/// Opens an existing package directory within the managed Mod storage root.
+/// Implementations must reject missing paths, files and linked directories without creating them.
+pub trait ModPackageDirectoryOpener: Send + Sync {
+    fn open_package_directory(&self, package_id: &str) -> Result<()>;
+}
+
 pub trait ModImportSandboxLocator: Send + Sync {
     fn sandbox_root_for_package(&self, package_id: &str) -> Result<PathBuf>;
 

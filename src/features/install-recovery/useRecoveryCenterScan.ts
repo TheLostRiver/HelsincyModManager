@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { scanInstallRecovery } from "../mods/modInstallPlanApi";
 import type { InstallRecoverySummary } from "../mods/modInstallPlanTypes";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "../mods/ModInstallationProvider";
 import { getModDetail } from "../mods/modLibraryApi";
 
 // state 只存后端语义摘要；带文案的 viewModel 由页面在渲染时结合当前 locale 派生，
@@ -19,19 +19,19 @@ type UseRecoveryCenterScanInput = {
 };
 
 export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
-  const { activeProfile, activeProfileId } = useActiveProfile();
+  const { installationScope, installationScopeId } = useModInstallation();
   const [state, setState] = useState<RecoveryCenterScanState>({ status: "idle" });
   const [refreshToken, setRefreshToken] = useState(0);
   const [modNames, setModNames] = useState<Record<string, string>>({});
 
-  useEffect(() => { setModNames({}); }, [activeProfileId, input.gameId]);
+  useEffect(() => { setModNames({}); }, [installationScopeId, input.gameId]);
 
   const refresh = useCallback(() => {
     setRefreshToken((current) => current + 1);
   }, []);
 
   useEffect(() => {
-    if (!input.enabled || activeProfile.status !== "ready" || activeProfileId === null) {
+    if (!input.enabled || installationScope.status !== "ready" || installationScopeId === null) {
       setState({ status: "idle" });
       return undefined;
     }
@@ -41,7 +41,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
 
     void Promise.resolve().then(() => cancelled ? null : scanInstallRecovery({
       gameId: input.gameId,
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       modIds: [],
     }))
       .then(async (summaries) => {
@@ -71,7 +71,7 @@ export function useRecoveryCenterScan(input: UseRecoveryCenterScanInput) {
     return () => {
       cancelled = true;
     };
-  }, [activeProfile.status, activeProfileId, input.enabled, input.gameId, refreshToken]);
+  }, [installationScope.status, installationScopeId, input.enabled, input.gameId, refreshToken]);
 
   return {
     state,

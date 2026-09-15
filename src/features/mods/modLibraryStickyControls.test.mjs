@@ -48,7 +48,7 @@ test("ModLibraryPage groups controls while separating global and page-local sele
   assert.match(source, /<CompactActionPanel[\s\S]*?libraryQueryBusy={libraryQueryBusy}/);
   assert.match(
     source,
-    /<CompactActionPanel[\s\S]*?profileReady=\{activeProfile\.status === "ready" && activeProfileId !== null\}/,
+    /<CompactActionPanel[\s\S]*?profileReady=\{installationScope\.status === "ready" && installationScopeId !== null\}/,
   );
   assert.match(source, /<CompactActionPanel[\s\S]*?onAction={handleAction}/);
   assert.match(
