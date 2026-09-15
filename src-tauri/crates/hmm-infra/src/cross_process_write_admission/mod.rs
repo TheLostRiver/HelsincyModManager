@@ -40,11 +40,15 @@ struct ScopeOrderKey {
 
 impl ScopeOrderKey {
     fn from_scope(scope: &CrossProcessWriteScope) -> Self {
-        let identity = match scope.game_profile_identity() {
-            Some((game_id, profile_id)) => {
+        let identity = match scope {
+            CrossProcessWriteScope::SaveProfile {
+                game_id,
+                profile_id,
+            } => {
                 format!("{}\0{}", game_id.as_str(), profile_id.as_str())
             }
-            None => String::new(),
+            CrossProcessWriteScope::GameProfile { game_id, .. } => game_id.as_str().to_owned(),
+            CrossProcessWriteScope::BackgroundRegistration => String::new(),
         };
         Self {
             rank: scope.kind().order_rank(),
@@ -123,9 +127,18 @@ fn scope_digest(scope: &CrossProcessWriteScope) -> String {
     let mut hasher = Sha256::new();
     update_digest_part(&mut hasher, WRITE_ADMISSION_SCHEMA.as_bytes());
     update_digest_part(&mut hasher, scope.kind().as_str().as_bytes());
-    if let Some((game_id, profile_id)) = scope.game_profile_identity() {
-        update_digest_part(&mut hasher, game_id.as_str().as_bytes());
-        update_digest_part(&mut hasher, profile_id.as_str().as_bytes());
+    match scope {
+        CrossProcessWriteScope::SaveProfile {
+            game_id,
+            profile_id,
+        } => {
+            update_digest_part(&mut hasher, game_id.as_str().as_bytes());
+            update_digest_part(&mut hasher, profile_id.as_str().as_bytes());
+        }
+        CrossProcessWriteScope::GameProfile { game_id, .. } => {
+            update_digest_part(&mut hasher, game_id.as_str().as_bytes());
+        }
+        CrossProcessWriteScope::BackgroundRegistration => {}
     }
     hex_digest(hasher.finalize())
 }
@@ -168,6 +181,25 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert!(!digest.contains("mhw"));
         assert!(!digest.contains("private-profile"));
+    }
+
+    #[test]
+    fn game_namespace_changes_share_a_lock_but_save_accounts_stay_independent() {
+        let game = GameId::mhw();
+        let a = ProfileId::new("account-a");
+        let b = ProfileId::new("installation-b");
+        assert_eq!(
+            scope_digest(&CrossProcessWriteScope::game_profile(&game, &a)),
+            scope_digest(&CrossProcessWriteScope::game_profile(&game, &b))
+        );
+        assert_eq!(
+            ScopeOrderKey::from_scope(&CrossProcessWriteScope::game_profile(&game, &a)),
+            ScopeOrderKey::from_scope(&CrossProcessWriteScope::game_profile(&game, &b))
+        );
+        assert_ne!(
+            scope_digest(&CrossProcessWriteScope::save_profile(&game, &a)),
+            scope_digest(&CrossProcessWriteScope::save_profile(&game, &b))
+        );
     }
 
     #[test]

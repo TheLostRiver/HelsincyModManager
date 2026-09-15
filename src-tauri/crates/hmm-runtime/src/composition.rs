@@ -171,6 +171,7 @@ impl HmmRuntimeBuilder {
 }
 
 pub struct HmmRuntime {
+    pub mod_installation_scope: Arc<hmm_app::ModInstallationScopeService>,
     pub mod_shortcuts: Arc<hmm_app::ModShortcutService>,
     pub game_setup: Arc<GameSetupService>,
     pub game_launch: Arc<GameLaunchService>,
@@ -422,6 +423,13 @@ impl HmmRuntime {
         ));
         let game_config_repository: Arc<dyn GameConfigRepository> =
             Arc::new(JsonGameConfigRepository::new(config_path));
+        let mod_installation_scopes = Arc::new(hmm_infra::JsonModInstallationScopeRepository::new(
+            app_data_dir.clone(),
+        ));
+        let mod_installation_scope = Arc::new(hmm_app::ModInstallationScopeService::new(
+            Arc::clone(&game_config_repository),
+            mod_installation_scopes.clone(),
+        ));
         let game_setup = Arc::new(
             GameSetupService::new(
                 clone_game_adapters(&game_adapters),
@@ -964,6 +972,11 @@ impl HmmRuntime {
                 )),
                 (None, None) => Arc::new(AllowRuntimeWriteAdmission),
             };
+        let sandbox_write_admission: Arc<dyn InstallWriteAdmission> =
+            Arc::new(ChainedInstallWriteAdmission::new(
+                mod_installation_scope.clone(),
+                sandbox_write_admission,
+            ));
         let reinstall_write_admission: Arc<dyn InstallWriteAdmission> = Arc::new(
             ReinstallRecoveryWriteAdmission::new(Arc::clone(&reinstall_recovery_repository)),
         );
@@ -1107,10 +1120,14 @@ impl HmmRuntime {
             install_manifest_query,
             replacement_occupancy,
             mod_shortcuts,
+            mod_installation_scope,
             mod_deletion: Arc::new(
                 ModDeletionService::new(
-                    Arc::clone(&profile_repository_for_profiles),
+                    mod_installation_scopes,
                     Arc::clone(&install_manifest_repository),
+                    Arc::new(JsonInstallRecoveryRecordRepository::new(
+                        app_data_dir.join("install").join("recovery"),
+                    )),
                     Arc::clone(&reinstall_recovery_repository),
                     Arc::clone(&replacement_selections),
                     Arc::clone(&mod_import_result_repository),

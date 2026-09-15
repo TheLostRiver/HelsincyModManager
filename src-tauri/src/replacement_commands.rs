@@ -53,6 +53,11 @@ pub fn list_replacement_targets(
             .map(ProfileId::new)
         })
         .transpose()?;
+    crate::mod_installation_commands::require_optional_scope(
+        &state,
+        &game_id,
+        profile_id.as_ref(),
+    )?;
     state
         .replacement_workflow
         .list_compatible_targets_in_profile(
@@ -71,6 +76,11 @@ pub fn analyze_imported_mod_replacement(
     state: State<'_, AppState>,
 ) -> Result<ReplacementAnalysisDto, CommandErrorDto> {
     let (request, profile_id) = analyze_request_from_dto(request)?;
+    crate::mod_installation_commands::require_optional_scope(
+        &state,
+        &request.game_id,
+        profile_id.as_ref(),
+    )?;
     let mod_id = request.mod_id.clone();
     let analysis = state
         .replacement_workflow
@@ -106,6 +116,11 @@ pub async fn get_mod_replacement_summary(
     state: State<'_, AppState>,
 ) -> Result<ModReplacementSummaryDto, CommandErrorDto> {
     let (request, profile_id) = analyze_request_from_dto(request)?;
+    crate::mod_installation_commands::require_optional_scope(
+        &state,
+        &request.game_id,
+        profile_id.as_ref(),
+    )?;
     let workflow = Arc::clone(&state.replacement_workflow);
     tauri::async_runtime::spawn_blocking(move || {
         workflow.replacement_summary(request, profile_id.as_ref())
@@ -130,9 +145,9 @@ pub fn list_replacement_target_occupancy(
     request: ListReplacementTargetOccupancyRequestDto,
     state: State<'_, AppState>,
 ) -> Result<Vec<ReplacementTargetOccupancyDto>, CommandErrorDto> {
-    // game_id 只用于确认该游戏支持替换目标；占用事实按 profile 判定。
-    let _game_id = parse_game_id(request.game_id.clone())?;
+    let game_id = parse_game_id(request.game_id.clone())?;
     let (profile_id, mod_id) = occupancy_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &profile_id)?;
 
     Ok(state
         .replacement_occupancy
@@ -152,6 +167,7 @@ pub async fn preview_initial_retarget_install(
     state: State<'_, AppState>,
 ) -> Result<InitialRetargetInstallPreviewDto, CommandErrorDto> {
     let request = preview_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let service = state.initial_retarget_install_preflight.clone();
     tauri::async_runtime::spawn_blocking(move || service.preview(request))
         .await
@@ -168,6 +184,7 @@ pub async fn preview_retarget_reinstall(
     state: State<'_, AppState>,
 ) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
     let request = retarget_reinstall_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let service = state.reinstall_executor.clone();
     let preview =
         tauri::async_runtime::spawn_blocking(move || service.preview_retarget_reinstall(request))
@@ -192,6 +209,7 @@ pub fn start_retarget_install_task(
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let expected_revision = request.expected_revision_id.clone();
     let request = start_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let expected_revision = crate::plugin_selection_commands::expected_current_revision(
         expected_revision,
         &request.mod_id,
@@ -217,6 +235,7 @@ pub fn start_retarget_reinstall_task(
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let request = start_retarget_reinstall_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let runner_request = request.clone();
     let task = queue_retarget_reinstall_task(&state.reinstall_tasks, request)?;
     let _ = emit_task_progress(

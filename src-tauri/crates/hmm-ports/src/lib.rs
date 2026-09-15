@@ -14,6 +14,7 @@ mod game_setup;
 mod install;
 mod mod_import;
 mod mod_import_archive;
+mod mod_installation;
 mod mod_library_projection;
 mod mod_metadata;
 mod mod_storage;
@@ -108,6 +109,9 @@ pub use mod_import::{
 pub use mod_import_archive::{
     ModImportArchiveConsumeError, ModImportArchiveConsumer, ModImportArchiveFingerprint,
     ModImportArchiveIdentity,
+};
+pub use mod_installation::{
+    ModInstallationScopeError, ModInstallationScopeIndex, ModInstallationScopeRepository,
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,

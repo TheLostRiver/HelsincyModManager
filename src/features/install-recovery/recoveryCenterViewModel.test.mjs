@@ -321,7 +321,7 @@ test("derives empty recovery center state for a profile without managed installs
   assert.deepEqual(viewModel.overview.repairSummary, {
     status: "clear",
     title: "无需处理",
-    description: "当前配置档没有需要恢复中心处理的托管安装状态。",
+    description: "当前游戏没有需要恢复中心处理的托管安装状态。",
     actionLabel: "保持观察",
     blockingReason: "没有托管安装记录",
   });

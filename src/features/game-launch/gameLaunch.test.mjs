@@ -42,7 +42,7 @@ test("dashboard exposes launch while app header stays status-only", () => {
   assert.match(hero, /className="launch-action-button"/);
   assert.match(hero, /const isLaunchReady = status\.kind === "configured"/);
   assert.match(hero, /disabled=\{!isLaunchReady \|\| launchState\.isLaunchingGame\}/);
-  assert.match(heroCopySource, /readyDescription: "当前配置档可用，游戏目录已通过校验。"/);
+  assert.match(heroCopySource, /readyDescription: "游戏目录已通过校验，可以启动游戏。"/);
   assert.match(hero, /copy\.blockedDescription/);
   assert.equal(heroCopySource.match(/配置游戏目录后即可启动。/g)?.length, 1);
   assert.match(dashboardCss, /\.launch-action-card\s*\{/);

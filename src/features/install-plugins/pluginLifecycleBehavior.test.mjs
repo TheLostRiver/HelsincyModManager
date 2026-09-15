@@ -7,7 +7,7 @@ import { registerReactTestModules } from "../../shared/testing/reactModuleLoader
 registerReactTestModules({
   "shared/i18n/index.ts": `export { resolveCopy } from "./locales.ts"; export const useI18n = () => ({ locale: "zh_cn" });`,
   "shared/feedback/index.ts": `import React from "react"; export const Dialog = (props) => React.createElement("section", null, React.createElement("button", { onClick: props.onClose, "data-close": true }, "close"), props.children, props.footer);`,
-  "features/profiles/ActiveProfileProvider.tsx": `export const useActiveProfile = () => ({ activeProfileId: globalThis.__pluginFlows.profileId });`,
+  "features/mods/ModInstallationProvider.tsx": `export const useModInstallation = () => ({ installationScopeId: globalThis.__pluginFlows.profileId });`,
   "features/mods/ModLifecycleFeedback.tsx": `import React from "react"; export const InstallPlanDetailSheet = ({ state, children }) => React.createElement("section", { "data-state": state.status }, children);`,
   // Floating positioning/focus is covered by the browser suite; keep open/closed content here.
   "features/replacements/RetargetPopover.tsx": `import React, { useState } from "react"; export function RetargetPopover({ trigger, children, feedback }) { const [open, setOpen] = useState(false); return React.createElement("section", null, React.createElement("button", { onClick: () => setOpen(!open), "aria-expanded": open }, trigger), feedback, open ? children : null); }`,
@@ -311,7 +311,7 @@ test("batch supports explicit reapply without equipment and resets its preview o
   assert.deepEqual(api.controller.pluginChoices, []);
 });
 
-test("batch inventory scans stop before the next Mod after switching profiles", options, async (t) => {
+test("batch inventory scans stop before the next Mod after switching game installations", options, async (t) => {
   let finishScan;
   const { api, update } = await mount(t, (api, props) => React.createElement(BatchHarness, { api, ...props }), {},
     (command, input, api) => command === "get_mod_plugin_selection" ? new Promise((resolve) => { finishScan = () => resolve(api.inventory(input.request)); }) : undefined);
