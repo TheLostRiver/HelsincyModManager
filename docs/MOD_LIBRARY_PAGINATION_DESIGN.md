@@ -201,9 +201,9 @@ ModLibraryPageDto
 
 ```text
 Mod 库
-  固定工具栏 / 快捷操作
-  可滚动的当前页卡片区
-  独立分页 footer
+  固定工具栏（搜索 / 显示设置 / 每页数量 / 结果信息）与快捷操作
+  可滚动的当前页卡片区 / 返回顶部
+  仅多页结果显示独立分页 footer
 
 悬浮反馈层（不占分页网格行）
   安装计划 Detail Sheet / 任务 Notice / 终态 Toast
@@ -220,12 +220,24 @@ Slice 3 已为 `.mod-library` 增加独立 pagination row。常规桌面窗口�
 
 分页 footer 包含：
 
-- 当前范围，例如 `25-48 / 286`。
-- page size 使用项目自绘 listbox，不使用原生 `<select>`。
 - 首页、上一页、数字页、下一页、末页按钮。
 - 当前页使用 `aria-current="page"`。
 
-首页/上一页/下一页/末页使用 lucide 的标准 chevron 图标、accessible name 和项目自绘 tooltip。数字页使用紧凑数字按钮；页数较多时最多展示 7 个页码位置，并用不可点击省略号表示间隔。
+只有一页或没有结果时不渲染 footer，也不保留占位；多页时使用紧凑单行翻页栏。
+每页数量和结果信息放在顶部工具栏的视图切换旁，任何结果数量下都保留容量入口：
+
+- page size 使用向下展开的项目自绘 listbox，沿用 `12 / 24 / 48 / 96` 与既有持久化偏好。
+- 单页显示总项数，多页显示当前范围，例如 `25-48 / 286`；读屏区域播报完整范围。
+- 刷新时，容量入口显示已选偏好，范围和 footer 显隐仍基于当前已显示的查询快照，直到新结果替换旧结果。
+
+首页/上一页/下一页/末页使用 lucide 的标准 chevron 图标、accessible name 和项目自绘 tooltip。
+数字页使用紧凑数字按钮；页数较多时最多展示 7 个页码位置，省略号可跳到被折叠区间的中点。
+
+返回顶部独立于分页：滚动达到当前卡片容器一屏高度后出现，回到阈值内时淡出，隐藏时不接收点击或键盘焦点。
+按钮为约 `40px` 的圆角方形，使用随深浅主题变化的中性色半透明表面和背景模糊。
+它与卡片区共用网格轨道，靠右下角放置并与滚动条留出间距；矮窗口通过 sticky 定位保持在可见范围内，
+且不覆盖 footer。点击平滑回到卡片区顶部；系统开启减少动效时，显隐和滚动均即时完成。
+自绘滚动条仍在离开顶部时出现，不受回顶的一屏阈值影响。
 
 ### 状态变化规则
 
@@ -252,13 +264,14 @@ Slice 3 已为 `.mod-library` 增加独立 pagination row。常规桌面窗口�
 
 ### 响应式与可访问性
 
-- 分页 footer 使用稳定 grid/flex 约束；空间不足时范围摘要和 page size 换行，页码控件不得溢出。
+- 顶部显示控件空间不足时换行；范围摘要与 page size 始终可达，分页 footer 的页码控件不得溢出。
 - 至少覆盖 `1440x900`、`1366x768`、`1280x800` 和项目最小 `960x640` 窗口。
 - `max-width: 1280px` 且 `max-height: 720px` 的短高窗口允许页面外层滚动，但必须保留至少
   `460px` 的可用卡片轨道、首屏内容提示和 footer 可达性，且不能出现横向溢出或内容覆盖。
 - 所有 icon-only 按钮有 `aria-label` 和 tooltip。
 - disabled 首页/上一页/下一页/末页仍保留稳定尺寸，不引起 footer 位移。
-- Tab 顺序按 page size、首页、上一页、页码、下一页、末页排列。
+- page size 按顶部工具栏中的顺序参与 Tab 导航；footer 内依次为首页、上一页、页码、下一页、末页。
+- page size 的方向键仅移动焦点，Enter/空格确认，Escape 关闭并恢复触发器焦点；点击外部或焦点移出时关闭。
 - 页面切换完成后把焦点留在触发按钮或分页导航，不强制跳到卡片首项；使用状态区域播报新范围。
 
 ## 选择语义
@@ -292,6 +305,8 @@ useModLibraryQuery.ts
 modLibraryPaginationModel.ts
 ModLibraryPagination.tsx
 ModLibraryPagination.css
+ModLibraryPageControls.tsx
+ModLibraryPageControls.css
 ModLibraryQueryFeedback.tsx
 modLibraryRecoveryRefresh.ts
 ```
