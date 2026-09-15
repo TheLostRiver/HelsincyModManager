@@ -13,8 +13,9 @@ use hmm_core::{
     ReplacementTargetKind, RetargetAction, RetargetPlan,
 };
 use hmm_games_mhw::{
-    analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation, MhwReplacementAdapter,
-    MhwReplacementCatalog, MhwWeaponMrl3TexturePathTransformer, WeaponMainId, WeaponModelPair,
+    analyze_mhw_weapon_assets, build_mhw_weapon_mrl3_transform_invocation,
+    MhwEquipmentMrl3TexturePathTransformer, MhwReplacementAdapter, MhwReplacementCatalog,
+    MhwWeaponMrl3TexturePathTransformer, WeaponMainId, WeaponModelPair,
     MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_ID, MHW_WEAPON_MRL3_TEXTURE_PATH_TRANSFORMER_VERSION,
 };
 use hmm_infra::{
@@ -28,8 +29,9 @@ use hmm_ports::{
     ContentTransformer, ContentTransformerRegistry, InstallBackupStore, InstallGameFileSystem,
     InstallManifestRepository, InstallRecoveryRecordRepository, InstallSourceFileReader,
     ModImportResultRepository, ReinstallRecoveryTransactionRepository, ReinstallSnapshotStore,
-    ReplacementAdapter, ReplacementAnalysisRequest, ReplacementAsset, ReplacementCatalogProvider,
-    RetargetPlanRequest, StoredImportPreviewImage, StoredLogicalMod, StoredModOriginProvenance,
+    ReplacementAdapter, ReplacementAdapterResult, ReplacementAnalysisRequest, ReplacementAsset,
+    ReplacementAssetContentReader, ReplacementCatalogProvider, RetargetPlanRequest,
+    StoredImportPreviewImage, StoredLogicalMod, StoredModOriginProvenance,
     StoredModPackageMetadata, StoredModRevision,
 };
 use sha2::{Digest, Sha256};
@@ -147,7 +149,7 @@ fn artificial_mrl3() -> Vec<u8> {
     write_u64(&mut bytes, 24, texture_offset as u64);
     write_u64(&mut bytes, 32, material_offset as u64);
     write_u32(&mut bytes, texture_offset, 0x241f_5deb);
-    let path = b"wp\\one\\one001\\tex\\weapon_BM";
+    let path = b"wp\\one\\one001\\mod\\one001_BML";
     bytes[texture_offset + 16..texture_offset + 16 + path.len()].copy_from_slice(path);
     write_u32(&mut bytes, material_offset, 0x4516_e7ab);
     write_u32(&mut bytes, material_offset + 4, ARTIFICIAL_MATERIAL_HASH);
@@ -288,16 +290,32 @@ fn weapon_plan(
 fn registry() -> Arc<ContentTransformerRegistry> {
     Arc::new(
         ContentTransformerRegistry::new(vec![
-            Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>
+            Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>,
+            Arc::new(MhwEquipmentMrl3TexturePathTransformer),
         ])
         .expect("transformer registry"),
     )
 }
 
-fn preserved_weapon_plan(
+struct MaterialContent<'a>(&'a [u8]);
+
+impl ReplacementAssetContentReader for MaterialContent<'_> {
+    fn read_asset_content(
+        &self,
+        id: &PackageFileId,
+        limit: u64,
+    ) -> ReplacementAdapterResult<Vec<u8>> {
+        assert_eq!(id.as_str(), SOURCE_MRL3_ID);
+        assert!(self.0.len() as u64 <= limit);
+        Ok(self.0.to_vec())
+    }
+}
+
+fn default_weapon_plan(
     mod_id: &ModId,
     profile_id: &ProfileId,
     target_main: &str,
+    material: &[u8],
 ) -> RetargetPlan {
     let assets = [
         ReplacementAsset::new(PackageFileId::new(SOURCE_MOD3_ID), SOURCE_MOD3_PATH),
@@ -330,12 +348,15 @@ fn preserved_weapon_plan(
     )
     .unwrap();
     MhwReplacementAdapter
-        .build_retarget_plan(RetargetPlanRequest {
-            game_id: GameId::mhw(),
-            binding,
-            assets,
-            carries_package_companions: true,
-        })
+        .build_retarget_plan_with_content(
+            RetargetPlanRequest {
+                game_id: GameId::mhw(),
+                binding,
+                assets,
+                carries_package_companions: true,
+            },
+            &MaterialContent(material),
+        )
         .unwrap()
 }
 
@@ -395,11 +416,11 @@ fn artificial_weapon_install_switch_restart_and_uninstall_restore_exact_baseline
 }
 
 #[test]
-fn legacy_material_install_switches_to_resource_preservation_and_restores_both_texture_locations() {
+fn legacy_material_install_switches_to_default_migration_and_restores_old_texture_locations() {
     exercise_weapon_lifecycle(true);
 }
 
-fn exercise_weapon_lifecycle(switch_to_path_only: bool) {
+fn exercise_weapon_lifecycle(switch_to_default_strategy: bool) {
     let temp = tempfile::tempdir().expect("temp root");
     let app_data = temp.path().join("app-data");
     let game_root = temp.path().join("game");
@@ -550,8 +571,8 @@ fn exercise_weapon_lifecycle(switch_to_path_only: bool) {
     assert_eq!(restarted_manifest, installed.manifest);
 
     let switch_staging = temp.path().join("switch-staging");
-    let candidate = if switch_to_path_only {
-        preserved_weapon_plan(&mod_id, &profile_id, "one003")
+    let candidate = if switch_to_default_strategy {
+        default_weapon_plan(&mod_id, &profile_id, "one003", &mrl3)
     } else {
         weapon_plan(
             &mod_id,
@@ -625,21 +646,28 @@ fn exercise_weapon_lifecycle(switch_to_path_only: bool) {
         fs::read(game_root.join("nativePC/wp/one/one002/mod/one002_BML.tex")).unwrap(),
         b"baseline-old-target-texture"
     );
-    if switch_to_path_only {
-        assert_eq!(fs::read(&switch_mrl3).unwrap(), mrl3);
-        assert_eq!(
-            fs::read(game_root.join(SOURCE_TEX_PATH)).unwrap(),
-            b"synthetic texture"
-        );
-        assert_eq!(
-            fs::read(game_root.join("nativePC/wp/one/one003/mod/one003_BML.tex")).unwrap(),
-            b"baseline-new-target-texture"
-        );
+    assert_eq!(
+        fs::read(game_root.join(SOURCE_TEX_PATH)).unwrap(),
+        b"baseline-source-texture"
+    );
+    assert_eq!(
+        fs::read(game_root.join("nativePC/wp/one/one003/mod/one003_BML.tex")).unwrap(),
+        b"synthetic texture"
+    );
+    let mut expected_material = mrl3.clone();
+    expected_material[56..312].fill(0);
+    let expected_reference = b"wp\\one\\one003\\mod\\one003_BML";
+    expected_material[56..56 + expected_reference.len()].copy_from_slice(expected_reference);
+    assert_eq!(fs::read(&switch_mrl3).unwrap(), expected_material);
+    if switch_to_default_strategy {
         let facts = switched.manifest.replacement_bindings[0]
             .adapter_facts()
             .unwrap();
-        assert_eq!(facts.strategy_id(), "path-only-resource-preserving");
-        assert!(facts.transformer_identities().is_empty());
+        assert_eq!(facts.strategy_id(), "resource-reference-migration");
+        assert_eq!(
+            facts.transformer_identities()[0].transformer_id(),
+            "mhw.equipment.mrl3-texture-path.v1"
+        );
     }
     assert_eq!(
         switched.manifest.replacement_bindings[0].target_internal_id(),
