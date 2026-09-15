@@ -1,5 +1,13 @@
 # 架构设计
 
+## Mod 安装与存档配置档
+
+Mod 安装、选择与恢复状态按游戏安装目录管理；存档配置档只管理 Steam 账号、存档目录和备份设置。
+`ModInstallationScopeService` 负责后端目录身份，`ModInstallationProvider` 为 Mod 界面提供独立作用域。
+旧安装格式中的 `profile_id` 保留为安装命名空间，不查询存档配置档表；删除库条目直接枚举安装与
+恢复记录。进程内、跨进程游戏写锁均不因存档账号不同而分叉。兼容登记和拒绝边界见
+[Mod 安装作用域](MOD_INSTALLATION_SCOPE.md)。下文历史设计中的 Mod/profile 组合均按此边界解释。
+
 ## 项目定位
 
 Helsincy Mod Manager 不是一个简单的压缩包解压工具，而是一个本地游戏 Mod 管理平台。

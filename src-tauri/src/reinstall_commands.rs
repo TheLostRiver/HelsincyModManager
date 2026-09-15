@@ -46,9 +46,11 @@ pub fn preview_reinstall_plan(
     request: PreviewReinstallPlanRequestDto,
     state: State<'_, AppState>,
 ) -> Result<ReinstallPlanPreviewDto, CommandErrorDto> {
+    let request = preview_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let preview = state
         .reinstall_executor
-        .preview(preview_request_from_dto(request)?)
+        .preview(request)
         .map_err(preview_error_to_command_error)?;
     ReinstallPlanPreviewDto::try_from(preview).map_err(|_| reinstall_preview_invariant_error())
 }
@@ -60,6 +62,7 @@ pub fn start_reinstall_task(
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let request = start_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let runner_request = request.clone();
     let task = state
         .reinstall_tasks

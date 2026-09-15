@@ -5,7 +5,7 @@ import TestRenderer from "react-test-renderer";
 import { registerReactTestModules } from "../../shared/testing/reactModuleLoader.mjs";
 
 registerReactTestModules({
-  "features/profiles/ActiveProfileProvider.tsx": "export const useActiveProfile = () => globalThis.__recovery340.profile;",
+  "features/mods/ModInstallationProvider.tsx": "export const useModInstallation = () => globalThis.__recovery340.profile;",
   "features/mods/modInstallPlanApi.ts": `
     export const previewRecoveryAction = (input) => globalThis.__recovery340.request("previews", input);
     export const startRecoveryActionTask = (input) => globalThis.__recovery340.request("starts", input);
@@ -23,7 +23,7 @@ const preview = (overrides = {}) => ({ profileId: "one", modId: "mod-a", actionK
 async function mount(t, { scan = false, listenerFails = false } = {}) {
   let current, root, version = 0, completions = 0;
   const api = { previews: [], starts: [], scans: [], names: [], listeners: new Set(), refreshes: 0,
-    profile: { activeProfile: { status: "ready" }, activeProfileId: "one" } };
+    profile: { installationScope: { status: "ready" }, installationScopeId: "one" } };
   api.request = (kind, input) => new Promise((resolve, reject) => api[kind].push({ input, resolve, reject }));
   api.listen = async (callback) => { if (listenerFails) throw new Error("fixture listener failure"); api.listeners.add(callback); return () => api.listeners.delete(callback); };
   globalThis.__recovery340 = api;
@@ -35,7 +35,7 @@ async function mount(t, { scan = false, listenerFails = false } = {}) {
   return { api, get current() { return current; }, get completions() { return completions; },
     request: async (kind = "uninstall_missing_targets") => { await act(async () => current.requestRollback("mod-a", kind)); },
     resolve: async (request, value) => { await act(async () => request.resolve(value)); },
-    profile: async (id) => { api.profile = { ...api.profile, activeProfileId: id }; version++; await act(async () => root.update(tree())); },
+    profile: async (id) => { api.profile = { ...api.profile, installationScopeId: id }; version++; await act(async () => root.update(tree())); },
     emit: async (taskId, phase = "install.recovery.completed", error = null) => { await act(async () => { for (const callback of api.listeners) callback({ payload: { taskId, kind: "install", phase, error, message: null } }); }); },
   };
 }
@@ -80,7 +80,7 @@ test("blocked recovery previews never launch an action", options, async (t) => {
   assert.equal(h.api.starts.length, 0);
 });
 
-test("switching profiles invalidates old previews and confirmation", options, async (t) => {
+test("switching game installations invalidates old previews and confirmation", options, async (t) => {
   const h = await mount(t);
   await h.request();
   await h.profile("two");

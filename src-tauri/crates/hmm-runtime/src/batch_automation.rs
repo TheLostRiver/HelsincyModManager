@@ -902,10 +902,12 @@ fn resolve_batch_plan_request(
                     if input.installed_revision_id == input.candidate_revision_id
             )
         });
-    let read_only = requires_resolution
-        .then(|| ReadOnlyInstallAutomation::from_environment(environment))
-        .transpose()
+    let scope_reader = ReadOnlyInstallAutomation::from_environment(environment)
         .map_err(|_| BatchAutomationError::new(unavailable_code))?;
+    plan.profile_id = scope_reader
+        .resolve_installation_scope(&plan.game_id, &plan.profile_id)
+        .map_err(|error| BatchAutomationError::new(error.code()))?;
+    let read_only = requires_resolution.then_some(scope_reader);
 
     for item in &mut plan.items {
         match item {

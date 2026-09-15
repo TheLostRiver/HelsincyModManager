@@ -31,6 +31,7 @@ pub async fn get_mod_plugin_selection(
         })
         .transpose()?;
     let service = state.plugin_selection.clone();
+    crate::mod_installation_commands::require_scope(&state, &game_id, &profile_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let scope = service.resolve_scope(game_id, profile_id, mod_id, revision_id)?;
         service.inventory(&scope)
@@ -75,6 +76,7 @@ pub async fn set_mod_plugin_selection(
         .map(PackageFileId::new)
         .collect::<Vec<_>>();
     let service = state.plugin_selection.clone();
+    crate::mod_installation_commands::require_scope(&state, &scope.game_id, &scope.profile_id)?;
     tauri::async_runtime::spawn_blocking(move || service.select(&scope, &inventory_id, &ids))
         .await
         .map_err(|_| unavailable())?

@@ -1,13 +1,13 @@
 use super::*;
 use hmm_core::{
     FileLayer, GameId, InstallManifest, InstallManifestEntry, InstallManifestStatus,
-    InstallTargetPath, ModMetadataOverlay, PackageFileId, Profile, ReinstallRecoveryTransaction,
-    ReinstallRecoveryTransactionStatus, ReplacementBindingSnapshot,
+    InstallRecoveryRecord, InstallTargetPath, ModMetadataOverlay, PackageFileId,
+    ReinstallRecoveryTransaction, ReinstallRecoveryTransactionStatus, ReplacementBindingSnapshot,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, CategoryRepository, InstallManifestRepository,
-    ModImportResultRepository, ModImportSandboxLocator, ModMetadataRepository, ProfileRepository,
-    ReinstallRecoveryTransactionRepository, ReplacementSelectionRepository,
+    ModImportResultRepository, ModImportSandboxLocator, ModInstallationScopeIndex,
+    ModMetadataRepository, ReinstallRecoveryTransactionRepository, ReplacementSelectionRepository,
     StoredModImportAnalysis, StoredModPackageMetadata, ThumbnailStore,
 };
 use std::collections::HashMap;
@@ -66,38 +66,55 @@ fn manifest(status: InstallManifestStatus, mod_id: &ModId) -> InstallManifest {
     }
 }
 
-fn profile(id: &str) -> Profile {
-    Profile {
-        id: id.to_owned(),
-        name: id.to_owned(),
-        description: None,
-        is_active: false,
-        created_at: 0,
-        updated_at: 0,
+struct FakeInstallationScopeIndex {
+    scopes: Vec<ProfileId>,
+}
+
+impl ModInstallationScopeIndex for FakeInstallationScopeIndex {
+    fn list_scope_ids(&self) -> anyhow::Result<Vec<ProfileId>> {
+        Ok(self.scopes.clone())
     }
 }
 
-struct FakeProfileRepository {
-    profiles: Vec<Profile>,
-}
+#[derive(Default)]
+struct FakeInstallRecoveryRepository(Mutex<Vec<InstallRecoveryRecord>>);
 
-impl ProfileRepository for FakeProfileRepository {
-    fn get(&self, profile_id: &str) -> anyhow::Result<Option<Profile>> {
-        Ok(self.profiles.iter().find(|p| p.id == profile_id).cloned())
+impl InstallRecoveryRecordRepository for FakeInstallRecoveryRepository {
+    fn load_record(
+        &self,
+        scope: &ProfileId,
+        mod_id: &ModId,
+    ) -> anyhow::Result<Option<InstallRecoveryRecord>> {
+        Ok(self
+            .list_records(scope)?
+            .into_iter()
+            .find(|record| &record.mod_id == mod_id))
     }
-    fn save(&self, _profile: &Profile) -> anyhow::Result<()> {
+
+    fn list_records(&self, scope: &ProfileId) -> anyhow::Result<Vec<InstallRecoveryRecord>> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|record| &record.profile_id == scope)
+            .cloned()
+            .collect())
+    }
+
+    fn save_record(&self, record: &InstallRecoveryRecord) -> anyhow::Result<()> {
+        let mut records = self.0.lock().unwrap();
+        records
+            .retain(|entry| entry.profile_id != record.profile_id || entry.mod_id != record.mod_id);
+        records.push(record.clone());
         Ok(())
     }
-    fn delete(&self, _profile_id: &str) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn list_all(&self) -> anyhow::Result<Vec<Profile>> {
-        Ok(self.profiles.clone())
-    }
-    fn get_active(&self) -> anyhow::Result<Option<Profile>> {
-        Ok(self.profiles.first().cloned())
-    }
-    fn set_active(&self, _profile_id: &str, _updated_at: u128) -> anyhow::Result<()> {
+
+    fn remove_record(&self, scope: &ProfileId, mod_id: &ModId) -> anyhow::Result<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .retain(|entry| &entry.profile_id != scope || &entry.mod_id != mod_id);
         Ok(())
     }
 }
@@ -415,7 +432,7 @@ fn harness(
     manifests: HashMap<String, InstallManifest>,
     with_selection: bool,
 ) -> DeletionHarness {
-    let profiles = vec![profile("p1"), profile("p2")];
+    let scopes = vec![ProfileId::new("p1"), ProfileId::new("p2")];
     let manifests = Arc::new(FakeInstallManifestRepository {
         manifests: Mutex::new(manifests),
     });
@@ -439,8 +456,9 @@ fn harness(
     let audit = Arc::new(RecordingAuditLogWriter::default());
     let write_gate = Arc::new(ModStorageWriteGate::new());
     let service = ModDeletionService::new(
-        Arc::new(FakeProfileRepository { profiles }),
+        Arc::new(FakeInstallationScopeIndex { scopes }),
         Arc::clone(&manifests) as Arc<dyn InstallManifestRepository>,
+        Arc::new(FakeInstallRecoveryRepository::default()),
         Arc::new(FakeReinstallRecoveryRepository::default()),
         Arc::clone(&selections) as Arc<dyn ReplacementSelectionRepository>,
         Arc::clone(&results) as Arc<dyn ModImportResultRepository>,
@@ -633,6 +651,27 @@ fn delete_fails_closed_when_reinstall_recovery_transaction_exists() {
         .expect_err("pending reinstall recovery must block deletion");
 
     assert_eq!(error, ModDeletionError::BlockedRecovery);
+}
+
+#[test]
+fn delete_refuses_an_orphaned_install_recovery_record_without_a_manifest() {
+    let mod_id = mod_id();
+    let harness = harness(&mod_id, HashMap::new(), false);
+    harness
+        .service
+        .install_recovery
+        .save_record(&InstallRecoveryRecord {
+            profile_id: ProfileId::new("p2"),
+            mod_id: mod_id.clone(),
+            status: hmm_core::InstallRecoveryRecordStatus::Planned,
+            entries: Vec::new(),
+        })
+        .unwrap();
+    assert_eq!(
+        harness.service.delete_mod(&mod_id),
+        Err(ModDeletionError::BlockedRecovery)
+    );
+    assert!(harness.sandbox_impl.cleaned.lock().unwrap().is_empty());
 }
 
 #[test]

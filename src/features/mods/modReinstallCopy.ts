@@ -109,7 +109,7 @@ export const modReinstallCopy = {
       failureMessages: {
         planning: "无法生成重装计划，请重试",
         preflight: "提交前检查失败，请重新生成预览",
-        lock: "当前游戏或配置档正在执行其他写入任务",
+        lock: "当前游戏正在执行其他写入任务",
         backup: "创建安全快照失败，未提交新版本",
         commit: "提交新版本失败，后端已尝试恢复原状态",
         manifest: "写入安装记录失败，后端已进入受控恢复流程",
@@ -212,7 +212,7 @@ export const modReinstallCopy = {
       failureMessages: {
         planning: "Failed to build the reinstall plan. Please retry",
         preflight: "Pre-commit checks failed. Regenerate the preview",
-        lock: "The current game or profile is running another write task",
+        lock: "The current game is running another write task",
         backup: "Failed to create a safety snapshot; the new revision was not committed",
         commit: "Failed to commit the new revision; the backend attempted to restore the original state",
         manifest: "Failed to write the install record; the backend entered controlled recovery",
@@ -315,7 +315,7 @@ export const modReinstallCopy = {
       failureMessages: {
         planning: "再インストールプランを生成できませんでした。再試行してください",
         preflight: "コミット前チェックに失敗しました。プレビューを再生成してください",
-        lock: "現在のゲームまたはプロファイルは別の書き込みタスクを実行中です",
+        lock: "現在のゲームは別の書き込みタスクを実行中です",
         backup: "安全スナップショットの作成に失敗したため、新バージョンはコミットされていません",
         commit: "新バージョンのコミットに失敗しました。バックエンドが元の状態への復元を試みました",
         manifest: "インストール記録の書き込みに失敗しました。バックエンドは管理された復旧フローに入りました",

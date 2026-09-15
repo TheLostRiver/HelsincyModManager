@@ -10,6 +10,10 @@
 
 ## 背景
 
+安装命令现使用独立的 `--installation-scope`（默认 `auto`），由已配置的游戏目录决定安装命名空间；
+旧 `--profile` 仅为安装命令的兼容参数别名。存档备份命令的 `--profile` 继续表示 Steam 账号的存档
+配置档。数据兼容、目录变更和安全边界见 [Mod 安装作用域](MOD_INSTALLATION_SCOPE.md)。
+
 Helsincy Mod Manager 的主要业务能力已经位于 Rust 后端。React/Tauri 前端负责展示、交互、参数收集
 和任务进度消费，不应承担游戏目录、Mod 包、存档或日志的事实判断。为每个后端能力提供稳定的命令行
 入口，可以让开发者和 CI 不启动 WebView 就完成跨 crate 的集成验证，也能为故障诊断和后续独立

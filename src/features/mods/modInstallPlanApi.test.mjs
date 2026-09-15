@@ -195,7 +195,7 @@ test("mod library page renders a backend install plan preview workflow", () => {
   const previewCall = previewSource.match(/previewInstallPlanForImportedMod\(\{([\s\S]*?)\}\)/);
   assert.ok(previewCall, "expected page to call the backend-driven imported mod preview wrapper");
   assert.match(previewCall[1], /\.\.\.request/);
-  assert.match(source, /gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId/);
+  assert.match(source, /gameId: DEFAULT_INSTALL_GAME_ID, profileId: installationScopeId, modId/);
   assert.match(previewCall[1], /layerName:\s*"base"/);
   assert.match(previewCall[1], /layerPriority:\s*0/);
   assert.doesNotMatch(previewCall[1], /targetPath|allowedTargetRoots|sandbox|cache|archivePath/i);
@@ -257,9 +257,9 @@ test("mod library page overlays the current query page and verifies terminal fac
   assert.match(source, /refreshModLibraryDurableStatuses\(page\.items/);
   assert.match(source, /getInstallManifestStatus/);
   assert.match(source, /scanInstallRecovery/);
-  assert.match(source, /useActiveProfile/);
+  assert.match(source, /useModInstallation/);
   assert.match(source, /input\.profileContext\s*===\s*undefined/);
-  assert.match(source, /profileId:\s*activeProfileId/);
+  assert.match(source, /profileId:\s*installationScopeId/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
   assert.match(refreshSource, /items\.map\(\(item\) => item\.id\)/);

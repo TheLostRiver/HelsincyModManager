@@ -30,7 +30,7 @@ test("uninstall confirmation is an alert dialog with a safe close and focus poli
   assert.match(source, /state\.managedFileCount/);
   assert.match(source, /state\.backupCount/);
   assert.match(page, /type PendingUninstallConfirmation[\s\S]*?profileId:\s*string/);
-  assert.match(page, /activeProfileId\s*!==\s*uninstallConfirmation\.profileId/);
+  assert.match(page, /installationScopeId\s*!==\s*uninstallConfirmation\.profileId/);
   assert.match(page, /currentSummary\.managedFileCount\s*===\s*uninstallConfirmation\.managedFileCount/);
   assert.match(page, /const \{ profileId, modId, modName \} = uninstallConfirmation/);
   assert.match(page, /startUninstallTask\([\s\S]*?profileId,/);
@@ -52,7 +52,7 @@ test("running notice is strictly task keyed and terminal toast stays feature loc
 test("terminal feedback is published only after durable manifest and recovery refresh", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const profileRefEffect = page.search(
-    /useEffect\(\(\) => \{\s*activeProfileIdRef\.current = activeProfile\.status === "ready" \? activeProfileId : null;\s*\}, \[activeProfile\.status, activeProfileId\]\);/,
+    /useEffect\(\(\) => \{\s*installationScopeIdRef\.current = installationScope\.status === "ready" \? installationScopeId : null;\s*\}, \[installationScope\.status, installationScopeId\]\);/,
   );
   const durableProbeStart = page.indexOf("const refreshTerminalDurableStatus");
   const durableProbeEnd = page.indexOf("const reinstallWorkflow", durableProbeStart);
@@ -65,14 +65,14 @@ test("terminal feedback is published only after durable manifest and recovery re
   const pageRefreshCall = page.indexOf("refreshModLibraryAfterWrite()", allSettledCall);
   const durableRefreshCall = page.indexOf("refreshTerminalDurableStatus(", allSettledCall);
   const mountedGuard = page.indexOf("if (!pageMountedRef.current)", durableRefreshCall);
-  const identityGuard = page.indexOf("currentProfileId !== terminalTask.profileId", mountedGuard);
+  const identityGuard = page.indexOf("currentScopeId !== terminalTask.profileId", mountedGuard);
   const terminalRefresh = page.indexOf("const terminalRefresh", identityGuard);
   const failClosedCall = page.indexOf("failClosedModInstallSummary(items, terminalTask.modId)", terminalRefresh);
   const toastCall = page.indexOf("setLifecycleToast(getManagedInstallTerminalToast", refreshStart);
 
   assert.ok(profileRefEffect >= 0);
   assert.ok(profileRefEffect < durableProbeStart);
-  assert.equal(page.match(/activeProfileIdRef\.current\s*=/g)?.length, 1);
+  assert.equal(page.match(/installationScopeIdRef\.current\s*=/g)?.length, 1);
   assert.ok(writeRefreshStart >= 0);
   assert.match(writeRefresh, /resetContentScroll\(\);\s*await refreshModLibrary\(\);/);
   assert.ok(durableProbeStart >= 0);
@@ -90,7 +90,7 @@ test("terminal feedback is published only after durable manifest and recovery re
   assert.ok(failClosedCall > terminalRefresh);
   assert.ok(toastCall > failClosedCall);
   assert.match(page, /failClosedModInstallSummary/);
-  assert.match(page, /activeProfileIdRef\.current\s*!==\s*terminalTask\.profileId/);
+  assert.match(page, /installationScopeIdRef\.current\s*!==\s*terminalTask\.profileId/);
   assert.match(page, /durableRefresh\.status\s*===\s*"fulfilled"/);
   assert.match(page, /verified:\s*durableStatus\?\.verified\s*\?\?\s*false/);
   assert.match(page, /status:\s*durableStatus\?\.items\[0\]\?\.installSummary\?\.status\s*\?\?\s*null/);
