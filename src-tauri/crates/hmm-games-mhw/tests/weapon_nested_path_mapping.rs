@@ -1,4 +1,6 @@
 //! 人工路径覆盖目录、文件名及整份映射，不读取真实游戏或 Mod 内容。
+#[path = "support/equipment_material.rs"]
+mod material_fixture;
 use hmm_core::{
     GameId, ModId, PackageFileId, ProfileId, ReplacementAdapterFacts, ReplacementBinding,
     ReplacementBindingId, RetargetFileDisposition, RetargetPlan,
@@ -43,13 +45,28 @@ fn plan(paths: &[&str], source: &str, target: &str) -> RetargetPlan {
         1,
     )
     .unwrap();
+    let reader = material_fixture::Materials(
+        assets
+            .iter()
+            .filter(|asset| asset.relative_path().ends_with(".mrl3"))
+            .map(|asset| {
+                (
+                    asset.package_file_id().clone(),
+                    material_fixture::material(&[]),
+                )
+            })
+            .collect(),
+    );
     let plan = MhwReplacementAdapter
-        .build_retarget_plan(RetargetPlanRequest {
-            game_id: GameId::mhw(),
-            binding,
-            assets,
-            carries_package_companions: true,
-        })
+        .build_retarget_plan_with_content(
+            RetargetPlanRequest {
+                game_id: GameId::mhw(),
+                binding,
+                assets,
+                carries_package_companions: true,
+            },
+            &reader,
+        )
         .unwrap();
     if analysis.sources().len() == 1 {
         assert_eq!(plan.actions().len(), paths.len());
@@ -96,7 +113,7 @@ fn nested_source_directories_and_filenames_are_mapped_together() {
 }
 
 #[test]
-fn explicit_numbered_directories_carry_author_filenames_but_leave_textures_in_place() {
+fn explicit_numbered_directories_carry_author_filenames_and_textures() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028/作者模型.mod3",
         "nativePC/wp/two/two028/mod/two028/131072_2599467785140006031 BML.dds",
@@ -106,11 +123,8 @@ fn explicit_numbered_directories_carry_author_filenames_but_leave_textures_in_pl
         "nativePC/wp/two/two028/mod/custom.mod3",
     ];
     let planned = plan(&paths, "two028", "two029");
-    for (index, path) in paths.iter().enumerate().take(3) {
+    for (index, path) in paths.iter().enumerate() {
         assert_eq!(output(&planned, index), path.replace("two028", "two029"));
-    }
-    for (index, path) in paths.iter().enumerate().skip(3) {
-        assert_eq!(output(&planned, index), *path);
     }
 }
 
@@ -183,13 +197,13 @@ fn suffixed_parts_provide_exact_directory_evidence_without_a_prefix_whitelist() 
     );
     assert_eq!(
         output(&planned, 2),
-        paths[2],
+        "nativePC/wp/swo/swo019/mod/saya035/custom.mrl3",
         "a similar part name is not exact evidence"
     );
 }
 
 #[test]
-fn ambiguous_or_contradictory_ids_keep_the_whole_original_path() {
+fn ambiguous_or_contradictory_ids_preserve_internal_names_while_moving_the_root() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028.mod3",
         "nativePC/wp/two/two028/mod/two028/two028_two028.mod3",
@@ -204,23 +218,16 @@ fn ambiguous_or_contradictory_ids_keep_the_whole_original_path() {
     for (index, path) in paths.iter().enumerate().skip(1) {
         assert_eq!(
             output(&planned, index),
-            *path,
-            "contradictory path must not be partly renamed"
+            path.replacen("/two028/", "/two029/", 1),
+            "ambiguous internal names stay intact under the new equipment root"
         );
         let effect = planned
             .file_effects()
             .iter()
             .find(|effect| effect.package_file_id.as_str() == format!("file-{index}"))
             .unwrap();
-        assert_eq!(effect.disposition, RetargetFileDisposition::KeptInPlace);
-        assert_eq!(
-            effect.reason,
-            if index == 1 {
-                hmm_core::RetargetFileReason::AmbiguousResourceIdentity
-            } else {
-                hmm_core::RetargetFileReason::ConflictingResourceIdentity
-            }
-        );
+        assert_eq!(effect.disposition, RetargetFileDisposition::Relocated);
+        assert_eq!(effect.reason, hmm_core::RetargetFileReason::TargetMapping);
     }
 }
 
@@ -233,9 +240,15 @@ fn part_directory_evidence_ignores_textures() {
         "nativePC/wp/two/two028/mod/unknown028/custom.mod3",
     ];
     let planned = plan(&paths, "two028", "two029");
-    for (index, path) in paths.iter().enumerate().skip(1) {
-        assert_eq!(output(&planned, index), *path);
-    }
+    assert_eq!(output(&planned, 1), "nativePC/wp/two/two029/mod/ya029.tex");
+    assert_eq!(
+        output(&planned, 2),
+        "nativePC/wp/two/two029/mod/ya028/custom.mod3"
+    );
+    assert_eq!(
+        output(&planned, 3),
+        "nativePC/wp/two/two029/mod/unknown028/custom.mod3"
+    );
 }
 
 #[test]
@@ -246,7 +259,7 @@ fn new_strategy_is_versioned_and_legacy_v1_facts_remain_readable() {
         "two029",
     );
     let facts = planned.adapter_facts().unwrap();
-    assert_eq!(facts.strategy_version(), 3);
+    assert_eq!(facts.strategy_version(), 4);
     let mut legacy = serde_json::to_value(facts).unwrap();
     legacy["strategy_version"] = serde_json::json!(1);
     let loaded: ReplacementAdapterFacts = serde_json::from_value(legacy.clone()).unwrap();
@@ -264,8 +277,14 @@ fn another_source_or_a_contradictory_model_cannot_prove_a_part_directory() {
     ];
     let planned = plan(&paths, "two028", "two029");
     assert_eq!(planned.actions().len(), 3);
-    assert_eq!(output(&planned, 1), paths[1]);
-    assert_eq!(output(&planned, 3), paths[3]);
+    assert_eq!(
+        output(&planned, 1),
+        "nativePC/wp/two/two029/mod/ya028/custom.mod3"
+    );
+    assert_eq!(
+        output(&planned, 3),
+        "nativePC/wp/two/two029/mod/two030/ya028.mod3"
+    );
     assert!(planned
         .actions()
         .iter()
@@ -273,7 +292,7 @@ fn another_source_or_a_contradictory_model_cannot_prove_a_part_directory() {
 }
 
 #[test]
-fn windows_texture_extension_aliases_keep_the_complete_original_path() {
+fn windows_texture_extension_aliases_move_with_the_equipment() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028/two028.mod3",
         "nativePC/wp/two/two028/mod/two028/custom.TeX.",
@@ -281,16 +300,13 @@ fn windows_texture_extension_aliases_keep_the_complete_original_path() {
     ];
     let planned = plan(&paths, "two028", "two029");
     for (index, path) in paths.iter().enumerate().skip(1) {
-        assert_eq!(output(&planned, index), *path);
+        assert_eq!(output(&planned, index), path.replace("two028", "two029"));
         let effect = planned
             .file_effects()
             .iter()
             .find(|effect| effect.package_file_id.as_str() == format!("file-{index}"))
             .unwrap();
-        assert_eq!(
-            effect.reason,
-            hmm_core::RetargetFileReason::TextureReference
-        );
+        assert_eq!(effect.reason, hmm_core::RetargetFileReason::TargetMapping);
     }
 }
 
@@ -303,13 +319,19 @@ fn a_model_in_a_contradictory_part_directory_cannot_authorize_another_directory(
         "nativePC/wp/two/two028/mod/aux028/custom.mod3",
     ];
     let planned = plan(&paths, "two028", "two029");
-    assert_eq!(output(&planned, 2), paths[2]);
+    assert_eq!(
+        output(&planned, 2),
+        "nativePC/wp/two/two029/mod/ya027/aux028.mod3"
+    );
     assert_eq!(
         output(&planned, 3),
-        paths[3],
+        "nativePC/wp/two/two029/mod/aux028/custom.mod3",
         "a contradictory model is not relocation evidence"
     );
     let mut reversed = paths;
     reversed.reverse();
-    assert_eq!(output(&plan(&reversed, "two028", "two029"), 0), paths[3]);
+    assert_eq!(
+        output(&plan(&reversed, "two028", "two029"), 0),
+        "nativePC/wp/two/two029/mod/aux028/custom.mod3"
+    );
 }

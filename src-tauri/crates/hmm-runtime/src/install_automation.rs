@@ -409,6 +409,7 @@ impl InitialRetargetInstallStatusReader for ReadOnlyInitialRetargetInstallStatus
 struct ReadOnlyBatchReinstallItemFactsReader {
     preview: Arc<ReinstallPreviewService>,
     replacement_workflow: Arc<ReplacementWorkflowService>,
+    source: Arc<dyn ReinstallCandidateSourceReader>,
 }
 
 impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
@@ -479,8 +480,18 @@ impl BatchReinstallItemFactsReader for ReadOnlyBatchReinstallItemFactsReader {
                 );
             }
         };
+        let plans = std::slice::from_ref(planned.retarget_plan());
+        let source = Arc::new(crate::retarget_content::RetargetCandidateReader::new(
+            Arc::clone(&self.source),
+            context.installed_revision_id.clone(),
+            plans,
+        )?);
         let preparation = self
             .preview
+            .as_ref()
+            .clone()
+            .with_candidate_source(source)
+            .with_content_transforms(crate::retarget_content::invocations(plans))
             .prepare_replacement_target_switch_with_origin(
                 ReinstallPreviewRequest {
                     game_id: request.game_id.clone(),
@@ -1056,6 +1067,9 @@ impl ReadOnlyInstallAutomation {
             Arc::new(ReadOnlyBatchReinstallItemFactsReader {
                 preview,
                 replacement_workflow: Arc::clone(&self.replacement_workflow),
+                source: Arc::new(ReadOnlyReinstallCandidateSourceReader {
+                    sandbox_locator: Arc::clone(&self.sandbox_locator),
+                }),
             });
         BatchReinstallPlanFactsProvider::new(
             item_facts,

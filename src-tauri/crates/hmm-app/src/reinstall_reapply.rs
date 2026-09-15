@@ -1,6 +1,15 @@
 use super::*;
 
 impl ReinstallPreviewService {
+    /// 候选可由只读内存转换提供；原包校验继续使用独立的 original_source。
+    pub fn with_candidate_source(
+        mut self,
+        source: Arc<dyn ReinstallCandidateSourceReader>,
+    ) -> Self {
+        self.source = source;
+        self
+    }
+
     pub fn prepare_unbound_plugin_reapply(
         &self,
         game_id: &GameId,

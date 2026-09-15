@@ -185,4 +185,16 @@ pub trait ReplacementAdapter: Send + Sync {
     ) -> ReplacementAdapterResult<RetargetPlan> {
         self.build_retarget_plan(request)
     }
+
+    /// 在完整候选集合内解析跨来源依赖；返回顺序必须与请求一致。
+    fn build_retarget_plans_with_content(
+        &self,
+        requests: Vec<RetargetPlanRequest>,
+        content_reader: &dyn ReplacementAssetContentReader,
+    ) -> ReplacementAdapterResult<Vec<RetargetPlan>> {
+        requests
+            .into_iter()
+            .map(|request| self.build_retarget_plan_with_content(request, content_reader))
+            .collect()
+    }
 }

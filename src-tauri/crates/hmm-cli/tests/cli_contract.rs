@@ -3732,6 +3732,7 @@ fn sandbox_reinstall_manifest_save_failure_rolls_back_v1_in_real_binary() {
         .to_owned();
 
     let manifest_path = sandbox.path().join("install/manifests/default.json");
+    let manifest_before = fs::read(&manifest_path).expect("read pre-reinstall manifest");
     let mut permissions = fs::metadata(&manifest_path)
         .expect("manifest metadata")
         .permissions();
@@ -3791,16 +3792,11 @@ fn sandbox_reinstall_manifest_save_failure_rolls_back_v1_in_real_binary() {
     );
     assert_eq!(tree_snapshot(&game_root), installed_v1);
 
-    let manifest =
-        JsonInstallManifestRepository::new(sandbox.path().join("install").join("manifests"))
-            .load_manifest(&ProfileId::new("default"))
-            .expect("load rolled-back manifest")
-            .expect("v1 manifest remains");
-    assert!(manifest
-        .entries
-        .iter()
-        .filter(|entry| entry.mod_id == ModId::new("mod-a"))
-        .all(|entry| entry.revision_id.is_none()));
+    assert_eq!(
+        fs::read(&manifest_path).expect("read rolled-back manifest"),
+        manifest_before,
+        "rollback must preserve every original manifest field, including recorded revisions"
+    );
 
     let recovery = hmm_install_in_sandbox(
         sandbox.path(),

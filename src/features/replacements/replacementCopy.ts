@@ -273,6 +273,19 @@ export const replacementCopy = {
         },
         replacement_target_catalog_unavailable: { message: "替换目标目录暂不可用。" },
         replacement_analysis_unavailable: { message: "替换分析暂不可用。" },
+        equipment_material_format_invalid: {
+          message: "无法读取装备材质的贴图引用，暂时不能安全迁移贴图。",
+          hint: "可以先安装到作者的原始目标，并反馈此 Mod 的材质兼容问题。",
+        },
+        equipment_material_path_too_long: {
+          message: "迁移后的贴图引用超出游戏格式的长度上限。",
+          hint: "请改选其他目标。",
+        },
+        equipment_material_reference_unsafe: { message: "材质中的贴图引用路径无效，已阻止写入。" },
+        equipment_material_transform_invalid: {
+          message: "材质转换结果未通过完整性校验，已阻止写入。",
+          hint: "请重新生成预览；若持续出现，请反馈此问题。",
+        },
         weapon_source_content_unavailable: {
           message: "无法读取受控武器资源。",
           hint: "请重新导入该 Mod。",
@@ -565,6 +578,19 @@ export const replacementCopy = {
         },
         replacement_target_catalog_unavailable: { message: "The replacement target catalog is temporarily unavailable." },
         replacement_analysis_unavailable: { message: "Replacement analysis is temporarily unavailable." },
+        equipment_material_format_invalid: {
+          message: "The equipment material's texture references could not be read safely.",
+          hint: "You can install at the author's original target and report this material compatibility issue.",
+        },
+        equipment_material_path_too_long: {
+          message: "The migrated texture reference exceeds the game format's length limit.",
+          hint: "Choose another target.",
+        },
+        equipment_material_reference_unsafe: { message: "A material texture reference is invalid. No files were written." },
+        equipment_material_transform_invalid: {
+          message: "Material transformation failed its integrity check. No files were written.",
+          hint: "Generate a new preview. Report the issue if it persists.",
+        },
         weapon_source_content_unavailable: {
           message: "The managed weapon assets could not be read.",
           hint: "Re-import the mod.",
@@ -861,6 +887,19 @@ export const replacementCopy = {
         },
         replacement_target_catalog_unavailable: { message: "置換ターゲットのカタログは一時的に利用できません。" },
         replacement_analysis_unavailable: { message: "置換分析は一時的に利用できません。" },
+        equipment_material_format_invalid: {
+          message: "装備マテリアルのテクスチャ参照を安全に読み取れませんでした。",
+          hint: "作者が指定した元の対象にインストールし、マテリアルの互換性問題を報告してください。",
+        },
+        equipment_material_path_too_long: {
+          message: "移行後のテクスチャ参照がゲーム形式の長さ上限を超えています。",
+          hint: "別の対象を選んでください。",
+        },
+        equipment_material_reference_unsafe: { message: "マテリアルのテクスチャ参照が無効なため、書き込みを停止しました。" },
+        equipment_material_transform_invalid: {
+          message: "マテリアル変換の整合性検証に失敗したため、書き込みを停止しました。",
+          hint: "プレビューを再生成してください。解消しない場合は問題を報告してください。",
+        },
         weapon_source_content_unavailable: {
           message: "管理下の武器アセットを読み取れませんでした。",
           hint: "Mod を再インポートしてください。",

@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "runtime_equipment_resource_upgrade_tests.rs"]
+mod resources;
 #[path = "runtime_equipment_path_upgrade_tests.rs"]
 mod upgrade;
 
@@ -10,7 +12,7 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     (
         "nativePC/wp/two/two028/mod/two028/custom.mrl3",
-        b"first author material",
+        &single_texture_material(""),
     ),
     (
         "nativePC/wp/two/two028/mod/two028/skin.tex",
@@ -22,7 +24,7 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     (
         "nativePC/wp/two/two020/mod/two020/custom.mrl3",
-        b"second author material",
+        &single_texture_material(""),
     ),
 ];
 const PLUGIN: &str = "nativePC/plugins/nested-fixture.dll";
@@ -43,9 +45,23 @@ struct Fixture {
 
 impl Fixture {
     fn new(files: &[(&str, &[u8])]) -> Self {
+        Self::with_sandbox(files, false)
+    }
+
+    fn with_sandbox(files: &[(&str, &[u8])], sandbox: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let app_data = temp.path().join("app-data");
-        let game = temp.path().join("game");
+        let game = if sandbox {
+            fs::create_dir_all(&app_data).unwrap();
+            fs::write(
+                app_data.join(crate::SANDBOX_MARKER_FILE_NAME),
+                crate::SANDBOX_MARKER_SCHEMA,
+            )
+            .unwrap();
+            app_data.join("fixtures/games/mhw-minimal")
+        } else {
+            temp.path().join("game")
+        };
         prepare_game_root(&game);
         fs::create_dir_all(game.join("nativePC/plugins")).unwrap();
         fs::write(game.join(PLUGIN), b"baseline attachment").unwrap();
@@ -248,7 +264,7 @@ fn nested_weapon_sources_swap_chain_and_move_independently_from_original_bytes()
             [
                 "nativePC/wp/two/two020/mod/two020/two020.mod3",
                 "nativePC/wp/two/two020/mod/two020/custom.mrl3",
-                "nativePC/wp/two/two028/mod/two028/skin.tex",
+                "nativePC/wp/two/two020/mod/two020/skin.tex",
                 "nativePC/wp/two/two028/mod/two028/two028.mod3",
                 "nativePC/wp/two/two028/mod/two028/custom.mrl3",
             ],
@@ -258,7 +274,7 @@ fn nested_weapon_sources_swap_chain_and_move_independently_from_original_bytes()
             [
                 "nativePC/wp/two/two020/mod/two020/two020.mod3",
                 "nativePC/wp/two/two020/mod/two020/custom.mrl3",
-                "nativePC/wp/two/two028/mod/two028/skin.tex",
+                "nativePC/wp/two/two020/mod/two020/skin.tex",
                 "nativePC/wp/two/two029/mod/two029/two029.mod3",
                 "nativePC/wp/two/two029/mod/two029/custom.mrl3",
             ],
@@ -268,7 +284,7 @@ fn nested_weapon_sources_swap_chain_and_move_independently_from_original_bytes()
             [
                 "nativePC/wp/two/two003/mod/two003/two003.mod3",
                 "nativePC/wp/two/two003/mod/two003/custom.mrl3",
-                "nativePC/wp/two/two028/mod/two028/skin.tex",
+                "nativePC/wp/two/two003/mod/two003/skin.tex",
                 "nativePC/wp/two/two029/mod/two029/two029.mod3",
                 "nativePC/wp/two/two029/mod/two029/custom.mrl3",
             ],
@@ -349,46 +365,32 @@ fn nested_shared_targets_reject_real_and_windows_equivalent_collisions_without_w
 }
 
 #[test]
-fn an_unmovable_source_is_identified_and_can_stay_while_other_sources_move() {
+fn custom_named_resources_move_with_their_source_root_and_can_return_independently() {
     let fixture = Fixture::new(&[
         (
             "nativePC/wp/two/two028/mod/two028/custom.mod3",
             b"movable author model",
         ),
-        (
-            "nativePC/wp/two/two020/mod/custom.mod3",
-            b"original-only model",
-        ),
+        ("nativePC/wp/two/two020/mod/custom.mod3", b"custom model"),
     ]);
     let request = fixture.choices(&[("two028", "two029"), ("two020", "two003")]);
-    let blocked_source = request
-        .slots
-        .iter()
-        .find_map(|slot| match slot {
-            InitialRetargetSlotIntent::Retarget {
-                source_id,
-                target_id,
-            } if *target_id == target("two003", "wp/two") => Some(source_id.clone()),
-            _ => None,
-        })
-        .unwrap();
-    let error = fixture
+    fixture
         .state
         .initial_retarget_install_preflight
-        .preview(initial_request(request))
-        .unwrap_err();
-    assert_eq!(
-        error,
-        ReplacementWorkflowError::Analysis(hmm_app::ReplacementServiceError::Adapter(
-            hmm_ports::ReplacementAdapterError::SourceAnalysisRejected {
-                source_id: blocked_source,
-                code: "weapon_no_relocatable_resources",
-            },
-        ))
-    );
+        .preview(initial_request(request.clone()))
+        .unwrap();
     assert_eq!(snapshot_file_tree(&fixture.game), fixture.baseline);
+    install_equipment(&fixture.state, request);
+    assert_eq!(
+        fs::read(fixture.game.join("nativePC/wp/two/two003/mod/custom.mod3")).unwrap(),
+        b"custom model"
+    );
+    assert!(!fixture
+        .game
+        .join("nativePC/wp/two/two020/mod/custom.mod3")
+        .exists());
     let selection = fixture.choices(&[("two028", "two029"), ("two020", "two020")]);
-    install_equipment(&fixture.state, selection);
+    fixture.run(selection);
     assert_eq!(
         fs::read(
             fixture
@@ -400,8 +402,12 @@ fn an_unmovable_source_is_identified_and_can_stay_while_other_sources_move() {
     );
     assert_eq!(
         fs::read(fixture.game.join("nativePC/wp/two/two020/mod/custom.mod3")).unwrap(),
-        b"original-only model"
+        b"custom model"
     );
+    assert!(!fixture
+        .game
+        .join("nativePC/wp/two/two003/mod/custom.mod3")
+        .exists());
     assert_eq!(
         read_fixture_manifest(&fixture.app_data)
             .replacement_bindings
