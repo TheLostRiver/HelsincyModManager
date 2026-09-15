@@ -1,5 +1,5 @@
 import { Search, Grid, LayoutGrid, List, MessageSquareText, Tags, TerminalSquare } from "lucide-react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { ModViewMode } from "./ModLibraryPage";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import { resolveCopy, useI18n } from "../../shared/i18n";
@@ -13,6 +13,7 @@ type LibraryToolbarProps = {
   viewMode: ModViewMode;
   showCardCategoryLabels: boolean;
   showCardHover: boolean;
+  pageControls?: ReactNode;
   onQueryChange: (value: string) => void;
   onQuerySubmit: () => void;
   onFilterChange: (value: ModLibraryFilter) => void;
@@ -30,6 +31,7 @@ export function LibraryToolbar({
   viewMode,
   showCardCategoryLabels,
   showCardHover,
+  pageControls,
   onQueryChange,
   onQuerySubmit,
   onFilterChange,
@@ -92,6 +94,8 @@ export function LibraryToolbar({
               </button>
             )}
           </ModLibraryControlTooltip>
+
+          {pageControls}
 
           <div
             className="library-view-toggles"

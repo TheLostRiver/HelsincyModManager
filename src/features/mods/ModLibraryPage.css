@@ -40,13 +40,13 @@
   gap: 0;
   min-width: 0;
   min-height: 0;
-  --mod-library-back-to-top-size: 52px;
-  --mod-library-back-to-top-block-offset: 100px;
+  --mod-library-back-to-top-size: 40px;
+  --mod-library-back-to-top-block-offset: 16px;
 }
 
 /*
  * .mod-library__content-shell 承载列表滚动容器和自绘滚动条浮层。
- * .mod-library__content 是 mods 路由的真实滚动容器：只装卡片网格 + 返回顶部浮动层。
+ * .mod-library__content 是 mods 路由的真实滚动容器，返回顶部浮层留在 content-shell 内定位。
  * 搜索栏(sticky-controls)在其之外(mod-library 第1行)，故滚动条从卡片区顶部(搜索栏正下方)
  * 开始，绝不达搜索栏。高度由路由作用域闭合的高度链约束，content 获得被约束高度可滚。
  */
@@ -61,6 +61,7 @@
 }
 
 .mod-library__content {
+  grid-area: 1 / 1;
   position: relative;
   display: block;
   min-width: 0;
@@ -71,8 +72,8 @@
 }
 
 /*
- * 原生滚动条只负责滚动能力，视觉层隐藏；显隐由自绘滚动条和返回顶部按钮统一跟随
- * .mod-library__content 的 scrollTop 状态。
+ * 原生滚动条只负责滚动能力，视觉层隐藏。自绘滚动条在离开顶部后出现，
+ * 返回顶部按钮使用独立的一屏阈值，二者都跟随卡片容器的实际滚动状态。
  */
 .mod-library__content {
   scrollbar-width: none;
@@ -214,16 +215,18 @@
 }
 
 /*
- * 返回顶部浮动按钮：相对视口固定(fixed)，真正悬浮——滚动卡片时不消失、不随卡片移动。
- * 定位在右下角，距底部 100px（不贴太近，方便点击）、距右边缘对齐 page-padding。
- * fixed 是浮动按钮的标准实现：脱离文档流、不依赖父级滚动容器、始终在视口右下角。
- * 因脱离流，不再是 content 的 grid item，从 DOM 角度仍在 content 内但定位完全独立。
+ * 浮层与卡片区共用网格轨道；sticky 在矮窗口外层滚动时保持按钮可见。
+ * 分页出现/收起时自动跟随内容边界，不覆盖底部翻页控件。
+ * 容器不接收点击，只有可见按钮响应；保留 DOM 以支持淡出。
  */
 .mod-library__main-floating-actions {
-  position: fixed;
-  right: var(--layout-page-padding);
+  grid-area: 1 / 1;
+  align-self: end;
+  justify-self: end;
+  position: sticky;
   bottom: var(--mod-library-back-to-top-block-offset);
-  z-index: 50;
+  margin: 0 20px var(--mod-library-back-to-top-block-offset) 0;
+  z-index: 20;
   display: flex;
   justify-content: end;
   pointer-events: none;
@@ -232,26 +235,39 @@
 .mod-library__back-to-top {
   display: inline-grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: var(--mod-library-back-to-top-size);
+  height: var(--mod-library-back-to-top-size);
   padding: 0;
-  pointer-events: auto;
-  color: #ffffff;
-  background: linear-gradient(180deg, #7dd3fc 0%, #2563eb 100%);
-  border: 1px solid #93c5fd;
-  border-radius: 9999px;
-  box-shadow: 0 18px 36px -22px #2563ebcc;
+  pointer-events: none;
+  color: var(--color-text-soft);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
   cursor: pointer;
   transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    filter 0.18s ease;
+    opacity 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease,
+    visibility 0s linear 160ms;
 }
 
-.mod-library__back-to-top:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 40px -22px #2563ebd9;
-  filter: saturate(1.08);
+.mod-library__back-to-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+.mod-library__back-to-top:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface);
+  transform: translateY(-1px);
 }
 
 .mod-library__back-to-top:active {
@@ -282,6 +298,7 @@
 
 .library-toolbar__top-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -293,6 +310,8 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .library-toolbar__bottom-row {
@@ -306,11 +325,12 @@
   align-items: center;
   gap: 10px;
   height: 36px;
+  min-width: min(100%, 220px);
   padding: 0 14px;
   color: var(--color-text-muted);
   background: var(--color-surface-subtle);
   border-radius: var(--radius-pill);
-  flex: 1;
+  flex: 1 1 220px;
 }
 
 .library-search svg {
@@ -807,12 +827,22 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 860px) {
   .library-toolbar__top-row {
-    flex-wrap: wrap;
     gap: 10px;
   }
 
+  .library-search {
+    flex-basis: 100%;
+  }
+
+  .library-toolbar__display-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 640px) {
   .library-search {
     min-width: min(100%, 220px);
   }
@@ -820,8 +850,7 @@
   .mod-library {
     --layout-mod-card-min-width: 150px;
     --layout-mod-card-poster-height: 220px;
-    --mod-library-back-to-top-size: 48px;
-    --mod-library-back-to-top-block-offset: 80px;
+    --mod-library-back-to-top-block-offset: 12px;
   }
 
   .mod-grid {
@@ -838,14 +867,14 @@
     flex: 0 0 auto;
     min-width: 0;
   }
-
-  .mod-library__back-to-top {
-    width: 48px;
-    height: 48px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mod-library__back-to-top {
+    transition: none;
+    transform: none;
+  }
+
   .library-view-toggle-indicator,
   .library-label-toggle,
   .library-hover-toggle,
@@ -853,8 +882,7 @@
   .mod-grid[data-view-transition="out"] .mod-card,
   .mod-grid[data-view-transition="in"] .mod-card,
   .mod-card__poster,
-  .compact-action,
-  .mod-library__back-to-top {
+  .compact-action {
     animation-duration: 0.01ms;
     transition-duration: 0.01ms;
   }

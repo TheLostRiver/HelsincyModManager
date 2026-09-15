@@ -1,148 +1,75 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { registerReactTestModules } from "../../shared/testing/reactModuleLoader.mjs";
 
-function readPaginationSource(fileName) {
-  return readFileSync(new URL(`./${fileName}`, import.meta.url), "utf8");
+registerReactTestModules();
+const { I18nContext } = await import("../../shared/i18n/I18nProvider.tsx");
+const { modLibraryCopy } = await import("./modLibraryCopy.ts");
+const { ModLibraryPagination } = await import("./ModLibraryPagination.tsx");
+const { ModLibraryPageControls } = await import("./ModLibraryPageControls.tsx");
+const copy = modLibraryCopy.zh_cn.pagination;
+
+function render(Component, props) {
+  return renderToStaticMarkup(React.createElement(I18nContext.Provider, {
+    value: { locale: "zh_cn", preference: "zh_cn", systemLocale: "zh_cn", setPreference() {} },
+  }, React.createElement(Component, props)));
 }
 
-test("pagination UI uses the shared helpers and a custom upward page-size listbox", () => {
-  const source = readPaginationSource("ModLibraryPagination.tsx");
-
-  assert.match(source, /getModLibraryItemRange/);
-  assert.match(source, /getModLibraryPageSlots/);
-  assert.match(source, /getModLibraryTotalPages/);
-  assert.match(source, /role="listbox"/);
-  assert.match(source, /role="option"/);
-  assert.match(source, /aria-haspopup="listbox"/);
-  assert.match(source, /tabIndex=\{focusedPageSizeIndex === optionIndex \? 0 : -1\}/);
-  assert.doesNotMatch(source, /<select|<option/);
-});
-
-test("page-size keyboard navigation moves focus separately from committing a value", () => {
-  const source = readPaginationSource("ModLibraryPagination.tsx");
-  const keyboardHandlerStart = source.indexOf("const handlePageSizeOptionKeyDown");
-  const keyboardHandlerEnd = source.indexOf("const requestPage", keyboardHandlerStart);
-  const keyboardHandler = source.slice(keyboardHandlerStart, keyboardHandlerEnd);
-  const arrowDownStart = keyboardHandler.indexOf('case "ArrowDown"');
-  const arrowUpStart = keyboardHandler.indexOf('case "ArrowUp"');
-  const enterStart = keyboardHandler.indexOf('case "Enter"');
-  const arrowBranches = keyboardHandler.slice(arrowDownStart, enterStart);
-  const commitBranches = keyboardHandler.slice(enterStart);
-
-  assert.ok(arrowDownStart >= 0);
-  assert.ok(arrowUpStart > arrowDownStart);
-  assert.match(arrowBranches, /focusPageSizeOption/);
-  assert.doesNotMatch(arrowBranches, /commitPageSize|onPageSizeChange/);
-  assert.match(commitBranches, /case " ":/);
-  assert.match(commitBranches, /commitPageSize/);
-  assert.match(source, /requestAnimationFrame\(\(\) => pageSizeTriggerRef\.current\?\.focus\(\)\)/);
-  assert.match(
-    source,
-    /const handlePointerDown[\s\S]*?pageSizeRootRef\.current\?\.contains[\s\S]*?closePageSizeMenu\(false\)/,
-  );
-  assert.match(source, /const handleEscape[\s\S]*?event\.key === "Escape"[\s\S]*?closePageSizeMenu\(true\)/);
-});
-
-test("pagination UI exposes labeled Lucide navigation and a complete live range", () => {
-  const source = readPaginationSource("ModLibraryPagination.tsx");
-
-  for (const icon of ["ChevronsLeft", "ChevronLeft", "ChevronRight", "ChevronsRight"]) {
-    assert.match(source, new RegExp(`<${icon}\\s`));
+test("empty and single-page results hide the footer while keeping capacity and result information", () => {
+  for (const matchingTotal of [0, 1, 12, 24]) {
+    const result = { page: 1, pageSize: 24, matchingTotal };
+    assert.equal(render(ModLibraryPagination, { ...result, onPageChange() {} }), "");
+    const controls = render(ModLibraryPageControls, { pageSize: 24, result, onPageSizeChange() {} });
+    assert.ok(controls.includes(copy.perPageSizeAria(24)));
+    assert.ok(controls.includes(copy.items(matchingTotal)));
+    assert.match(controls, /aria-live="polite"/);
+    assert.match(controls, /aria-atomic="true"/);
+    assert.ok(controls.includes(matchingTotal === 0 ? copy.emptyRange : copy.range(1, matchingTotal, matchingTotal)));
   }
-  // I18N-02 起分页文案从 pagination copy 取；键在组件里成对出现（tooltip + aria）。
-  const copySource = readPaginationSource("modLibraryCopy.ts");
-  for (const key of ["gotoFirst", "gotoPrev", "gotoNext", "gotoLast"]) {
-    assert.match(source, new RegExp(`aria-label=\\{pagination\\.${key}\\}`));
-  }
-  for (const key of ["firstPage", "prevPage", "nextPage", "lastPage"]) {
-    assert.match(source, new RegExp(`content=\\{pagination\\.${key}\\} describeControl=\\{false\\}`));
-  }
-  for (const label of ["前往第一页", "前往上一页", "前往下一页", "前往最后一页"]) {
-    assert.match(copySource, new RegExp(label));
-  }
-  assert.match(source, /ModLibraryControlTooltip/);
-  assert.doesNotMatch(source, /title="(?:第一页|上一页|下一页|最后一页)"/);
-  assert.match(source, /aria-current=\{slot === currentPage \? "page" : undefined\}/);
-  assert.match(source, /aria-live="polite"/);
-  assert.match(source, /aria-atomic="true"/);
-  assert.match(source, /aria-disabled=\{busy \|\| undefined\}/);
 });
 
-test("busy pagination closes the menu without dropping focus from its controls", () => {
-  const source = readPaginationSource("ModLibraryPagination.tsx");
-  const css = readPaginationSource("ModLibraryPagination.css");
-
-  assert.match(source, /if \(busy && pageSizeMenuOpen\) \{\s*closePageSizeMenu\(true\);/);
-  assert.match(source, /const openPageSizeMenu = useCallback\(\(\) => \{\s*if \(busy\)/);
-  assert.match(source, /const commitPageSize = \(nextPageSize:[\s\S]*?if \(busy\)/);
-  assert.match(
-    source,
-    /const requestPage = \(nextPage:[\s\S]*?if \(busy[\s\S]*?return;[\s\S]*?onPageChange/,
-  );
-  assert.match(source, /aria-expanded=\{pageSizeMenuOpen && !busy\}/);
-  assert.match(source, /aria-disabled=\{busy \|\| undefined\}/);
-  assert.doesNotMatch(source, /disabled=\{busy\}/);
-  assert.match(source, /\{pageSizeMenuOpen && !busy \? \(/);
-  assert.match(css, /\.mod-library-pagination__page-size-trigger\[aria-disabled="true"\]/);
-  assert.match(css, /\.mod-library-pagination__page-size-trigger:hover:not\(\[aria-disabled="true"\]\)/);
-  assert.doesNotMatch(css, /\.mod-library-pagination__[^{]+:disabled/);
+test("multi-page results expose the actual current page and all labeled navigation actions", () => {
+  const html = render(ModLibraryPagination, {
+    page: 2, pageSize: 24, matchingTotal: 49, onPageChange() {},
+  });
+  for (const label of [copy.gotoFirst, copy.gotoPrev, copy.gotoNext, copy.gotoLast,
+    copy.pageAria(1), copy.pageAria(2), copy.pageAria(3)]) {
+    assert.ok(html.includes('aria-label="' + label + '"'));
+  }
+  assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
+  assert.ok(html.includes('aria-label="' + copy.pageAria(2) + '" aria-current="page"'));
+  assert.doesNotMatch(html, /aria-haspopup="listbox"/, "capacity has moved out of the footer");
 });
 
-test("pagination stacks and compacts all essential controls in narrow containers", () => {
-  const css = readPaginationSource("ModLibraryPagination.css");
-
-  assert.match(
-    css,
-    /@container\s*\(max-width:\s*580px\)[\s\S]*?grid-template-rows:\s*auto auto/,
-  );
-  assert.match(
-    css,
-    /@container\s*\(max-width:\s*580px\)[\s\S]*?\.mod-library-pagination__navigation[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
-  );
-  assert.match(
-    css,
-    /\.mod-library-pagination__navigation[\s\S]*?>\s*\.mod-library-control-tooltip:first-child,[\s\S]*?>\s*\.mod-library-control-tooltip:last-child[\s\S]*?display:\s*none/,
-  );
-  assert.match(
-    css,
-    /@container\s*\(max-width:\s*390px\)[\s\S]*?\.mod-library-pagination__page-button[\s\S]*?inline-size:\s*26px/,
-  );
+test("refreshing a multi-page result keeps navigation visible but unavailable", () => {
+  const html = render(ModLibraryPagination, {
+    page: 1, pageSize: 24, matchingTotal: 49, busy: true, onPageChange() {},
+  });
+  const buttons = (html.match(/<button/g) ?? []).length;
+  assert.ok(buttons > 0);
+  assert.equal((html.match(/aria-disabled="true"/g) ?? []).length, buttons);
 });
 
-test("pagination footer stays a compact semantic-token toolbar without overlay styling", () => {
-  const css = readPaginationSource("ModLibraryPagination.css");
-  const rootRule = css.match(/\.mod-library-pagination\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-  const layoutRule = css.match(/\.mod-library-pagination__layout\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-  const listboxRule = css.match(
-    /\.mod-library-pagination__page-size-listbox\s*\{([\s\S]*?)\n\}/,
-  )?.[1] ?? "";
+test("pending capacity changes keep the range tied to the displayed query snapshot", () => {
+  const html = render(ModLibraryPageControls, {
+    pageSize: 48,
+    result: { page: 2, pageSize: 24, matchingTotal: 100 },
+    busy: true,
+    onPageSizeChange() {},
+  });
+  assert.ok(html.includes(copy.perPageSizeAria(48)));
+  assert.ok(html.includes(copy.busyRange(copy.range(25, 48, 100))));
+  assert.ok(html.includes(copy.compactRange(25, 48, 100)));
+  assert.doesNotMatch(html, /role="listbox"/);
+  assert.match(html, /aria-disabled="true"/);
+});
 
-  /*
-   * 尺寸随卡片圆角体系（控件 10px）一并放宽：条高 48->52、控件 32->34。
-   * 这里锁的是"紧凑工具栏"这个意图，不是某个具体数值：条高保持在两位数、
-   * 控件保持在 40px 以内，一旦被改成页面级的大控件就会失败。
-   */
-  const barHeight = Number(layoutRule.match(/block-size:\s*(\d+)px/)?.[1]);
-  assert.ok(barHeight >= 40 && barHeight <= 64, `分页条高 ${barHeight}px 超出紧凑范围`);
-
-  const controlSize = Number(
-    css.match(/\.mod-library-pagination__page-button\s*\{[\s\S]*?\}/)
-      ? css.match(/inline-size:\s*(\d+)px;\s*\n\s*block-size:\s*\1px;/)?.[1]
-      : undefined,
-  );
-  assert.ok(controlSize >= 28 && controlSize <= 40, `分页控件 ${controlSize}px 超出紧凑范围`);
-
-  assert.doesNotMatch(rootRule, /position:\s*(?:fixed|sticky|absolute)/);
-  assert.match(listboxRule, /bottom:\s*calc\(100% \+ 8px\)/);
-  // 浮层锚在触发器本身，不再靠"每页"两字宽度的硬偏移对齐。
-  assert.match(listboxRule, /left:\s*0;/);
-  assert.match(css, /\.mod-library-pagination__page-size-anchor\s*\{[\s\S]*?position:\s*relative/);
-  assert.doesNotMatch(css, /box-shadow/);
-  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i);
-  // 窄容器隐藏"更新中"文字用 display:none，不得退回 font-size:0 那种抹字号的写法。
-  assert.doesNotMatch(css, /font-size:\s*0\s*;/);
-  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(css, /clip-path:\s*inset\(50%\)/);
-  assert.doesNotMatch(css, /\bclip:\s*rect\(/);
+test("initial loading does not announce an empty library before results arrive", () => {
+  const html = render(ModLibraryPageControls, {
+    pageSize: 24, result: null, busy: true, onPageSizeChange() {},
+  });
+  assert.ok(html.includes(copy.busyLabel));
+  assert.ok(!html.includes(copy.emptyRange));
 });

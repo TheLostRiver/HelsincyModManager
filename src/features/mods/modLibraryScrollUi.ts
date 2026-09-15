@@ -8,6 +8,7 @@ type ScrollUiState = {
   isScrollable: boolean;
   isAtTop: boolean;
   showScrollUi: boolean;
+  showBackToTop: boolean;
   thumbStyle: {
     height: string;
     transform: string;
@@ -41,6 +42,7 @@ export function getModLibraryScrollUiState({
       isScrollable: false,
       isAtTop: true,
       showScrollUi: false,
+      showBackToTop: false,
       thumbStyle: {
         height: "0px",
         transform: "translateY(0px)",
@@ -56,6 +58,7 @@ export function getModLibraryScrollUiState({
     isScrollable,
     isAtTop,
     showScrollUi: !isAtTop,
+    showBackToTop: normalizedScrollTop >= clientHeight,
     thumbStyle: {
       height: formatPixels(thumbHeight),
       transform: `translateY(${formatPixels(thumbTop)})`,

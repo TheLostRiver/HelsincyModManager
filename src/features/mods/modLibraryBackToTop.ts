@@ -15,6 +15,6 @@ export function getModLibraryBackToTopTarget(documentLike: QueryDocument, fallba
   return fallbackTarget;
 }
 
-export function scrollModLibraryBackToTop(target: ScrollTarget) {
-  target.scrollTo({ top: 0, behavior: "smooth" });
+export function scrollModLibraryBackToTop(target: ScrollTarget, reduceMotion = false) {
+  target.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 }

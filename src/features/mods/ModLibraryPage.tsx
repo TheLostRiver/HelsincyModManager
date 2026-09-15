@@ -45,6 +45,7 @@ import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { useModImportDrop } from "./ModImportDropProvider";
 import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { ModLibraryPagination } from "./ModLibraryPagination";
+import { ModLibraryPageControls } from "./ModLibraryPageControls";
 import {
   ModLibraryEmptyState,
   ModLibraryInitialError,
@@ -1709,7 +1710,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
     const fallbackTarget = document.scrollingElement ?? document.documentElement;
     const target = contentRef.current ?? getModLibraryBackToTopTarget(document, fallbackTarget);
-    scrollModLibraryBackToTop(target);
+    scrollModLibraryBackToTop(target, Boolean(prefersReducedMotion()));
   };
 
   const handleScrollbarPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1756,7 +1757,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     installPlanPreviewGenerationRef.current += 1;
     setInstallPlanDetailState({ status: "idle" });
   };
-  const { showScrollUi, thumbStyle } = scrollUiState;
+  const { showScrollUi, showBackToTop, thumbStyle } = scrollUiState;
 
   return (
     <section className="mod-library" aria-label={copy.page.regionLabel}>
@@ -1770,6 +1771,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             viewMode={viewMode}
             showCardCategoryLabels={showCardCategoryLabels}
             showCardHover={showCardHover}
+            pageControls={(
+              <ModLibraryPageControls
+                pageSize={libraryQuery.pageSize}
+                result={libraryPage}
+                busy={libraryQueryBusy}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            )}
             onQueryChange={handleQueryChange}
             onQuerySubmit={libraryQuery.flushSearch}
             onFilterChange={handleFilterChange}
@@ -1926,12 +1935,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           className="mod-library__content"
           aria-busy={libraryQueryBusy}
         >
-          {showScrollUi ? (
-            <div className="mod-library__main-floating-actions">
-              <BackToTopButton onClick={handleBackToTop} />
-            </div>
-          ) : null}
-
           {libraryQueryBlocked ? (
             <ModLibraryQueryBlockedState
               message={libraryQueryBlockedMessage}
@@ -1977,6 +1980,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           )}
         </div>
 
+        <div className="mod-library__main-floating-actions">
+          <BackToTopButton visible={showBackToTop} onClick={handleBackToTop} />
+        </div>
+
         {showScrollUi ? (
           <div className="mod-library__scrollbar" aria-hidden="true">
             <div
@@ -1990,11 +1997,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
       <ModLibraryPagination
         page={libraryPage?.page ?? 1}
-        pageSize={libraryQuery.pageSize}
+        pageSize={libraryPage?.pageSize ?? libraryQuery.pageSize}
         matchingTotal={libraryPage?.matchingTotal ?? 0}
         busy={libraryQueryBusy}
         onPageChange={handlePageChange}
-        onPageSizeChange={handlePageSizeChange}
       />
 
       {contextMenuState && (

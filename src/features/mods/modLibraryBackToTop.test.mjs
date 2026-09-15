@@ -35,7 +35,7 @@ test("falls back when mod-library__content scroll target is unavailable", () => 
   assert.equal(getModLibraryBackToTopTarget(documentLike, fallbackTarget), fallbackTarget);
 });
 
-test("scroll helper always requests smooth scroll-to-top", () => {
+test("scroll helper uses smooth scrolling unless reduced motion is requested", () => {
   let receivedOptions = null;
   const target = {
     scrollTo(options) {
@@ -49,15 +49,16 @@ test("scroll helper always requests smooth scroll-to-top", () => {
     top: 0,
     behavior: "smooth",
   });
+  scrollModLibraryBackToTop(target, true);
+  assert.deepEqual(receivedOptions, { top: 0, behavior: "auto" });
 });
 
-test("mod library page renders back-to-top from scroll UI state instead of unconditionally", () => {
+test("mod library page uses a separate back-to-top visibility state", () => {
   const source = readProjectFile("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(source, /BackToTopButton/);
-  assert.match(source, /showScrollUi\s*\?/);
   assert.match(source, /mod-library__main-floating-actions/);
-  assert.match(source, /showScrollUi\s*\?\s*\([\s\S]*?mod-library__main-floating-actions[\s\S]*?<BackToTopButton/);
+  assert.match(source, /<BackToTopButton visible=\{showBackToTop\}/);
 });
 
 test("scroll UI hides native scrollbar visuals and uses a custom state-driven scrollbar", () => {
@@ -74,11 +75,14 @@ test("scroll UI hides native scrollbar visuals and uses a custom state-driven sc
   assert.match(css, /\.mod-library__scrollbar-thumb\s*{[\s\S]*?transform:\s*translateY/);
 });
 
-test("back-to-top button keeps the requested comfortable bottom offset when visible", () => {
+test("back-to-top shares the card grid and stays visible during outer scrolling", () => {
   const css = readProjectFile("src/features/mods/ModLibraryPage.css");
 
-  // 距底部 100px：不贴太近右下角，方便点击（用户明确要求）。
-  assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*100px;/);
+  assert.match(css, /\.mod-library__content-shell\s*{[\s\S]*?position:\s*relative;/);
+  assert.match(css, /\.mod-library__content\s*{[\s\S]*?grid-area:\s*1\s*\/\s*1;/);
+  assert.match(css, /\.mod-library__main-floating-actions\s*{[\s\S]*?grid-area:\s*1\s*\/\s*1;/);
+  assert.match(css, /\.mod-library__main-floating-actions\s*{[\s\S]*?position:\s*sticky;/);
+  assert.match(css, /\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*16px;/);
   assert.match(
     css,
     /\.mod-library__main-floating-actions[\s\S]*?bottom:\s*var\(--mod-library-back-to-top-block-offset\);/,
@@ -86,10 +90,10 @@ test("back-to-top button keeps the requested comfortable bottom offset when visi
   // 关键根因保护：浮动层不得用 translateX 向外平移（会触发水平滚动并截断按钮）。
   assert.doesNotMatch(css, /\.mod-library__main-floating-actions[\s\S]*?transform:\s*translateX/);
   assert.doesNotMatch(css, /--mod-library-back-to-top-inline-offset/);
-  // 640px 小屏缩小底部偏移但仍保持点击舒适距离。
+  // 窄屏仍与卡片区域边缘保持间距。
   assert.match(
     css,
-    /@media\s*\(max-width:\s*640px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*80px;/,
+    /@media\s*\(max-width:\s*640px\)\s*{[\s\S]*?\.mod-library\s*{[\s\S]*?--mod-library-back-to-top-block-offset:\s*12px;/,
   );
 });
 
