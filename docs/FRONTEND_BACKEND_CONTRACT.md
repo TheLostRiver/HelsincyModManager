@@ -84,9 +84,21 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`get_mod_replacement_summary`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
+- Mod 快捷入口：`open_mod_folder(modId)`、`open_mod_nexus_page(modId)`
 - 检查是否有可用更新：`check_app_update`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
+
+### Mod 文件夹与 NexusMods 快捷入口
+
+两个入口只接受逻辑 `modId`，成功返回空结果。文件夹由后端按展示版本解析受控 Mod 存储目录，
+拒绝缺失目录、普通文件、路径穿越和链接目录，不创建目录，也不返回磁盘路径。
+NexusMods 入口读取已保存的正整数 ID，由游戏适配器提供固定页面前缀，再调用系统浏览器；
+调用方不能提供 URL。右键菜单按实际尺寸保持在视口内，小窗口允许菜单内部滚动。
+
+稳定错误码：`mod_shortcut_mod_invalid`、`mod_shortcut_mod_not_found`、`mod_shortcut_unavailable`、
+`mod_folder_unavailable`、`mod_nexus_id_missing`、`mod_nexus_open_failed`。缺少 ID 时提示先填写
+Mod 信息设置，失败信息不包含真实目录或原始系统错误。
 
 ## 应用健康与 App Log
 

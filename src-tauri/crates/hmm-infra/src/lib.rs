@@ -20,6 +20,7 @@ mod install_commit;
 mod log_retention;
 mod log_storage_budget;
 mod managed_log;
+mod mod_directory_opener;
 mod mod_import;
 mod mod_import_archive_consumer;
 mod mod_import_install_files;
@@ -99,6 +100,7 @@ pub use log_storage_budget::{
     FileSystemLogStorageBudget, LogStorageBudgetOutcome, LogStorageBudgetReport,
     DEFAULT_LOG_STORAGE_MAX_BYTES, LOG_STORAGE_AUDIT_RESERVE_BYTES, MIN_AUDIT_LOG_RETENTION_DAYS,
 };
+pub use mod_directory_opener::SandboxModDirectoryOpener;
 pub use mod_import::{
     default_mod_storage_root, probe_mod_archive, FileSystemDiagnosticPackageExporter,
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,

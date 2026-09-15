@@ -33,6 +33,7 @@ mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
 mod mod_metadata;
+mod mod_shortcuts;
 mod mod_storage_migration;
 mod mod_storage_settings;
 mod mod_storage_write_gate;
@@ -262,6 +263,7 @@ pub use mod_library_query::{
     MAX_MOD_LIBRARY_SEARCH_CHARS,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
+pub use mod_shortcuts::{ModShortcutError, ModShortcutService};
 pub use mod_storage_migration::{
     queued_mod_storage_migration_event, settle_pending_mod_storage_migration,
     ModStorageMigrationFailure, ModStorageMigrationLaunch, ModStorageMigrationSettlement,
