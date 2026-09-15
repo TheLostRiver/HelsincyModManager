@@ -57,6 +57,11 @@ pub fn preview_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let request = parse_batch_plan_request(request)?;
+    crate::mod_installation_commands::require_scope(
+        &state,
+        &request.plan.game_id,
+        &request.plan.profile_id,
+    )?;
     let preview = BatchLifecycleAutomation::preview_request(environment, request)
         .map_err(batch_automation_error)?;
     Ok(project_preview(preview))
@@ -72,6 +77,11 @@ pub fn seal_batch_mod_lifecycle(
         .batch_sandbox_environment()
         .ok_or_else(batch_sandbox_unavailable_error)?;
     let request = parse_batch_plan_request(request)?;
+    crate::mod_installation_commands::require_scope(
+        &state,
+        &request.plan.game_id,
+        &request.plan.profile_id,
+    )?;
     let sealed = match state.batch_sandbox_database() {
         Some(database) => BatchLifecycleAutomation::seal_request_with_database(
             environment,

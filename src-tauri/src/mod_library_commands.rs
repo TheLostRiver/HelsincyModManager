@@ -16,6 +16,13 @@ pub fn query_mod_library(
     state: State<'_, AppState>,
 ) -> Result<ModLibraryPageDto, CommandErrorDto> {
     let query = mod_library_query_from_dto(request)?;
+    if let Some(context) = &query.profile_context {
+        crate::mod_installation_commands::require_scope(
+            &state,
+            &context.game_id,
+            &context.profile_id,
+        )?;
+    }
     state
         .mod_library_query
         .query(query)

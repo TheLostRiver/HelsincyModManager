@@ -241,6 +241,7 @@ impl From<ReadOnlyInstallRecoveryAction> for InstallRecoveryActionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadOnlyInstallAutomationError {
+    InstallationScope(hmm_ports::ModInstallationScopeError),
     AppDataUnavailable,
     UnsupportedGame,
     ProfileIdInvalid,
@@ -269,6 +270,7 @@ pub enum ReadOnlyInstallAutomationError {
 impl ReadOnlyInstallAutomationError {
     pub const fn code(self) -> &'static str {
         match self {
+            Self::InstallationScope(error) => error.code(),
             Self::AppDataUnavailable => "app_data_unavailable",
             Self::UnsupportedGame => "unsupported_game",
             Self::ProfileIdInvalid => "profile_id_invalid",
@@ -684,7 +686,7 @@ impl ReadOnlyInstallAutomation {
         game_id: &str,
         mod_id: &str,
     ) -> Result<InstallPlanSnapshot, ReadOnlyInstallAutomationError> {
-        self.plan_for_profile(game_id, "default", mod_id)
+        self.plan_for_profile(game_id, "auto", mod_id)
     }
 
     /// Token 环境与数据根同源：显式 sandbox 根 → Sandbox，OS 解析 app data → Production。
@@ -788,6 +790,7 @@ impl ReadOnlyInstallAutomation {
             .preflight
             .preview_revision(&game_id, &mod_id, &revision, &base_file_layer())
             .map_err(map_planning_error)?;
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         self.replacement_workflow
             .apply_plugin_selection(
                 hmm_core::PluginSelectionScope {
@@ -855,6 +858,7 @@ impl ReadOnlyInstallAutomation {
             .preflight
             .preview_revision(&game_id, &mod_id, &revision_id, layer)
             .map_err(map_planning_error)?;
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         let mut plan = preflight.plan;
         if !plan.replacement_bindings.is_empty() {
             return Err(ReadOnlyInstallAutomationError::InstallPlanInvalid);
@@ -966,6 +970,7 @@ impl ReadOnlyInstallAutomation {
             candidate_revision_id,
             ReadOnlyInstallAutomationError::CandidateRevisionIdInvalid,
         )?);
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         let service = self.reinstall_preview_service(&game_id)?;
         let preview = service
             .preview(ReinstallPreviewRequest {
@@ -1135,6 +1140,7 @@ impl ReadOnlyInstallAutomation {
             mod_id,
             ReadOnlyInstallAutomationError::ModIdInvalid,
         )?);
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         let state_before = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
         let mut summaries = self.scan_recovery(
             game_id.clone(),
@@ -1172,6 +1178,15 @@ impl ReadOnlyInstallAutomation {
             ReadOnlyInstallAutomationError::ProfileIdInvalid,
         )?);
         let mod_ids = parse_mod_ids(mod_ids, false)?;
+        let profile_id = if game_id.is_some() || profile_id.as_str() == "auto" {
+            self.resolve_installation_scope(
+                &parse_game_id(game_id.unwrap_or(hmm_core::MHW_GAME_ID))?,
+                &profile_id,
+            )?
+        } else {
+            // Explicit legacy namespaces remain readable for diagnostics when no game is given.
+            profile_id
+        };
         let (game_id, items) = if let Some(game_id) = game_id {
             let game_id = parse_game_id(game_id)?;
             let summaries = self.scan_recovery(
@@ -1230,11 +1245,13 @@ impl ReadOnlyInstallAutomation {
             profile_id,
             ReadOnlyInstallAutomationError::ProfileIdInvalid,
         )?);
+        let mod_ids = parse_mod_ids(mod_ids, true)?;
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         let summaries = self.scan_recovery(
             game_id.clone(),
             InstallRecoveryScanRequest {
                 profile_id: profile_id.clone(),
-                mod_ids: parse_mod_ids(mod_ids, true)?,
+                mod_ids,
             },
         )?;
         let items = summaries
@@ -1337,6 +1354,7 @@ impl ReadOnlyInstallAutomation {
             mod_id,
             ReadOnlyInstallAutomationError::ModIdInvalid,
         )?);
+        let profile_id = self.resolve_installation_scope(&game_id, &profile_id)?;
         let state_before = self.load_lifecycle_install_state(&profile_id, &mod_id)?;
         let game_instance = self.load_admitted_game_instance(&game_id)?;
         let uninstaller = crate::uninstall::configured_uninstall_service(
@@ -1499,6 +1517,23 @@ impl ReadOnlyInstallAutomation {
         }
 
         Ok(instance)
+    }
+
+    pub(crate) fn resolve_installation_scope(
+        &self,
+        game_id: &GameId,
+        requested: &ProfileId,
+    ) -> Result<ProfileId, ReadOnlyInstallAutomationError> {
+        let game = self.load_admitted_game_instance(game_id)?;
+        let context = hmm_infra::JsonModInstallationScopeRepository::new(self.app_data_dir.clone())
+            .inspect_scope(&game)
+            .map_err(ReadOnlyInstallAutomationError::InstallationScope)?;
+        if requested.as_str() != "auto" && requested != &context.scope_id {
+            return Err(ReadOnlyInstallAutomationError::InstallationScope(
+                hmm_ports::ModInstallationScopeError::Mismatch,
+            ));
+        }
+        Ok(context.scope_id)
     }
 }
 

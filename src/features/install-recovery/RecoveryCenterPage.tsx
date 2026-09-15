@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, CircleHelp, FileDown, Loader2, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { useGameSetup } from "../game-setup/GameSetupProvider";
+import { ModInstallationNotice } from "../mods/ModInstallationNotice";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { recoveryCenterCopy, type RecoveryCenterCopy } from "./recoveryCenterCopy";
 import { copyForRecoveryAction } from "./missingTargetRecoveryCopy";
@@ -51,6 +52,7 @@ export function RecoveryCenterPage() {
 
   return (
     <section className="recovery-center" aria-labelledby="recovery-center-title">
+      <ModInstallationNotice />
       <header className="recovery-center__hero" data-tour-id="recovery.actions">
         <div className="recovery-center__hero-copy">
           <span className="recovery-center__eyebrow">{copy.page.eyebrow}</span>

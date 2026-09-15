@@ -104,7 +104,7 @@ export const onboardingTourCopy = {
       },
       mods: {
         title: "Mod 管理",
-        description: "这里用于导入、筛选并管理当前配置档中的 Mod。",
+        description: "这里用于导入、筛选并管理当前游戏的 Mod。",
         bullets: ["安装前会先生成预览。", "引导不会替你导入、安装或卸载任何 Mod。"],
         features: {
           "mods-import": {
@@ -164,13 +164,13 @@ export const onboardingTourCopy = {
       },
       profiles: {
         title: "存档备份",
-        description: "这里管理不同游戏场景使用的配置档、存档目录与备份计划。",
+        description: "这里按 Steam 账号管理存档配置档、存档目录与备份计划。",
         bullets: ["同一时间只有一个活动配置档。", "删除或切换仍使用页面原有确认流程。"],
         features: {
           "profiles-list": {
             title: "新建、选择与激活配置档",
-            description: "配置档是一套独立的 Mod 与存档管理场景，例如主线、联机或测试环境。",
-            bullets: ["新建后先选择，再设为活动配置档。", "后续安装和存档操作都归属当前活动配置档。"],
+            description: "每个配置档保存一个账号的存档目录与备份设置，方便在多个 Steam 账号之间切换。",
+            bullets: ["新建后先选择，再设为活动配置档。", "切换后可备份对应账号的存档，已安装的 Mod 保持不变。"],
           },
           "profiles-directories": {
             title: "设置存档与备份目录",
@@ -274,7 +274,7 @@ export const onboardingTourCopy = {
       features: {
         shield: { title: "安全安装", description: "安装前预览变更，失败时保留回滚与恢复证据。" },
         layers: { title: "Mod 管理", description: "集中导入、安装、卸载和真正重装 Mod。" },
-        profiles: { title: "配置档", description: "将 Mod、游戏与存档操作归入明确的使用场景。" },
+        profiles: { title: "存档配置档", description: "为不同 Steam 账号保存独立的存档目录与备份设置。" },
         backup: { title: "存档保护", description: "创建备份点，并通过受控流程恢复玩家存档。" },
       },
       callout: "接下来从当前页面开始，按高亮提示亲自完成导航。",
@@ -323,7 +323,7 @@ export const onboardingTourCopy = {
       },
       mods: {
         title: "Mod management",
-        description: "Import, filter, and manage the mods of the current profile here.",
+        description: "Import, filter, and manage mods for the current game here.",
         bullets: ["A preview is generated before installing.", "The tour never imports, installs, or uninstalls mods for you."],
         features: {
           "mods-import": {
@@ -383,13 +383,13 @@ export const onboardingTourCopy = {
       },
       profiles: {
         title: "Save backups",
-        description: "Manage the profiles, save data directories, and backup schedules used by different play scenarios.",
+        description: "Manage save profiles, save data directories, and backup schedules for each Steam account.",
         bullets: ["Only one profile is active at a time.", "Deleting or switching still uses the page's existing confirmation flows."],
         features: {
           "profiles-list": {
             title: "Create, select, and activate profiles",
-            description: "A profile is an independent mod and save data management scenario — e.g. main story, multiplayer, or testing.",
-            bullets: ["After creating, select it and then make it the active profile.", "Later installs and save data operations belong to the current active profile."],
+            description: "Each profile stores an account's save data directory and backup settings, making it easy to switch between Steam accounts.",
+            bullets: ["After creating, select it and then make it the active profile.", "Switching lets you back up that account's saves while installed mods stay unchanged."],
           },
           "profiles-directories": {
             title: "Set the save data and backup directories",
@@ -493,7 +493,7 @@ export const onboardingTourCopy = {
       features: {
         shield: { title: "Safe installs", description: "Preview changes before installing; rollback and recovery evidence is kept on failure." },
         layers: { title: "Mod management", description: "Import, install, uninstall, and truly reinstall mods in one place." },
-        profiles: { title: "Profiles", description: "Group mod, game, and save data operations into clear play scenarios." },
+        profiles: { title: "Save profiles", description: "Keep separate save data directories and backup settings for different Steam accounts." },
         backup: { title: "Save protection", description: "Create backup points and restore player save data through controlled flows." },
       },
       callout: "Starting from the current page, follow the highlights and navigate yourself.",
@@ -542,7 +542,7 @@ export const onboardingTourCopy = {
       },
       mods: {
         title: "Mod 管理",
-        description: "現在のプロファイルの Mod をインポート・絞り込み・管理します。",
+        description: "現在のゲームの Mod をインポート・絞り込み・管理します。",
         bullets: ["インストール前にプレビューを生成します。", "ガイドが代わりにインポート・インストール・アンインストールすることはありません。"],
         features: {
           "mods-import": {
@@ -602,13 +602,13 @@ export const onboardingTourCopy = {
       },
       profiles: {
         title: "セーブバックアップ",
-        description: "プレイシナリオごとのプロファイル、セーブデータディレクトリ、バックアップ計画を管理します。",
+        description: "Steam アカウントごとのセーブプロファイル、セーブデータディレクトリ、バックアップ計画を管理します。",
         bullets: ["同時にアクティブなプロファイルは 1 つだけです。", "削除や切り替えはページ既存の確認フローを使用します。"],
         features: {
           "profiles-list": {
             title: "プロファイルの作成・選択・有効化",
-            description: "プロファイルは独立した Mod・セーブデータ管理シナリオです。例：メインストーリー、マルチプレイ、テスト環境。",
-            bullets: ["作成後にまず選択し、その後アクティブに設定します。", "以降のインストールとセーブデータ操作は現在のアクティブプロファイルに属します。"],
+            description: "各プロファイルにアカウントのセーブデータディレクトリとバックアップ設定を保存し、複数の Steam アカウントを簡単に切り替えられます。",
+            bullets: ["作成後にまず選択し、その後アクティブに設定します。", "切り替えると対象アカウントのセーブデータをバックアップできます。インストール済み Mod は変わりません。"],
           },
           "profiles-directories": {
             title: "セーブデータとバックアップのディレクトリを設定",
@@ -712,7 +712,7 @@ export const onboardingTourCopy = {
       features: {
         shield: { title: "安全なインストール", description: "インストール前に変更をプレビューし、失敗時はロールバックと復旧証跡を保持します。" },
         layers: { title: "Mod 管理", description: "Mod のインポート・インストール・アンインストール・真の再インストールを一元化します。" },
-        profiles: { title: "プロファイル", description: "Mod・ゲーム・セーブデータ操作を明確な利用シナリオへまとめます。" },
+        profiles: { title: "セーブプロファイル", description: "Steam アカウントごとにセーブデータディレクトリとバックアップ設定を保存します。" },
         backup: { title: "セーブ保護", description: "バックアップポイントを作成し、管理されたフローでプレイヤーのセーブデータを復元します。" },
       },
       callout: "次は現在のページから、ハイライトの案内に従って自分で操作してください。",

@@ -49,6 +49,27 @@ hmm-core / hmm-infra / hmm-games-*
 
 ## Command 命名
 
+### Mod 安装与存档配置档
+
+`get_mod_installation_context(gameId)` 返回 `{ gameId, installationId, scopeId }`。
+后端根据已配置的游戏目录解析并持久登记安装作用域；前端只传游戏 ID，不拼接目录或固定使用
+`default`。此命令只登记 HMM 自身元数据，不扫描 Mod 包或修改游戏文件。
+
+安装、卸载、重定向、插件选择、外部状态检查和恢复请求中的旧字段 `profileId` 暂留兼容，值必须
+来自上述 `scopeId`。它是安装记录的内部命名空间，不是存档配置档 ID。后端入口及写入准入会拒绝
+与当前游戏目录不符的作用域。库删除独立枚举全部安装与恢复记录，不依赖存档配置档列表。
+
+稳定错误码：`mod_installation_game_unavailable`（游戏目录不可用）、
+`mod_installation_scope_unavailable`（登记不可读）、`mod_installation_scope_mismatch`（目录已变化）、
+`mod_installation_legacy_ambiguous`（多份旧安装记录归属待核对）。界面显示原因并提供重试，
+不能将这些错误当成“未安装”或回退到某个存档配置档。
+
+`ModInstallationProvider` 只订阅游戏目录状态，存档配置档切换不重查或清除 Mod 状态。
+更换游戏目录时立即撤下旧作用域，并忽略旧请求的迟到结果。
+`ActiveProfileProvider` 继续服务 Steam 账号、存档路径与备份设置。
+
+### 命名规则
+
 Tauri command 使用 `snake_case`，以动词或查询动作开头：
 
 - 查询状态：`get_game_setup_status`

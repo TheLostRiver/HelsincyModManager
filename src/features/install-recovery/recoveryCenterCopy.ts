@@ -214,7 +214,7 @@ export const recoveryCenterCopy = {
     overviewRepair: {
       empty: {
         title: "无需处理",
-        description: "当前配置档没有需要恢复中心处理的托管安装状态。",
+        description: "当前游戏没有需要恢复中心处理的托管安装状态。",
         actionLabel: "保持观察",
         blockingReason: "没有托管安装记录",
       },
@@ -273,7 +273,7 @@ export const recoveryCenterCopy = {
       },
       notInstalled: {
         title: "未安装",
-        description: "当前 profile 没有该 Mod 的托管安装记录。",
+        description: "当前游戏 没有该 Mod 的托管安装记录。",
         actionLabel: "无需处理",
         blockingReason: "未发现托管安装事实",
       },
@@ -316,7 +316,7 @@ export const recoveryCenterCopy = {
         "install.recovery.failed": "回滚失败",
       },
       failures: {
-        profileNotReady: "配置档尚未就绪",
+        profileNotReady: "游戏安装信息尚未就绪",
         listenerUnavailable: "后台任务连接尚未就绪，请重新打开恢复中心后再试。",
         previewFailed: "预览回滚动作时出错",
         startFailed: "启动回滚任务时出错",
@@ -336,7 +336,7 @@ export const recoveryCenterCopy = {
     page: {
       eyebrow: "受控恢复中心",
       title: "恢复中心",
-      subtitle: "查看当前配置档的托管安装健康状态，先定位需要人工处理的条目。",
+      subtitle: "查看当前游戏的托管安装健康状态，先定位需要人工处理的条目。",
       exporting: "导出中",
       exportDiagnostics: "导出诊断",
       refresh: "刷新",
@@ -373,12 +373,12 @@ export const recoveryCenterCopy = {
       },
       notConfigured: {
         title: "等待游戏目录配置",
-        body: "恢复中心需要先有受控游戏实例，才能读取当前配置档的托管安装摘要。",
+        body: "恢复中心需要先有受控游戏实例，才能读取当前游戏的托管安装摘要。",
       },
       loading: {
         aria: "恢复扫描状态",
         title: "正在读取恢复摘要",
-        body: "正在从后端读取当前配置档的托管安装状态。",
+        body: "正在从后端读取当前游戏的托管安装状态。",
       },
       unavailable: {
         title: "恢复摘要不可用",
@@ -387,7 +387,7 @@ export const recoveryCenterCopy = {
       overview: {
         emptyTitle: "没有托管安装记录",
         emptyBadge: "空记录",
-        emptyDescription: "当前配置档还没有由 Helsincy 托管的安装项。",
+        emptyDescription: "当前游戏还没有由 Helsincy 托管的安装项。",
         attentionTitle: "发现需要关注的安装状态",
         attentionBadge: "需要处理",
         attentionDescriptionUnknown: "部分托管安装状态无法确认，恢复中心会先阻断自动处理动作。",
@@ -408,7 +408,7 @@ export const recoveryCenterCopy = {
       modIssuesAria: (modId: string) => `${modId} 恢复问题`,
       modsTitle: "托管 Mod 状态",
       modsCount: (count: number) => `${count} 项`,
-      modEmpty: "当前配置档没有托管安装记录。",
+      modEmpty: "当前游戏没有托管安装记录。",
       modMetricsAria: (modId: string) => `${modId} 恢复摘要`,
       modRollbackBusy: "处理中",
       modRollbackAction: "回滚",
@@ -422,10 +422,10 @@ export const recoveryCenterCopy = {
     globalAlert: {
       panelAria: "安装恢复全局告警",
       unavailableTitle: "恢复摘要暂时不可用",
-      unavailableDescription: "无法确认当前配置档的托管安装状态。进入恢复中心后可重新扫描或导出诊断摘要。",
+      unavailableDescription: "无法确认当前游戏的托管安装状态。进入恢复中心后可重新扫描或导出诊断摘要。",
       attentionTitle: "托管安装需要处理",
       attentionDescription: (summary: string) =>
-        `当前配置档扫描到 ${summary}。恢复中心只会展示安全摘要，不会自动恢复或写入清单。`,
+        `当前游戏扫描到 ${summary}。恢复中心只会展示安全摘要，不会自动恢复或写入清单。`,
       openRecoveryCenter: "打开恢复中心",
       partAttention: (count: number) => `${count} 个需处理`,
       partUnknown: (count: number) => `${count} 个状态未知`,
@@ -481,7 +481,7 @@ export const recoveryCenterCopy = {
     overviewRepair: {
       empty: {
         title: "Nothing to handle",
-        description: "The current profile has no managed install state that needs the Recovery Center.",
+        description: "The current game has no managed install state that needs the Recovery Center.",
         actionLabel: "Keep observing",
         blockingReason: "No managed install records",
       },
@@ -540,7 +540,7 @@ export const recoveryCenterCopy = {
       },
       notInstalled: {
         title: "Not installed",
-        description: "The current profile has no managed install record for this mod.",
+        description: "The current game has no managed install record for this mod.",
         actionLabel: "Nothing to do",
         blockingReason: "No managed install facts found",
       },
@@ -583,7 +583,7 @@ export const recoveryCenterCopy = {
         "install.recovery.failed": "Rollback failed",
       },
       failures: {
-        profileNotReady: "The profile is not ready yet",
+        profileNotReady: "The game installation is not ready yet",
         listenerUnavailable: "The task connection is unavailable. Reopen the recovery center and retry.",
         previewFailed: "Failed to preview the rollback action",
         startFailed: "Failed to start the rollback task",
@@ -603,7 +603,7 @@ export const recoveryCenterCopy = {
     page: {
       eyebrow: "Controlled Recovery Center",
       title: "Recovery Center",
-      subtitle: "Review the managed install health of the current profile and locate items that need manual handling first.",
+      subtitle: "Review the managed install health of the current game and locate items that need manual handling first.",
       exporting: "Exporting",
       exportDiagnostics: "Export diagnostics",
       refresh: "Refresh",
@@ -640,12 +640,12 @@ export const recoveryCenterCopy = {
       },
       notConfigured: {
         title: "Waiting for game directory setup",
-        body: "The Recovery Center needs a controlled game instance before it can read the managed install summaries of the current profile.",
+        body: "The Recovery Center needs a controlled game instance before it can read the managed install summaries of the current game.",
       },
       loading: {
         aria: "Recovery scan status",
         title: "Reading recovery summaries",
-        body: "Reading the managed install state of the current profile from the backend.",
+        body: "Reading the managed install state of the current game from the backend.",
       },
       unavailable: {
         title: "Recovery summaries unavailable",
@@ -654,7 +654,7 @@ export const recoveryCenterCopy = {
       overview: {
         emptyTitle: "No managed install records",
         emptyBadge: "Empty",
-        emptyDescription: "The current profile has no installs managed by Helsincy yet.",
+        emptyDescription: "The current game has no installs managed by Helsincy yet.",
         attentionTitle: "Install states need attention",
         attentionBadge: "Action needed",
         attentionDescriptionUnknown: "Some managed install states cannot be confirmed. The Recovery Center blocks automatic handling first.",
@@ -675,7 +675,7 @@ export const recoveryCenterCopy = {
       modIssuesAria: (modId: string) => `Recovery issues of ${modId}`,
       modsTitle: "Managed mod states",
       modsCount: (count: number) => `${count} item(s)`,
-      modEmpty: "The current profile has no managed install records.",
+      modEmpty: "The current game has no managed install records.",
       modMetricsAria: (modId: string) => `Recovery summary of ${modId}`,
       modRollbackBusy: "Working",
       modRollbackAction: "Roll back",
@@ -689,10 +689,10 @@ export const recoveryCenterCopy = {
     globalAlert: {
       panelAria: "Install recovery global alert",
       unavailableTitle: "Recovery summaries temporarily unavailable",
-      unavailableDescription: "The managed install state of the current profile cannot be confirmed. Open the Recovery Center to rescan or export diagnostics.",
+      unavailableDescription: "The managed install state of the current game cannot be confirmed. Open the Recovery Center to rescan or export diagnostics.",
       attentionTitle: "Managed installs need handling",
       attentionDescription: (summary: string) =>
-        `The current profile scan found ${summary}. The Recovery Center only shows safe summaries and never auto-restores or writes manifests.`,
+        `The current game scan found ${summary}. The Recovery Center only shows safe summaries and never auto-restores or writes manifests.`,
       openRecoveryCenter: "Open Recovery Center",
       partAttention: (count: number) => `${count} needing action`,
       partUnknown: (count: number) => `${count} with unknown state`,
@@ -748,7 +748,7 @@ export const recoveryCenterCopy = {
     overviewRepair: {
       empty: {
         title: "対応不要",
-        description: "現在のプロファイルには、リカバリーセンターでの対応が必要な管理対象インストール状態はありません。",
+        description: "現在のゲームには、リカバリーセンターでの対応が必要な管理対象インストール状態はありません。",
         actionLabel: "経過観察",
         blockingReason: "管理対象インストール記録なし",
       },
@@ -807,7 +807,7 @@ export const recoveryCenterCopy = {
       },
       notInstalled: {
         title: "未インストール",
-        description: "現在のプロファイルにはこの Mod の管理対象インストール記録がありません。",
+        description: "現在のゲームにはこの Mod の管理対象インストール記録がありません。",
         actionLabel: "対応不要",
         blockingReason: "管理対象インストール事実は見つかりませんでした",
       },
@@ -850,7 +850,7 @@ export const recoveryCenterCopy = {
         "install.recovery.failed": "ロールバック失敗",
       },
       failures: {
-        profileNotReady: "プロファイルが未準備です",
+        profileNotReady: "ゲームのインストール情報を取得できていません",
         listenerUnavailable: "タスク接続を確認できません。復旧センターを開き直してからお試しください。",
         previewFailed: "ロールバック動作のプレビューでエラーが発生しました",
         startFailed: "ロールバックタスクの開始でエラーが発生しました",
@@ -870,7 +870,7 @@ export const recoveryCenterCopy = {
     page: {
       eyebrow: "管理されたリカバリーセンター",
       title: "リカバリーセンター",
-      subtitle: "現在のプロファイルの管理対象インストールの健全性を確認し、人手対応が必要な項目を先に特定します。",
+      subtitle: "現在のゲームの管理対象インストールの健全性を確認し、人手対応が必要な項目を先に特定します。",
       exporting: "エクスポート中",
       exportDiagnostics: "診断をエクスポート",
       refresh: "更新",
@@ -907,12 +907,12 @@ export const recoveryCenterCopy = {
       },
       notConfigured: {
         title: "ゲームディレクトリの設定待ち",
-        body: "リカバリーセンターは、管理されたゲームインスタンスがないと現在のプロファイルの管理対象インストールサマリーを読み取れません。",
+        body: "リカバリーセンターは、管理されたゲームインスタンスがないと現在のゲームの管理対象インストールサマリーを読み取れません。",
       },
       loading: {
         aria: "復旧スキャン状態",
         title: "復旧サマリーを読み込み中",
-        body: "バックエンドから現在のプロファイルの管理対象インストール状態を読み込んでいます。",
+        body: "バックエンドから現在のゲームの管理対象インストール状態を読み込んでいます。",
       },
       unavailable: {
         title: "復旧サマリーを利用できません",
@@ -921,7 +921,7 @@ export const recoveryCenterCopy = {
       overview: {
         emptyTitle: "管理対象インストール記録なし",
         emptyBadge: "記録なし",
-        emptyDescription: "現在のプロファイルには Helsincy が管理するインストール項目はまだありません。",
+        emptyDescription: "現在のゲームには Helsincy が管理するインストール項目はまだありません。",
         attentionTitle: "注意が必要なインストール状態を検出",
         attentionBadge: "要対応",
         attentionDescriptionUnknown: "一部の管理対象インストール状態を確認できません。リカバリーセンターはまず自動処理を遮断します。",
@@ -942,7 +942,7 @@ export const recoveryCenterCopy = {
       modIssuesAria: (modId: string) => `${modId} の復旧問題`,
       modsTitle: "管理対象 Mod の状態",
       modsCount: (count: number) => `${count} 件`,
-      modEmpty: "現在のプロファイルには管理対象インストール記録がありません。",
+      modEmpty: "現在のゲームには管理対象インストール記録がありません。",
       modMetricsAria: (modId: string) => `${modId} の復旧サマリー`,
       modRollbackBusy: "処理中",
       modRollbackAction: "ロールバック",
@@ -956,10 +956,10 @@ export const recoveryCenterCopy = {
     globalAlert: {
       panelAria: "インストール復旧のグローバル警告",
       unavailableTitle: "復旧サマリーを一時的に利用できません",
-      unavailableDescription: "現在のプロファイルの管理対象インストール状態を確認できません。リカバリーセンターで再スキャンまたは診断エクスポートができます。",
+      unavailableDescription: "現在のゲームの管理対象インストール状態を確認できません。リカバリーセンターで再スキャンまたは診断エクスポートができます。",
       attentionTitle: "管理対象インストールに対応が必要",
       attentionDescription: (summary: string) =>
-        `現在のプロファイルのスキャンで${summary}を検出しました。リカバリーセンターは安全なサマリーのみ表示し、自動復元やマニフェスト書き込みは行いません。`,
+        `現在のゲームのスキャンで${summary}を検出しました。リカバリーセンターは安全なサマリーのみ表示し、自動復元やマニフェスト書き込みは行いません。`,
       openRecoveryCenter: "リカバリーセンターを開く",
       partAttention: (count: number) => `要対応 ${count} 件`,
       partUnknown: (count: number) => `状態不明 ${count} 件`,

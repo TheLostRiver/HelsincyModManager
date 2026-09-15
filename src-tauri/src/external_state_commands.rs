@@ -30,6 +30,7 @@ pub fn start_external_mod_state_scan(
     app_handle: AppHandle,
 ) -> Result<ExternalStateScanStartedDto, CommandErrorDto> {
     let (game_id, profile_id, mod_id) = parse_external_state_ids(game_id, profile_id, mod_id)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &profile_id)?;
 
     let launch = state
         .external_state_scan_tasks
@@ -60,6 +61,7 @@ pub fn get_external_mod_state(
     state: State<'_, AppState>,
 ) -> Result<ExternalModStateDto, CommandErrorDto> {
     let (game_id, profile_id, mod_id) = parse_external_state_ids(game_id, profile_id, mod_id)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &profile_id)?;
 
     let query = state
         .external_state_scanner

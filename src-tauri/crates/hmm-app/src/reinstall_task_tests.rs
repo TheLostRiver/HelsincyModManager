@@ -1002,7 +1002,7 @@ fn prepare_runs_outside_same_scope_write_lock_and_commit_waits_for_release() {
 }
 
 #[test]
-fn different_profile_commit_is_not_blocked_by_another_scope_lock() {
+fn different_installation_namespace_cannot_bypass_the_game_write_lock() {
     let task_manager = Arc::new(crate::TaskManager::new());
     let task = task_manager
         .create_task(crate::TaskKind::Install)
@@ -1010,7 +1010,7 @@ fn different_profile_commit_is_not_blocked_by_another_scope_lock() {
     let write_locks = Arc::new(crate::GameProfileWriteLockRegistry::default());
     let held_lock = write_locks.lock_for(&GameId::mhw(), &ProfileId::new("default"));
     let held_guard = held_lock.lock().expect("test write lock");
-    let (prepare_tx, _prepare_rx) = mpsc::channel();
+    let (prepare_tx, prepare_rx) = mpsc::channel();
     let (commit_tx, commit_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     let runner = ReinstallTaskRunner::with_write_locks(
@@ -1030,12 +1030,19 @@ fn different_profile_commit_is_not_blocked_by_another_scope_lock() {
     let task_id = task.task_id.clone();
     let handle = thread::spawn(move || runner.run_reinstall_task(&task_id, request));
 
+    prepare_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("prepare remains outside the game lock");
+    assert!(matches!(
+        commit_rx.recv_timeout(Duration::from_millis(80)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    ));
+    drop(held_guard);
     commit_rx
         .recv_timeout(Duration::from_secs(2))
-        .expect("different profile commit enters while first scope remains locked");
+        .expect("commit enters only after the same game's lock is released");
     release_tx.send(()).expect("release commit");
     assert!(handle.join().expect("runner thread").is_ok());
-    drop(held_guard);
 }
 
 #[test]
