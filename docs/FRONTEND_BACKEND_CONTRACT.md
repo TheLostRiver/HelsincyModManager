@@ -394,8 +394,8 @@ batch/result 事实或伪造导入失败。
 ### T13 批量生命周期规划契约
 
 本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
-T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service 和 typed API；T13-07 前端
-工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
+T13-01 至 T13-08。下列 command、DTO、AppState service、typed API 和前端工作流已接入。
+正式桌面环境可使用批量安装、卸载和真正重装；显式 Sandbox 仍保留独立的根目录准入：
 
 ```text
 get_batch_mod_lifecycle_capability
@@ -449,15 +449,16 @@ operation、一个 game/profile，最多 100 项；同一 `modId` 重复时整�
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
-| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production 未接入 Sandbox 时两者为 `false` 且 reason 为 `sandbox_batch_production_forbidden`；该 DTO 只是交互门禁，每个 preview/write command 仍必须逐次重验 Sandbox 环境 |
-| `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
+| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production/Sandbox 与当前 GUI 数据根一致时可用；不一致为 `batch_data_root_mismatch`，无法解析为 `batch_runtime_unavailable`。DTO 只是交互门禁，写入仍复核作用域、token、计划与游戏根 |
+| `preview_batch_mod_lifecycle` | `request` | 不修改玩家文件或批次记录的 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAtUnixMillis` 和 opaque `planToken` |
 | `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }`；同步执行 attempt 0 后在返回前发出唯一 terminal event |
 | `get_batch_mod_lifecycle_result` | `batchId`、`attemptNumber`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto`；cursor 只属于该 attempt |
 | `retry_batch_mod_lifecycle` | `batchId`、`expectedAttemptNumber` | `{ task: TaskStartedDto, batchId, attemptNumber }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
 
-`preview` 必须零写入：不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp
-artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
+`preview` 不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp artifact。
+Production 首次签发 token 时可初始化应用数据内的随机签名凭据，不修改玩家文件；Sandbox token
+仍由隔离根派生，两种环境的 token 不通用。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
 `batch_plan_stale`，不持久化部分 snapshot。`start` 只消费 `batchId + planToken`，token 默认 30 分钟
 过期；digest 是内部确定性身份，不是公开写权限，也不得进入 DTO、日志或诊断。
 
@@ -469,6 +470,15 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 `.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。当前契约不发出 queued/
 planning/preflight/processing/stopping 等中间 phase，`cancel_task` 对 batch task 返回
 `task_cannot_be_cancelled`；未来异步化不得在未更新本契约与 Gate 证据时静默改变这些语义。
+
+桌面 `preview`、`seal`、`start` 和 `retry` 在阻塞工作线程执行。AppState 核对 automation 数据根与
+当前桌面数据根后，journal 查询复用 GUI 的 SQLite 连接，避免活跃 WAL 被 immutable 快照忽略；
+数据根不匹配时不得回落到另一套数据。显式 Sandbox 配置无效时启动失败，不能静默进入 Production。
+批量和单项写入共用游戏写锁、安装作用域、InstallPlan、manifest、backup、rollback/recovery。
+
+前端在确认、执行和重试期间阻止重复提交及关闭；筛选刷新只作废未确认预览，不自动关闭执行结果。
+每次写入请求结束都失效共享库缓存，包括 command/result 查询失败及离开页面后的迟到结果；
+卡片状态与状态筛选仍由后端清单和查询投影决定。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
@@ -539,6 +549,8 @@ Batch phase 映射到共享 `TaskProgressEventDto` 时还必须满足：
 
 ```text
 batch_input_invalid
+batch_data_root_mismatch
+batch_runtime_unavailable
 batch_duplicate_item
 batch_resource_limit_exceeded
 batch_global_target_conflict

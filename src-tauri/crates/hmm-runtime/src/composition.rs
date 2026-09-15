@@ -945,6 +945,7 @@ impl HmmRuntime {
                 Arc::clone(&game_config_repository),
                 Arc::clone(&mod_import_result_repository),
                 Arc::clone(&mod_import_sandbox_locator),
+                Arc::clone(&install_manifest_repository),
                 app_data_dir.clone(),
                 Arc::clone(&install_game_running_detector),
             )
@@ -952,6 +953,7 @@ impl HmmRuntime {
         );
         let mod_uninstaller = crate::uninstall::mod_uninstaller(
             Arc::clone(&game_config_repository),
+            Arc::clone(&install_manifest_repository),
             app_data_dir.clone(),
             Arc::clone(&install_game_running_detector),
         );
@@ -2293,6 +2295,7 @@ struct ConfiguredInstallCommitter {
     game_config_repository: Arc<dyn GameConfigRepository>,
     mod_import_result_repository: Arc<dyn ModImportResultRepository>,
     mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
     app_data_dir: PathBuf,
     game_running_detector: Arc<dyn GameRunningDetector>,
 }
@@ -2493,6 +2496,7 @@ impl ConfiguredInstallCommitter {
         game_config_repository: Arc<dyn GameConfigRepository>,
         mod_import_result_repository: Arc<dyn ModImportResultRepository>,
         mod_import_sandbox_locator: Arc<dyn ModImportSandboxLocator>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
         app_data_dir: PathBuf,
         game_running_detector: Arc<dyn GameRunningDetector>,
     ) -> Self {
@@ -2500,6 +2504,7 @@ impl ConfiguredInstallCommitter {
             game_config_repository,
             mod_import_result_repository,
             mod_import_sandbox_locator,
+            manifest_repository,
             app_data_dir,
             game_running_detector,
             plugin_selection: None,
@@ -2664,9 +2669,7 @@ impl InstallPlanCommitter for ConfiguredInstallCommitter {
             Arc::new(FileSystemInstallBackupStore::new(
                 self.app_data_dir.join("install").join("backups"),
             )),
-            Arc::new(JsonInstallManifestRepository::new(
-                self.app_data_dir.join("install").join("manifests"),
-            )),
+            Arc::clone(&self.manifest_repository),
             Arc::new(JsonInstallRecoveryRecordRepository::new(
                 self.app_data_dir.join("install").join("recovery"),
             )),
@@ -3690,6 +3693,9 @@ mod tests {
             }),
             Arc::new(StaticAnalysisRepository),
             Arc::new(TrackingSandboxLocator { looked_up }),
+            Arc::new(JsonInstallManifestRepository::new(
+                app_data_dir.join("install").join("manifests"),
+            )),
             app_data_dir,
             Arc::new(NotRunningGameDetector),
         )
