@@ -668,16 +668,28 @@ mod tests {
         store
             .put_thumbnail("pkg-1", "expired", "preview-768", "jpg", b"expired")
             .expect("put expired thumbnail");
-        std::thread::sleep(std::time::Duration::from_millis(100));
         store
             .put_thumbnail("pkg-1", "young", "preview-768", "jpg", b"young")
             .expect("put young thumbnail");
 
+        let max_age = Duration::from_secs(24 * 60 * 60);
+        let now = SystemTime::now();
+        // Explicit file times keep scheduler delays and filesystem precision out of the fixture.
+        for (content_hash, time) in [
+            ("retained", now - max_age * 2),
+            ("expired", now - max_age * 2),
+            ("young", now),
+        ] {
+            fs::File::options()
+                .write(true)
+                .open(thumbnail_path(temp.path(), "pkg-1", content_hash))
+                .expect("open thumbnail for timestamp fixture")
+                .set_times(fs::FileTimes::new().set_accessed(time).set_modified(time))
+                .expect("set thumbnail timestamps");
+        }
+
         let report = store
-            .prune_unreferenced_thumbnails_older_than(
-                std::time::Duration::from_millis(50),
-                std::slice::from_ref(&retained),
-            )
+            .prune_unreferenced_thumbnails_older_than(max_age, std::slice::from_ref(&retained))
             .expect("prune thumbnails by age");
 
         assert_eq!(report.deleted_files, 1);
