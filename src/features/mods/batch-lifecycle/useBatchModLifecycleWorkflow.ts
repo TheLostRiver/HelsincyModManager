@@ -34,6 +34,7 @@ export type UseBatchModLifecycleWorkflowInput = {
   profileId: string | null;
   loadManifestStatuses: (modIds: string[]) => Promise<InstallManifestStatusSummary[]>;
   loadRevisions: (modId: string) => Promise<ModRevisionList>;
+  onWriteSettled: () => void;
   loadReplacementTargetFacts?: (
     modIds: string[],
   ) => Promise<BatchModLifecycleReplacementTargetFacts[]>;
@@ -69,6 +70,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     profileId,
     loadManifestStatuses,
     loadRevisions,
+    onWriteSettled,
     loadReplacementTargetFacts,
   } = input;
   const [state, setState] = useState<BatchModLifecycleWorkflowState>({ status: "idle" });
@@ -223,6 +225,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
 
   const prepare = useCallback(
     async (operation: BatchModLifecycleOperation, selectedModIds: string[]) => {
+      if (["confirming", "starting", "retrying"].includes(stateRef.current.status)) return;
       if (gameId === null || profileId === null) {
         return;
       }
@@ -470,6 +473,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     }
     const generation = generationRef.current;
     const operation = operationOfRequest(current.request);
+    let writeRequested = false;
     updateState({
       status: "confirming",
       request: current.request,
@@ -497,6 +501,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: sealed.batchId,
         planToken: sealed.planToken,
       });
+      writeRequested = true;
       const started = await startBatchModLifecycle({
         batchId: sealed.batchId,
         planToken: sealed.planToken,
@@ -519,17 +524,27 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: activeAttemptRef.current?.batchId ?? null,
         attemptNumber: activeAttemptRef.current?.attemptNumber ?? null,
       });
+    } finally {
+      // A command/result error may follow successful writes. Invalidate even after unmount
+      // or scope changes; never let an old page cache survive a settled write attempt.
+      if (writeRequested) onWriteSettled();
     }
-  }, [loadResultPage, updateState]);
+  }, [loadResultPage, onWriteSettled, updateState]);
 
   const retry = useCallback(async () => {
     const active = activeAttemptRef.current;
     const current = stateRef.current;
-    if (active === null) {
+    if (active === null || current.status !== "result") {
       return;
     }
-    const operation = current.status === "result" ? current.operation : "install";
+    const operation = current.operation;
     const generation = ++generationRef.current;
+    updateState({
+      status: "retrying",
+      batchId: active.batchId,
+      attemptNumber: active.attemptNumber,
+      operation,
+    });
     try {
       const started = await retryBatchModLifecycle({
         batchId: active.batchId,
@@ -552,8 +567,10 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           attemptNumber: active.attemptNumber,
         });
       }
+    } finally {
+      onWriteSettled();
     }
-  }, [loadResultPage, updateState]);
+  }, [loadResultPage, onWriteSettled, updateState]);
 
   const loadMorePendingRef = useRef(false);
   const loadMoreResult = useCallback(async () => {
@@ -602,7 +619,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   }, [updateState]);
 
   const reset = useCallback(() => {
-    if (pluginSavingRef.current) return;
+    if (pluginSavingRef.current
+      || ["confirming", "starting", "retrying"].includes(stateRef.current.status)) return;
     generationRef.current += 1;
     setPluginChoices([]);
     setPluginError(null);
@@ -613,9 +631,19 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     updateState({ status: "idle" });
   }, [updateState]);
 
+  const invalidatePreview = useCallback(() => {
+    // Refreshing a status filter can remove selected cards after a write. Keep the result
+    // visible until the user closes it; only unconfirmed previews follow selection changes.
+    if (stateRef.current.status === "result" || stateRef.current.status === "result-error") return;
+    reset();
+  }, [reset]);
+
+  const visibleState: BatchModLifecycleWorkflowState = stateScopeRef.current === scopeKey
+    ? state : { status: "idle" };
   return {
     pluginChoices, pluginSaving, pluginError, changePlugin, reloadPlugins,
-    state: stateScopeRef.current === scopeKey ? state : { status: "idle" } as BatchModLifecycleWorkflowState,
+    state: visibleState,
+    taskActive: visibleState.status === "starting" || visibleState.status === "retrying",
     resolution: resolutionRef.current,
     prepare,
     setPolicy,
@@ -625,6 +653,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     confirmAndStart,
     retry,
     loadMoreResult,
+    invalidatePreview,
     reset,
   };
 }

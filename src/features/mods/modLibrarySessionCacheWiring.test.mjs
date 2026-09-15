@@ -35,7 +35,7 @@ test("known write starts invalidate pages without treating read previews as writ
   const end = page.indexOf("if (!libraryWriteInFlight) return;");
   assert.ok(start >= 0 && end > start);
   const predicate = page.slice(start, end);
-  for (const fact of ["managedInstallTaskActive", "reinstallWorkflow.taskActive", "deletionBusy", 'batchWorkflow.state.status === "starting"']) {
+  for (const fact of ["managedInstallTaskActive", "reinstallWorkflow.taskActive", "deletionBusy", "batchWorkflow.taskActive"]) {
     assert.ok(predicate.includes(fact));
   }
   assert.doesNotMatch(predicate, /workflowActive|status !== "idle"/);

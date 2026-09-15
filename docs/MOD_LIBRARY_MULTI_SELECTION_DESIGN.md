@@ -1,8 +1,8 @@
 # Mod 库多选与批量操作交互设计
 
-> 状态：前端选择切片已实现；Production 批量写入仍未开放
+> 状态：前端选择与批量工作流已实现；正式桌面环境开放批量安装、卸载和真正重装
 >
-> 日期：2026-08-18
+> 更新日期：2026-09-16
 >
 > 范围：Mod 管理页的选择交互、批量模式、跨页选择与既有批量生命周期工作流接入
 
@@ -16,13 +16,13 @@
 - [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md)：BatchPlan、preview、seal、apply、
   partial result、retry、锁和恢复语义。
 - [Mod 库分页设计](MOD_LIBRARY_PAGINATION_DESIGN.md)：服务端分页、查询上下文和页面缓存边界。
-- [前后端契约](FRONTEND_BACKEND_CONTRACT.md)：Tauri command、DTO、稳定错误码和 Sandbox 门禁。
+- [前后端契约](FRONTEND_BACKEND_CONTRACT.md)：Tauri command、DTO、稳定错误码和运行环境门禁。
 - [架构设计](ARCHITECTURE.md)：React、Tauri、应用层和基础设施层职责。
 
 本文中的“批量模式”是前端选择状态，不是写入授权。用户选中多个 Mod 不会绕过 preview、确认、
 plan token、写入 admission、同 game/profile 串行、manifest、backup、rollback 或 recovery。
 
-## 实现状态（2026-08-18）
+## 实现状态（2026-09-16）
 
 本设计的前端选择切片已接入 Mod 管理页：
 
@@ -31,12 +31,12 @@ plan token、写入 admission、同 game/profile 串行、manifest、backup、ro
 - 批量模式在 0、1 或多项选择下保持不变，退出时才清空并回到普通模式。
 - 四种卡片视图使用统一选择指示器和对应的 ARIA 语义；右键批量模式不会改写集合，单项写动作会禁用。
 - 选择本页、反选本页和逐项选择都受 100 项前端上限保护，超限操作原子拒绝并给出提示。
-- 全局选择数与当前页选择数分开显示；搜索、筛选、配置档切换和刷新会清空选择，翻页、每页数量和视图切换会保留选择。
+- 全局选择数与当前页选择数分开显示；搜索、筛选、游戏安装目录切换和刷新会清空选择，翻页、每页数量和视图切换会保留选择；存档配置档切换不影响 Mod。
 - 单项/批量生命周期入口由显式 `single | batch` 模式分派，批量仍复用既有 preview、seal、start、result 和 retry workflow。
 
-本切片没有新增 Tauri/Rust 写能力。Production capability 的窄 typed 投影仍未实现，因此现阶段仍由既有后端稳定错误
-执行最终 fail-closed；InstallPlan、manifest、backup、rollback、token 和写入 admission 仍是权威门禁。
-Production 批量开放及其前端主动禁用提示需另行完成跨层实现和人工验收。
+Production capability 已接入既有 runtime 批量服务，只有数据根与当前 GUI 一致才允许操作。
+InstallPlan、manifest、backup、rollback、token 和写入 admission 仍是权威门禁。确认、执行与重试
+期间禁止重复提交；筛选刷新不丢失执行结果，关闭结果后才结束该批次的页面工作流。
 
 ## 背景与现状
 
@@ -49,8 +49,8 @@ Production 批量开放及其前端主动禁用提示需另行完成跨层实现
 - 批量 preview、确认、执行、结果、部分失败和 retry 面板已经接入。
 - 后端每批最多接受 100 个 item。
 
-前端选择体验的上述缺口已由本切片处理；仍待独立处理的是 Production 批量 capability 与跨层写入开放，
-不能因为本页出现“批量安装”等入口就视为该能力已经在所有运行环境可用。
+批量入口读取后端 capability。尚未配置游戏、恢复未完成、数据根不一致或计划冲突时仍显示对应
+阻断原因；可用不表示可以跳过预览和确认。
 
 ## 目标
 
@@ -64,7 +64,6 @@ Production 批量开放及其前端主动禁用提示需另行完成跨层实现
 
 ## 非目标
 
-- 不在本切片开放 Production 批量写入。
 - 不修改 BatchPlan、token、journal、retry 或单项生命周期领域语义。
 - 不允许前端循环调用单项 command 来模拟批量操作。
 - 不实现“选择全部匹配结果”。首版只支持当前已加载页面上的明确选择。
@@ -441,14 +440,9 @@ applyModSelection(previous, modId, event);
 
 ### 当前边界
 
-现有 Tauri 批量生命周期命令只在设置了 `HMM_SANDBOX_DATA_DIR` 的受控 Sandbox 环境可用。
-Production 安装态会返回稳定错误：
-
-```text
-sandbox_batch_production_forbidden
-```
-
-因此，多选 UI 落地和 Production 批量写入开放必须是两个独立切片。
+正式桌面安装态默认使用系统应用数据根；`HMM_SANDBOX_DATA_DIR` 只用于显式受控 Sandbox。
+两种环境均须与 GUI 数据根相同，才能共用活跃 SQLite journal；不一致时返回
+`batch_data_root_mismatch`。签名 token、作用域、游戏根复核、同游戏串行写入与恢复门禁保持生效。
 
 ### 前端门禁
 
@@ -462,18 +456,18 @@ type BatchModLifecycleCapability = {
 };
 ```
 
-具体字段可以复用未来统一 app capability snapshot，不要求为本文单独创建 command，但必须满足：
+这些字段由 `get_batch_mod_lifecycle_capability` 提供，并满足：
 
 - capability 由 backend/runtime 决定。
-- Production 未开放时，批量写按钮禁用并显示清晰原因。
-- UI 不先调用写 command 再把 `sandbox_batch_production_forbidden` 当普通交互反馈。
+- 数据根不可用时，批量按钮禁用并显示清晰原因。
+- UI 不先调用写 command 再把已知 capability 阻断当普通交互反馈。
 - 即使 capability 显示可用，preview/apply 仍需后端逐次重验。
 
-多选本身可以在 Production 使用，例如组织和查看选择；不可用的是批量写入动作，不是选择状态。
+选择状态和写入能力独立，不能用前端选择数量或路径推测后端授权。
 
-### Production 开放条件
+### Production 验证边界
 
-Production 批量写入必须另行完成并 review，至少包括：
+Production 批量接入的验证包括：
 
 - Production runtime composition 接入既有 batch app service。
 - command-level cross-process write admission。
@@ -482,7 +476,7 @@ Production 批量写入必须另行完成并 review，至少包括：
 - disposable Windows Sandbox 或等价隔离环境下的安装态人工验收。
 - 单项、批量和 worker/CLI 竞争时的 fail-closed 行为。
 
-本文不把 CLI-3A、Gate C 或现有 Sandbox UI 认证解释为 Production 已开放。
+临时人工 fixture 验证不代替真实桌面窗口与游戏内效果验收。
 
 ## 前端、Tauri 与后端职责
 
