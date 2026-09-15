@@ -34,7 +34,7 @@ import {
 import { classifyPackageContentsError, type PackageContentsFailure } from "./packageContentsError";
 import type { InstallConfigTarget } from "./InstallConfigTargetProvider";
 import type { PackageContents } from "./packageContentsTypes";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "../mods/ModInstallationProvider";
 import { PluginReapplyActions, PluginReapplyFeedback, PluginReapplyResult } from "../install-plugins/PluginReapplyActions";
 import { usePluginReapply } from "../install-plugins/usePluginReapply";
 import { usePluginSelection } from "../install-plugins/usePluginSelection";
@@ -79,7 +79,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
    */
   const lifecycleCopy = resolveCopy(modLifecycleCopy, locale);
   const pluginCopy = resolveCopy(pluginSelectionCopy, locale);
-  const { activeProfileId } = useActiveProfile();
+  const { installationScopeId } = useModInstallation();
   const savePending = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -109,7 +109,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const [planToken, setPlanToken] = useState(0);
 
   const { modId } = target;
-  const plugins = usePluginSelection(activeProfileId ? { gameId: "mhw", profileId: activeProfileId, modId } : null, { draft: true });
+  const plugins = usePluginSelection(installationScopeId ? { gameId: "mhw", profileId: installationScopeId, modId } : null, { draft: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -155,7 +155,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
 
     previewInstallPlanForImportedMod({
       gameId: "mhw",
-      ...(activeProfileId ? { profileId: activeProfileId } : {}),
+      ...(installationScopeId ? { profileId: installationScopeId } : {}),
       modId,
       // 与 Mod 库的安装入口同一套值，否则预览的计划与真装的不是同一个。
       layerName: "base",
@@ -175,7 +175,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
     return () => {
       cancelled = true;
     };
-  }, [modId, planToken, state.status, activeProfileId]);
+  }, [modId, planToken, state.status, installationScopeId]);
 
   const tree = useMemo(
     () => (state.status === "ready" ? buildPackageContentTree(state.contents.entries) : []),
@@ -192,7 +192,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
   const savedExcluded = state.status === "ready" ? state.contents.excludedFiles : [];
   const packageDirty = !isSameSelection(draftExcluded, savedExcluded);
   const isDirty = packageDirty || plugins.dirty;
-  const reapply = usePluginReapply({ profileId: activeProfileId, modId, plugins,
+  const reapply = usePluginReapply({ profileId: installationScopeId, modId, plugins,
     disabled: state.status !== "ready" || isDirty || saving || contentRootBusy, refreshToken: planToken,
     onCompleted: () => { plugins.reload(); setPlanToken((token) => token + 1); } });
   const busy = saving || plugins.saving || reapply.active || contentRootBusy;
@@ -422,7 +422,7 @@ export function InstallConfigOverlay({ target, onClose }: InstallConfigOverlayPr
               onChoose={handleChooseContentRoot}
               onReset={handleResetContentRoot}
             />
-            {activeProfileId ? <InstallConfigAttachments controller={plugins} disabled={busy} /> : <p role="status">{pluginCopy.noProfile}</p>}
+            {installationScopeId ? <InstallConfigAttachments controller={plugins} disabled={busy} /> : <p role="status">{pluginCopy.noProfile}</p>}
             </div>
 
             <div className="install-config__summary" role="status">

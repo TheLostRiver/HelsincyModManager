@@ -26,6 +26,11 @@ pub async fn get_equipment_retarget_configuration(
     state: State<'_, AppState>,
 ) -> Result<EquipmentRetargetConfigurationDto, CommandErrorDto> {
     let (request, profile) = analyze_request_from_dto(request)?;
+    crate::mod_installation_commands::require_optional_scope(
+        &state,
+        &request.game_id,
+        profile.as_ref(),
+    )?;
     let workflow = Arc::clone(&state.replacement_workflow);
     tauri::async_runtime::spawn_blocking(move || {
         workflow.equipment_configuration(&request.game_id, &request.mod_id, profile.as_ref())
@@ -42,6 +47,7 @@ pub async fn preview_equipment_retarget_install(
     state: State<'_, AppState>,
 ) -> Result<EquipmentRetargetInstallPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = selection_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let preflight = Arc::clone(&state.initial_retarget_install_preflight);
     tauri::async_runtime::spawn_blocking(move || preflight.preview(request))
         .await
@@ -56,6 +62,7 @@ pub async fn preview_equipment_retarget_reinstall(
     state: State<'_, AppState>,
 ) -> Result<ReinstallPlanPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = reinstall_selection_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let executor = Arc::clone(&state.reinstall_executor);
     let preview = tauri::async_runtime::spawn_blocking(move || {
         executor.preview_equipment_retarget_reinstall(request)
@@ -74,6 +81,7 @@ pub fn start_equipment_retarget_install_task(
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let expected_revision = request.expected_revision_id.clone();
     let request = selection_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let expected_revision = crate::plugin_selection_commands::expected_current_revision(
         expected_revision,
         &request.mod_id,
@@ -128,6 +136,7 @@ pub async fn preview_equipment_reapply(
     state: State<'_, AppState>,
 ) -> Result<ReinstallPlanPreviewDto, EquipmentRetargetPreviewErrorDto> {
     let request = reapply_selection_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let executor = Arc::clone(&state.reinstall_executor);
     let preview = tauri::async_runtime::spawn_blocking(move || {
         executor.preview_equipment_retarget_reinstall(request)
@@ -174,6 +183,11 @@ fn queue_equipment_reinstall(
     state: &AppState,
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
+    crate::mod_installation_commands::require_scope(
+        state,
+        &request.selection.game_id,
+        &request.selection.profile_id,
+    )?;
     let task = state
         .reinstall_tasks
         .start_equipment_retarget_reinstall_task(request.clone())

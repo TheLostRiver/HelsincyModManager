@@ -126,7 +126,8 @@ import { openModFolder, openModNexusPage } from "./modShortcutApi";
 import { modShortcutCopy, modShortcutErrorMessage } from "./modShortcutCopy";
 import { PreviewImageDialog } from "./PreviewImageDialog";
 import { previewImageViewCopy } from "./previewImageViewCopy";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "./ModInstallationProvider";
+import { ModInstallationNotice } from "./ModInstallationNotice";
 import { useModStorageSettings } from "../settings/ModStorageSettingsProvider";
 import { useInstallConfigTarget } from "../install-config/InstallConfigTargetProvider";
 import { getModStorageFreezeReason } from "../settings/modStorageTypes";
@@ -318,7 +319,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   // 事件监听回调经 ref 取词，避免语言切换导致监听器重建。
   const lifecycleCopyRef = useRef(lifecycleCopy);
   lifecycleCopyRef.current = lifecycleCopy;
-  const { activeProfile, activeProfileId } = useActiveProfile();
+  const { installationScope, installationScopeId } = useModInstallation();
   /*
    * 会话级缓存挂在 RouterOutlet 之上。RouterOutlet 会卸载页面，本页所有查询 state
    * 都活不过一次切页，于是每回进 Mod 库都从零重查一遍、先出一屏骨架屏。缓存让切回来
@@ -367,7 +368,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const [installTaskState, setInstallTaskState] = useState<ManagedInstallTaskState>({ status: "idle" });
   const [lifecycleToast, setLifecycleToast] = useState<ModLifecycleToast | null>(null);
   const installTaskStateRef = useRef<ManagedInstallTaskState>(installTaskState);
-  const activeProfileIdRef = useRef<string | null>(activeProfileId);
+  const installationScopeIdRef = useRef<string | null>(installationScopeId);
   const pageMountedRef = useRef(true);
   const handledInstallTerminalTaskIdsRef = useRef(new Set<string>());
   const handledBatchTerminalAttemptsRef = useRef(new Set<string>());
@@ -378,8 +379,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const categoriesRequestGenerationRef = useRef(0);
 
   useEffect(() => {
-    activeProfileIdRef.current = activeProfile.status === "ready" ? activeProfileId : null;
-  }, [activeProfile.status, activeProfileId]);
+    installationScopeIdRef.current = installationScope.status === "ready" ? installationScopeId : null;
+  }, [installationScope.status, installationScopeId]);
 
   const setTrackedInstallTaskState = useCallback((update: ManagedInstallTaskStateUpdate) => {
     const nextState = typeof update === "function" ? update(installTaskStateRef.current) : update;
@@ -396,10 +397,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [resetContentScroll]);
 
   const profileContext = useMemo<ModLibraryProfileContext | null>(
-    () => activeProfile.status === "ready" && activeProfileId !== null
-      ? { gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId }
+    () => installationScope.status === "ready" && installationScopeId !== null
+      ? { gameId: DEFAULT_INSTALL_GAME_ID, profileId: installationScopeId }
       : null,
-    [activeProfile.status, activeProfileId],
+    [installationScope.status, installationScopeId],
   );
   /*
    * #286 3b-2（A+）：外部状态扫描结果的会话级共享。详情弹窗每次拿到 getter 结果就
@@ -540,12 +541,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     () => buildLibraryFilterChips(categories, {
       statusFiltersEnabled: profileContext !== null,
       statusDisabledReason:
-        activeProfile.status === "loading"
+        installationScope.status === "loading"
           ? copy.page.statusFilter.profileLoading
           : copy.page.statusFilter.selectProfile,
       filterLabels: copy.filters,
     }),
-    [activeProfile.status, categories, copy, profileContext],
+    [installationScope.status, categories, copy, profileContext],
   );
 
   const selectedCount = selectedIds.size;
@@ -565,17 +566,17 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const batchWriteAvailable = batchCapability.capability?.writeAvailable === true;
   const batchPreviewAvailable = batchCapability.capability?.previewAvailable === true;
   const canUninstallSelected =
-    activeProfile.status === "ready"
+    installationScope.status === "ready"
     && (selectionMode === "batch"
       ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem?.installSummary?.status === "installed");
   const canReinstallSelected =
-    activeProfile.status === "ready"
+    installationScope.status === "ready"
     && (selectionMode === "batch"
       ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem?.installSummary?.status === "installed");
   const canInstallSelected =
-    activeProfile.status === "ready"
+    installationScope.status === "ready"
     && (selectionMode === "batch"
       ? selectedIds.size > 0 && batchWriteAvailable
       : selectedItem !== null && selectedItem.installSummary?.status === "not_installed");
@@ -656,7 +657,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   const reinstallWorkflow = useModReinstallWorkflow({
     gameId: DEFAULT_INSTALL_GAME_ID,
-    profileId: activeProfile.status === "ready" ? activeProfileId : null,
+    profileId: installationScope.status === "ready" ? installationScopeId : null,
     selectedItem,
     writeTaskActive: managedInstallTaskActive,
     refreshLibrary: refreshModLibraryAfterWrite,
@@ -694,9 +695,9 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       return copy.page.queryBusy;
     }
     if (
-      activeProfile.status !== "ready"
-      || activeProfileId === null
-      || activeProfileId !== uninstallConfirmation.profileId
+      installationScope.status !== "ready"
+      || installationScopeId === null
+      || installationScopeId !== uninstallConfirmation.profileId
     ) {
       return copy.page.uninstallBlocked.profileChanged;
     }
@@ -711,7 +712,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       && currentSummary.adoptedFileCount === uninstallConfirmation.adoptedFileCount
       ? null
       : copy.page.uninstallBlocked.backendSummaryChanged;
-  }, [activeProfile.status, activeProfileId, copy, libraryItems, libraryQueryBusy, uninstallConfirmation]);
+  }, [installationScope.status, installationScopeId, copy, libraryItems, libraryQueryBusy, uninstallConfirmation]);
 
   const confirmSelectedReinstall = () => {
     if (libraryQueryBusy) {
@@ -751,7 +752,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     dispatchSelection({ type: "reset-context", reason: "profile-changed" });
     resetLibraryPage();
     resetContentScroll();
-  }, [activeProfile.status, activeProfileId, resetContentScroll, resetLibraryPage]);
+  }, [installationScope.status, installationScopeId, resetContentScroll, resetLibraryPage]);
 
   useEffect(() => {
     const previousPage = renderedPageRef.current;
@@ -847,7 +848,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     handledInstallTerminalTaskIdsRef.current.add(terminalTaskId);
 
     const refreshTerminalFacts = async () => {
-      if (activeProfileIdRef.current !== terminalTask.profileId) {
+      if (installationScopeIdRef.current !== terminalTask.profileId) {
         setLifecycleToast(null);
         return;
       }
@@ -860,8 +861,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         return;
       }
 
-      const currentProfileId = activeProfileIdRef.current;
-      if (currentProfileId !== terminalTask.profileId) {
+      const currentScopeId = installationScopeIdRef.current;
+      if (currentScopeId !== terminalTask.profileId) {
         setLifecycleToast(null);
         return;
       }
@@ -1019,7 +1020,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (selectionInteractionDisabledReason !== undefined) {
       return { actionId: null, label, disabledReason: selectionInteractionDisabledReason } as const;
     }
-    if (activeProfile.status !== "ready" || activeProfileId === null) {
+    if (installationScope.status !== "ready" || installationScopeId === null) {
       return { actionId: null, label, disabledReason: copy.page.cardAction.selectProfileFirst } as const;
     }
     if (recoveryPanelStateForItem(item) !== null) {
@@ -1033,8 +1034,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
     return { actionId: null, label, disabledReason: copy.page.cardAction.statusNotActionable } as const;
   }, [
-    activeProfile.status,
-    activeProfileId,
+    installationScope.status,
+    installationScopeId,
     contextMenuState,
     copy,
     libraryItems,
@@ -1061,7 +1062,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (storageWriteFreezeReason !== undefined) {
       return { label, disabledReason: storageWriteFreezeReason } as const;
     }
-    // The cross-profile install gate is enforced in Rust; this mirrors the current-profile view.
+    // Rust checks every installation namespace; this is only the current game's fast hint.
     if (item.installSummary?.status === "installed") {
       return { label, disabledReason: deleteCopy.menu.deleteBlockedInstalled } as const;
     }
@@ -1194,12 +1195,12 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       setInstallPlanDetailState(recoveryPanelState);
       return;
     }
-    if (!canInstallSelected || activeProfileId === null) {
+    if (!canInstallSelected || installationScopeId === null) {
       return;
     }
 
     setInstallPlanDetailState({ status: "idle" });
-    setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId, modName, autoStartWithoutPlugins: false });
+    setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: installationScopeId, modId, modName, autoStartWithoutPlugins: false });
   };
 
   const startSelectedInstallTask = (requestedModId?: string, approved = false, expectedRevisionId?: string) => {
@@ -1220,7 +1221,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     const item = libraryItems.find((candidate) => candidate.id === modId);
     const modName = item?.name ?? modId;
     const recoveryPanelState = item ? recoveryPanelStateForItem(item) : null;
-    if (activeProfile.status !== "ready" || activeProfileId === null) {
+    if (installationScope.status !== "ready" || installationScopeId === null) {
       setInstallPlanDetailState({
         status: "error",
         modName,
@@ -1237,7 +1238,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
     if (!approved) {
       setInstallPlanDetailState({ status: "idle" });
-      setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: activeProfileId, modId, modName, autoStartWithoutPlugins: true });
+      setInstallPreviewTarget({ gameId: DEFAULT_INSTALL_GAME_ID, profileId: installationScopeId, modId, modName, autoStartWithoutPlugins: true });
       return;
     }
     setInstallPreviewTarget(null);
@@ -1247,14 +1248,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     setTrackedInstallTaskState({
       status: "starting",
       operation: "install",
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       modId,
       modName,
     });
     void startInstallTask({
       gameId: DEFAULT_INSTALL_GAME_ID,
       modId,
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       layerName: "base",
       layerPriority: 0,
       expectedRevisionId,
@@ -1268,7 +1269,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "failed",
             operation: "install",
             taskId: null,
-            profileId: activeProfileId,
+            profileId: installationScopeId,
             modId,
             modName,
             phase: "install.failed",
@@ -1288,7 +1289,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             status: "running",
             operation: "install",
             taskId: task.taskId,
-            profileId: activeProfileId,
+            profileId: installationScopeId,
             modId,
             modName,
             phase: "install.queued",
@@ -1313,7 +1314,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           status: "failed",
           operation: "install",
           taskId: null,
-          profileId: activeProfileId,
+          profileId: installationScopeId,
           modId,
           modName,
           phase: "install.failed",
@@ -1335,7 +1336,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       (requestedModId === undefined && selectedIds.size !== 1) ||
       selectionInteractionLocked ||
       reinstallWorkflow.workflowActive ||
-      activeProfileId === null ||
+      installationScopeId === null ||
       (requestedModId === undefined && !selectedItem)
     ) {
       return;
@@ -1351,7 +1352,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     installPlanPreviewGenerationRef.current += 1;
     setInstallPlanDetailState({ status: "idle" });
     setUninstallConfirmation({
-      profileId: activeProfileId,
+      profileId: installationScopeId,
       modId: item.id,
       modName: item.name,
       managedFileCount: item.installSummary.managedFileCount,
@@ -1371,7 +1372,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
 
     const { profileId, modId, modName } = uninstallConfirmation;
-    if (activeProfile.status !== "ready" || activeProfileId !== profileId) {
+    if (installationScope.status !== "ready" || installationScopeId !== profileId) {
       return;
     }
 
@@ -1458,7 +1459,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       libraryQueryBusy
       || selectionInteractionLocked
       || deletionBusy
-      || activeProfileId === null
       || requestedModIds.length === 0
     ) {
       return;
@@ -1469,7 +1469,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       const item = libraryItems.find((candidate) => candidate.id === modId) ?? null;
       const fallbackName = item?.name ?? modId;
       const fallbackCategories = item?.categoryLabels.map((label) => label.name) ?? [];
-      if (item?.installSummary?.status !== "not_installed") {
+      if (item?.installSummary && item.installSummary.status !== "not_installed") {
         entries.push({
           modId,
           displayName: fallbackName,
@@ -1522,7 +1522,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       libraryQueryBusy
       || deletionBusy
       || deleteConfirmation === null
-      || activeProfileId === null
     ) {
       return;
     }
@@ -1761,6 +1760,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   return (
     <section className="mod-library" aria-label={copy.page.regionLabel}>
       <div className="mod-library__sticky-controls anim-stagger-item" style={staggerStyle(0)}>
+        <ModInstallationNotice />
         <div className="mod-library__toolbar-slot">
           <LibraryToolbar
             query={query}
@@ -1794,7 +1794,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             selectedModId={selectionMode === "single" ? selectedItem?.id ?? null : null}
             installTaskActive={installTaskActive}
             libraryQueryBusy={libraryQueryBusy}
-            profileReady={activeProfile.status === "ready" && activeProfileId !== null}
+            profileReady={installationScope.status === "ready" && installationScopeId !== null}
             canInstallSelection={canInstallSelected}
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
@@ -1809,7 +1809,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         state={installPlanDetailState}
         onClose={closeInstallPlanDetail}
       />
-      {installPreviewTarget && installPreviewTarget.profileId === activeProfileId && <ModInstallPreview
+      {installPreviewTarget && installPreviewTarget.profileId === installationScopeId && <ModInstallPreview
         key={`${installPreviewTarget.profileId}:${installPreviewTarget.modId}`}
         target={installPreviewTarget}
         onClose={() => setInstallPreviewTarget(null)}
@@ -1900,7 +1900,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           fallbackItem={detailDialogState.fallbackItem}
           initialTab={detailDialogState.initialTab}
           gameId={DEFAULT_INSTALL_GAME_ID}
-          profileId={activeProfile.status === "ready" ? activeProfileId : null}
+          profileId={installationScope.status === "ready" ? installationScopeId : null}
           installStatus={detailDialogState.fallbackItem?.installSummary?.status}
           onClose={() => setDetailDialogState(null)}
           onSaved={refreshModLibraryAfterWrite}

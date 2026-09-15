@@ -24,6 +24,7 @@ mod mod_directory_opener;
 mod mod_import;
 mod mod_import_archive_consumer;
 mod mod_import_install_files;
+mod mod_installation;
 #[cfg(test)]
 mod mod_library_projection_tests;
 mod mod_revision_catalog;
@@ -108,6 +109,7 @@ pub use mod_import::{
 };
 pub use mod_import_archive_consumer::FileSystemModImportArchiveConsumer;
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
+pub use mod_installation::JsonModInstallationScopeRepository;
 pub use mod_revision_catalog::JsonModImportResultRepository;
 pub use mod_storage_inspector::FileSystemModStorageDirectoryInspector;
 pub use mod_storage_migrator::{

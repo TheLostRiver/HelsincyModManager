@@ -22,6 +22,7 @@ mod log_storage_commands;
 mod mod_deletion_commands;
 mod mod_import_commands;
 mod mod_import_settings_commands;
+mod mod_installation_commands;
 mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
@@ -94,6 +95,7 @@ use mod_import_commands::{
     start_import_mod_revision_task, start_import_mod_task,
 };
 use mod_import_settings_commands::{get_mod_import_settings, set_mod_import_settings};
+use mod_installation_commands::get_mod_installation_context;
 use mod_library_commands::query_mod_library;
 use mod_metadata_commands::{delete_mod_metadata, update_mod_metadata};
 use mod_shortcut_commands::{open_mod_folder, open_mod_nexus_page};
@@ -251,6 +253,7 @@ pub fn run() {
             get_mod_library,
             query_mod_library,
             get_mod_detail,
+            get_mod_installation_context,
             open_mod_folder,
             open_mod_nexus_page,
             get_mod_dependency_graph,
