@@ -3,9 +3,7 @@ use hmm_app::{
     UninstallModResult, UninstallModService,
 };
 use hmm_core::ModRevisionId;
-use hmm_infra::{
-    FileSystemInstallBackupStore, FileSystemInstallGameFileSystem, JsonInstallManifestRepository,
-};
+use hmm_infra::{FileSystemInstallBackupStore, FileSystemInstallGameFileSystem};
 use hmm_ports::{GameConfigRepository, GameRunningDetector, InstallManifestRepository};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -13,11 +11,13 @@ use std::sync::Arc;
 
 pub(super) fn mod_uninstaller(
     game_config_repository: Arc<dyn GameConfigRepository>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
     app_data_dir: PathBuf,
     game_running_detector: Arc<dyn GameRunningDetector>,
 ) -> Arc<dyn ModUninstaller> {
     Arc::new(ConfiguredModUninstaller::new(
         game_config_repository,
+        manifest_repository,
         app_data_dir,
         game_running_detector,
     ))
@@ -44,6 +44,7 @@ pub(super) fn configured_uninstall_service(
 
 struct ConfiguredModUninstaller {
     game_config_repository: Arc<dyn GameConfigRepository>,
+    manifest_repository: Arc<dyn InstallManifestRepository>,
     app_data_dir: PathBuf,
     game_running_detector: Arc<dyn GameRunningDetector>,
 }
@@ -51,11 +52,13 @@ struct ConfiguredModUninstaller {
 impl ConfiguredModUninstaller {
     fn new(
         game_config_repository: Arc<dyn GameConfigRepository>,
+        manifest_repository: Arc<dyn InstallManifestRepository>,
         app_data_dir: PathBuf,
         game_running_detector: Arc<dyn GameRunningDetector>,
     ) -> Self {
         Self {
             game_config_repository,
+            manifest_repository,
             app_data_dir,
             game_running_detector,
         }
@@ -73,9 +76,7 @@ impl ConfiguredModUninstaller {
         Ok(configured_uninstall_service(
             game_instance.root_dir,
             &self.app_data_dir,
-            Arc::new(JsonInstallManifestRepository::new(
-                self.app_data_dir.join("install").join("manifests"),
-            )),
+            Arc::clone(&self.manifest_repository),
         )
         .with_game_running_detector(Arc::clone(&self.game_running_detector)))
     }

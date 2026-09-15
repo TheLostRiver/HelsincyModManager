@@ -1,15 +1,13 @@
 use crate::app_log;
-use hmm_runtime::{HmmRuntime, RuntimeEnvironment};
+use hmm_runtime::{HmmRuntime, RuntimeEnvironment, RuntimeEnvironmentKind};
 use std::ops::Deref;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 pub(crate) use hmm_runtime::{ConfiguredReinstallExecutor, ConfiguredRetargetReinstallError};
 
-/// Environment variable that points the GUI at a disposable Sandbox data root. Batch mod
-/// lifecycle commands are only available when this is set to a valid absolute directory;
-/// Production writes remain rejected by the runtime's own sandbox gate.
+/// Optional disposable Sandbox environment. Without it, batch lifecycle uses the same
+/// system app-data root as the desktop runtime.
 pub(crate) const HMM_SANDBOX_DATA_DIR_ENV: &str = "HMM_SANDBOX_DATA_DIR";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,15 +19,7 @@ enum AppStateStartup {
 
 pub struct AppState {
     runtime: HmmRuntime,
-    batch_sandbox: Option<BatchSandboxHandle>,
-}
-
-/// Shared handle for the batch mod lifecycle automation. It only carries the validated Sandbox
-/// `RuntimeEnvironment`; the automation itself is stateless and builds short-lived write
-/// contexts per command.
-pub(crate) struct BatchSandboxHandle {
-    environment: RuntimeEnvironment,
-    in_process_database: Option<Arc<Mutex<rusqlite::Connection>>>,
+    batch_environment: Result<RuntimeEnvironment, &'static str>,
 }
 
 impl AppState {
@@ -54,62 +44,73 @@ impl AppState {
         app_data_dir: PathBuf,
         startup: AppStateStartup,
     ) -> Result<Self, String> {
-        let sandbox_environment = resolve_sandbox_environment();
+        let sandbox_environment = resolve_sandbox_environment()?;
         let mut runtime_builder = HmmRuntime::builder(app_data_dir.clone());
         if let Some(environment) = sandbox_environment.clone() {
             runtime_builder = runtime_builder.with_sandbox_environment(environment)?;
         }
         let runtime = runtime_builder.build()?;
-        let batch_sandbox = sandbox_environment.map(|environment| BatchSandboxHandle {
-            in_process_database: environment
-                .sandbox_data_dir()
-                .is_some_and(|sandbox_root| same_existing_directory(sandbox_root, &app_data_dir))
-                .then(|| runtime.database_handle()),
-            environment,
-        });
+        let batch_environment = batch_environment_for_app_data_dir(
+            &app_data_dir,
+            sandbox_environment,
+            hmm_runtime::production_app_data_dir().as_deref(),
+        );
         let state = Self {
             runtime,
-            batch_sandbox,
+            batch_environment,
         };
         run_state_startup(startup, &state);
         Ok(state)
     }
 
-    /// Returns the validated Sandbox environment used by batch mod lifecycle commands, or
-    /// `None` when the GUI is not running against a Sandbox data root.
-    pub fn batch_sandbox_environment(&self) -> Option<&RuntimeEnvironment> {
-        self.batch_sandbox
-            .as_ref()
-            .map(|handle| &handle.environment)
-    }
-
-    /// Returns the GUI-owned database connection only when the batch root is the same app-data
-    /// root. A differently configured batch root must keep the existing fail-closed snapshot
-    /// behavior instead of accidentally journaling into the GUI database.
-    pub fn batch_sandbox_database(&self) -> Option<Arc<Mutex<rusqlite::Connection>>> {
-        self.batch_sandbox
-            .as_ref()
-            .and_then(|handle| handle.in_process_database.clone())
+    /// Batch commands may share the GUI database only after both data roots match.
+    pub fn batch_lifecycle_environment(&self) -> Result<&RuntimeEnvironment, &'static str> {
+        self.batch_environment.as_ref().map_err(|code| *code)
     }
 }
 
-fn resolve_sandbox_environment() -> Option<RuntimeEnvironment> {
-    let Ok(value) = std::env::var(HMM_SANDBOX_DATA_DIR_ENV) else {
-        return None;
+fn batch_environment_for_app_data_dir(
+    app_data_dir: &Path,
+    sandbox_environment: Option<RuntimeEnvironment>,
+    production_root: Option<&Path>,
+) -> Result<RuntimeEnvironment, &'static str> {
+    let environment = match sandbox_environment {
+        Some(environment) => environment,
+        None => RuntimeEnvironment::from_options(RuntimeEnvironmentKind::Production, None)
+            .map_err(|_| "batch_runtime_unavailable")?,
+    };
+    let batch_root = environment
+        .sandbox_data_dir()
+        .or(production_root)
+        .ok_or("batch_runtime_unavailable")?;
+    if !same_existing_directory(batch_root, app_data_dir) {
+        return Err("batch_data_root_mismatch");
+    }
+    Ok(environment)
+}
+
+fn resolve_sandbox_environment() -> Result<Option<RuntimeEnvironment>, String> {
+    let value = match std::env::var(HMM_SANDBOX_DATA_DIR_ENV) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("sandbox_data_dir_invalid".to_owned());
+        }
     };
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
     match RuntimeEnvironment::sandbox(PathBuf::from(trimmed)) {
-        Ok(environment) => Some(environment),
+        Ok(environment) => Ok(Some(environment)),
         Err(error) => {
             app_log::record_warning(
                 error.code(),
                 "batch_sandbox_environment",
                 "batch_sandbox_environment_invalid",
             );
-            None
+            // An explicitly invalid Sandbox must never fall back to Production writes.
+            Err(error.code().to_owned())
         }
     }
 }
@@ -179,6 +180,44 @@ fn with_state_startup_observer<R>(
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn batch_environment_uses_production_only_for_the_gui_data_root() {
+        let temp = tempfile::tempdir().expect("temporary desktop roots");
+        let gui_root = temp.path().join("gui");
+        let other_root = temp.path().join("other");
+        std::fs::create_dir_all(&gui_root).unwrap();
+        std::fs::create_dir_all(&other_root).unwrap();
+        let environment =
+            batch_environment_for_app_data_dir(&gui_root, None, Some(&gui_root.join(".")))
+                .expect("matching desktop and system root enables production batch");
+        assert_eq!(environment.kind(), RuntimeEnvironmentKind::Production);
+        assert!(environment.sandbox_data_dir().is_none());
+        assert_eq!(
+            batch_environment_for_app_data_dir(&gui_root, None, Some(&other_root)),
+            Err("batch_data_root_mismatch"),
+        );
+        assert_eq!(
+            batch_environment_for_app_data_dir(&gui_root, None, None),
+            Err("batch_runtime_unavailable"),
+        );
+    }
+
+    #[test]
+    fn explicit_sandbox_must_match_gui_root_and_never_falls_back_to_production() {
+        let gui = tempfile::tempdir().expect("GUI root");
+        let other = tempfile::tempdir().expect("other sandbox root");
+        let sandbox = RuntimeEnvironment::sandbox(gui.path().to_path_buf()).unwrap();
+        assert_eq!(
+            batch_environment_for_app_data_dir(gui.path(), Some(sandbox.clone()), None),
+            Ok(sandbox),
+        );
+        let mismatch = RuntimeEnvironment::sandbox(other.path().to_path_buf()).unwrap();
+        assert_eq!(
+            batch_environment_for_app_data_dir(gui.path(), Some(mismatch), Some(gui.path())),
+            Err("batch_data_root_mismatch"),
+        );
+    }
 
     #[test]
     fn same_existing_directory_accepts_aliases_and_rejects_other_roots() {

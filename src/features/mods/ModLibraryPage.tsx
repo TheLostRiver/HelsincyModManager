@@ -503,6 +503,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     [profileContext],
   );
   const batchWorkflow = useBatchModLifecycleWorkflow({
+    onWriteSettled: librarySessionCache.invalidateAllPages,
     gameId: profileContext === null ? null : DEFAULT_INSTALL_GAME_ID,
     profileId: profileContext?.profileId ?? null,
     loadManifestStatuses: (modIds) =>
@@ -675,13 +676,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
    * 缓存就是空的，切回来老老实实出骨架屏。两条路都不会摆出已经过时的状态。
    */
   // 四条都取「写真的在跑」而不是「相关面板开着」：重装用 taskActive 不用 workflowActive
-  // （后者只表示预览弹窗开着，那是读），批量取 starting 不取整个非 idle（预览也是读）。
+  // （后者只表示预览弹窗开着，那是读），批量只取执行或重试中（预览也是读）。
   // 打开一个预览再关掉不该白清一次缓存。
   const libraryWriteInFlight =
     managedInstallTaskActive
     || reinstallWorkflow.taskActive
     || deletionBusy
-    || batchWorkflow.state.status === "starting";
+    || batchWorkflow.taskActive;
   useEffect(() => {
     if (!libraryWriteInFlight) return;
     librarySessionCache.invalidateAllPages();
@@ -815,7 +816,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
 
   // Selection changes invalidate any in-flight batch preview; the next action starts fresh.
   useEffect(() => {
-    batchWorkflow.reset();
+    batchWorkflow.invalidatePreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds, selectionMode]);
 
@@ -1874,6 +1875,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       )}
 
       {(batchWorkflow.state.status === "starting"
+        || batchWorkflow.state.status === "retrying"
         || batchWorkflow.state.status === "result-error") && (
         <BatchModLifecycleRunningPanel
           workflowState={batchWorkflow.state}

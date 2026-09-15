@@ -127,7 +127,7 @@ export function CompactActionPanel({
   };
   const batchCapabilityDisabledReason = (actionId: string) => {
     // Delete is a page-side loop over the single delete command and never enters the batch
-    // lifecycle framework, so the sandbox-gated write capability does not apply to it; the
+    // lifecycle framework, so its write capability does not apply to it; the
     // storage write freeze does (deletion reclaims a package sandbox).
     if (actionId === "delete") {
       return storageWriteFreezeReason;

@@ -28,69 +28,77 @@ const BATCH_TARGET_ID_MAX_LENGTH: usize = 256;
 pub fn get_batch_mod_lifecycle_capability(
     state: State<'_, AppState>,
 ) -> BatchModLifecycleCapabilityDto {
-    project_batch_capability(state.batch_sandbox_environment())
+    project_batch_capability(state.batch_lifecycle_environment())
 }
 
 fn project_batch_capability(
-    environment: Option<&hmm_runtime::RuntimeEnvironment>,
+    environment: Result<&hmm_runtime::RuntimeEnvironment, &str>,
 ) -> BatchModLifecycleCapabilityDto {
     match environment {
-        Some(_) => BatchModLifecycleCapabilityDto {
+        Ok(_) => BatchModLifecycleCapabilityDto {
             preview_available: true,
             write_available: true,
             unavailable_reason_code: None,
         },
-        None => BatchModLifecycleCapabilityDto {
+        Err(code) => BatchModLifecycleCapabilityDto {
             preview_available: false,
             write_available: false,
-            unavailable_reason_code: Some("sandbox_batch_production_forbidden".to_owned()),
+            unavailable_reason_code: Some(code.to_owned()),
         },
     }
 }
 
 #[tauri::command]
-pub fn preview_batch_mod_lifecycle(
+pub async fn preview_batch_mod_lifecycle(
     request: BatchModLifecycleRequestDto,
     state: State<'_, AppState>,
 ) -> Result<BatchModLifecyclePreviewDto, CommandErrorDto> {
     let environment = state
-        .batch_sandbox_environment()
-        .ok_or_else(batch_sandbox_unavailable_error)?;
+        .batch_lifecycle_environment()
+        .map_err(batch_environment_error)?
+        .clone();
     let request = parse_batch_plan_request(request)?;
     crate::mod_installation_commands::require_scope(
         &state,
         &request.plan.game_id,
         &request.plan.profile_id,
     )?;
-    let preview = BatchLifecycleAutomation::preview_request(environment, request)
-        .map_err(batch_automation_error)?;
+    let preview = tauri::async_runtime::spawn_blocking(move || {
+        BatchLifecycleAutomation::preview_request(&environment, request)
+    })
+    .await
+    .map_err(|_| batch_internal_error())?
+    .map_err(batch_automation_error)?;
     Ok(project_preview(preview))
 }
 
 #[tauri::command]
-pub fn seal_batch_mod_lifecycle(
+pub async fn seal_batch_mod_lifecycle(
     request: BatchModLifecycleRequestDto,
     preview_token: String,
     state: State<'_, AppState>,
 ) -> Result<BatchModLifecycleSealDto, CommandErrorDto> {
     let environment = state
-        .batch_sandbox_environment()
-        .ok_or_else(batch_sandbox_unavailable_error)?;
+        .batch_lifecycle_environment()
+        .map_err(batch_environment_error)?
+        .clone();
     let request = parse_batch_plan_request(request)?;
     crate::mod_installation_commands::require_scope(
         &state,
         &request.plan.game_id,
         &request.plan.profile_id,
     )?;
-    let sealed = match state.batch_sandbox_database() {
-        Some(database) => BatchLifecycleAutomation::seal_request_with_database(
-            environment,
+    let database = state.database_handle();
+    let sealed = tauri::async_runtime::spawn_blocking(move || {
+        BatchLifecycleAutomation::seal_request_with_database(
+            &environment,
             request,
             &preview_token,
             database,
-        ),
-        None => BatchLifecycleAutomation::seal_request(environment, request, &preview_token),
-    }
+        )
+    })
+    .await
+    .map_err(|_| batch_internal_error())?
     .map_err(batch_automation_error)?
     .1;
     let expires_at_unix_millis =
@@ -113,18 +121,17 @@ pub async fn start_batch_mod_lifecycle(
     app_handle: AppHandle,
 ) -> Result<BatchModLifecycleStartedDto, CommandErrorDto> {
     let environment = state
-        .batch_sandbox_environment()
-        .ok_or_else(batch_sandbox_unavailable_error)?
+        .batch_lifecycle_environment()
+        .map_err(batch_environment_error)?
         .clone();
-    let database = state.batch_sandbox_database();
-    let (operation, run) = tauri::async_runtime::spawn_blocking(move || match database {
-        Some(database) => BatchLifecycleAutomation::start_request_with_database(
+    let database = state.database_handle();
+    let (operation, run) = tauri::async_runtime::spawn_blocking(move || {
+        BatchLifecycleAutomation::start_request_with_database(
             &environment,
             &batch_id,
             &plan_token,
             database,
-        ),
-        None => BatchLifecycleAutomation::start_request(&environment, &batch_id, &plan_token),
+        )
     })
     .await
     .map_err(|_| batch_internal_error())?
@@ -142,19 +149,16 @@ pub fn get_batch_mod_lifecycle_result(
     state: State<'_, AppState>,
 ) -> Result<BatchModLifecycleResultPageDto, CommandErrorDto> {
     let environment = state
-        .batch_sandbox_environment()
-        .ok_or_else(batch_sandbox_unavailable_error)?;
+        .batch_lifecycle_environment()
+        .map_err(batch_environment_error)?;
     let offset = parse_result_cursor(cursor)?;
     let limit = parse_result_limit(limit)?;
-    let snapshot = match state.batch_sandbox_database() {
-        Some(database) => BatchLifecycleAutomation::result_with_database(
-            environment,
-            &batch_id,
-            attempt_number,
-            database,
-        ),
-        None => BatchLifecycleAutomation::result(environment, &batch_id, attempt_number),
-    }
+    let snapshot = BatchLifecycleAutomation::result_with_database(
+        environment,
+        &batch_id,
+        attempt_number,
+        state.database_handle(),
+    )
     .map_err(batch_automation_error)?;
     Ok(project_result_page(snapshot, offset, limit))
 }
@@ -167,22 +171,17 @@ pub async fn retry_batch_mod_lifecycle(
     app_handle: AppHandle,
 ) -> Result<BatchModLifecycleStartedDto, CommandErrorDto> {
     let environment = state
-        .batch_sandbox_environment()
-        .ok_or_else(batch_sandbox_unavailable_error)?
+        .batch_lifecycle_environment()
+        .map_err(batch_environment_error)?
         .clone();
-    let database = state.batch_sandbox_database();
-    let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || match database {
-        Some(database) => BatchLifecycleAutomation::retry_with_operation_with_database(
+    let database = state.database_handle();
+    let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || {
+        BatchLifecycleAutomation::retry_with_operation_with_database(
             &environment,
             &batch_id,
             expected_attempt_number,
             database,
-        ),
-        None => BatchLifecycleAutomation::retry_with_operation(
-            &environment,
-            &batch_id,
-            expected_attempt_number,
-        ),
+        )
     })
     .await
     .map_err(|_| batch_internal_error())?
@@ -508,10 +507,10 @@ fn project_result_item(result: &hmm_core::BatchItemResult) -> BatchModLifecycleR
 
 // ===== Errors =====
 
-fn batch_sandbox_unavailable_error() -> CommandErrorDto {
+fn batch_environment_error(code: &str) -> CommandErrorDto {
     CommandErrorDto {
-        code: "sandbox_batch_production_forbidden".to_owned(),
-        message: "batch mod lifecycle requires a sandbox environment".to_owned(),
+        code: code.to_owned(),
+        message: batch_error_message(code),
     }
 }
 
@@ -538,9 +537,7 @@ fn batch_automation_error(error: hmm_runtime::BatchAutomationError) -> CommandEr
 
 fn batch_error_message(code: &str) -> String {
     let message = match code {
-        "sandbox_batch_production_forbidden" => {
-            "batch mod lifecycle requires a sandbox environment"
-        }
+        "batch_data_root_mismatch" => "batch data root does not match the desktop runtime",
         "batch_input_invalid" => "batch mod lifecycle request is invalid",
         "batch_duplicate_item" => "batch contains a duplicate mod",
         "batch_resource_limit_exceeded" => "batch resource limit exceeded",
@@ -784,8 +781,8 @@ mod tests {
         assert!(!stale.contains('\\'));
         assert!(batch_error_message("batch_plan_stale") == batch_error_message("batch_plan_stale"));
 
-        let forbidden = batch_sandbox_unavailable_error();
-        assert_eq!(forbidden.code, "sandbox_batch_production_forbidden");
+        let forbidden = batch_environment_error("batch_data_root_mismatch");
+        assert_eq!(forbidden.code, "batch_data_root_mismatch");
         assert!(!forbidden.message.contains(':'));
     }
 
@@ -798,14 +795,27 @@ mod tests {
     }
 
     #[test]
-    fn capability_projection_disables_batch_entry_points_outside_sandbox() {
-        let production = project_batch_capability(None);
-        assert!(!production.preview_available);
-        assert!(!production.write_available);
+    fn capability_projection_disables_batch_entry_points_for_mismatched_data_root() {
+        let capability = project_batch_capability(Err("batch_data_root_mismatch"));
+        assert!(!capability.preview_available);
+        assert!(!capability.write_available);
         assert_eq!(
-            production.unavailable_reason_code.as_deref(),
-            Some("sandbox_batch_production_forbidden")
+            capability.unavailable_reason_code.as_deref(),
+            Some("batch_data_root_mismatch")
         );
+    }
+
+    #[test]
+    fn capability_projection_enables_batch_entry_points_for_production() {
+        let environment = hmm_runtime::RuntimeEnvironment::from_options(
+            hmm_runtime::RuntimeEnvironmentKind::Production,
+            None,
+        )
+        .expect("system environment");
+        let capability = project_batch_capability(Ok(&environment));
+        assert!(capability.preview_available);
+        assert!(capability.write_available);
+        assert_eq!(capability.unavailable_reason_code, None);
     }
 
     #[test]
@@ -813,7 +823,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp sandbox root");
         let environment = hmm_runtime::RuntimeEnvironment::sandbox(temp.path().to_path_buf())
             .expect("absolute temp path is a valid sandbox root");
-        let capability = project_batch_capability(Some(&environment));
+        let capability = project_batch_capability(Ok(&environment));
 
         assert!(capability.preview_available);
         assert!(capability.write_available);
