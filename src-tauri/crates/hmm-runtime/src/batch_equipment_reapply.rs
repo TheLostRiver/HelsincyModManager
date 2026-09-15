@@ -117,16 +117,19 @@ impl ReadOnlyBatchReinstallItemFactsReader {
                 installed_bindings: context.installed_bindings,
             },
         )?;
-        anyhow::ensure!(
-            planned
-                .retarget_plans()
-                .iter()
-                .flat_map(|plan| plan.actions())
-                .all(|action| action.content_transform().is_none()),
-            "read-only reapply requires untransformed source facts"
-        );
+        let source = Arc::new(crate::retarget_content::RetargetCandidateReader::new(
+            Arc::clone(&self.source),
+            context.installed_revision_id.clone(),
+            planned.retarget_plans(),
+        )?);
         let preparation = self
             .preview
+            .as_ref()
+            .clone()
+            .with_candidate_source(source.clone())
+            .with_content_transforms(crate::retarget_content::invocations(
+                planned.retarget_plans(),
+            ))
             .prepare_equipment_with_intent(
                 ReinstallPreviewRequest {
                     game_id: request.game_id.clone(),
@@ -141,7 +144,7 @@ impl ReadOnlyBatchReinstallItemFactsReader {
                 request.input.intent,
             )?
             .with_file_effects(planned.file_effects())?
-            .with_untransformed_reapply_sources()?;
+            .with_reapply_source_fingerprints(source.input_summaries()?)?;
         ReinstallPreviewBatchItemFactsReader::facts_from_preparation(request, preparation)
     }
 }

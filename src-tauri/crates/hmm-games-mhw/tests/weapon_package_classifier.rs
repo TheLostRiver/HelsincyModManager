@@ -436,18 +436,18 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
             .iter()
             .filter(|action| action.content_transform().is_some())
             .count(),
-        0,
-        "默认策略不改写任何文件内容"
+        1,
+        "材质必须同步引用迁移后的包内贴图"
     );
 
     // 随行 · 需重定位：名字带部件 ID 的按前缀改名，不带的只换槽位段。
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003_BML.tex"),
-        "nativePC/wp/two/two003/mod/two003_BML.tex"
+        "nativePC/wp/two/two019/mod/two019_BML.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003_XM.tex"),
-        "nativePC/wp/two/two003/mod/two003_XM.tex"
+        "nativePC/wp/two/two019/mod/two019_XM.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two003.evwp"),
@@ -464,18 +464,18 @@ fn a_real_weapon_package_carries_every_companion_file_into_the_plan() {
             &plan,
             "nativePC/wp/two/two003/mod/131072_2599467785140006031 BML.dds"
         ),
-        "nativePC/wp/two/two003/mod/131072_2599467785140006031 BML.dds",
-        "无法明确映射的作者附加资源保留原路径"
+        "nativePC/wp/two/two019/mod/131072_2599467785140006031 BML.dds",
+        "作者文件名保留，所属装备根随目标迁移"
     );
 
     let facts = plan.adapter_facts().expect("sealed adapter facts");
     assert_eq!(
         facts.strategy_version(),
-        3,
+        4,
         "资源保留策略使用独立身份和版本"
     );
     assert_eq!(facts.adapter_id(), "mhw.equipment");
-    assert_eq!(facts.strategy_id(), "path-only-resource-preserving");
+    assert_eq!(facts.strategy_id(), "resource-reference-migration");
     assert_eq!(
         facts.excluded_file_count(),
         1,
@@ -501,7 +501,7 @@ fn companion_filenames_drop_the_bs_prefix_when_the_target_slot_has_none() {
     assert_eq!(plan.actions().len(), BLACK_KNIGHT_BS_TWO012.len() - 1);
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/bs_two012_XM.tex"),
-        "nativePC/wp/two/bs_two012/mod/bs_two012_XM.tex"
+        "nativePC/wp/two/two020/mod/two020_XM.tex"
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/bs_two012_BML.dds"),
@@ -513,8 +513,8 @@ fn companion_filenames_drop_the_bs_prefix_when_the_target_slot_has_none() {
     );
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/bs_two012/mod/1 RMT.dds"),
-        "nativePC/wp/two/bs_two012/mod/1 RMT.dds",
-        "名字不含源编号的附加资源保留原路径"
+        "nativePC/wp/two/two020/mod/1 RMT.dds",
+        "名字不含源编号的附加资源也随装备根迁移"
     );
 }
 
@@ -791,15 +791,21 @@ fn an_unregistered_part_prefix_is_carried_through_instead_of_failing_the_package
             "{source} 的前缀必须逐字保留，只换槽位数字"
         );
     }
-    assert_eq!(target_of(&plan, paths[2]), paths[2]);
-    assert_eq!(target_of(&plan, paths[5]), paths[5]);
-    // 未登记前缀的模型可改路径，材质仍保持原字节。
+    assert_eq!(
+        target_of(&plan, paths[2]),
+        "nativePC/wp/bow/bow019/mod/bow019_BML.tex"
+    );
+    assert_eq!(
+        target_of(&plan, paths[5]),
+        "nativePC/wp/bow/bow019/mod/ya019_BML.tex"
+    );
+    // 两份材质都引用了同一张随装备迁移的副件贴图。
     assert_eq!(
         plan.actions()
             .iter()
             .filter(|action| action.content_transform().is_some())
             .count(),
-        0
+        2
     );
 }
 
@@ -955,18 +961,21 @@ fn package_resources_outside_the_weapon_tree_are_kept_separate_from_other_equipm
 }
 
 #[test]
-fn an_ambiguous_companion_filename_is_kept_with_unchanged_material_contents() {
+fn an_ambiguous_companion_filename_moves_intact_with_its_equipment_root() {
     let mut paths = BLACK_KNIGHT_TWO003.to_vec();
     paths.push("nativePC/wp/two/two003/mod/two003_two003_BML.tex");
 
     let plan =
         plan_for(&paths, "two019", &[r"wp\two\two003\mod\two003_BML"]).expect("歧义资源保留");
     let ambiguous = "nativePC/wp/two/two003/mod/two003_two003_BML.tex";
-    assert_eq!(target_of(&plan, ambiguous), ambiguous);
+    assert_eq!(
+        target_of(&plan, ambiguous),
+        "nativePC/wp/two/two019/mod/two003_two003_BML.tex"
+    );
     assert!(plan
         .actions()
         .iter()
-        .all(|action| action.content_transform().is_none()));
+        .any(|action| action.content_transform().is_some()));
 }
 
 #[test]
@@ -982,8 +991,8 @@ fn a_longer_digit_run_in_a_companion_filename_is_not_mistaken_for_the_part_id() 
 
     assert_eq!(
         target_of(&plan, "nativePC/wp/two/two003/mod/two0031_x.tex"),
-        "nativePC/wp/two/two003/mod/two0031_x.tex",
-        "贴图整体保留原路径，不猜测数字含义"
+        "nativePC/wp/two/two019/mod/two0031_x.tex",
+        "只迁移装备根，不猜测长数字的含义"
     );
 }
 

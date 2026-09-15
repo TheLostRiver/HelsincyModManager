@@ -109,11 +109,32 @@ node --test src/features/replacements/equipmentRetargetBehavior.test.mjs src/fea
 ```
 
 覆盖完整编号目录和文件名同时迁移、已证明的副件目录、自定义文件名、Unicode、大小写、`bs_`、日期／
-长数字与贴图原位。检查多义／矛盾编号不被部分改名，部件目录证据不跨源、不来自贴图；多源互换、
+长数字与贴图迁移。检查多义／矛盾编号保持内部拼写并迁移装备根，部件目录证据不跨源、不来自贴图；多源互换、
 链式及同目标非冲突组合须核对实际字节和独立绑定，真实及 Windows 等价碰撞在写入前阻断。
-人工 v1 清单须可读取、重新应用至 v2、失败恢复原布局及原 v1 事实，并在重启后恢复或卸载到基线；
+人工 v1 清单须可读取、重新应用至当前策略、失败恢复原布局及原 v1 事实，并在重启后恢复或卸载到基线；
 只有版本号不同而文件无差异时，不写入或回填清单。来源拒绝须经 DTO 和三语 UI 标出名称／编号，
 保持该源原位后可以继续调整其他源，不能静默丢失选择。
+
+装备资源与材质引用同步迁移的回归：
+
+```powershell
+cargo test -p hmm-games-mhw --test equipment_material_migration
+cargo test -p hmm-core --test replacement_transform_facts
+cargo test -p hmm-app --lib origin_transforms
+cargo test -p hmm-runtime --lib equipment -- --test-threads=1
+node --test src/features/replacements/replacementErrorCodeContract.test.mjs
+```
+
+人工 MRL3 只构造固定纹理表，覆盖武器、防具五部位、猎虫、自定义名字、同包跨源与包级材质共享引用、
+目标交换、Windows 等价扩展名、空字段、损坏／越界／不安全引用及输入输出摘要变化。游戏自带资源的
+引用保持不变，最多 4096 项字段参数必须有边界正反例。保留原目标但引用已移动贴图的来源也必须使用
+staging。桌面与只读批量预览的候选材质、token 和最终文件结果须一致。
+
+`runtime_equipment_resource*_tests.rs` 重建人工 v3 错误布局：模型／材质在新目标、贴图和作者资源仍在
+旧目标、材质仍指向旧贴图。武器和防具重新应用后必须迁走旧覆盖并更新引用；旧落点有备份时恢复原文件，
+保留其他 Mod 与未知文件，原包字节不变，第二次重新应用无差异，卸载精确恢复 baseline。清单失败、
+暂存后原包变化和中断恢复必须核对完整文件树与原清单。自动回归仅使用临时目录；实机另验旧装备恢复和
+新装备模型、材质效果，不能只看成功提示或文件数量。
 
 ## MHW 插件选择
 

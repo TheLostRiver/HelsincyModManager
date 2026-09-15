@@ -1,5 +1,8 @@
 # MHW:I Armor Retarget Implementation Plan
 
+> 当前默认武器／防具流程采用[装备资源保留策略](MHW_RETARGET_RESOURCE_STRATEGY.md) v4，资源路径与
+> 包内材质纹理引用同步迁移。下列历史路径实现步骤不能替代当前资源迁移、旧目标清理和重新应用规则。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **完成状态（2026-07-16）：** Gate A 与 Gate B 均已标记为 `certified`；AR1-AR5 的代码、自动化、

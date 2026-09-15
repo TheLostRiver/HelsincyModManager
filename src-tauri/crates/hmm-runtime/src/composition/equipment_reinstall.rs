@@ -65,6 +65,7 @@ impl ConfiguredReinstallExecutor {
         };
         let policy_exclusions = planned.policy_exclusions();
         let file_effects = planned.file_effects();
+        let content_transforms = crate::retarget_content::invocations(planned.retarget_plans());
         if planned.install_plan().has_blocking_conflicts() {
             let preparation = services
                 .preview
@@ -144,6 +145,9 @@ impl ConfiguredReinstallExecutor {
                 Arc::clone(&source),
             )
             .preview
+            .as_ref()
+            .clone()
+            .with_content_transforms(content_transforms)
             .prepare_equipment_with_intent(
                 preview_request,
                 plan,

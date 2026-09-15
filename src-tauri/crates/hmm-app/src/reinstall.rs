@@ -279,6 +279,7 @@ pub struct ReinstallPreviewService {
     planner: Arc<dyn ReinstallCandidatePlanner>,
     source: Arc<dyn ReinstallCandidateSourceReader>,
     original_source: Arc<dyn ReinstallCandidateSourceReader>,
+    content_transforms: BTreeMap<PackageFileId, hmm_core::ContentTransformInvocation>,
     game: Arc<dyn InstallGameFileSystem>,
     backups: Arc<dyn InstallBackupStore>,
     manifests: Arc<dyn InstallManifestRepository>,
@@ -302,6 +303,7 @@ impl ReinstallPreviewService {
             catalog,
             planner,
             original_source: Arc::clone(&source),
+            content_transforms: BTreeMap::new(),
             source,
             game,
             backups,
@@ -1039,8 +1041,13 @@ impl ReinstallPreviewService {
             source_facts.iter().any(|source| {
                 original_files
                     .get(&source.provider.package_file_id)
-                    .copied()
-                    != Some(&source.summary)
+                    .is_none_or(|original| {
+                        !self.matches_original_content(
+                            &source.provider.package_file_id,
+                            original,
+                            &source.summary,
+                        )
+                    })
             })
         }) {
             return Ok(blocked(
@@ -1057,7 +1064,11 @@ impl ReinstallPreviewService {
                 evidence.files().any(|file| {
                     !source_facts.iter().any(|source| {
                         &source.provider.package_file_id == file.package_file_id()
-                            && &source.summary == file.summary()
+                            && self.matches_original_content(
+                                file.package_file_id(),
+                                file.summary(),
+                                &source.summary,
+                            )
                     })
                 })
             })
