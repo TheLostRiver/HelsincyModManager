@@ -14,6 +14,7 @@ mod game_setup;
 mod install;
 mod mod_import;
 mod mod_import_archive;
+mod mod_installation;
 mod mod_library_projection;
 mod mod_metadata;
 mod mod_storage;
@@ -92,14 +93,14 @@ pub use mod_import::{
     ModImportPackagePrepareRequest, ModImportPackagePreparer, ModImportPrepareError,
     ModImportResultRepository, ModImportSandboxLocator, ModPackageContentEntry,
     ModPackageContentRoot, ModPackageContentRootRepository, ModPackageContentScanRequest,
-    ModPackageContentScanner, ModPackageContents, ModPackageFileSelectionRepository,
-    ModPackageInstallFile, ModPackageInstallFileReadRequest, ModPackageInstallFileReader,
-    ModPackageInstallFileScanError, ModPackageInstallFileScanRequest, ModPackageInstallFileScanner,
-    ModPackageMetadata, ModPackageMetadataAnalysis, ModPackageMetadataAnalyzer,
-    NoStoredContentRoot, NoStoredFileSelection, NonArchiveFile, PreparedModPackage,
-    StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis, StoredModOriginProvenance,
-    StoredModPackageMetadata, StoredModRevision, UnsupportedArchiveFeature,
-    UnsupportedArchiveFormat, MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE,
+    ModPackageContentScanner, ModPackageContents, ModPackageDirectoryOpener,
+    ModPackageFileSelectionRepository, ModPackageInstallFile, ModPackageInstallFileReadRequest,
+    ModPackageInstallFileReader, ModPackageInstallFileScanError, ModPackageInstallFileScanRequest,
+    ModPackageInstallFileScanner, ModPackageMetadata, ModPackageMetadataAnalysis,
+    ModPackageMetadataAnalyzer, NoStoredContentRoot, NoStoredFileSelection, NonArchiveFile,
+    PreparedModPackage, StoredImportPreviewImage, StoredLogicalMod, StoredModImportAnalysis,
+    StoredModOriginProvenance, StoredModPackageMetadata, StoredModRevision,
+    UnsupportedArchiveFeature, UnsupportedArchiveFormat, MOD_IMPORT_ARCHIVE_ENCRYPTED_CODE,
     MOD_IMPORT_ARCHIVE_MULTI_VOLUME_CODE, MOD_IMPORT_ARCHIVE_NO_GAME_CONTENT_CODE,
     MOD_IMPORT_NOT_AN_ARCHIVE_CODE, MOD_IMPORT_PREPARE_FAILED_CODE,
     MOD_IMPORT_UNSUPPORTED_ARCHIVE_FORMAT_CODE, MOD_IMPORT_UPSERT_CHUNK_SIZE,
@@ -108,6 +109,9 @@ pub use mod_import::{
 pub use mod_import_archive::{
     ModImportArchiveConsumeError, ModImportArchiveConsumer, ModImportArchiveFingerprint,
     ModImportArchiveIdentity,
+};
+pub use mod_installation::{
+    ModInstallationScopeError, ModInstallationScopeIndex, ModInstallationScopeRepository,
 };
 pub use mod_library_projection::{
     normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,

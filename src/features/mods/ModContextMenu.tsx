@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy } from "./modLibraryCopy";
+import { contextMenuPosition } from "./contextMenuPosition";
 import "./ModContextMenu.css";
 
 export type ModContextMenuProps = {
@@ -116,6 +117,42 @@ export function ModContextMenu({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+
+    const placeMenu = () => {
+      // offset dimensions are unaffected by the entrance animation's scale.
+      const position = contextMenuPosition(
+        { x, y },
+        { width: menu.offsetWidth, height: menu.offsetHeight },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      menu.style.left = `${position.left}px`;
+      menu.style.top = `${position.top}px`;
+    };
+    placeMenu();
+    const observer = new ResizeObserver(placeMenu);
+    observer.observe(menu);
+    window.addEventListener("resize", placeMenu);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", placeMenu);
+    };
+  }, [x, y]);
+
+  useLayoutEffect(() => {
+    const previousFocus = document.activeElement;
+    const menu = menuRef.current;
+    menu?.querySelector<HTMLButtonElement>("button:not(:disabled):not(.is-danger)")?.focus({ preventScroll: true });
+    return () => {
+      if (previousFocus instanceof HTMLElement
+        && (document.activeElement === document.body || menu?.contains(document.activeElement))) {
+        previousFocus.focus({ preventScroll: true });
+      }
+    };
+  }, [modId]);
+
   // Close when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -127,7 +164,18 @@ export function ModContextMenu({
     // Close when pressing Escape
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         onCloseRef.current();
+      } else if (e.key === "Tab") {
+        onCloseRef.current();
+      } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+        if (items.length === 0) return;
+        e.preventDefault();
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1
+          : (current + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
       }
     };
 
@@ -144,32 +192,6 @@ export function ModContextMenu({
     };
   }, []); // Empty dependency array: bind only once!
 
-  // Adjust position to stay within viewport
-  const getStyle = (): React.CSSProperties => {
-    let finalX = x;
-    let finalY = y;
-
-    // We roughly estimate menu size if ref isn't attached yet,
-    // but a better way is to measure it after mount. For simplicity
-    // and given its fixed contents, we can assume ~200x200 max.
-    const menuWidth = 220;
-    const menuHeight = 220;
-
-    if (typeof window !== "undefined") {
-      if (finalX + menuWidth > window.innerWidth) {
-        finalX = window.innerWidth - menuWidth - 8;
-      }
-      if (finalY + menuHeight > window.innerHeight) {
-        finalY = window.innerHeight - menuHeight - 8;
-      }
-    }
-
-    return {
-      left: `${finalX}px`,
-      top: `${finalY}px`,
-    };
-  };
-
   const handleItemClick = (actionId: string) => {
     onAction(actionId, modId);
     onClose();
@@ -178,9 +200,10 @@ export function ModContextMenu({
   const lifecycleDisabled = resolvedLifecycleAction.actionId === null || resolvedLifecycleAction.disabledReason !== undefined;
 
   return createPortal(
-    <div className="mod-context-menu" style={getStyle()} ref={menuRef}>
+    <div className="mod-context-menu" role="menu" ref={menuRef}>
       <button
         type="button"
+        role="menuitem"
         className={`mod-context-menu__item${resolvedLifecycleAction.tone === "danger" ? " is-danger" : ""}${lifecycleDisabled ? " is-disabled" : ""}`}
         aria-disabled={lifecycleDisabled || undefined}
         disabled={lifecycleDisabled}
@@ -201,6 +224,7 @@ export function ModContextMenu({
       {previewAction ? (
         <button
           type="button"
+          role="menuitem"
           className={"mod-context-menu__item" + (previewAction.disabledReason ? " is-disabled" : "")}
           aria-disabled={previewAction.disabledReason !== undefined}
           disabled={previewAction.disabledReason !== undefined}
@@ -223,6 +247,7 @@ export function ModContextMenu({
           <div className="mod-context-menu__divider" />
           <button
             type="button"
+            role="menuitem"
             className={"mod-context-menu__item is-danger" + (deleteAction.disabledReason ? " is-disabled" : "")}
             aria-disabled={deleteAction.disabledReason !== undefined}
             disabled={deleteAction.disabledReason !== undefined}
@@ -243,37 +268,47 @@ export function ModContextMenu({
       ) : null}
       <div className="mod-context-menu__divider" />
       {/* #354 D4：安装前先看清包里有什么。事务型路由，不是即时保存的详情对话框。 */}
-      <div
+      <button
+        type="button"
+        role="menuitem"
         className="mod-context-menu__item"
         onClick={() => handleItemClick("install-config")}
       >
         <IconSliders /> {copy.installConfig}
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
+        role="menuitem"
         className="mod-context-menu__item"
         onClick={() => handleItemClick("info-settings")}
       >
         <IconSettings /> {copy.infoSettings}
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
+        role="menuitem"
         className="mod-context-menu__item"
         onClick={() => handleItemClick("edit-files")}
       >
         <IconEdit /> {copy.fileModify}
-      </div>
+      </button>
       <div className="mod-context-menu__divider" />
-      <div
+      <button
+        type="button"
+        role="menuitem"
         className="mod-context-menu__item"
         onClick={() => handleItemClick("open-nexus")}
       >
         <IconLink /> {copy.jumpToNexus}
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
+        role="menuitem"
         className="mod-context-menu__item"
         onClick={() => handleItemClick("open-folder")}
       >
         <IconFolder /> {copy.openFolder}
-      </div>
+      </button>
     </div>,
     document.body
   );

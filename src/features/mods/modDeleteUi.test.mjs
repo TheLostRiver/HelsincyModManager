@@ -67,7 +67,7 @@ test("card context menu exposes a guarded delete entry", () => {
   assert.match(menu, /\{deleteAction\.disabledReason \? <small>\{deleteAction\.disabledReason\}<\/small> : null\}/);
 });
 
-test("library page gates deletion on the current-profile install view before any backend call", () => {
+test("library deletion checks known install state and uses backend preview without a save profile", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const prompt = slicePageBlock(
     page,
@@ -78,8 +78,8 @@ test("library page gates deletion on the current-profile install view before any
   assert.match(prompt, /libraryQueryBusy/);
   assert.match(prompt, /selectionInteractionLocked/);
   assert.match(prompt, /deletionBusy/);
-  assert.match(prompt, /activeProfileId === null/);
-  assert.match(prompt, /item\?\.installSummary\?\.status !== "not_installed"/);
+  assert.doesNotMatch(prompt, /activeProfileId|installationScopeId/);
+  assert.match(prompt, /item\?\.installSummary && item\.installSummary\.status !== "not_installed"/);
   assert.match(prompt, /skipReason: deleteCopy\.dialog\.skipInstalled/);
   assert.match(prompt, /await previewModDeletion\(modId\)/);
   assert.match(prompt, /skipReason: deleteCopy\.dialog\.skipPreviewUnavailable/);

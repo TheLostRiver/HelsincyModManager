@@ -1737,7 +1737,7 @@ pub struct GameProfileWriteLockRegistry {
     cross_process: Arc<CrossProcessWriteAdmissionCoordinator>,
 }
 
-type GameProfileLockKey = (String, String);
+type GameProfileLockKey = String;
 type GameProfileLock = Arc<Mutex<()>>;
 
 impl GameProfileWriteLockRegistry {
@@ -1750,10 +1750,11 @@ impl GameProfileWriteLockRegistry {
         }
     }
 
-    pub fn lock_for(&self, game_id: &GameId, profile_id: &ProfileId) -> Arc<Mutex<()>> {
+    pub fn lock_for(&self, game_id: &GameId, _profile_id: &ProfileId) -> Arc<Mutex<()>> {
         let mut locks = self.locks.lock().expect("write lock registry");
         locks
-            .entry((game_id.as_str().to_owned(), profile_id.as_str().to_owned()))
+            // Save-account changes and legacy namespace IDs cannot create a second writer.
+            .entry(game_id.as_str().to_owned())
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
     }
@@ -1889,6 +1890,16 @@ mod tests {
     use std::sync::{mpsc, Arc, Mutex};
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn mod_installation_namespaces_cannot_bypass_the_game_write_lock() {
+        let registry = GameProfileWriteLockRegistry::default();
+        let first = registry.lock_for(&GameId::mhw(), &ProfileId::new("former-account"));
+        let second = registry.lock_for(&GameId::mhw(), &ProfileId::new("installation-b"));
+        assert!(Arc::ptr_eq(&first, &second));
+        let _guard = first.lock().unwrap();
+        assert!(second.try_lock().is_err());
+    }
 
     #[test]
     fn start_install_task_returns_queued_install_task_without_leaking_inputs() {

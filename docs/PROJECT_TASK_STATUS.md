@@ -90,7 +90,7 @@ Production 已由 CLI-3C（2026-08-24）开放：token 由 per-installation secr
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
 | T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6（269 条三语）与 WR-02B（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；许可签核已完成（2026-08-23）；发版前置：全量 catalog Sandbox Gate 复验 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需重定向入口已完成并独立为悬浮窗口；完整扩展范围未恢复 |
-| T13 批量操作 | Certified（Gate C） | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、6 个窄 Tauri command（含 capability 投影）、typed API 与批量 UI 均已落地；4 viewport smoke、主链、受控 partial/retry、重启/recovery、批量卸载与 exact baseline 已验收 |
+| T13 批量操作 | Gate C 已认证；正式桌面入口待人工验收 | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、6 个窄 Tauri command、typed API 与批量 UI 已落地；原 Sandbox 主链与恢复已验收。正式桌面现已接入同根 capability、GUI 数据库与既有写入门禁，并补充安装筛选、部分失败重试和结果面板保护回归；本轮临时 fixture 与浏览器验证不代替真实安装态验收 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
 | T15 Linux / Steam Deck | 本轮排除 | 不进入本轮任务、实现、验收或发布判断 |
 | T16 Rise / Wilds | 远期 | 每个游戏需要独立 adapter 与设计 |

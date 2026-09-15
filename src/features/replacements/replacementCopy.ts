@@ -130,11 +130,11 @@ export const replacementCopy = {
       policy_excluded_resources: "部分随包插件或工具未包含在本次安装中，相关功能可能不可用。",
     },
     block: {
-      profileUnavailable: "当前 Profile 不可用。",
+      profileUnavailable: "当前游戏安装 不可用。",
       completedRefreshing: "写入已完成，正在刷新安装状态。",
-      cleanupPending: "当前 Profile 有待收尾的重装事务。",
-      rollbackRequired: "当前 Profile 需要先完成安装回滚。",
-      repairRequired: "当前 Profile 需要先完成人工修复。",
+      cleanupPending: "当前游戏安装 有待收尾的重装事务。",
+      rollbackRequired: "当前游戏安装 需要先完成安装回滚。",
+      repairRequired: "当前游戏安装 需要先完成人工修复。",
       statusUnknown: "安装状态未知，替换目标写入已阻止。",
     },
     phases: {
@@ -305,7 +305,7 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "无法确认当前安装状态。" },
         replacement_initial_install_blocked: {
-          message: "当前配置档中有尚未处理的安装或恢复状态，暂时不能首次重定向安装。",
+          message: "当前游戏中有尚未处理的安装或恢复状态，暂时不能首次重定向安装。",
           hint: "打开恢复中心可查看涉及的 Mod 和原因；文件缺失时可预览卸载清理方案。",
         },
         replacement_installed_binding_unavailable: {
@@ -326,8 +326,8 @@ export const replacementCopy = {
           hint: "请刷新 Mod 列表后重试。",
         },
         replacement_profile_id_invalid: {
-          message: "Profile 标识无效。",
-          hint: "请重新选择 Profile 后重试。",
+          message: "游戏安装标识无效。",
+          hint: "请刷新游戏安装信息后重试。",
         },
         replacement_target_id_invalid: {
           message: "替换目标标识无效。",
@@ -361,7 +361,7 @@ export const replacementCopy = {
       defaultTargetsTitle: "Mod 默认替换对象",
       defaultTargetsHint: "按作者提供的 Mod 文件识别。安装或启用原包后，在游戏中装备对应的武器、防具或猎虫即可查看效果。",
       currentTargetsTitle: "当前安装替换对象",
-      currentTargetsHint: "根据当前配置档的 HMM 安装记录显示。",
+      currentTargetsHint: "根据当前游戏的 HMM 安装记录显示。",
       currentTargetsUnknown: "当前安装对象暂不可确认；下面显示的是 Mod 原包的默认对象。",
       originRecoveryHint: "旧安装没有装备来源记录。预览会核对原包和已安装文件，通过后将在确认切换时补齐记录。",
       contextLoading: "正在读取 Mod 的替换对象…",
@@ -435,11 +435,11 @@ export const replacementCopy = {
       policy_excluded_resources: "Some bundled plugin or tool files are not included in this installation. Related features may be unavailable.",
     },
     block: {
-      profileUnavailable: "The current profile is unavailable.",
+      profileUnavailable: "The current game installation is unavailable.",
       completedRefreshing: "Write completed; refreshing install status.",
-      cleanupPending: "The current profile has a reinstall transaction pending cleanup.",
-      rollbackRequired: "The current profile must complete an install rollback first.",
-      repairRequired: "The current profile requires manual repair first.",
+      cleanupPending: "The current game installation has a reinstall transaction pending cleanup.",
+      rollbackRequired: "The current game installation must complete an install rollback first.",
+      repairRequired: "The current game installation requires manual repair first.",
       statusUnknown: "Install status is unknown; replacement target writes are blocked.",
     },
     phases: {
@@ -611,7 +611,7 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "The current install status could not be confirmed." },
         replacement_initial_install_blocked: {
-          message: "This profile has unresolved installation or recovery state, so an initial retarget install is blocked.",
+          message: "This game installation has unresolved installation or recovery state, so an initial retarget install is blocked.",
           hint: "Open the recovery center to identify the affected mods and causes. Missing files can be reviewed for a safe uninstall.",
         },
         replacement_installed_binding_unavailable: {
@@ -632,8 +632,8 @@ export const replacementCopy = {
           hint: "Refresh the mod list and try again.",
         },
         replacement_profile_id_invalid: {
-          message: "Invalid profile identifier.",
-          hint: "Re-select the profile and try again.",
+          message: "Invalid game installation identifier.",
+          hint: "Refresh the game installation and try again.",
         },
         replacement_target_id_invalid: {
           message: "Invalid replacement target identifier.",
@@ -667,7 +667,7 @@ export const replacementCopy = {
       defaultTargetsTitle: "Mod's default replacements",
       defaultTargetsHint: "Identified from the author's mod files. After installing or enabling the original package, equip these weapons, armor, or kinsects to see the mod.",
       currentTargetsTitle: "Currently installed replacements",
-      currentTargetsHint: "From HMM's installation records for the current profile.",
+      currentTargetsHint: "From HMM's installation records for the current game.",
       currentTargetsUnknown: "Current installed replacements cannot be verified. The original package's defaults are shown below.",
       originRecoveryHint: "This installation has no equipment source records. Preview verifies the original package and installed files; confirming the switch saves the verified records.",
       contextLoading: "Reading the mod's replacements…",
@@ -744,11 +744,11 @@ export const replacementCopy = {
       policy_excluded_resources: "同梱のプラグインまたはツールの一部はインストールに含まれません。関連機能が利用できない場合があります。",
     },
     block: {
-      profileUnavailable: "現在のプロファイルは利用できません。",
+      profileUnavailable: "現在のゲームは利用できません。",
       completedRefreshing: "書き込みが完了しました。インストール状態を更新しています。",
-      cleanupPending: "現在のプロファイルには後処理待ちの再インストールトランザクションがあります。",
-      rollbackRequired: "現在のプロファイルは先にインストールのロールバックを完了する必要があります。",
-      repairRequired: "現在のプロファイルは先に手動修復を完了する必要があります。",
+      cleanupPending: "現在のゲームには後処理待ちの再インストールトランザクションがあります。",
+      rollbackRequired: "現在のゲームは先にインストールのロールバックを完了する必要があります。",
+      repairRequired: "現在のゲームは先に手動修復を完了する必要があります。",
       statusUnknown: "インストール状態が不明のため、置換ターゲットの書き込みをブロックしました。",
     },
     phases: {
@@ -919,7 +919,7 @@ export const replacementCopy = {
         },
         replacement_install_state_unavailable: { message: "現在のインストール状態を確認できません。" },
         replacement_initial_install_blocked: {
-          message: "このプロファイルに未解決のインストール／復旧状態があるため、初回の置換インストールを実行できません。",
+          message: "このゲームに未解決のインストール／復旧状態があるため、初回の置換インストールを実行できません。",
           hint: "復旧センターで対象の Mod と原因を確認してください。ファイル欠落時はアンインストール内容を確認できます。",
         },
         replacement_installed_binding_unavailable: {
@@ -940,8 +940,8 @@ export const replacementCopy = {
           hint: "Mod リストを更新して再試行してください。",
         },
         replacement_profile_id_invalid: {
-          message: "プロファイル識別子が無効です。",
-          hint: "プロファイルを選び直して再試行してください。",
+          message: "ゲームのインストール識別子が無効です。",
+          hint: "ゲームのインストール情報を更新して再試行してください。",
         },
         replacement_target_id_invalid: {
           message: "置換ターゲット識別子が無効です。",
@@ -975,7 +975,7 @@ export const replacementCopy = {
       defaultTargetsTitle: "Mod 本来の置換対象",
       defaultTargetsHint: "作者の Mod ファイルから識別しています。元のパッケージをインストールまたは有効にした後、該当の武器・防具・猟虫を装備すると変更を確認できます。",
       currentTargetsTitle: "現在インストール済みの置換対象",
-      currentTargetsHint: "現在のプロファイルの HMM インストール記録に基づきます。",
+      currentTargetsHint: "現在のゲームの HMM インストール記録に基づきます。",
       currentTargetsUnknown: "現在のインストール対象を確認できません。以下は元のパッケージの対象です。",
       originRecoveryHint: "以前のインストールには装備の元データ記録がありません。プレビューで元パッケージとインストール済みファイルを照合し、切り替えの確定時に検証済みの記録を保存します。",
       contextLoading: "Mod の置換対象を読み込み中…",

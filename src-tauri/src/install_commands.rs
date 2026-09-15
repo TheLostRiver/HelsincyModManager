@@ -59,6 +59,11 @@ pub async fn preview_imported_mod_install_plan(
         })
         .transpose()?;
     let request = imported_mod_install_plan_request_from_dto(request)?;
+    crate::mod_installation_commands::require_optional_scope(
+        &state,
+        &request.game_id,
+        profile_id.as_ref(),
+    )?;
     let preflight = state.install_preflight.clone();
     let workflow = state.replacement_workflow.clone();
     let plugins = state.plugin_selection.clone();
@@ -113,6 +118,7 @@ pub fn start_install_task(
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let expected_revision = request.expected_revision_id.clone();
     let request = start_install_task_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let expected_revision = crate::plugin_selection_commands::expected_current_revision(
         expected_revision,
         &request.mod_id,
@@ -143,6 +149,7 @@ pub fn start_uninstall_task(
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let request = start_uninstall_task_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let runner_request = request.clone();
     let task = state
         .uninstall_tasks
@@ -166,6 +173,8 @@ pub fn get_install_manifest_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<InstallManifestStatusSummaryDto>, CommandErrorDto> {
     let (game_id, request) = install_manifest_status_request_from_dto(request)?;
+    let scope_game = game_id.clone().unwrap_or_else(GameId::mhw);
+    crate::mod_installation_commands::require_scope(&state, &scope_game, &request.profile_id)?;
     let summaries = if let Some(game_id) = game_id {
         state
             .install_recovery_scanner
@@ -196,6 +205,7 @@ pub fn scan_install_recovery(
     state: State<'_, AppState>,
 ) -> Result<Vec<InstallRecoverySummaryDto>, CommandErrorDto> {
     let (game_id, request) = install_recovery_scan_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &request.profile_id)?;
     let summaries = state
         .install_recovery_scanner
         .scan(game_id, request)
@@ -210,6 +220,7 @@ pub fn preview_recovery_action(
     state: State<'_, AppState>,
 ) -> Result<InstallRecoveryActionPreviewDto, CommandErrorDto> {
     let (game_id, request) = install_recovery_action_preview_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &game_id, &request.profile_id)?;
     let preview = state
         .install_recovery_action_previewer
         .preview(game_id, request)
@@ -225,6 +236,7 @@ pub fn start_recovery_action_task(
     app_handle: AppHandle,
 ) -> Result<TaskStartedDto, CommandErrorDto> {
     let request = start_recovery_action_task_request_from_dto(request)?;
+    crate::mod_installation_commands::require_scope(&state, &request.game_id, &request.profile_id)?;
     let runner_request = request.clone();
     let task = state
         .recovery_action_tasks

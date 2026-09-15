@@ -59,6 +59,12 @@ export type BatchModLifecycleWorkflowState =
       planToken: string;
     }
   | {
+      status: "retrying";
+      batchId: string;
+      attemptNumber: number;
+      operation: BatchModLifecycleOperation;
+    }
+  | {
       status: "result";
       batchId: string;
       attemptNumber: number;

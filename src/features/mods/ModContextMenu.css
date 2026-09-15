@@ -8,8 +8,16 @@
   border-radius: 8px;
   box-shadow: var(--shadow-panel);
   padding: 0;
-  overflow: hidden;
-  min-width: 200px;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  min-width: min(200px, calc(100vw - 16px));
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
   transform-origin: top left;
   animation: contextMenuFadeIn 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
   font-family: inherit;
@@ -45,6 +53,7 @@
 }
 
 .mod-context-menu__item svg {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
   color: var(--color-text-muted);
@@ -52,6 +61,8 @@
 }
 
 .mod-context-menu__item-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -81,9 +92,15 @@
   color: var(--color-danger-dot);
 }
 
-.mod-context-menu__item:hover {
+.mod-context-menu__item:hover,
+.mod-context-menu__item:focus-visible {
   background: color-mix(in srgb, var(--color-text) 8%, transparent);
   color: var(--color-text);
+}
+
+.mod-context-menu__item:focus-visible {
+  outline: 2px solid var(--color-border);
+  outline-offset: -2px;
 }
 
 .mod-context-menu__item:hover svg {
@@ -113,4 +130,10 @@
   height: 1px;
   background: var(--color-border-muted);
   margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-context-menu {
+    animation: none;
+  }
 }

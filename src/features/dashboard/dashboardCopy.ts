@@ -143,7 +143,7 @@ export const dashboardCopy = {
       supportAria: "支持信息",
       launchStates: {
         readyStatus: "已准备就绪",
-        readyDescription: "当前配置档可用，游戏目录已通过校验。",
+        readyDescription: "游戏目录已通过校验，可以启动游戏。",
         validatingStatus: "等待目录校验",
         validatingDescription: "目录校验完成后即可启动。",
         invalidStatus: "需要重新选择目录",
@@ -171,7 +171,7 @@ export const dashboardCopy = {
     },
     modulePreview: {
       title: "完成设置后将显示",
-      description: "以下模块会在目录识别、权限校验和默认配置档案创建后启用。",
+      description: "完成游戏目录设置后可查看 Mod 安装、前置环境和存档备份状态。",
       heading: "设置完成后启用",
       cards: {
         modOverview: "Mod 概览",
@@ -237,8 +237,8 @@ export const dashboardCopy = {
     steps: [
       { title: "扫描 Steam 游戏库", meta: "检测已安装游戏和可用候选项。" },
       { title: "验证游戏目录", meta: "确认可执行文件、数据目录和写入权限。" },
-      { title: "创建默认配置档案", meta: "在导入前准备一份干净的基线。" },
-      { title: "开始导入模组", meta: "仅在目录和配置检查通过后启用。" },
+      { title: "检查前置环境", meta: "查看当前游戏的前置组件和安装状态。" },
+      { title: "开始导入模组", meta: "目录通过校验后即可前往 Mod 管理。" },
     ],
     logs: [
       { time: "09:42", message: "首次启动设置已打开" },
@@ -248,9 +248,9 @@ export const dashboardCopy = {
     recoveryHealth: {
       title: "安装健康",
       loadingBadge: "检查中",
-      loadingBody: "正在读取当前配置档的托管安装摘要。",
+      loadingBody: "正在读取当前游戏的托管安装摘要。",
       unknownBadge: "状态未知",
-      unavailableBody: "无法读取当前配置档的恢复摘要。",
+      unavailableBody: "无法读取当前游戏的恢复摘要。",
       metricsAria: "安装恢复摘要",
       metricScanned: "扫描",
       metricAttention: "需处理",
@@ -258,7 +258,7 @@ export const dashboardCopy = {
       metricIssues: "问题",
       issuesAria: "恢复问题聚合",
       emptyBadge: "无托管记录",
-      emptyDescription: "当前配置档没有托管安装记录。",
+      emptyDescription: "当前游戏没有托管安装记录。",
       attentionBadge: "需要处理",
       attentionDescriptionUnknown: "存在无法确认的托管安装状态。",
       attentionDescriptionRepair: "存在需要修复的托管安装状态。",
@@ -278,7 +278,7 @@ export const dashboardCopy = {
       supportAria: "Support info",
       launchStates: {
         readyStatus: "Ready",
-        readyDescription: "The current profile is available and the game directory passed validation.",
+        readyDescription: "The game directory passed validation and the game is ready to launch.",
         validatingStatus: "Waiting for directory validation",
         validatingDescription: "Launch becomes available once the directory validation finishes.",
         invalidStatus: "Directory needs reselection",
@@ -306,7 +306,7 @@ export const dashboardCopy = {
     },
     modulePreview: {
       title: "Shown after setup completes",
-      description: "These modules are enabled after directory identification, permission validation, and default profile creation.",
+      description: "After setting the game directory, review mod installs, prerequisites, and save backup status.",
       heading: "Enabled after setup",
       cards: {
         modOverview: "Mod overview",
@@ -372,8 +372,8 @@ export const dashboardCopy = {
     steps: [
       { title: "Scan the Steam library", meta: "Detect installed games and available candidates." },
       { title: "Validate the game directory", meta: "Confirm the executable, data directories, and write permissions." },
-      { title: "Create the default profile", meta: "Prepare a clean baseline before importing." },
-      { title: "Start importing mods", meta: "Enabled only after the directory and configuration checks pass." },
+      { title: "Check prerequisites", meta: "Review prerequisites and install status for the current game." },
+      { title: "Start importing mods", meta: "Open Mod management after the directory passes validation." },
     ],
     logs: [
       { time: "09:42", message: "First-launch setup opened" },
@@ -383,9 +383,9 @@ export const dashboardCopy = {
     recoveryHealth: {
       title: "Install health",
       loadingBadge: "Checking",
-      loadingBody: "Reading the managed install summary of the current profile.",
+      loadingBody: "Reading the managed install summary for the current game.",
       unknownBadge: "State unknown",
-      unavailableBody: "The recovery summary of the current profile cannot be read.",
+      unavailableBody: "The recovery summary for the current game cannot be read.",
       metricsAria: "Install recovery summary",
       metricScanned: "Scanned",
       metricAttention: "Action needed",
@@ -393,7 +393,7 @@ export const dashboardCopy = {
       metricIssues: "Issues",
       issuesAria: "Aggregated recovery issues",
       emptyBadge: "No managed records",
-      emptyDescription: "The current profile has no managed install records.",
+      emptyDescription: "The current game has no managed install records.",
       attentionBadge: "Action needed",
       attentionDescriptionUnknown: "Some managed install states cannot be confirmed.",
       attentionDescriptionRepair: "Some managed install states need repair.",
@@ -413,7 +413,7 @@ export const dashboardCopy = {
       supportAria: "サポート情報",
       launchStates: {
         readyStatus: "準備完了",
-        readyDescription: "現在のプロファイルは利用可能で、ゲームディレクトリは検証を通過しました。",
+        readyDescription: "ゲームディレクトリは検証を通過し、ゲームを起動できます。",
         validatingStatus: "ディレクトリ検証待ち",
         validatingDescription: "ディレクトリの検証が完了すると起動できます。",
         invalidStatus: "ディレクトリの再選択が必要",
@@ -441,7 +441,7 @@ export const dashboardCopy = {
     },
     modulePreview: {
       title: "設定完了後に表示",
-      description: "以下のモジュールは、ディレクトリ識別・権限検証・既定プロファイル作成の後に有効になります。",
+      description: "ゲームディレクトリの設定後、Mod のインストール、前提環境、セーブバックアップの状態を確認できます。",
       heading: "設定完了後に有効化",
       cards: {
         modOverview: "Mod 概要",
@@ -507,8 +507,8 @@ export const dashboardCopy = {
     steps: [
       { title: "Steam ライブラリをスキャン", meta: "インストール済みゲームと利用可能な候補を検出します。" },
       { title: "ゲームディレクトリを検証", meta: "実行ファイル・データディレクトリ・書き込み権限を確認します。" },
-      { title: "既定プロファイルを作成", meta: "インポート前にクリーンなベースラインを準備します。" },
-      { title: "Mod のインポートを開始", meta: "ディレクトリと設定のチェック通過後にのみ有効になります。" },
+      { title: "前提環境を確認", meta: "現在のゲームの前提コンポーネントとインストール状態を確認します。" },
+      { title: "Mod のインポートを開始", meta: "ディレクトリの検証後に Mod 管理へ進めます。" },
     ],
     logs: [
       { time: "09:42", message: "初回起動セットアップを開始" },
@@ -518,9 +518,9 @@ export const dashboardCopy = {
     recoveryHealth: {
       title: "インストール健全性",
       loadingBadge: "確認中",
-      loadingBody: "現在のプロファイルの管理対象インストールサマリーを読み込み中です。",
+      loadingBody: "現在のゲームの管理対象インストールサマリーを読み込み中です。",
       unknownBadge: "状態不明",
-      unavailableBody: "現在のプロファイルの復旧サマリーを読み取れません。",
+      unavailableBody: "現在のゲームの復旧サマリーを読み取れません。",
       metricsAria: "インストール復旧サマリー",
       metricScanned: "スキャン",
       metricAttention: "要対応",
@@ -528,7 +528,7 @@ export const dashboardCopy = {
       metricIssues: "問題",
       issuesAria: "復旧問題の集計",
       emptyBadge: "管理対象記録なし",
-      emptyDescription: "現在のプロファイルには管理対象インストール記録がありません。",
+      emptyDescription: "現在のゲームには管理対象インストール記録がありません。",
       attentionBadge: "要対応",
       attentionDescriptionUnknown: "確認できない管理対象インストール状態があります。",
       attentionDescriptionRepair: "修復が必要な管理対象インストール状態があります。",

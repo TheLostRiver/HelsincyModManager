@@ -19,6 +19,10 @@ const readyAction = {
   canDeleteSelection: true,
 };
 
+test("library deletion does not depend on a configured game or save account", () => {
+  assert.equal(getCompactActionDisabledReason({ ...readyAction, actionId: "delete", profileReady: false }, zhCompact), undefined);
+});
+
 test("compact lifecycle actions explain selection, task, profile, and durable-state blockers in priority order", () => {
   assert.equal(
     getCompactActionDisabledReason({ ...readyAction, selectedCount: 0 }, zhCompact),
@@ -40,7 +44,7 @@ test("compact lifecycle actions explain selection, task, profile, and durable-st
   );
   assert.equal(
     getCompactActionDisabledReason({ ...readyAction, profileReady: false }, zhCompact),
-    "选择配置档后可安装",
+    "游戏安装信息就绪后可安装",
   );
   assert.equal(
     getCompactActionDisabledReason({ ...readyAction, canInstallSelection: false }, zhCompact),

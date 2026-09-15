@@ -20,9 +20,11 @@ mod install_commit;
 mod log_retention;
 mod log_storage_budget;
 mod managed_log;
+mod mod_directory_opener;
 mod mod_import;
 mod mod_import_archive_consumer;
 mod mod_import_install_files;
+mod mod_installation;
 #[cfg(test)]
 mod mod_library_projection_tests;
 mod mod_revision_catalog;
@@ -99,6 +101,7 @@ pub use log_storage_budget::{
     FileSystemLogStorageBudget, LogStorageBudgetOutcome, LogStorageBudgetReport,
     DEFAULT_LOG_STORAGE_MAX_BYTES, LOG_STORAGE_AUDIT_RESERVE_BYTES, MIN_AUDIT_LOG_RETENTION_DAYS,
 };
+pub use mod_directory_opener::SandboxModDirectoryOpener;
 pub use mod_import::{
     default_mod_storage_root, probe_mod_archive, FileSystemDiagnosticPackageExporter,
     SandboxModPackageMetadataAnalyzer, TaskScopedModImportSandboxLocator,
@@ -106,6 +109,7 @@ pub use mod_import::{
 };
 pub use mod_import_archive_consumer::FileSystemModImportArchiveConsumer;
 pub use mod_import_install_files::SandboxModPackageInstallFileScanner;
+pub use mod_installation::JsonModInstallationScopeRepository;
 pub use mod_revision_catalog::JsonModImportResultRepository;
 pub use mod_storage_inspector::FileSystemModStorageDirectoryInspector;
 pub use mod_storage_migrator::{

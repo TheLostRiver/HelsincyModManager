@@ -55,7 +55,7 @@ export function getCompactActionDisabledReason({
   if (installTaskActive) {
     return compact.waitInstallTask;
   }
-  if (!profileReady) {
+  if (!profileReady && actionId !== "delete") {
     const actionLabel: Record<CompactLifecycleActionId, string> = {
       "preview-plan": compact.actionLabels.previewPlan,
       install: compact.actionLabels.install,

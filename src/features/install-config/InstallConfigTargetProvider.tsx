@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { InstallConfigOverlay } from "./InstallConfigOverlay";
-import { useActiveProfile } from "../profiles/ActiveProfileProvider";
+import { useModInstallation } from "../mods/ModInstallationProvider";
 
 /*
  * 「安装配置」的打开状态（`#354` 切片 D4）。
@@ -31,7 +31,7 @@ type InstallConfigTargetProviderProps = {
 };
 
 export function InstallConfigTargetProvider({ children }: InstallConfigTargetProviderProps) {
-  const { activeProfileId } = useActiveProfile();
+  const { installationScopeId } = useModInstallation();
   const [target, setTarget] = useState<InstallConfigTarget | null>(null);
 
   const openInstallConfig = useCallback((next: InstallConfigTarget) => {
@@ -50,7 +50,7 @@ export function InstallConfigTargetProvider({ children }: InstallConfigTargetPro
   return (
     <InstallConfigTargetContext.Provider value={value}>
       {children}
-      {target ? <InstallConfigOverlay key={`${activeProfileId}:${target.modId}`} target={target} onClose={closeInstallConfig} /> : null}
+      {target ? <InstallConfigOverlay key={`${installationScopeId}:${target.modId}`} target={target} onClose={closeInstallConfig} /> : null}
     </InstallConfigTargetContext.Provider>
   );
 }
