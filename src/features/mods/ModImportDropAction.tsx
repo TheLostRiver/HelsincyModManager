@@ -8,7 +8,7 @@ export function ModImportDropAction() {
   const copy = resolveCopy(modImportCopy, locale).drop;
   const { openDropList, activeImportCount } = useModImportDrop();
   return (
-    <button type="button" className="compact-action mod-import-drop__entry" onClick={openDropList} title={activeImportCount > 0 ? copy.activeCount(activeImportCount) : copy.openTasks}>
+    <button type="button" className="compact-action is-neutral mod-import-drop__entry" onClick={openDropList} title={activeImportCount > 0 ? copy.activeCount(activeImportCount) : copy.openTasks}>
       <span className="compact-action__left">
         {activeImportCount > 0 ? <LoaderCircle className="mod-import-drop__spinner" size={14} aria-hidden="true" /> : <ListChecks size={14} aria-hidden="true" />}
         <span className="compact-action__label">{copy.openTasks}</span>
