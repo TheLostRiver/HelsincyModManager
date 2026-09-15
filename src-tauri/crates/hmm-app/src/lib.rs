@@ -29,10 +29,12 @@ mod mod_import;
 mod mod_import_archive;
 mod mod_import_diagnostics;
 mod mod_import_task;
+mod mod_installation;
 mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
 mod mod_metadata;
+mod mod_shortcuts;
 mod mod_storage_migration;
 mod mod_storage_settings;
 mod mod_storage_write_gate;
@@ -249,6 +251,7 @@ pub use mod_import_task::{
     ModImportTaskError, ModImportTaskService, StartImportModRevisionTaskRequest,
     StartImportModTaskRequest, TaskStarted,
 };
+pub use mod_installation::ModInstallationScopeService;
 pub use mod_library_projection::ModLibraryProjectionRefreshService;
 pub use mod_library_projection_tracking::{
     ModLibraryProjectionFreshnessGuard, ProjectionTrackingCategoryRepository,
@@ -262,6 +265,7 @@ pub use mod_library_query::{
     MAX_MOD_LIBRARY_SEARCH_CHARS,
 };
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
+pub use mod_shortcuts::{ModShortcutError, ModShortcutService};
 pub use mod_storage_migration::{
     queued_mod_storage_migration_event, settle_pending_mod_storage_migration,
     ModStorageMigrationFailure, ModStorageMigrationLaunch, ModStorageMigrationSettlement,

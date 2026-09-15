@@ -14,6 +14,7 @@ import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import { ExternalImportAction } from "./external-import/ExternalImportAction";
 import { ModImportAction } from "./ModImportAction";
+import { ModImportDropAction } from "./ModImportDropAction";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { getCompactActionDisabledReason } from "./compactActionAvailability";
@@ -127,7 +128,7 @@ export function CompactActionPanel({
   };
   const batchCapabilityDisabledReason = (actionId: string) => {
     // Delete is a page-side loop over the single delete command and never enters the batch
-    // lifecycle framework, so the sandbox-gated write capability does not apply to it; the
+    // lifecycle framework, so its write capability does not apply to it; the
     // storage write freeze does (deletion reclaims a package sandbox).
     if (actionId === "delete") {
       return storageWriteFreezeReason;
@@ -167,6 +168,7 @@ export function CompactActionPanel({
             tourId="mods.import-action"
           />
         ) : null}
+        <ModImportDropAction />
         <ExternalImportAction onImported={onImportCompleted} disabledReason={storageWriteFreezeReason} />
         {addRevisionAction ? (
           <ModImportAction

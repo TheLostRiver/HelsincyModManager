@@ -210,7 +210,11 @@ struct InstallPlanOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long, default_value = "default")]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -257,7 +261,11 @@ struct InstallBatchRequestOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long, default_value = "default")]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "item", value_name = "OPERATION_SPECIFIC_ITEM", required = true)]
@@ -323,7 +331,11 @@ struct InstallApplyOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long, default_value = "default")]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -350,7 +362,11 @@ struct InstallUninstallOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long, default_value = "default")]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -365,7 +381,11 @@ struct InstallReinstallOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long, default_value = "default")]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -383,7 +403,11 @@ struct InstallStatusOptions {
     #[arg(long)]
     game: Option<String>,
 
-    #[arg(long)]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod", required = true)]
@@ -395,7 +419,11 @@ struct InstallRecoveryScanOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long)]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -424,7 +452,11 @@ struct InstallRecoveryPreviewOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long)]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -439,7 +471,11 @@ struct InstallRecoveryApplyOptions {
     #[arg(long, default_value = "mhw")]
     game: String,
 
-    #[arg(long)]
+    #[arg(
+        long = "installation-scope",
+        visible_alias = "profile",
+        default_value = "auto"
+    )]
     profile: String,
 
     #[arg(long = "mod")]
@@ -2141,6 +2177,7 @@ fn write_install_error<W: Write, E: Write>(
             false,
         ),
         ReadOnlyInstallAutomationError::SandboxStoragePathRejected
+        | ReadOnlyInstallAutomationError::InstallationScope(_)
         | ReadOnlyInstallAutomationError::ConfiguredGamePathRejected
         | ReadOnlyInstallAutomationError::SandboxGamePathRejected
         | ReadOnlyInstallAutomationError::InstallPlanInvalid

@@ -14,6 +14,8 @@ pub mod external_state_scan_tasks;
 mod game_automation;
 mod install_automation;
 mod lifecycle_automation;
+#[cfg(test)]
+mod mod_installation_tests;
 mod mod_library;
 mod mod_storage;
 mod plugin_selection;

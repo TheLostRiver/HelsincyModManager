@@ -322,6 +322,36 @@
   gap: 4px;
 }
 
+.feedback-task-notice[data-dismissible="true"] .feedback-task-notice__copy {
+  padding-inline-end: 26px;
+}
+
+.feedback-task-notice__dismiss {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.feedback-task-notice__dismiss:hover {
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+
+.feedback-task-notice__dismiss:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .feedback-task-notice__copy strong,
 .feedback-task-notice__copy p {
   margin: 0;

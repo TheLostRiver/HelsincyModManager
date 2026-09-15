@@ -49,6 +49,27 @@ hmm-core / hmm-infra / hmm-games-*
 
 ## Command 命名
 
+### Mod 安装与存档配置档
+
+`get_mod_installation_context(gameId)` 返回 `{ gameId, installationId, scopeId }`。
+后端根据已配置的游戏目录解析并持久登记安装作用域；前端只传游戏 ID，不拼接目录或固定使用
+`default`。此命令只登记 HMM 自身元数据，不扫描 Mod 包或修改游戏文件。
+
+安装、卸载、重定向、插件选择、外部状态检查和恢复请求中的旧字段 `profileId` 暂留兼容，值必须
+来自上述 `scopeId`。它是安装记录的内部命名空间，不是存档配置档 ID。后端入口及写入准入会拒绝
+与当前游戏目录不符的作用域。库删除独立枚举全部安装与恢复记录，不依赖存档配置档列表。
+
+稳定错误码：`mod_installation_game_unavailable`（游戏目录不可用）、
+`mod_installation_scope_unavailable`（登记不可读）、`mod_installation_scope_mismatch`（目录已变化）、
+`mod_installation_legacy_ambiguous`（多份旧安装记录归属待核对）。界面显示原因并提供重试，
+不能将这些错误当成“未安装”或回退到某个存档配置档。
+
+`ModInstallationProvider` 只订阅游戏目录状态，存档配置档切换不重查或清除 Mod 状态。
+更换游戏目录时立即撤下旧作用域，并忽略旧请求的迟到结果。
+`ActiveProfileProvider` 继续服务 Steam 账号、存档路径与备份设置。
+
+### 命名规则
+
 Tauri command 使用 `snake_case`，以动词或查询动作开头：
 
 - 查询状态：`get_game_setup_status`
@@ -84,9 +105,21 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`get_mod_replacement_summary`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
+- Mod 快捷入口：`open_mod_folder(modId)`、`open_mod_nexus_page(modId)`
 - 检查是否有可用更新：`check_app_update`
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
+
+### Mod 文件夹与 NexusMods 快捷入口
+
+两个入口只接受逻辑 `modId`，成功返回空结果。文件夹由后端按展示版本解析受控 Mod 存储目录，
+拒绝缺失目录、普通文件、路径穿越和链接目录，不创建目录，也不返回磁盘路径。
+NexusMods 入口读取已保存的正整数 ID，由游戏适配器提供固定页面前缀，再调用系统浏览器；
+调用方不能提供 URL。右键菜单按实际尺寸保持在视口内，小窗口允许菜单内部滚动。
+
+稳定错误码：`mod_shortcut_mod_invalid`、`mod_shortcut_mod_not_found`、`mod_shortcut_unavailable`、
+`mod_folder_unavailable`、`mod_nexus_id_missing`、`mod_nexus_open_failed`。缺少 ID 时提示先填写
+Mod 信息设置，失败信息不包含真实目录或原始系统错误。
 
 ## 应用健康与 App Log
 
@@ -361,8 +394,8 @@ batch/result 事实或伪造导入失败。
 ### T13 批量生命周期规划契约
 
 本节登记 [批量 Mod 生命周期领域设计](BATCH_MOD_LIFECYCLE_DESIGN.md) 的 transport 形状，用于约束
-T13-01 至 T13-08。**T13-06 已实现下列 command、DTO、AppState service 和 typed API；T13-07 前端
-工作流已接入它们，但当前 GUI 必须在 Sandbox 模式（`HMM_SANDBOX_DATA_DIR`）下才可用：**
+T13-01 至 T13-08。下列 command、DTO、AppState service、typed API 和前端工作流已接入。
+正式桌面环境可使用批量安装、卸载和真正重装；显式 Sandbox 仍保留独立的根目录准入：
 
 ```text
 get_batch_mod_lifecycle_capability
@@ -416,15 +449,16 @@ operation、一个 game/profile，最多 100 项；同一 `modId` 重复时整�
 
 | command | 输入 | 返回 |
 | --- | --- | --- |
-| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production 未接入 Sandbox 时两者为 `false` 且 reason 为 `sandbox_batch_production_forbidden`；该 DTO 只是交互门禁，每个 preview/write command 仍必须逐次重验 Sandbox 环境 |
-| `preview_batch_mod_lifecycle` | `request` | 纯只读 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
+| `get_batch_mod_lifecycle_capability` | 无 | `BatchModLifecycleCapabilityDto`；只包含 `previewAvailable`、`writeAvailable` 和可选稳定 `unavailableReasonCode`。Production/Sandbox 与当前 GUI 数据根一致时可用；不一致为 `batch_data_root_mismatch`，无法解析为 `batch_runtime_unavailable`。DTO 只是交互门禁，写入仍复核作用域、token、计划与游戏根 |
+| `preview_batch_mod_lifecycle` | `request` | 不修改玩家文件或批次记录的 `BatchModLifecyclePreviewDto`；包含 status、operation、policy、item/global reason 聚合、action/retained/replaced/added/stale 聚合、ready/blocked 数量和可选 opaque `previewToken` |
 | `seal_batch_mod_lifecycle` | 完整 `request`、`previewToken` | `BatchModLifecycleSealDto`；只包含 `batchId`、status、operation、policy、`expiresAtUnixMillis` 和 opaque `planToken` |
 | `start_batch_mod_lifecycle` | `batchId`、`planToken` | `{ task: TaskStartedDto, batchId, attemptNumber }`；同步执行 attempt 0 后在返回前发出唯一 terminal event |
 | `get_batch_mod_lifecycle_result` | `batchId`、`attemptNumber`、可选 `cursor`、可选 `limit` | `BatchModLifecycleResultPageDto`；cursor 只属于该 attempt |
 | `retry_batch_mod_lifecycle` | `batchId`、`expectedAttemptNumber` | `{ task: TaskStartedDto, batchId, attemptNumber }`；retry item set 完全由后端从 sealed batch 和已有终态计算 |
 
-`preview` 必须零写入：不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp
-artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
+`preview` 不创建 batch journal、projection、Audit、manifest、backup、recovery 或 temp artifact。
+Production 首次签发 token 时可初始化应用数据内的随机签名凭据，不修改玩家文件；Sandbox token
+仍由隔离根派生，两种环境的 token 不通用。`seal` 会重读当前事实并重建 digest；request/token/fact 任一不一致时返回
 `batch_plan_stale`，不持久化部分 snapshot。`start` 只消费 `batchId + planToken`，token 默认 30 分钟
 过期；digest 是内部确定性身份，不是公开写权限，也不得进入 DTO、日志或诊断。
 
@@ -436,6 +470,15 @@ artifact。`seal` 会重读当前事实并重建 digest；request/token/fact 任
 `.recovery_required`）；权威 batch 状态始终以 result query 的 `status` 为准。当前契约不发出 queued/
 planning/preflight/processing/stopping 等中间 phase，`cancel_task` 对 batch task 返回
 `task_cannot_be_cancelled`；未来异步化不得在未更新本契约与 Gate 证据时静默改变这些语义。
+
+桌面 `preview`、`seal`、`start` 和 `retry` 在阻塞工作线程执行。AppState 核对 automation 数据根与
+当前桌面数据根后，journal 查询复用 GUI 的 SQLite 连接，避免活跃 WAL 被 immutable 快照忽略；
+数据根不匹配时不得回落到另一套数据。显式 Sandbox 配置无效时启动失败，不能静默进入 Production。
+批量和单项写入共用游戏写锁、安装作用域、InstallPlan、manifest、backup、rollback/recovery。
+
+前端在确认、执行和重试期间阻止重复提交及关闭；筛选刷新只作废未确认预览，不自动关闭执行结果。
+每次写入请求结束都失效共享库缓存，包括 command/result 查询失败及离开页面后的迟到结果；
+卡片状态与状态筛选仍由后端清单和查询投影决定。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
@@ -506,6 +549,8 @@ Batch phase 映射到共享 `TaskProgressEventDto` 时还必须满足：
 
 ```text
 batch_input_invalid
+batch_data_root_mismatch
+batch_runtime_unavailable
 batch_duplicate_item
 batch_resource_limit_exceeded
 batch_global_target_conflict
@@ -2083,6 +2128,8 @@ start_mod_storage_migration_task({ directory: string | null })
   内容层判据与 `content_root::resolve_content_root` **复用同一组常量**（目录名、深度上限、大小写不敏感），
   区别只是这里看归档条目名而不是已解包的目录树——两处各写一份迟早会对「内容根在哪」给出不同答案（#284）。
 
+- 拖拽导入的前端会话把草稿、已确认批次和结束记录分开。草稿及预检请求有独立身份，已关闭或移除的条目不接受迟到响应；预检未结束不能提交。每次确认仅提交勾选项，未勾选项记为跳过，正在导入时新增批次排在原队列之后。批次/条目 ID 仅用于 UI 分组，实际任务继续按后端 `taskId` 和终态事件推进，不新增后端 batch command。
+  关闭未提交草稿、收起面板、隐藏进度通知和清除记录都不调用 `cancel_task`，不删除归档或 Mod。取消尚未开始的导入只移除前端队列项，记为取消并保留正在执行项；运行项的取消必须来自后端终态。进度通知可以隐藏，Mod 管理固定入口仍能重开；结束后显示成功 3 秒或失败 5 秒的批次摘要通知，结果保存在当前运行会话最近 50 个结束批次中，活跃批次不清理。失败重试重新预检并等待确认，不覆盖旧结果；不承诺跨重启历史或队列恢复。
 - 当前 `start_import_mod_task` 会做 archive 路径基础校验，通过后端 `TaskManager` 登记 `mod_import` queued 任务，返回 `TaskStartedDto { taskId, kind, status }`，并发送 `hmm://task-progress` 的 `mod_import.queued` 事件；随后后台 prepare runner 会执行受控 zip 沙盒解包和预览图处理，并发送 `unpack.*`、`preview_image.*` 与 `prepare.completed` 事件。受控 zip 解包会拒绝父级穿越、绝对路径、symlink entry、大小写不敏感路径碰撞、entry 数超限、单文件解压后大小超限和总解压大小超限。prepare 成功后，导入分析结果会保存到 app data 下的受控结果仓储；进度事件仍不承载巨大结果。若任务在 running prepare 期间被取消，zip 解压会在 entry/chunk 检查点协作式停止并清理本次 sandbox；预览图扫描/处理会在 scanner 遍历和 processor 读文件、解码前后、缩略图写入前后的检查点停止。runner 会停止保存结果，不再发送 `prepare.completed`，也不会用 failed 覆盖 cancelled 状态，并会 best-effort 触发一次缩略图缓存维护。
 - `get_mod_library()` 返回已持久化的导入分析结果列表，条目包含 `id`、`name`、`author`、`versionLabel`、`status`、`sizeLabel`、`categoryLabels` 和 `previewImage`。当前 MVP 使用 `packageId` 作为稳定 `id`；`name` 的解析优先级为：manifest 显式声明 → 压缩包文件名（仅新建 Mod 导入；文件名是导入者导入前唯一亲自确认过的名称）→ readme 首行（只作末端兜底，其首行可能是教程或致谢而非标题）→ 回退 `packageId`；文件名不回填包内元数据，revision 导入不参与命名，保持"revision 导入不重命名"约定；`author` 和 `versionLabel` 只来自后端解析的短文本 metadata；`categoryLabels` 来自后端解析的通用 category 和 tags，不由前端从路径推断。后端会从受控 sandbox 的 manifest/readme 候选解析通用元数据，多个 manifest 候选只用于补齐缺失字段，不作为安装事实来源。
 - `query_mod_library({ request })` 是与旧无参列表并存的短只读分页查询。`request` 使用 camelCase，包含可选 `profileContext { gameId, profileId }`、`search`、`filter`、固定 `sort: "name_asc"`、1-based `page` 和 `pageSize: 12 | 24 | 48 | 96`。`filter` 只能是 `{ kind: "all" }`、`{ kind: "status", status }` 或 `{ kind: "category", categoryId }`；status 稳定值为 `not_installed`、`installed`、`committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required`、`unknown`。status filter 必须携带 profile context；无 active profile 时仍可使用 all/category 查询，但后端不会猜测安装状态。响应 `ModLibraryPageDto { items, page, pageSize, libraryTotal, matchingTotal }` 只返回 clamp 后的当前页，`items.length <= pageSize`；每个 profile-aware item 的 `status` 与后端 filter 事实一致，并可带 `installSummary { status, managedFileCount, backupCount }`。无 profile context 的条目保持旧导入状态且省略 `installSummary`。item 可带 `externalImportAdapterId`（外部导入来源的 opaque adapter id，如 `hunting_box_directory_v1`；普通 zip 导入省略该键）——它是列表页「外部来源」标记的唯一事实来源（#286 切片 3b-1），前端只按 id 从字典取展示名，不回传、不复算；事实由投影从权威目录的 `origin_provenance` 重建（投影 schema v2）。稳定错误码为 `game_id_invalid`、`profile_id_empty`、`mod_library_filter_invalid`、`mod_library_sort_invalid`、`mod_library_page_invalid`、`mod_library_page_size_unsupported`、`mod_library_search_too_long`、`mod_library_category_not_found`、`mod_library_profile_context_required`、`mod_library_unavailable` 和 `mod_library_status_unavailable`；前端不得按 message 分支。该命令不创建 task、不发送 event、不获取写锁，也不接受或返回 archive、sandbox/cache、manifest、game path、backup ref、第三方 Mod 内容或其他文件系统字段。旧 `get_mod_library()` 和现有页面消费者在迁移 Slice 3 前保持不变。

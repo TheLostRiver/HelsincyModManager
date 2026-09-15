@@ -1,253 +1,203 @@
-import { CheckCircle2, Clock, FileArchive, LoaderCircle, Upload, XCircle } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { LoaderCircle, Upload } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { FeedbackPortal } from "../../shared/feedback/FeedbackProvider";
+import { ModalSurface } from "../../shared/feedback/ModalSurface";
+import type { Locale } from "../../shared/i18n";
 import type { ModImportCopy } from "./modImportCopy";
+import { canStartDropImport, dropSelectAllState, selectedDropRows, selectableDropRowCount } from "./modImportDropState";
 import {
-  canStartDropImport,
-  dropSelectAllState,
-  getDropRowNote,
-  getDropQueueStatus,
-  isDropRowSelectable,
-  selectableDropRowCount,
-  selectedDropRows,
-  type DropListState,
-  type DropQueueSummary,
-  type DropRow,
-} from "./modImportDropState";
+  activeDropBatches,
+  dropBatchSummary,
+  dropDraftChecking,
+  dropDraftRows,
+  finishedDropBatches,
+  MAX_DROP_HISTORY_BATCHES,
+  type DropImportSession,
+  type DropListTab,
+} from "./modImportDropSession";
+import { ModImportDropBatch } from "./ModImportDropBatch";
+import { ModImportDropRow } from "./ModImportDropRow";
 import "./ModImportDropOverlay.css";
-
-// 待导入清单浮层（T22 / #366）。纯展示 + 回调，状态与队列都在 ModImportDropProvider。
-//
-// **它随时可关。** 首版做成了模态、导入期间关不掉，等于拖一批包就把整个 HMM 锁住几分钟。
-// 现在关掉只是收起视图，队列在后台继续，进度走既有的任务通知，点通知能重新打开。
 
 type ModImportDropOverlayProps = {
   copy: ModImportCopy;
+  locale: Locale;
   dragActive: boolean;
   visible: boolean;
-  list: DropListState;
-  summary: DropQueueSummary;
+  session: DropImportSession;
+  tab: DropListTab;
   listenerReady: boolean;
+  onTabChange: (tab: DropListTab) => void;
   onClose: () => void;
-  onToggleRow: (archivePath: string) => void;
+  onSelectItem: (itemId: string, selected: boolean) => void;
   onSelectAll: (selected: boolean) => void;
+  onRemoveItem: (itemId: string) => void;
+  onClearDraft: () => void;
   onConfirm: () => void;
   onCancelQueued: () => void;
-  onClearFinished: () => void;
+  onClearHistory: () => void;
+  onRetryBatch: (batchId: string) => void;
 };
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
-}
-
-function RowPhaseMark({ row, copy }: { row: DropRow; copy: ModImportCopy }) {
-  switch (row.phase) {
-    case "queued":
-      return (
-        <span className="mod-import-drop__phase" title={copy.drop.phaseQueued}>
-          <Clock size={14} aria-hidden="true" />
-          {copy.drop.phaseQueued}
-        </span>
-      );
-    case "running":
-      return (
-        <span className="mod-import-drop__phase" title={copy.drop.phaseRunning}>
-          <LoaderCircle className="mod-import-drop__spinner" size={14} aria-hidden="true" />
-          {copy.drop.phaseRunning}
-        </span>
-      );
-    case "succeeded":
-      return <CheckCircle2 className="mod-import-drop__ok" size={16} aria-hidden="true" />;
-    case "failed":
-      return <XCircle className="mod-import-drop__bad" size={16} aria-hidden="true" />;
-    default:
-      return null;
-  }
-}
-
 export function ModImportDropOverlay({
-  copy,
-  dragActive,
-  visible,
-  list,
-  summary,
-  listenerReady,
-  onClose,
-  onToggleRow,
-  onSelectAll,
-  onConfirm,
-  onCancelQueued,
-  onClearFinished,
+  copy, locale, dragActive, visible, session, tab, listenerReady,
+  onTabChange, onClose, onSelectItem, onSelectAll, onRemoveItem, onClearDraft,
+  onConfirm, onCancelQueued, onClearHistory, onRetryBatch,
 }: ModImportDropOverlayProps) {
+  const id = useId();
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  const rows = list.rows;
+  // 业务草稿立即丢弃，离场动画仍展示关闭瞬间的内容，避免先闪空再消失。
+  const [closingView, setClosingView] = useState<{ session: DropImportSession; tab: DropListTab } | null>(null);
+  const view = visible ? { session, tab } : closingView ?? { session, tab };
+  const draft = view.session.draft;
+  const rows = dropDraftRows(draft);
+  const checking = dropDraftChecking(draft);
+  const active = activeDropBatches(view.session);
+  const history = finishedDropBatches(view.session);
+  const queued = active.reduce((count, batch) => count + dropBatchSummary(batch).queued, 0);
+  const remaining = active.reduce((count, batch) => {
+    const summary = dropBatchSummary(batch);
+    return count + summary.queued + summary.running;
+  }, 0);
   const selectAll = dropSelectAllState(rows);
-  const selectableCount = selectableDropRowCount(rows);
   const selectedCount = selectedDropRows(rows).length;
+  const selectableCount = selectableDropRowCount(rows);
   const blockedCount = rows.filter((row) => row.status === "blocked").length;
+  const tabs: { id: DropListTab; label: string; count: number }[] = [
+    { id: "pending", label: copy.drop.tabPending, count: draft?.items.length ?? 0 },
+    { id: "active", label: copy.drop.tabActive, count: active.length },
+    { id: "history", label: copy.drop.tabHistory, count: history.length },
+  ];
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = selectAll === "some";
-  }, [selectAll]);
+  }, [selectAll, view.tab, visible]);
 
-  // 浮层打开时把焦点收进来：否则 Tab 会走到底下被遮住的控件上。
-  useEffect(() => {
-    if (visible) panelRef.current?.focus();
-  }, [visible]);
+  const close = () => {
+    setClosingView({ session, tab });
+    onClose();
+  };
+  const closeLabel = draft ? copy.drop.cancelDraft : active.length > 0 ? copy.drop.closeKeepRunning : copy.drop.close;
 
-  // Esc 关闭。**导入中照样能关**——关闭只是收起视图，队列不受影响。
-  useEffect(() => {
-    if (!visible) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, visible]);
-
-  const status = getDropQueueStatus(summary, copy);
-  const hasFinished = summary.succeeded + summary.failed > 0;
+  const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next: number;
+    if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    onTabChange(tabs[next].id);
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  };
 
   return (
     <>
       {dragActive && !visible ? (
-        <div className="mod-import-drop__hint" role="presentation">
-          <div className="mod-import-drop__hint-card">
-            <Upload size={28} strokeWidth={2.2} aria-hidden="true" />
-            <span>{copy.drop.hint}</span>
+        <FeedbackPortal>
+          <div className="mod-import-drop__hint" role="presentation">
+            <div className="mod-import-drop__hint-card"><Upload size={28} aria-hidden="true" /><span>{copy.drop.hint}</span></div>
           </div>
-        </div>
+        </FeedbackPortal>
       ) : null}
-
-      {visible ? (
-        <div className="mod-import-drop__backdrop" role="presentation" onClick={onClose}>
-          <div
-            ref={panelRef}
-            tabIndex={-1}
-            className="mod-import-drop__panel"
-            role="dialog"
-            aria-label={copy.drop.title}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mod-import-drop__header">
-              <h2 className="mod-import-drop__title">{copy.drop.title}</h2>
-              {list.checking > 0 ? (
-                <span className="mod-import-drop__checking">
-                  <LoaderCircle className="mod-import-drop__spinner" size={14} aria-hidden="true" />
-                  {copy.drop.checking(list.checking)}
-                </span>
-              ) : null}
-            </div>
-
-            {rows.length > 0 ? (
-              <>
-                <div className="mod-import-drop__summary">
-                  <label className="mod-import-drop__select-all">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={selectAll === "all"}
-                      disabled={selectableCount === 0}
-                      onChange={(event) => onSelectAll(event.target.checked)}
-                    />
-                    <span>{copy.drop.selectAll}</span>
-                  </label>
-                  <span className="mod-import-drop__counts">
-                    {copy.drop.selectedSummary(selectedCount, selectableCount)}
-                    {blockedCount > 0 ? ` · ${copy.drop.blockedSummary(blockedCount)}` : ""}
-                  </span>
-                </div>
-
-                <ul className="mod-import-drop__rows">
-                  {rows.map((row) => {
-                    const note = getDropRowNote(row, copy);
-                    const selectable = isDropRowSelectable(row);
-                    return (
-                      <li
-                        key={row.archivePath}
-                        className="mod-import-drop__row"
-                        data-status={row.status}
-                        data-phase={row.phase}
-                      >
-                        {/* 第一行只放定长信息；提示语独占第二行。
-                            挤在同一行会把整句中文截成省略号——读不到原因等于没有原因。 */}
-                        <div className="mod-import-drop__row-head">
-                          <label className="mod-import-drop__row-main">
-                            <input
-                              type="checkbox"
-                              checked={row.selected}
-                              // 读不了的行不是「默认不选」，是**不能选**；已提交的行不再归玩家管。
-                              disabled={!selectable}
-                              onChange={() => onToggleRow(row.archivePath)}
-                            />
-                            <FileArchive size={14} aria-hidden="true" />
-                            <span className="mod-import-drop__file-name" title={row.archivePath}>
-                              {row.fileName}
-                            </span>
-                          </label>
-                          {row.sizeBytes !== null ? (
-                            <span className="mod-import-drop__size">
-                              {formatBytes(row.sizeBytes)}
-                            </span>
-                          ) : null}
-                          <RowPhaseMark row={row} copy={copy} />
-                        </div>
-                        {note ? (
-                          <p className="mod-import-drop__row-note">{note}</p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            ) : list.checking === 0 ? (
-              <p className="mod-import-drop__status">{copy.drop.emptyList}</p>
-            ) : null}
-
-            {status ? (
-              <p className="mod-import-drop__status" role="status" aria-live="polite">
-                {status}
-              </p>
-            ) : rows.length > 0 && selectableCount === 0 && summary.submitted === 0 ? (
-              <p className="mod-import-drop__status">{copy.drop.nothingImportable}</p>
-            ) : !listenerReady ? (
-              <p className="mod-import-drop__status">{copy.status.listenerFailedHint}</p>
-            ) : null}
-
+      <ModalSurface
+        kind="dialog"
+        open={visible}
+        title={copy.drop.title}
+        icon={<Upload size={20} />}
+        panelClassName="mod-import-drop__panel"
+        closeLabel={closeLabel}
+        onClose={close}
+        closeOnBackdrop={false}
+        footer={(
+          <div className="mod-import-drop__footer">
+            {draft ? <p className="mod-import-drop__discard-hint">{copy.drop.discardHint}</p> : null}
             <div className="mod-import-drop__actions">
-              {hasFinished ? (
+              {view.tab === "pending" && draft ? (
+                <button type="button" className="mod-import-drop__button is-quiet" onClick={onClearDraft}>{copy.drop.clearDraft}</button>
+              ) : null}
+              {view.tab === "history" ? (
+                <button type="button" className="mod-import-drop__button is-quiet" disabled={history.length === 0} onClick={onClearHistory}>{copy.drop.clearFinished}</button>
+              ) : null}
+              {view.tab === "active" && queued > 0 ? (
+                <button type="button" className="mod-import-drop__button is-quiet" onClick={onCancelQueued}>{copy.drop.stopQueued}</button>
+              ) : null}
+              <button type="button" className="mod-import-drop__button" onClick={close}>{closeLabel}</button>
+              {view.tab === "pending" ? (
                 <button
                   type="button"
-                  className="mod-import-drop__button is-quiet"
-                  onClick={onClearFinished}
-                >
-                  {copy.drop.clearFinished}
-                </button>
+                  className="mod-import-drop__button is-primary"
+                  disabled={!canStartDropImport(rows) || checking > 0 || !listenerReady}
+                  onClick={onConfirm}
+                >{active.length > 0 ? copy.drop.appendCount(selectedCount) : copy.drop.confirmCount(selectedCount)}</button>
               ) : null}
-              {summary.queued > 0 ? (
-                <button type="button" className="mod-import-drop__button" onClick={onCancelQueued}>
-                  {copy.drop.stopQueued}
-                </button>
-              ) : null}
-              <button type="button" className="mod-import-drop__button" onClick={onClose}>
-                {summary.active ? copy.drop.closeKeepRunning : copy.drop.close}
-              </button>
-              <button
-                type="button"
-                className="mod-import-drop__button is-primary"
-                disabled={!canStartDropImport(rows) || !listenerReady}
-                onClick={onConfirm}
-              >
-                {copy.drop.confirm}
-              </button>
             </div>
           </div>
+        )}
+      >
+        <div className="mod-import-drop__tabs" role="tablist" aria-label={copy.drop.tabsLabel}>
+          {tabs.map((item, index) => (
+            <button
+              key={item.id}
+              id={id + "-" + item.id}
+              type="button"
+              role="tab"
+              aria-selected={view.tab === item.id}
+              aria-controls={id + "-panel"}
+              tabIndex={view.tab === item.id ? 0 : -1}
+              className="mod-import-drop__tab"
+              onClick={() => onTabChange(item.id)}
+              onKeyDown={(event) => moveTab(event, index)}
+            >{item.label}<span>{item.count}</span></button>
+          ))}
         </div>
-      ) : null}
+        <div className="mod-import-drop__view" id={id + "-panel"} role="tabpanel" aria-labelledby={id + "-" + view.tab}>
+          {view.tab === "pending" ? (
+            <>
+              {active.length > 0 ? (
+                <button type="button" className="mod-import-drop__background" onClick={() => onTabChange("active")}>
+                  <LoaderCircle className="mod-import-drop__spinner" size={14} aria-hidden="true" />
+                  {copy.drop.backgroundSummary(active.length, remaining)}
+                </button>
+              ) : null}
+              {draft ? <p className="mod-import-drop__status" role="status">{copy.drop.addedSummary(draft.addedCount, draft.duplicateCount)}</p> : null}
+              {draft && draft.items.length > 0 ? (
+                <>
+                  <div className="mod-import-drop__summary">
+                    <label className="mod-import-drop__select-all">
+                      <input ref={selectAllRef} type="checkbox" checked={selectAll === "all"} disabled={selectableCount === 0 || checking > 0} onChange={(event) => onSelectAll(event.target.checked)} />
+                      <span>{copy.drop.selectAll}</span>
+                    </label>
+                    <span className="mod-import-drop__counts">{copy.drop.selectedSummary(selectedCount, selectableCount)}{blockedCount > 0 ? " · " + copy.drop.blockedSummary(blockedCount) : ""}</span>
+                  </div>
+                  <ul className="mod-import-drop__rows mod-import-drop__scroll">
+                    {draft.items.map((item) => (
+                      <ModImportDropRow key={item.id} archivePath={item.archivePath} row={item.row} copy={copy}
+                        onSelect={(selected) => onSelectItem(item.id, selected)} onRemove={() => onRemoveItem(item.id)} />
+                    ))}
+                  </ul>
+                </>
+              ) : <p className="mod-import-drop__empty">{copy.drop.emptyList}</p>}
+              {checking > 0 ? <p className="mod-import-drop__status" role="status"><LoaderCircle className="mod-import-drop__spinner" size={14} aria-hidden="true" />{copy.drop.checking(checking)}</p> : null}
+              {!listenerReady ? <p className="mod-import-drop__status" role="status">{copy.status.listenerFailedHint}</p> : null}
+              {checking === 0 && rows.length > 0 && selectableCount === 0 ? <p className="mod-import-drop__status">{copy.drop.nothingImportable}</p> : null}
+            </>
+          ) : (
+            <>
+              {view.tab === "history" ? <p className="mod-import-drop__status">{copy.drop.historyHint(MAX_DROP_HISTORY_BATCHES)}</p> : null}
+              <div className="mod-import-drop__batches mod-import-drop__scroll">
+                {(view.tab === "active" ? active : [...history].reverse()).map((batch, index) => (
+                  <ModImportDropBatch key={batch.id} batch={batch} copy={copy} locale={locale}
+                    initiallyExpanded={index === 0} onRetry={() => onRetryBatch(batch.id)} />
+                ))}
+                {(view.tab === "active" ? active : history).length === 0 ? (
+                  <p className="mod-import-drop__empty">{view.tab === "active" ? copy.drop.emptyActive : copy.drop.emptyHistory}</p>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+      </ModalSurface>
     </>
   );
 }

@@ -38,7 +38,7 @@ function settleWithin(promise, ms = 500) {
 /**
  * 一个可追加的假队列 + 记账，形状与 Provider 里那份一致。
  *
- * `takeNext` **同步**，且「取到 null」与「清标志」在同一 tick——这正是被测的不变量。
+ * takeNext 同步；完整消费结束后才释放运行标志，并检查交接期间的新入队。
  */
 function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
   const queue = [];
@@ -52,16 +52,14 @@ function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
 
   const deps = {
     watcher,
-    takeNext: () => {
-      const next = queue.shift() ?? null;
-      if (next === null) pumpRunning = false;
-      return next;
-    },
+    takeNext: () => queue.shift() ?? null,
     startImport: async (archivePath) => {
       if (inFlight > 0) overlapped = true;
       inFlight += 1;
       if (startBehavior) {
-        const forced = await startBehavior(archivePath);
+        let forced;
+        try { forced = await startBehavior(archivePath); }
+        catch (error) { inFlight -= 1; throw error; }
         if (forced) {
           inFlight -= 1;
           return forced;
@@ -75,20 +73,22 @@ function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
       });
       return { kind: "mod_import", status: "queued", taskId };
     },
-    onStarted: (archivePath) => started.push(archivePath),
-    onSettled: (archivePath, outcome) => settled.push([archivePath, outcome.status === "completed" ? "succeeded" : "failed"]),
+    onStarted: (item) => started.push(item.archivePath),
+    onSettled: (item, outcome) => settled.push([item.archivePath, outcome.status === "completed" ? "succeeded" : "failed"]),
   };
 
   let pumpPromise = Promise.resolve();
-  function enqueue(...paths) {
-    queue.push(...paths);
+  function ensureRunning() {
     if (pumpRunning) return;
     pumpRunning = true;
-    pumpPromise = pumpPromise.then(() =>
-      runDropImportPump(deps).finally(() => {
-        pumpRunning = false;
-      }),
-    );
+    pumpPromise = runDropImportPump(deps).finally(() => {
+      pumpRunning = false;
+      if (queue.length > 0) ensureRunning();
+    });
+  }
+  function enqueue(...paths) {
+    queue.push(...paths.map((archivePath) => ({ batchId: "fixture", itemId: archivePath, archivePath })));
+    ensureRunning();
   }
 
   return {
@@ -96,7 +96,13 @@ function harness({ outcomeFor = () => "completed", startBehavior } = {}) {
     started,
     settled,
     enqueue,
-    drain: () => pumpPromise,
+    drain: async () => {
+      for (;;) {
+        const current = pumpPromise;
+        await current;
+        if (current === pumpPromise) return;
+      }
+    },
     get overlapped() {
       return overlapped;
     },
@@ -119,7 +125,7 @@ test("完成算成功，失败算失败", { timeout: 5_000 }, async () => {
   assert.equal((await settleWithin(bad)).status, "failed");
 });
 
-test("取消算失败，不算成功", { timeout: 5_000 }, async () => {
+test("取消保持独立终态，不算成功", { timeout: 5_000 }, async () => {
   // 取消之后库里确实没多出这个 Mod，报成功就是骗人。
   const watcher = new ModImportTaskWatcher();
   const outcome = watcher.watch("t1");

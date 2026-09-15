@@ -139,7 +139,7 @@ test("ModLibraryPage dispatches lifecycle flows by explicit selection mode", () 
   assert.match(page, /batchWorkflow\.state\.status === "starting"/);
   assert.match(page, /BatchModLifecyclePreviewPanel/);
   assert.match(page, /BatchModLifecycleResultPanel/);
-  assert.match(page, /useEffect\(\(\) => \{\s*batchWorkflow\.reset\(\);/);
+  assert.match(page, /useEffect\(\(\) => \{\s*batchWorkflow\.invalidatePreview\(\);/);
   assert.match(page, /handledBatchTerminalAttemptsRef = useRef\(new Set<string>\(\)\)/);
   assert.match(page, /batchWorkflow\.state\.status !== "result"/);
   assert.match(
@@ -178,7 +178,7 @@ test("batch panels keep selection-invalidation wiring", () => {
 
   // 选择变化使旧 batch plan 失效（T13-07 契约）。
   assert.match(page, /Selection changes invalidate any in-flight batch preview/);
-  assert.match(page, /batchWorkflow\.reset\(\);\s*\/\/ eslint-disable-next-line/);
+  assert.match(page, /batchWorkflow\.invalidatePreview\(\);\s*\/\/ eslint-disable-next-line/);
 });
 
 test("batch capability is backend-owned, fail-closed, and mapped to product copy", () => {
@@ -215,6 +215,11 @@ test("batch capability is backend-owned, fail-closed, and mapped to product copy
     "无法确认批量操作权限，请刷新后重试",
   );
   assert.ok(getBatchCapabilityUnavailableLabel(null, zhBatch.capability).length > 0);
+  const mismatch = getBatchCapabilityUnavailableLabel({
+    previewAvailable: false, writeAvailable: false, unavailableReasonCode: "batch_data_root_mismatch",
+  }, zhBatch.capability);
+  assert.equal(mismatch, zhBatch.capability.dataRootMismatch);
+  assert.equal(getBatchErrorLabel("batch_data_root_mismatch", zhBatch), mismatch);
 });
 
 test("batch replacement target names are projected per render, not frozen at load", () => {
