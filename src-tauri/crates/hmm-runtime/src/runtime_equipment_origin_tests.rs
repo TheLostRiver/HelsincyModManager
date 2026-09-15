@@ -375,12 +375,23 @@ fn verified_legacy_switch_persists_all_origins_and_remains_manageable_after_rest
                 "nativePC/wp/one/one002/mod/one002.mrl3",
             ),
             (
+                "nativePC/wp/one/one001/mod/one001_BML.tex",
+                "nativePC/wp/one/one002/mod/one002_BML.tex",
+            ),
+            (
+                "nativePC/wp/one/one001/mod/custom.mod3",
+                "nativePC/wp/one/one002/mod/custom.mod3",
+            ),
+            (
                 "nativePC/wp/one/one001/mod/ya001.mod3",
                 "nativePC/wp/one/one002/mod/ya002.mod3",
             ),
             (ARMOR_SOURCE_TARGET, ARMOR_RETARGETED_TARGET),
         ] {
-            let bytes = expected.remove(old).unwrap();
+            let mut bytes = expected.remove(old).unwrap();
+            if old == "nativePC/wp/one/one001/mod/one001.mrl3" {
+                bytes = single_texture_material("wp/one/one002/mod/one002_BML").to_vec();
+            }
             expected.insert(new.to_owned(), bytes);
         }
         assert_eq!(snapshot_file_tree(&fixture.game), expected);

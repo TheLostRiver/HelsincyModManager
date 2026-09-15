@@ -1,3 +1,5 @@
+#[path = "support/equipment_material.rs"]
+mod material_fixture;
 use hmm_core::{
     GameId, ModId, PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId, RetargetPlan,
 };
@@ -130,8 +132,12 @@ fn kinsect_mapping_preserves_textures_custom_resources_and_conflicting_identitie
         "nativePC/wp/mus/mus001/mod/mus0011.ctc",
         "nativePC/wp/mus/author/common.tex",
     ];
+    let reader = material_fixture::Materials(std::collections::BTreeMap::from([(
+        PackageFileId::new(paths[1]),
+        material_fixture::material(&["wp/mus/mus001/mod/mus001_BML"]),
+    )]));
     let plan = MhwReplacementAdapter
-        .build_retarget_plan(request(&paths, "mus001", "mus029", true))
+        .build_retarget_plan_with_content(request(&paths, "mus001", "mus029", true), &reader)
         .unwrap();
     assert_eq!(plan.actions().len(), paths.len());
     assert_eq!(
@@ -158,13 +164,24 @@ fn kinsect_mapping_preserves_textures_custom_resources_and_conflicting_identitie
         output(&plan, paths[5]),
         "nativePC/wp/mus/mus029/mus029/author.dat"
     );
-    for path in &paths[6..] {
-        assert_eq!(output(&plan, path), *path);
+    for path in &paths[7..12] {
+        assert_eq!(
+            output(&plan, path),
+            path.replacen("/mus001/", "/mus029/", 1)
+        );
     }
-    assert!(plan
-        .actions()
-        .iter()
-        .all(|action| action.content_transform().is_none()));
+    assert_eq!(
+        output(&plan, paths[6]),
+        "nativePC/wp/mus/mus029/mod/mus029_BML.tex"
+    );
+    assert_eq!(output(&plan, paths[12]), paths[12]);
+    assert_eq!(
+        plan.actions()
+            .iter()
+            .filter(|action| action.content_transform().is_some())
+            .count(),
+        1
+    );
     assert_eq!(plan.file_effects().len(), paths.len());
 }
 
@@ -210,7 +227,7 @@ fn mixed_package_assigns_each_kinsect_glaive_and_armor_source_once() {
 }
 
 #[test]
-fn textures_do_not_create_sources_and_unmappable_sources_can_only_stay_in_place() {
+fn textures_do_not_create_sources_but_author_models_can_migrate_with_their_root() {
     let paths = ["nativePC/wp/mus/mus001/mod/mus001_BML.tex"];
     let analysis = MhwReplacementAdapter
         .analyze_replacement_assets(ReplacementAnalysisRequest {
@@ -220,10 +237,13 @@ fn textures_do_not_create_sources_and_unmappable_sources_can_only_stay_in_place(
         .unwrap();
     assert!(analysis.sources().is_empty());
     let paths = ["nativePC/wp/mus/mus001/mod/custom.mod3"];
-    assert!(matches!(
-        MhwReplacementAdapter.build_retarget_plan(request(&paths, "mus001", "mus002", true)),
-        Err(ReplacementAdapterError::SourceAnalysisRejected { .. })
-    ));
+    let moved = MhwReplacementAdapter
+        .build_retarget_plan(request(&paths, "mus001", "mus002", true))
+        .unwrap();
+    assert_eq!(
+        output(&moved, paths[0]),
+        "nativePC/wp/mus/mus002/mod/custom.mod3"
+    );
     let kept = MhwReplacementAdapter
         .build_retarget_plan(request(&paths, "mus001", "mus001", true))
         .unwrap();

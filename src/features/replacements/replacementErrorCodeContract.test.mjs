@@ -101,6 +101,21 @@ test("Rust 侧武器码全局唯一，前端才能按码做穷尽映射", () => 
   assert.equal(new Set(rustCodes).size, rustCodes.length, "武器稳定码跨枚举重复");
 });
 
+test("装备材质迁移错误在三种语言中都有具体提示", () => {
+  const sources = ["material_table.rs", "material_transform.rs"].map((file) =>
+    readFileSync(`src-tauri/crates/hmm-games-mhw/src/equipment_retarget/${file}`, "utf8"),
+  );
+  const codes = new Set(sources.flatMap((source) =>
+    [...source.matchAll(/"(equipment_material_[a-z_]+)"/g)].map((match) => match[1]),
+  ));
+  assert.ok(codes.size > 0);
+  for (const locale of ["zh_cn", "en", "ja"]) {
+    for (const code of codes) {
+      assert.notEqual(replacementErrorMessage({ code }, FALLBACK, replacementCopy[locale].errors), FALLBACK, `${locale}: ${code}`);
+    }
+  }
+});
+
 test("replacement_commands.rs 吐出的每个码在三种语言下都有前端文案", () => {
   // 通用码是散落的字面量，没有单一枚举可穷尽，所以按命名约定抓。
   // 抓到非错误码的字符串时本测试会红，那时补 allowlist 即可——比静默漏码好。

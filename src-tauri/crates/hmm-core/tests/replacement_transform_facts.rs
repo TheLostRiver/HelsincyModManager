@@ -232,7 +232,22 @@ fn invocation_rejects_unbounded_or_noncanonical_facts() {
     );
     assert!(invalid_digest.is_err());
 
-    let too_many_parameters = (0..17)
+    let maximum_parameters = (0..4096)
+        .map(|index| (format!("key_{index}"), "value".to_owned()))
+        .collect();
+    assert!(ContentTransformInvocation::new(
+        1,
+        "fixture.bounded-field-patch",
+        1,
+        digest('a'),
+        digest('b'),
+        digest('c'),
+        BTreeMap::new(),
+        maximum_parameters,
+    )
+    .is_ok());
+
+    let too_many_parameters = (0..4097)
         .map(|index| (format!("key_{index}"), "value".to_owned()))
         .collect();
     let unbounded = ContentTransformInvocation::new(

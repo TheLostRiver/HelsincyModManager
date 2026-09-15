@@ -1,4 +1,4 @@
-use super::inventory::{is_texture, EquipmentRoot, PackageResources, Resource};
+use super::inventory::{EquipmentRoot, PackageResources, Resource};
 use super::numbered_identity::{NumberedId, NumberedRoot};
 use super::resource_path::{NumberedResourceMapper, NumberedResourceMapping};
 use crate::{
@@ -66,7 +66,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         EquipmentRoot::Armor(_) => None,
     };
     for resource in &unit.resources {
-        let (destination, unmapped) = if identity || is_texture(&resource.path) {
+        let (destination, unmapped) = if identity {
             (resource.path.clone(), None)
         } else {
             destination(
@@ -77,7 +77,7 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
             )?
         };
         moved |= destination != resource.path;
-        kept_unmapped |= unmapped.is_some();
+        kept_unmapped |= unmapped.is_some() && destination == resource.path;
         effects.push(super::file_effects::resource_effect(
             resource,
             &destination,
@@ -154,6 +154,20 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
     let plan = plan
         .with_file_effects(effects)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
+    with_facts(
+        plan,
+        if request.carries_package_companions {
+            package.excluded_count
+        } else {
+            0
+        },
+    )
+}
+
+pub(super) fn with_facts(
+    plan: RetargetPlan,
+    excluded_count: u32,
+) -> ReplacementAdapterResult<RetargetPlan> {
     let closure = digest(plan.actions().iter().flat_map(|action| {
         [
             action.package_file_id().as_str(),
@@ -162,25 +176,37 @@ pub(super) fn build_plan(request: RetargetPlanRequest) -> ReplacementAdapterResu
         ]
     }));
     let source = digest([
-        unit.source.source_type().as_str(),
-        unit.source.path_family(),
-        unit.source.internal_id(),
+        plan.source().source_type().as_str(),
+        plan.source().path_family(),
+        plan.source().internal_id(),
     ]);
-    let facts = ReplacementAdapterFacts::new(
+    let mut facts = ReplacementAdapterFacts::new(
         REPLACEMENT_ADAPTER_FACTS_SCHEMA_VERSION,
         "mhw.equipment",
-        "path-only-resource-preserving",
-        3,
+        "resource-reference-migration",
+        4,
         closure,
         source,
         plan.content_transform_set_sha256(),
     )
     .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?
-    .with_excluded_file_count(if request.carries_package_companions {
-        package.excluded_count
-    } else {
-        0
-    });
+    .with_excluded_file_count(excluded_count);
+    let transform_count = plan
+        .actions()
+        .iter()
+        .filter(|action| action.content_transform().is_some())
+        .count();
+    if transform_count > 0 {
+        facts = facts
+            .with_transformers(
+                plan.content_transformer_identities(),
+                u32::try_from(transform_count)
+                    .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?,
+                u32::try_from(plan.actions().len())
+                    .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?,
+            )
+            .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)?;
+    }
     plan.with_adapter_facts(facts)
         .map_err(|_| ReplacementAdapterError::InvalidRetargetPlan)
 }
@@ -222,7 +248,14 @@ fn map_numbered(
         .map(&resource.path, target)
     {
         Ok(NumberedResourceMapping::Relocated(path)) => Ok((path, None)),
-        Ok(NumberedResourceMapping::Kept(reason)) => Ok((resource.path.clone(), Some(reason))),
+        Ok(NumberedResourceMapping::Kept(reason)) => {
+            // 装备根已经证明归属。无法证明内部编号时只迁移根，不能留下旧装备覆盖。
+            let mut parts = resource.path.as_str().split('/').collect::<Vec<_>>();
+            parts[3] = target.as_str();
+            let path = InstallTargetPath::parse(parts.join("/"), ["nativePC"])
+                .map_err(|_| ReplacementAdapterError::UnsafeRetargetPath)?;
+            Ok((path, Some(reason)))
+        }
         Err(_) => Err(ReplacementAdapterError::UnsafeRetargetPath),
     }
 }

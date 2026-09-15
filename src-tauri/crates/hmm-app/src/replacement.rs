@@ -238,6 +238,10 @@ pub struct PlannedRetargetReinstall {
 }
 
 impl PlannedRetargetReinstall {
+    pub fn retarget_plan(&self) -> &RetargetPlan {
+        &self.retarget_plan
+    }
+
     pub fn file_effects(&self) -> Vec<hmm_core::RetargetFileEffect> {
         plugins::merge_file_effects(
             self.retarget_plan.file_effects().to_vec(),
@@ -345,9 +349,7 @@ impl PlannedInitialRetargetInstall {
         &self.install_plan
     }
 
-    /// 需要各自 staging 根的绑定——**只有重定向的**。
-    ///
-    /// 「保持原位」的 identity 绑定不在其中：它的文件不经字节改写，提交时直接读沙箱原包。
+    /// 路径或内容需要变换的绑定各自使用 staging 根。
     pub fn staged_binding_ids(&self) -> Vec<ReplacementBindingId> {
         self.retarget_plans
             .iter()
@@ -358,7 +360,8 @@ impl PlannedInitialRetargetInstall {
 
     /// 提交时的源路由：**覆盖每一个动作**，两种来源都显式记录。
     ///
-    /// 「保持原位」的槽位记 `ImportedPackage` 而不是干脆不记——不记会让「组装方漏了一个
+    /// 路径和内容都不变的槽位记 `ImportedPackage`；原目标的材质引用发生变化时仍读取 staging。
+    /// 不记来源会让「组装方漏了一个
     /// 文件」与「这个文件本来就该读原包」在提交侧无法区分，漏记的文件会拿未重定向的原包
     /// 字节写进重定向后的目标路径。提交侧因此能逐动作核对覆盖面（见
     /// `ConfiguredInstallCommitter`）。
@@ -389,15 +392,14 @@ impl PlannedInitialRetargetInstall {
     }
 }
 
-/// 「保持原位」产出的计划：目标就是源槽位自己，所以字节不用改、不用进 staging。
-///
-/// 判据与 `is_identity_replacement_binding` 对齐（源与目标的 internal_id 及 path_family
-/// 同一），只是这里看的是尚未转成快照的计划。
+/// 完全不变的计划才能直接读取原包；保持原目标的材质也可能引用另一来源迁移后的资源。
 fn is_identity_retarget_plan(plan: &RetargetPlan) -> bool {
     plan.binding().created_at_unix_millis() == 0
         && plan.actions().iter().all(|action| {
             action.source_internal_id() == action.target_internal_id()
                 && action.source_path_family() == action.target_path_family()
+                && action.source_relative_path() == action.target_relative_path()
+                && action.content_transform().is_none()
         })
 }
 
@@ -538,6 +540,24 @@ impl ReplacementService {
         let adapter = self.adapter_for(&request.game_id)?;
         adapter
             .build_retarget_plan_with_content(request, content_reader)
+            .map_err(Into::into)
+    }
+
+    pub fn build_retarget_plans_with_content(
+        &self,
+        requests: Vec<RetargetPlanRequest>,
+        content_reader: &dyn ReplacementAssetContentReader,
+    ) -> Result<Vec<RetargetPlan>, ReplacementServiceError> {
+        let game_id = requests
+            .first()
+            .ok_or(ReplacementAdapterError::InvalidRetargetPlan)?
+            .game_id
+            .clone();
+        if requests.iter().any(|request| request.game_id != game_id) {
+            return Err(ReplacementAdapterError::UnsupportedGame.into());
+        }
+        self.adapter_for(&game_id)?
+            .build_retarget_plans_with_content(requests, content_reader)
             .map_err(Into::into)
     }
 
@@ -769,7 +789,7 @@ impl ReplacementWorkflowService {
         let carrier_index = 0;
 
         let mut targets = Vec::with_capacity(slots.len());
-        let mut retarget_plans = Vec::with_capacity(slots.len());
+        let mut plan_requests = Vec::with_capacity(slots.len());
         for (index, slot) in slots.iter().enumerate() {
             let source = resolved
                 .analysis
@@ -816,21 +836,18 @@ impl ReplacementWorkflowService {
                     (target, binding)
                 }
             };
-            let retarget_plan = self
-                .replacement
-                .build_retarget_plan_with_content(
-                    RetargetPlanRequest {
-                        game_id: request.game_id.clone(),
-                        binding,
-                        assets: resolved.assets.clone(),
-                        carries_package_companions: index == carrier_index,
-                    },
-                    &content_reader,
-                )
-                .map_err(ReplacementWorkflowError::Analysis)?;
+            plan_requests.push(RetargetPlanRequest {
+                game_id: request.game_id.clone(),
+                binding,
+                assets: resolved.assets.clone(),
+                carries_package_companions: index == carrier_index,
+            });
             targets.push(target);
-            retarget_plans.push(retarget_plan);
         }
+        let retarget_plans = self
+            .replacement
+            .build_retarget_plans_with_content(plan_requests, &content_reader)
+            .map_err(ReplacementWorkflowError::Analysis)?;
 
         let mut install_plan = self
             .replacement
@@ -1215,6 +1232,9 @@ pub fn is_identity_replacement_binding(snapshot: &ReplacementBindingSnapshot) ->
     snapshot.binding().created_at_unix_millis() == 0
         && snapshot.source_internal_id() == snapshot.target_internal_id()
         && snapshot.source_path_family() == snapshot.target_path_family()
+        && snapshot
+            .adapter_facts()
+            .is_none_or(|facts| facts.transformer_identities().is_empty())
 }
 
 fn canonical_source_binding_id(

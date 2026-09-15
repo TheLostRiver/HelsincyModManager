@@ -57,8 +57,8 @@ use hmm_app::{
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
-    MhwReplacementAdapter, MhwReplacementCatalog, MhwWeaponMrl3TexturePathTransformer,
-    MonsterHunterWorldAdapter, MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
+    MhwReplacementAdapter, MhwReplacementCatalog, MonsterHunterWorldAdapter,
+    MonsterHunterWorldLauncher, MonsterHunterWorldSaveDirectoryRule,
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
@@ -96,10 +96,10 @@ use hmm_infra::{
 };
 use hmm_ports::{
     AppClock, AppSettings, AppSettingsRepository, AppSettingsRepositoryError, AuditLogEvent,
-    AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy, ContentTransformer,
-    ContentTransformerRegistry, DebugLogControl, DiagnosticPackageExporter,
-    DiagnosticsEnvironmentProvider, DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository,
-    GameLauncher, GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
+    AuditLogReader, AuditLogWriter, AuditWriteFailurePolicy, ContentTransformerRegistry,
+    DebugLogControl, DiagnosticPackageExporter, DiagnosticsEnvironmentProvider,
+    DiagnosticsEvidenceHealth, GameAdapter, GameConfigRepository, GameLauncher,
+    GamePrerequisiteRuleRepository, GameRunningDetector, InstallGameFileSystem,
     InstallManifestRepository, InstallSourceFileReader, ModImportResultRepository,
     ModImportSandboxLocator, ModPackageContentRootRepository, ModPackageContentScanner,
     ModPackageFileSelectionRepository, ModPackageInstallFileReader, ModPackageInstallFileScanner,
@@ -884,10 +884,8 @@ impl HmmRuntime {
             .with_plugin_selection(Arc::clone(&plugin_selection)),
         );
         let content_transformers = Arc::new(
-            ContentTransformerRegistry::new(vec![
-                Arc::new(MhwWeaponMrl3TexturePathTransformer) as Arc<dyn ContentTransformer>
-            ])
-            .map_err(|_| "content transformer registry is invalid".to_owned())?,
+            crate::retarget_content::registry()
+                .map_err(|_| "content transformer registry is invalid".to_owned())?,
         );
         let initial_retarget_install_preflight =
             Arc::new(InitialRetargetInstallPreflightService::new(
@@ -1706,6 +1704,8 @@ impl ConfiguredReinstallExecutor {
             .map_err(ConfiguredRetargetReinstallError::Replacement)?;
         let policy_exclusions = planned.policy_exclusions();
         let file_effects = planned.file_effects();
+        let content_transforms =
+            crate::retarget_content::invocations(std::slice::from_ref(planned.retarget_plan()));
         let source_root = self
             .sandbox_locator
             .sandbox_root_for_package(planned.package_id())
@@ -1758,6 +1758,9 @@ impl ConfiguredReinstallExecutor {
         );
         let preparation = candidate_services
             .preview
+            .as_ref()
+            .clone()
+            .with_content_transforms(content_transforms)
             .prepare_replacement_target_switch_with_origin(
                 candidate_request,
                 plan,

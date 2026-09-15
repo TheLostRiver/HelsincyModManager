@@ -265,7 +265,7 @@ impl ReplacementWorkflowService {
         };
         let mut seen_sources = BTreeSet::new();
         let mut targets = Vec::new();
-        let mut plans = Vec::new();
+        let mut plan_requests = Vec::new();
         let mut changed = false;
         for (index, intent) in selection.slots.iter().enumerate() {
             if !seen_sources.insert(intent.source_id().clone()) {
@@ -307,24 +307,21 @@ impl ReplacementWorkflowService {
                 previous.map_or(0, |binding| binding.binding().created_at_unix_millis()),
             )
             .map_err(|_| ReplacementWorkflowError::BindingUnavailable)?;
-            let plan = self
-                .replacement
-                .build_retarget_plan_with_content(
-                    RetargetPlanRequest {
-                        game_id: selection.game_id.clone(),
-                        binding,
-                        assets: resolved.assets.clone(),
-                        carries_package_companions: index == 0,
-                    },
-                    &reader,
-                )
-                .map_err(ReplacementWorkflowError::Analysis)?;
+            plan_requests.push(RetargetPlanRequest {
+                game_id: selection.game_id.clone(),
+                binding,
+                assets: resolved.assets.clone(),
+                carries_package_companions: index == 0,
+            });
             targets.push(target);
-            plans.push(plan);
         }
         if !changed && !reapply {
             return Err(ReplacementWorkflowError::TargetAlreadySelected);
         }
+        let plans = self
+            .replacement
+            .build_retarget_plans_with_content(plan_requests, &reader)
+            .map_err(ReplacementWorkflowError::Analysis)?;
         let mut install_plan = self
             .replacement
             .build_retarget_install_plan_for_all(

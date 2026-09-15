@@ -5,6 +5,9 @@ use hmm_app::{
     StartEquipmentRetargetReinstallTaskRequest,
 };
 use hmm_games_mhw::MhwReplacementCatalog;
+#[path = "runtime_material_fixture.rs"]
+mod material_fixture;
+use material_fixture::single_texture_material;
 
 #[path = "runtime_equipment_attachment_tests.rs"]
 mod attachments;
@@ -28,7 +31,7 @@ const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     ),
     (
         "nativePC/wp/one/one001/mod/one001.mrl3",
-        b"synthetic unchanged references: wp/one/one001/mod/one001_BML",
+        &single_texture_material("wp/one/one001/mod/one001_BML"),
     ),
     (
         "nativePC/wp/one/one001/mod/one001_BML.tex",
@@ -36,7 +39,7 @@ const EQUIPMENT_FILES: &[(&str, &[u8])] = &[
     ),
     (
         "nativePC/wp/one/one001/mod/custom.mod3",
-        b"unmapped model kept intact",
+        b"author model kept intact",
     ),
     (
         "nativePC/wp/one/one001/mod/ya001.mod3",
@@ -206,10 +209,19 @@ fn mixed_equipment_installs_switches_after_restart_and_uninstalls_to_the_exact_b
         let destination = match *source {
             "nativePC/wp/one/one001/mod/one001.mod3" => "nativePC/wp/one/one002/mod/one002.mod3",
             "nativePC/wp/one/one001/mod/one001.mrl3" => "nativePC/wp/one/one002/mod/one002.mrl3",
+            "nativePC/wp/one/one001/mod/one001_BML.tex" => {
+                "nativePC/wp/one/one002/mod/one002_BML.tex"
+            }
+            "nativePC/wp/one/one001/mod/custom.mod3" => "nativePC/wp/one/one002/mod/custom.mod3",
             "nativePC/wp/one/one001/mod/ya001.mod3" => "nativePC/wp/one/one002/mod/ya002.mod3",
             _ => source,
         };
-        installed.insert(destination.to_owned(), bytes.to_vec());
+        let expected = if source.ends_with(".mrl3") {
+            single_texture_material("wp/one/one002/mod/one002_BML").to_vec()
+        } else {
+            bytes.to_vec()
+        };
+        installed.insert(destination.to_owned(), expected);
     }
     assert_eq!(
         snapshot_file_tree(&game),
@@ -264,11 +276,20 @@ fn mixed_equipment_installs_switches_after_restart_and_uninstalls_to_the_exact_b
         let destination = match *source {
             "nativePC/wp/one/one001/mod/one001.mod3" => "nativePC/wp/one/one004/mod/one004.mod3",
             "nativePC/wp/one/one001/mod/one001.mrl3" => "nativePC/wp/one/one004/mod/one004.mrl3",
+            "nativePC/wp/one/one001/mod/one001_BML.tex" => {
+                "nativePC/wp/one/one004/mod/one004_BML.tex"
+            }
+            "nativePC/wp/one/one001/mod/custom.mod3" => "nativePC/wp/one/one004/mod/custom.mod3",
             "nativePC/wp/one/one001/mod/ya001.mod3" => "nativePC/wp/one/one004/mod/ya004.mod3",
             ARMOR_SOURCE_TARGET => ARMOR_RETARGETED_TARGET,
             _ => source,
         };
-        switched.insert(destination.to_owned(), bytes.to_vec());
+        let expected = if source.ends_with(".mrl3") {
+            single_texture_material("wp/one/one004/mod/one004_BML").to_vec()
+        } else {
+            bytes.to_vec()
+        };
+        switched.insert(destination.to_owned(), expected);
     }
     assert_eq!(snapshot_file_tree(&game), switched);
     let switched_manifest = read_fixture_manifest(&app_data);

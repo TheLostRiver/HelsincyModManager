@@ -1,22 +1,24 @@
-//! MHW 路径重定向必须完整保留资源，并维持原有的材质/贴图引用。
+//! MHW 路径重定向完整迁移装备资源；具体材质引用另由内容回归覆盖。
+#[path = "support/equipment_material.rs"]
+mod material_fixture;
 use hmm_core::{
     GameId, ModId, PackageFileId, ProfileId, ReplacementBinding, ReplacementBindingId, RetargetPlan,
 };
 use hmm_games_mhw::{MhwReplacementAdapter, MhwReplacementCatalog};
 use hmm_ports::{
-    ReplacementAdapter, ReplacementAdapterError, ReplacementAdapterResult,
-    ReplacementAnalysisRequest, ReplacementAsset, ReplacementAssetContentReader,
-    ReplacementCatalogProvider, RetargetPlanRequest,
+    ReplacementAdapter, ReplacementAdapterResult, ReplacementAnalysisRequest, ReplacementAsset,
+    ReplacementAssetContentReader, ReplacementCatalogProvider, RetargetPlanRequest,
 };
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
+struct PathOnlyMaterialReader;
 
-struct UnavailableBinary(AtomicUsize);
-
-impl ReplacementAssetContentReader for UnavailableBinary {
-    fn read_asset_content(&self, _: &PackageFileId, _: u64) -> ReplacementAdapterResult<Vec<u8>> {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        Err(ReplacementAdapterError::SourceContentUnavailable)
+impl ReplacementAssetContentReader for PathOnlyMaterialReader {
+    fn read_asset_content(&self, id: &PackageFileId, _: u64) -> ReplacementAdapterResult<Vec<u8>> {
+        assert!(
+            id.as_str().ends_with(".mrl3"),
+            "path planning never parses models"
+        );
+        Ok(material_fixture::material(&[]))
     }
 }
 
@@ -63,7 +65,7 @@ fn plan(paths: &[&str], source_id: &str, target_id: &str, carrier: bool) -> Reta
         1,
     )
     .unwrap();
-    let reader = UnavailableBinary(AtomicUsize::new(0));
+    let reader = PathOnlyMaterialReader;
     let plan = MhwReplacementAdapter
         .build_retarget_plan_with_content(
             RetargetPlanRequest {
@@ -75,11 +77,6 @@ fn plan(paths: &[&str], source_id: &str, target_id: &str, carrier: bool) -> Reta
             &reader,
         )
         .expect("path retargeting must not depend on model binary parsing");
-    assert_eq!(
-        reader.0.load(Ordering::SeqCst),
-        0,
-        "unchanged contents need no binary parser"
-    );
     assert!(plan
         .actions()
         .iter()
@@ -109,8 +106,8 @@ fn file_effects_cover_mapping_original_resources_companions_and_exclusions() {
     ];
     let expected = [
         (Disposition::Relocated, Reason::TargetMapping),
-        (Disposition::KeptInPlace, Reason::TextureReference),
-        (Disposition::KeptInPlace, Reason::UnmappedResource),
+        (Disposition::Relocated, Reason::TargetMapping),
+        (Disposition::Relocated, Reason::TargetMapping),
         (Disposition::PackageCompanion, Reason::PackageResource),
         (Disposition::PluginCandidate, Reason::PluginNotIncluded),
         (Disposition::PolicyExcluded, Reason::ExecutablePolicy),
@@ -158,7 +155,7 @@ fn file_effects_cover_mapping_original_resources_companions_and_exclusions() {
 }
 
 #[test]
-fn weapon_retarget_keeps_texture_locations_and_material_contents() {
+fn weapon_retarget_migrates_texture_locations_without_parsing_models() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028.mod3",
         "nativePC/wp/two/two028/mod/two028.mrl3",
@@ -174,7 +171,10 @@ fn weapon_retarget_keeps_texture_locations_and_material_contents() {
         output(&plan, paths[1]),
         "nativePC/wp/two/two029/mod/two029.mrl3"
     );
-    assert_eq!(output(&plan, paths[2]), paths[2]);
+    assert_eq!(
+        output(&plan, paths[2]),
+        "nativePC/wp/two/two029/mod/two029_BML.tex"
+    );
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn an_unknown_catalog_source_can_stay_in_place_without_becoming_an_arbitrary_tar
 }
 
 #[test]
-fn an_unmapped_weapon_model_does_not_report_success_when_nothing_can_move() {
+fn an_author_named_weapon_model_moves_with_its_equipment_root() {
     let assets = assets(&["nativePC/wp/two/two028/mod/custom.mod3"]);
     let analysis = MhwReplacementAdapter
         .analyze_replacement_assets(ReplacementAnalysisRequest {
@@ -260,11 +260,11 @@ fn an_unmapped_weapon_model_does_not_report_success_when_nothing_can_move() {
                 assets,
                 carries_package_companions: true
             })
-            .unwrap_err(),
-        ReplacementAdapterError::SourceAnalysisRejected {
-            source_id: source.id().clone(),
-            code: "weapon_no_relocatable_resources"
-        }
+            .unwrap()
+            .actions()[0]
+            .target_relative_path()
+            .as_str(),
+        "nativePC/wp/two/two029/mod/custom.mod3"
     );
 }
 
@@ -295,19 +295,27 @@ fn unknown_models_unpaired_parts_and_ambiguous_companions_are_not_lost() {
     ];
     let plan = plan(&paths, "two028", "two029", true);
     assert_eq!(plan.actions().len(), paths.len());
-    assert_eq!(output(&plan, paths[2]), paths[2]);
-    assert_eq!(output(&plan, paths[3]), paths[3]);
+    assert_eq!(
+        output(&plan, paths[2]),
+        "nativePC/wp/two/two029/mod/author_extra.mod3"
+    );
+    assert_eq!(
+        output(&plan, paths[3]),
+        "nativePC/wp/two/two029/mod/author_extra.mrl3"
+    );
     assert_eq!(
         output(&plan, paths[4]),
         "nativePC/wp/two/two029/mod/ya029.mod3"
     );
-    for input in [paths[5], paths[6], paths[7]] {
-        assert_eq!(output(&plan, input), input);
-    }
-    assert!(
-        !plan.warnings().is_empty(),
-        "unchanged ambiguous resources must be explained"
+    assert_eq!(
+        output(&plan, paths[5]),
+        "nativePC/wp/two/two029/mod/two028_two028.notes"
     );
+    assert_eq!(
+        output(&plan, paths[6]),
+        "nativePC/wp/two/two029/mod/two029_BML.tex"
+    );
+    assert_eq!(output(&plan, paths[7]), paths[7]);
 }
 
 #[test]
@@ -356,11 +364,14 @@ fn mixed_equipment_sources_and_package_companions_are_accounted_once() {
         ids.iter().copied().collect::<BTreeSet<_>>(),
         paths.into_iter().collect()
     );
-    assert_eq!(output(&armor, paths[3]), paths[3]);
+    assert_eq!(
+        output(&armor, paths[3]),
+        "nativePC/pl/f_equip/pl129_0000/body/mod/skin.tex"
+    );
 }
 
 #[test]
-fn textures_referenced_by_other_slots_remain_at_their_original_locations() {
+fn each_source_plan_carries_its_texture_to_its_selected_target() {
     let paths = [
         "nativePC/wp/two/two028/mod/two028.mod3",
         "nativePC/wp/two/two028/mod/two028.mrl3",
@@ -370,7 +381,10 @@ fn textures_referenced_by_other_slots_remain_at_their_original_locations() {
     ];
     let first = plan(&paths, "two028", "two029", true);
     let second = plan(&paths, "two020", "two003", false);
-    assert_eq!(output(&second, paths[4]), paths[4]);
+    assert_eq!(
+        output(&second, paths[4]),
+        "nativePC/wp/two/two003/mod/shared_skin.tex"
+    );
     assert!(first
         .actions()
         .iter()
