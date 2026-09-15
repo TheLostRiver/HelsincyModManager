@@ -15,6 +15,7 @@ export type BatchModLifecycleCopy = {
   capability: {
     loading: string;
     sandboxForbidden: string;
+    dataRootMismatch: string;
     unavailable: string;
     nullReason: string;
     unsupported: string;
@@ -95,6 +96,7 @@ export const batchModLifecycleCopy = {
     capability: {
       loading: "正在确认批量操作权限，请稍候",
       sandboxForbidden: "当前版本仅允许在受控测试环境执行批量操作",
+      dataRootMismatch: "批量操作的数据目录与当前 HMM 不一致，请检查启动配置后重启",
       unavailable: "无法确认批量操作权限，请刷新后重试",
       nullReason: "批量操作当前不可用",
       unsupported: "当前环境不支持批量操作",
@@ -161,6 +163,7 @@ export const batchModLifecycleCopy = {
       batch_attempt_stale: "已有更新的执行尝试，请刷新结果",
       batch_result_unavailable: "无法读取批量执行结果",
       batch_journal_unavailable: "批量执行记录不可用",
+      batch_data_root_mismatch: "批量操作的数据目录与当前 HMM 不一致，请检查启动配置后重启",
       batch_evidence_unavailable: "批量执行证据不可用",
       sandbox_batch_production_forbidden: "批量操作仅在测试环境可用",
       batch_internal_error: "批量操作失败，请稍后重试",
@@ -237,6 +240,7 @@ export const batchModLifecycleCopy = {
     capability: {
       loading: "Confirming batch operation permission, please wait",
       sandboxForbidden: "This version only allows batch operations in a controlled test environment",
+      dataRootMismatch: "The batch data directory differs from HMM. Check the launch settings and restart.",
       unavailable: "Batch operation permission could not be confirmed. Refresh and retry",
       nullReason: "Batch operations are currently unavailable",
       unsupported: "The current environment does not support batch operations",
@@ -303,6 +307,7 @@ export const batchModLifecycleCopy = {
       batch_attempt_stale: "A newer attempt exists. Refresh the results",
       batch_result_unavailable: "Batch execution results could not be read",
       batch_journal_unavailable: "The batch execution journal is unavailable",
+      batch_data_root_mismatch: "The batch data directory differs from HMM. Check the launch settings and restart.",
       batch_evidence_unavailable: "Batch execution evidence is unavailable",
       sandbox_batch_production_forbidden: "Batch operations are only available in test environments",
       batch_internal_error: "Batch operation failed. Please try again later",
@@ -379,6 +384,7 @@ export const batchModLifecycleCopy = {
     capability: {
       loading: "バッチ操作の権限を確認しています。お待ちください",
       sandboxForbidden: "現在のバージョンでは、バッチ操作は管理されたテスト環境でのみ実行できます",
+      dataRootMismatch: "一括操作のデータフォルダーが HMM と一致しません。起動設定を確認して再起動してください。",
       unavailable: "バッチ操作の権限を確認できません。更新して再試行してください",
       nullReason: "バッチ操作は現在利用できません",
       unsupported: "現在の環境はバッチ操作に対応していません",
@@ -445,6 +451,7 @@ export const batchModLifecycleCopy = {
       batch_attempt_stale: "より新しい実行が存在します。結果を更新してください",
       batch_result_unavailable: "バッチ実行結果を読み取れません",
       batch_journal_unavailable: "バッチ実行記録を利用できません",
+      batch_data_root_mismatch: "一括操作のデータフォルダーが HMM と一致しません。起動設定を確認して再起動してください。",
       batch_evidence_unavailable: "バッチ実行証跡を利用できません",
       sandbox_batch_production_forbidden: "バッチ操作はテスト環境でのみ利用できます",
       batch_internal_error: "バッチ操作に失敗しました。しばらくしてから再試行してください",
@@ -527,6 +534,10 @@ export function getBatchCapabilityUnavailableLabel(
     return copy.loading;
   }
   switch (capability.unavailableReasonCode) {
+    case "batch_data_root_mismatch":
+      return copy.dataRootMismatch;
+    case "batch_runtime_unavailable":
+      return copy.unavailable;
     case "sandbox_batch_production_forbidden":
       return copy.sandboxForbidden;
     case "batch_capability_unavailable":

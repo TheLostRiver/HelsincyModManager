@@ -1,5 +1,33 @@
 # 测试指南
 
+## 安装筛选与正式桌面批量操作
+
+```powershell
+node --test "src/features/mods/batch-lifecycle/*.test.mjs" src/features/mods/modLibrarySessionStore.test.mjs
+```
+
+新 Windows 工作树先运行 `node scripts/prepare-windows-sidecars.mjs --debug`，再在 `src-tauri` 下运行：
+
+```powershell
+cargo test -p hmm-runtime --lib core_mod_lifecycle_tests
+cargo test -p hmm-runtime --lib mod_library::tests
+cargo test -p hmm-runtime --lib batch_automation
+cargo test -p hmm-app --lib batch_
+cargo test -p hmm-tauri --lib batch_mod_lifecycle_commands
+cargo test -p hmm-tauri --lib state::tests
+```
+
+状态回归在同一个 runtime 中先预热“全部／已安装／未安装”查询，再执行普通安装、首次重定向、
+目标切换和卸载，断言卡片摘要、筛选成员与数量同时更新。不得在操作之间重启来掩盖失效遗漏。
+Production 语义仅通过 crate 内测试构造器指向临时应用数据和人工游戏目录；GUI 保持 WAL 活跃。
+双 Mod 用例覆盖批量安装、幂等重复 start、升级重装、卸载恢复原始字节、单项失败继续执行和
+只重试失败项。原包保持不变，签名凭据在临时数据根生成，不读取真实玩家数据。
+
+前端行为测试直接挂载真实 hook，验证确认／执行／重试中阻止重复请求，筛选变化不关闭结果，
+写入或结果查询失败后缓存仍失效，旧作用域迟到结果不能覆盖当前界面。浏览器另检查实际快捷按钮、
+预览确认、执行中关闭保护、部分失败结果与重试；运行中取消仍未开放。
+完整候选须执行 `scripts/verify.ps1`，真实游戏内效果由后续人工验收确认。
+
 ## Mod 菜单与安装作用域
 
 ```powershell
