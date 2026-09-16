@@ -25,6 +25,9 @@ use hmm_unrar_sys as unrar;
 use std::ffi::{c_int, c_uint};
 use std::path::Path;
 
+#[cfg(test)]
+mod tests;
+
 /// unrar 在「解压大小未知」时报的哨兵，见 `fixture::UNRAR_UNKNOWN_UNPACKED_SIZE`。
 /// 必须翻译成「未知」而不是一个天文数字，否则声明值预检会把好包直接拒掉。
 const UNKNOWN_UNPACKED_SIZE: u64 = 0x7fff_ffff_7fff_ffff;
@@ -57,7 +60,7 @@ unsafe extern "system" fn rar_callback(
         return -1;
     }
     let state = user_data as *mut CallbackState;
-    if state.is_null() || p1 == 0 || p2 <= 0 {
+    if state.is_null() || p2 < 0 || (p1 == 0 && p2 > 0) {
         return -1;
     }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -65,7 +68,13 @@ unsafe extern "system" fn rar_callback(
         let Some(sink) = state.sink else {
             return -1;
         };
-        let chunk = std::slice::from_raw_parts(p1 as *const u8, p2 as usize);
+        // UnRAR 的缓冲区刷新可以产出合法空块。仍交给 sink 检查取消状态；
+        // 长度为零时不读取 p1，也不以可能为空的指针构造 Rust slice。
+        let chunk = if p2 == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(p1 as *const u8, p2 as usize)
+        };
         match (*sink).write_chunk(chunk) {
             Ok(()) => 1,
             Err(error) => {

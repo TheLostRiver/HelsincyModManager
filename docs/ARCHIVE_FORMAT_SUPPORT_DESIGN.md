@@ -458,6 +458,27 @@ UnRAR 许可第 2 条的关键句：
 代价是一次完整拷贝。对本设计的动机素材（55 MB）可忽略；即使 1 GB 级，
 拷贝耗时相对解压也是小头。**若日后判定不可接受，属独立优化，不是安全折衷。**
 
+### RAR 空数据回调（2026-09-16）
+
+`UCM_PROCESSDATA` 的长度为 `0` 是合法的缓冲区刷新，不代表压缩包损坏或解压结束。
+此前适配器以 `p2 <= 0` 拒绝回调，导致部分正常压缩的 RAR5 在文件中途被主动中止，
+外部只看到通用的 `mod_import_prepare_failed`；UnRAR 对这次主动中止返回 `ERAR_UNKNOWN`。
+
+长度为零时使用空 slice，避免读取或构造空数据指针；仍调用原有 sink，保留取消和失败原因。
+负长度、非空块缺少数据指针、缺少 callback state 或活动 sink，以及密码／换卷等其他回调继续拒绝。
+空块不增加字节配额；随后非空块仍由共用外壳限制和写入，不能把空块当作提前完成。
+
+回归使用人工回调序列验证空块前后的字节连续性、空指针加零长度、取消／错误传播、无效参数及
+panic 不跨越 FFI。既有人工 RAR 包继续覆盖路径、链接、碰撞、配额、截断、加密、分卷和暂存清理。
+
+```powershell
+cargo test -p hmm-infra --lib rar_archive_source::tests
+cargo test -p hmm-infra --lib mod_import::tests
+cargo test -p hmm-infra --lib archive_extraction::tests
+```
+
+命令在 `src-tauri` 下执行；自动测试不读取真实 Mod 包、游戏或存档目录。
+
 ### 使用模式（不可协商）
 
 ```
