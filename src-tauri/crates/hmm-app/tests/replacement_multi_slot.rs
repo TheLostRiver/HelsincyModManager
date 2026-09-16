@@ -190,6 +190,7 @@ impl ModImportResultRepository for FakeRepository {
 
 fn stored_analysis() -> StoredModImportAnalysis {
     StoredModImportAnalysis {
+        statistics: Default::default(),
         mod_id: "mod-a".to_owned(),
         task_id: "task-v1".to_owned(),
         package_id: "revision-v1".to_owned(),

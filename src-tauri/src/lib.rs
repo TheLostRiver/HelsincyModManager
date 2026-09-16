@@ -27,6 +27,7 @@ mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
 mod mod_library_read_model_benchmark_tests;
+mod mod_library_statistics;
 mod mod_metadata_commands;
 mod mod_shortcut_commands;
 mod mod_storage_commands;
@@ -173,6 +174,7 @@ pub fn run() {
             })?;
             app_log::record_state_initialized();
             app.manage(state);
+            mod_library_statistics::start_refresh(app.handle());
             app.manage(ExitAuthorizationStore::default());
             register_window_lifecycle(app).inspect_err(|_| {
                 app_log::record_warning(

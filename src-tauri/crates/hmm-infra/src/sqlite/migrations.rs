@@ -32,6 +32,7 @@ pub(crate) fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "migrations/016_mod_library_projection_external_origin.sql"
         )),
+        M::up(include_str!("migrations/017_mod_library_sorting.sql")),
     ])
 }
 

@@ -67,6 +67,7 @@ pub struct ModImportAnalysisResult {
     pub task_id: String,
     pub package_id: String,
     pub display_name: String,
+    pub statistics: hmm_ports::ModRevisionStatistics,
     pub metadata: hmm_ports::ModPackageMetadata,
     pub preview_image: ImportPreviewImage,
 }
@@ -107,6 +108,8 @@ pub struct ModLibraryItem {
     pub version_label: Option<String>,
     pub status: ModLibraryStatus,
     pub size_label: String,
+    pub imported_at_unix_millis: Option<u64>,
+    pub content_size_bytes: Option<u64>,
     pub category_labels: Vec<CategoryLabel>,
     pub preview_image: ImportPreviewImage,
     /// 外部导入来源的 adapter id；普通 zip 导入为 `None`。事实在 logical mod 的
@@ -375,6 +378,10 @@ impl ModImportTaskRunner {
                     ModImportCatalogTarget::ExistingLogicalMod(mod_id) => mod_id.clone(),
                 };
                 let mut revision = stored_revision_from_result(&mod_id, &result.analysis);
+                revision.statistics.imported_at_unix_millis = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|duration| u64::try_from(duration.as_millis()).ok());
                 // The package id fallback identifies a revision; it must not rename its logical Mod.
                 if result.analysis.metadata.display_name.is_none() {
                     if let ModImportCatalogTarget::ExistingLogicalMod(existing_mod_id) = &target {
@@ -635,27 +642,44 @@ impl ModLibraryService {
     }
 
     pub(crate) fn get_mod_library_snapshot(&self) -> anyhow::Result<Vec<ModLibrarySnapshotItem>> {
-        let records = self.result_repository.list_analysis()?;
-        let logical_mods = self.result_repository.list_mods()?;
-        // 同一次遍历取两份事实：展示 revision 与外部导入 provenance。
-        let mut external_adapters: HashMap<String, String> = HashMap::new();
-        let display_revisions = logical_mods
-            .into_iter()
-            .map(|logical_mod| {
-                if let StoredModOriginProvenance::ExternalImport { provenance } =
-                    &logical_mod.origin_provenance
-                {
-                    external_adapters.insert(
-                        logical_mod.mod_id.as_str().to_owned(),
-                        provenance.adapter_id.as_str().to_owned(),
-                    );
-                }
-                (
-                    logical_mod.mod_id.as_str().to_owned(),
-                    logical_mod.display_revision_id,
-                )
-            })
+        let catalog = self.result_repository.catalog_snapshot()?;
+        let revisions = catalog
+            .revisions
+            .iter()
+            .map(|revision| (revision.revision_id.as_str(), revision))
             .collect::<HashMap<_, _>>();
+        let mut records = Vec::with_capacity(catalog.logical_mods.len());
+        let mut external_adapters: HashMap<String, String> = HashMap::new();
+        let mut first_import_times = HashMap::new();
+        let mut display_revisions = HashMap::new();
+        for logical_mod in &catalog.logical_mods {
+            let display = revisions
+                .get(logical_mod.display_revision_id.as_str())
+                .ok_or_else(|| anyhow::anyhow!("display revision is unavailable"))?;
+            let origin = revisions.get(logical_mod.origin_revision_id.as_str());
+            anyhow::ensure!(
+                display.mod_id == logical_mod.mod_id,
+                "display revision owner mismatch"
+            );
+            let mut imported_at = origin
+                .filter(|revision| revision.mod_id == logical_mod.mod_id)
+                .and_then(|revision| revision.statistics.imported_at_unix_millis);
+            if let StoredModOriginProvenance::ExternalImport { provenance } =
+                &logical_mod.origin_provenance
+            {
+                external_adapters.insert(
+                    logical_mod.mod_id.as_str().to_owned(),
+                    provenance.adapter_id.as_str().to_owned(),
+                );
+                imported_at = imported_at.or(Some(provenance.imported_at_unix_millis));
+            }
+            first_import_times.insert(logical_mod.mod_id.as_str().to_owned(), imported_at);
+            display_revisions.insert(
+                logical_mod.mod_id.as_str().to_owned(),
+                logical_mod.display_revision_id.clone(),
+            );
+            records.push(display.as_analysis());
+        }
         let overlays = self.metadata_repository.list_all()?;
         let overlay_map: std::collections::HashMap<_, _> =
             overlays.iter().map(|o| (o.mod_id.as_str(), o)).collect();
@@ -687,6 +711,7 @@ impl ModLibraryService {
                 let stored_preview_image = record.preview_image.clone();
                 let overlay = overlay_map.get(record.mod_id.as_str()).copied();
                 let mut item = library_item_from_stored(record);
+                item.imported_at_unix_millis = first_import_times.remove(&mod_id).flatten();
                 item.external_import_adapter_id = external_adapters.remove(mod_id.as_str());
                 let user_category_ids = user_cat_id_map.remove(&mod_id).unwrap_or_default();
                 let mut projection_labels = user_projection_label_map
@@ -759,6 +784,8 @@ impl ModLibraryService {
                 author: entry.item.author,
                 version_label: entry.item.version_label,
                 size_label: entry.item.size_label,
+                imported_at_unix_millis: entry.item.imported_at_unix_millis,
+                content_size_bytes: entry.item.content_size_bytes,
                 preview_image: entry.stored_preview_image,
                 labels: entry.projection_labels,
                 external_import_adapter_id: entry.item.external_import_adapter_id,
@@ -841,6 +868,7 @@ impl ModLibraryService {
 pub struct ModImportPrepareService {
     package_preparer: Box<dyn ModImportPackagePreparer>,
     analysis_service: ModImportAnalysisService,
+    size_reader: Option<Arc<dyn hmm_ports::ModPackageSizeReader>>,
 }
 
 fn stored_analysis_from_result(
@@ -852,6 +880,7 @@ fn stored_analysis_from_result(
         task_id: result.task_id.clone(),
         package_id: result.package_id.clone(),
         display_name: result.display_name.clone(),
+        statistics: result.statistics.clone(),
         metadata: stored_metadata_from_package_metadata(&result.metadata),
         preview_image: stored_preview_from_import(&result.preview_image),
     }
@@ -868,6 +897,7 @@ pub(crate) fn stored_revision_from_result(
         import_task_id: analysis.task_id,
         package_id: analysis.package_id,
         display_name: analysis.display_name,
+        statistics: analysis.statistics,
         metadata: analysis.metadata,
         preview_image: analysis.preview_image,
     }
@@ -957,6 +987,8 @@ fn library_item_from_stored(record: StoredModImportAnalysis) -> ModLibraryItem {
         version_label,
         status: ModLibraryStatus::Disabled,
         size_label: "导入完成".to_owned(),
+        imported_at_unix_millis: record.statistics.imported_at_unix_millis,
+        content_size_bytes: record.statistics.content_size_bytes,
         category_labels,
         preview_image: import_preview_from_stored(record.preview_image),
         // 分析记录不带 provenance；真值由快照构建器从 logical mod 补上。
@@ -1037,7 +1069,13 @@ impl ModImportPrepareService {
         Self {
             package_preparer,
             analysis_service,
+            size_reader: None,
         }
+    }
+
+    pub fn with_size_reader(mut self, reader: Arc<dyn hmm_ports::ModPackageSizeReader>) -> Self {
+        self.size_reader = Some(reader);
+        self
     }
 
     pub fn prepare_import(
@@ -1078,7 +1116,7 @@ impl ModImportPrepareService {
             MOD_IMPORT_PREVIEW_IMAGE_PROCESSING_PHASE,
         ));
 
-        let analysis = self.analysis_service.analyze_sandbox_with_cancellation(
+        let mut analysis = self.analysis_service.analyze_sandbox_with_cancellation(
             ModImportAnalysisRequest {
                 task_id: request.task_id.clone(),
                 package_id: prepared_package.package_id,
@@ -1089,6 +1127,7 @@ impl ModImportPrepareService {
             },
             cancellation_token,
         )?;
+        analysis.statistics.content_size_bytes = prepared_package.content_size_bytes;
 
         if let ImportPreviewImage::Fallback { reason } = &analysis.preview_image {
             let mut event =
@@ -1110,7 +1149,12 @@ impl ModImportPrepareService {
         cancellation_token: &dyn CancellationToken,
     ) -> anyhow::Result<ModImportAnalysisResult> {
         let sandbox_root = sandbox_locator.sandbox_root_for_package(&package_id)?;
-        self.analysis_service.analyze_sandbox_with_cancellation(
+        let content_size_bytes = self
+            .size_reader
+            .as_ref()
+            .and_then(|reader| reader.read_content_size(&package_id).ok());
+        ensure_not_cancelled(cancellation_token)?;
+        let mut analysis = self.analysis_service.analyze_sandbox_with_cancellation(
             ModImportAnalysisRequest {
                 task_id,
                 package_id,
@@ -1120,7 +1164,9 @@ impl ModImportPrepareService {
                 archive_display_name_hint: None,
             },
             cancellation_token,
-        )
+        )?;
+        analysis.statistics.content_size_bytes = content_size_bytes;
+        Ok(analysis)
     }
 }
 
@@ -1277,6 +1323,7 @@ impl ModImportAnalysisService {
             task_id: request.task_id,
             package_id: request.package_id,
             display_name,
+            statistics: Default::default(),
             metadata,
             preview_image,
         })

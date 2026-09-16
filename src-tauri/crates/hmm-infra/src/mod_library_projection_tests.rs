@@ -10,6 +10,9 @@ use hmm_ports::{
 };
 use std::sync::{Arc, Mutex};
 
+#[path = "mod_library_sort_tests.rs"]
+mod sorting;
+
 #[test]
 fn projection_migration_declares_expected_tables_keys_and_binary_indexes() {
     let temp = tempfile::tempdir().expect("temporary app data");
@@ -402,6 +405,7 @@ fn projection_query_keeps_totals_clamp_sort_filters_and_unicode_in_one_snapshot(
 
     let page = repository
         .query(&ModLibraryProjectionQueryRequest {
+            sort: hmm_ports::ModLibrarySort::NameAsc,
             source_fingerprint: "catalog-v1".to_owned(),
             profile: Some(ModLibraryProjectionProfileQuery {
                 profile_id: ProfileId::new("profile-a"),
@@ -427,6 +431,7 @@ fn projection_query_keeps_totals_clamp_sort_filters_and_unicode_in_one_snapshot(
 
     let installed = repository
         .query(&ModLibraryProjectionQueryRequest {
+            sort: hmm_ports::ModLibrarySort::NameAsc,
             source_fingerprint: "catalog-v1".to_owned(),
             profile: Some(ModLibraryProjectionProfileQuery {
                 profile_id: ProfileId::new("profile-a"),
@@ -445,6 +450,7 @@ fn projection_query_keeps_totals_clamp_sort_filters_and_unicode_in_one_snapshot(
 
     let category = repository
         .query(&ModLibraryProjectionQueryRequest {
+            sort: hmm_ports::ModLibrarySort::NameAsc,
             source_fingerprint: "catalog-v1".to_owned(),
             profile: None,
             normalized_search: String::new(),
@@ -479,6 +485,7 @@ fn projection_query_paginates_192_items_without_gaps_or_duplicates() {
     {
         let page = repository
             .query(&ModLibraryProjectionQueryRequest {
+                sort: hmm_ports::ModLibrarySort::NameAsc,
                 source_fingerprint: "catalog-large-page".to_owned(),
                 profile: None,
                 normalized_search: String::new(),
@@ -524,6 +531,7 @@ fn projection_query_fails_closed_for_dirty_or_mismatched_generations() {
         })
         .expect("publish projection");
     let request = ModLibraryProjectionQueryRequest {
+        sort: hmm_ports::ModLibrarySort::NameAsc,
         source_fingerprint: "catalog-v1".to_owned(),
         profile: Some(ModLibraryProjectionProfileQuery {
             profile_id: ProfileId::new("profile-a"),
@@ -570,6 +578,8 @@ fn projection_query_fails_closed_for_dirty_or_mismatched_generations() {
 
 fn record(mod_id: &str, display_name: &str) -> ModLibraryProjectionRecord {
     ModLibraryProjectionRecord {
+        imported_at_unix_millis: None,
+        content_size_bytes: None,
         mod_id: ModId::new(mod_id),
         display_revision_id: ModRevisionId::new(format!("revision-{mod_id}")),
         package_id: format!("package-{mod_id}"),
@@ -615,6 +625,7 @@ fn external_import_adapter_id_survives_the_projection_roundtrip() {
 
     let page = repository
         .query(&ModLibraryProjectionQueryRequest {
+            sort: hmm_ports::ModLibrarySort::NameAsc,
             source_fingerprint: "catalog-origin-v1".to_owned(),
             profile: Some(ModLibraryProjectionProfileQuery {
                 profile_id: ProfileId::new("profile-a"),

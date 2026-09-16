@@ -20,6 +20,7 @@ fn mod_id() -> ModId {
 
 fn revision(mod_id: &ModId, package_id: &str) -> hmm_ports::StoredModRevision {
     hmm_ports::StoredModRevision {
+        statistics: Default::default(),
         revision_id: hmm_core::ModRevisionId::new(package_id),
         mod_id: mod_id.clone(),
         import_task_id: package_id.to_owned(),
@@ -217,6 +218,7 @@ impl ModImportResultRepository for FakeImportResultRepository {
         Ok(revisions
             .iter()
             .map(|revision| StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: revision.mod_id.as_str().to_owned(),
                 task_id: revision.import_task_id.clone(),
                 package_id: revision.package_id.clone(),

@@ -33,6 +33,7 @@ mod mod_installation;
 mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
+mod mod_library_statistics;
 mod mod_metadata;
 mod mod_shortcuts;
 mod mod_storage_migration;
@@ -264,6 +265,7 @@ pub use mod_library_query::{
     ModLibraryStatusProvider, ModLibraryStatusProviderError, DEFAULT_MOD_LIBRARY_PAGE_SIZE,
     MAX_MOD_LIBRARY_SEARCH_CHARS,
 };
+pub use mod_library_statistics::ModLibraryStatisticsService;
 pub use mod_metadata::{ModMetadataService, UpdateModMetadataRequest};
 pub use mod_shortcuts::{ModShortcutError, ModShortcutService};
 pub use mod_storage_migration::{

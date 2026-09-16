@@ -39,6 +39,7 @@ impl ModImportResultRepository for FixtureAnalysisRepository {
             return Ok(None);
         }
         Ok(Some(StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: MOD_ID.to_owned(),
             task_id: "task-a".to_owned(),
             package_id: PACKAGE_ID.to_owned(),

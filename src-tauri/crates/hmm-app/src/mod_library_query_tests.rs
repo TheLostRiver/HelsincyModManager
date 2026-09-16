@@ -338,6 +338,8 @@ fn projection_page(mod_id: &str, name: &str) -> ModLibraryProjectionQueryPage {
     ModLibraryProjectionQueryPage {
         items: vec![ModLibraryProjectionPageItem {
             record: ModLibraryProjectionRecord {
+                imported_at_unix_millis: None,
+                content_size_bytes: None,
                 mod_id: ModId::new(mod_id),
                 display_revision_id: ModRevisionId::new(format!("revision-{mod_id}")),
                 package_id: format!("package-{mod_id}"),
@@ -407,6 +409,7 @@ fn projection_service_with_guard(
 
 fn record(mod_id: &str, name: &str) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
+        statistics: Default::default(),
         mod_id: mod_id.to_owned(),
         task_id: format!("task-{mod_id}"),
         package_id: format!("package-{mod_id}"),

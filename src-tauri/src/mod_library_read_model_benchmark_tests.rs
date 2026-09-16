@@ -118,6 +118,7 @@ fn benchmark_case(record_count: usize) -> Value {
     let query_service =
         ModLibraryQueryService::new(Arc::clone(&library_service), status_provider.clone());
     let query_without_status = ModLibraryQuery {
+        sort: hmm_app::ModLibrarySort::NameAsc,
         search: "mod".to_owned(),
         page: 3,
         page_size: PAGE_SIZE,
@@ -135,6 +136,7 @@ fn benchmark_case(record_count: usize) -> Value {
     );
 
     let profile_query = ModLibraryQuery {
+        sort: hmm_app::ModLibrarySort::NameAsc,
         profile_context: Some(ModLibraryProfileContext {
             game_id: hmm_core::GameId::mhw(),
             profile_id,
@@ -178,7 +180,12 @@ fn benchmark_case(record_count: usize) -> Value {
     let compatible_page = query_service
         .query(profile_query.clone())
         .expect("prepare compatibility comparison page");
-    assert_eq!(projected_page, compatible_page);
+    // The projection omits manifest-only details; compare the complete page contract
+    // consumed by the library outside the measured query path.
+    assert_eq!(
+        ModLibraryPageDto::from(projected_page),
+        ModLibraryPageDto::from(compatible_page)
+    );
     let sqlite_projection_status_filter_query_total = measure_with_setup(
         config,
         || profile_query.clone(),
@@ -197,6 +204,44 @@ fn benchmark_case(record_count: usize) -> Value {
             sqlite_projection_status_filter_query_total.p95_ns,
             SQLITE_PROJECTION_10K_P95_BUDGET_NS
         );
+    }
+
+    let mut sort_metrics = serde_json::Map::new();
+    for (key, sort) in [
+        ("name_asc", hmm_app::ModLibrarySort::NameAsc),
+        ("name_desc", hmm_app::ModLibrarySort::NameDesc),
+        ("imported_at_asc", hmm_app::ModLibrarySort::ImportedAtAsc),
+        ("imported_at_desc", hmm_app::ModLibrarySort::ImportedAtDesc),
+        ("size_asc", hmm_app::ModLibrarySort::SizeAsc),
+        ("size_desc", hmm_app::ModLibrarySort::SizeDesc),
+    ] {
+        let query = ModLibraryQuery {
+            sort,
+            ..profile_query.clone()
+        };
+        assert_eq!(
+            ModLibraryPageDto::from(projection_query_service.query(query.clone()).unwrap()),
+            ModLibraryPageDto::from(query_service.query(query.clone()).unwrap())
+        );
+        let measurement = measure_with_setup(
+            config,
+            || query.clone(),
+            |query| {
+                let page = projection_query_service
+                    .query(query)
+                    .expect("query indexed sort");
+                page.items.len() + page.matching_total
+            },
+        );
+        if record_count == 10_000 {
+            assert!(
+                measurement.p95_ns <= SQLITE_PROJECTION_10K_P95_BUDGET_NS,
+                "{key} p95 {}ns exceeds unchanged {}ns query budget",
+                measurement.p95_ns,
+                SQLITE_PROJECTION_10K_P95_BUDGET_NS
+            );
+        }
+        sort_metrics.insert(key.to_owned(), measurement.as_json());
     }
 
     let serialization_page = query_service
@@ -230,6 +275,7 @@ fn benchmark_case(record_count: usize) -> Value {
             "profileStatusFilterQueryTotal": profile_query_total.as_json(),
             "sqliteProjectionStatusFilterQueryTotal": sqlite_projection_status_filter_query_total.as_json(),
             "pageDtoSerialization": dto_serialization.as_json(),
+            "indexedSortStatusFilterQueries": sort_metrics,
         }
     })
 }
@@ -348,6 +394,12 @@ impl BenchmarkFixture {
                 dependencies: Vec::new(),
             };
             let record = StoredModImportAnalysis {
+                statistics: hmm_ports::ModRevisionStatistics {
+                    imported_at_unix_millis: (index % 11 != 0)
+                        .then_some(1_750_000_000_000 + (index % 701) as u64 * 1000),
+                    content_size_bytes: (index % 13 != 0)
+                        .then_some(((index * 19) % 2048) as u64 * 1024 * 1024),
+                },
                 mod_id: mod_id.clone(),
                 task_id: format!("task-{index:05}"),
                 package_id: revision_id.as_str().to_owned(),
@@ -364,6 +416,7 @@ impl BenchmarkFixture {
                 origin_provenance: StoredModOriginProvenance::Imported,
             });
             revisions.push(StoredModRevision {
+                statistics: record.statistics.clone(),
                 revision_id,
                 mod_id: ModId::new(&mod_id),
                 import_task_id: record.task_id.clone(),

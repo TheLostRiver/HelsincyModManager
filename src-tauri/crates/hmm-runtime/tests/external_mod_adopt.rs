@@ -238,6 +238,7 @@ fn migrated_origin(adapter_id: &str) -> StoredModOriginProvenance {
 
 fn analysis(mod_id: &str, package_id: &str) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
+        statistics: Default::default(),
         mod_id: mod_id.to_owned(),
         task_id: "task-1".to_owned(),
         package_id: package_id.to_owned(),

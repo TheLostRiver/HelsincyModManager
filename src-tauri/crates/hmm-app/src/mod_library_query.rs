@@ -6,6 +6,7 @@ use crate::{
     InstallManifestStatusSummary, ModLibraryItem, ModLibraryService,
 };
 use hmm_core::{GameId, ModId, ProfileId};
+pub use hmm_ports::ModLibrarySort;
 use hmm_ports::{
     normalize_mod_library_query_key, ModLibraryProjectionPageItem,
     ModLibraryProjectionQueryRepository, ModLibraryProjectionStatus,
@@ -32,12 +33,6 @@ pub enum ModLibraryFilter {
     Category(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ModLibrarySort {
-    #[default]
-    NameAsc,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModLibraryQuery {
     pub profile_context: Option<ModLibraryProfileContext>,
@@ -54,7 +49,7 @@ impl Default for ModLibraryQuery {
             profile_context: None,
             search: String::new(),
             filter: ModLibraryFilter::All,
-            sort: ModLibrarySort::NameAsc,
+            sort: ModLibrarySort::default(),
             page: 1,
             page_size: DEFAULT_MOD_LIBRARY_PAGE_SIZE,
         }
@@ -212,6 +207,7 @@ impl ModLibraryQueryService {
                 let install_summary = status_by_mod_id.remove(&entry.item.id);
                 let normalized_name = normalize_text(&entry.item.name);
                 ModLibraryCandidate {
+                    name_sort_key: hmm_ports::mod_library_name_sort_key(&entry.item.name),
                     entry,
                     install_summary,
                     normalized_name,
@@ -221,13 +217,7 @@ impl ModLibraryQueryService {
             .filter(|candidate| matches_filter(candidate, &query.filter))
             .collect::<Vec<_>>();
 
-        match query.sort {
-            ModLibrarySort::NameAsc => candidates.sort_by(|left, right| {
-                left.normalized_name
-                    .cmp(&right.normalized_name)
-                    .then_with(|| left.entry.item.id.cmp(&right.entry.item.id))
-            }),
-        }
+        candidates.sort_by(|left, right| compare_candidates(left, right, query.sort));
 
         let matching_total = candidates.len();
         let page = clamped_page(query.page, query.page_size, matching_total);
@@ -342,6 +332,8 @@ fn projection_page_item_to_app(
             version_label: record.version_label,
             status: crate::ModLibraryStatus::Disabled,
             size_label: record.size_label,
+            imported_at_unix_millis: record.imported_at_unix_millis,
+            content_size_bytes: record.content_size_bytes,
             category_labels: record
                 .labels
                 .into_iter()
@@ -370,9 +362,57 @@ fn install_status_from_projection(status: ModLibraryProjectionStatus) -> Install
 }
 
 struct ModLibraryCandidate {
+    name_sort_key: Vec<u8>,
     entry: crate::mod_import::ModLibrarySnapshotItem,
     install_summary: Option<InstallManifestStatusSummary>,
     normalized_name: String,
+}
+
+fn compare_candidates(
+    left: &ModLibraryCandidate,
+    right: &ModLibraryCandidate,
+    sort: ModLibrarySort,
+) -> std::cmp::Ordering {
+    let by_name = left
+        .name_sort_key
+        .cmp(&right.name_sort_key)
+        .then_with(|| left.entry.item.id.cmp(&right.entry.item.id));
+    let (left_value, right_value, descending) = match sort {
+        ModLibrarySort::NameAsc => return by_name,
+        ModLibrarySort::NameDesc => return by_name.reverse(),
+        ModLibrarySort::ImportedAtAsc => (
+            left.entry.item.imported_at_unix_millis,
+            right.entry.item.imported_at_unix_millis,
+            false,
+        ),
+        ModLibrarySort::ImportedAtDesc => (
+            left.entry.item.imported_at_unix_millis,
+            right.entry.item.imported_at_unix_millis,
+            true,
+        ),
+        ModLibrarySort::SizeAsc => (
+            left.entry.item.content_size_bytes,
+            right.entry.item.content_size_bytes,
+            false,
+        ),
+        ModLibrarySort::SizeDesc => (
+            left.entry.item.content_size_bytes,
+            right.entry.item.content_size_bytes,
+            true,
+        ),
+    };
+    left_value
+        .is_none()
+        .cmp(&right_value.is_none())
+        .then_with(|| {
+            let order = left_value.cmp(&right_value);
+            if descending {
+                order.reverse()
+            } else {
+                order
+            }
+        })
+        .then(by_name)
 }
 
 fn validate_query(query: &ModLibraryQuery) -> Result<(), ModLibraryQueryError> {

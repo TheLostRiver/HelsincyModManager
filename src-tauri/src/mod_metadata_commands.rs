@@ -125,6 +125,7 @@ mod tests {
         let result_repo = Arc::new(InMemoryResultRepo(Mutex::new(vec![])));
         result_repo
             .save_analysis(&StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: "mod-abc".to_owned(),
                 task_id: "task-1".to_owned(),
                 package_id: "mod-abc".to_owned(),

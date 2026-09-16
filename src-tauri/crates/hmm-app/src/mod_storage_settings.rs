@@ -501,6 +501,7 @@ mod tests {
 
     fn revision() -> StoredModRevision {
         StoredModRevision {
+            statistics: Default::default(),
             revision_id: hmm_core::ModRevisionId::new("mod-a"),
             mod_id: hmm_core::ModId::new("mod-a"),
             import_task_id: "task-a".to_owned(),

@@ -33,6 +33,7 @@ impl ModImportResultRepository for Imports {
     }
     fn get_revision(&self, id: &ModRevisionId) -> anyhow::Result<Option<StoredModRevision>> {
         Ok(Some(StoredModRevision {
+            statistics: Default::default(),
             revision_id: id.clone(),
             mod_id: ModId::new("mod-a"),
             import_task_id: "task".into(),

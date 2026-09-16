@@ -59,6 +59,7 @@ impl ModImportResultRepository for StubRepository {
             return Ok(None);
         }
         Ok(Some(StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "mod-a".to_owned(),
             task_id: "task-a".to_owned(),
             package_id: "package-a".to_owned(),

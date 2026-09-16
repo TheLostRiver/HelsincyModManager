@@ -4,9 +4,8 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::StoredImportPreviewImage;
 
-/// v2：新增 `external_import_adapter_id` 列（#286 切片 3b-1）。
-/// bump 让旧库的投影判定为过期，下次查询自动从权威目录重建补齐新列。
-pub const MOD_LIBRARY_PROJECTION_SCHEMA_VERSION: u32 = 2;
+/// v3 adds natural name keys, first-import timestamps and display-revision sizes.
+pub const MOD_LIBRARY_PROJECTION_SCHEMA_VERSION: u32 = 3;
 pub const MOD_LIBRARY_QUERY_KEY_VERSION: &str = "mod-library-query-key-v1";
 
 pub fn normalize_mod_library_query_key(value: &str) -> String {
@@ -17,6 +16,44 @@ pub fn normalize_mod_library_query_key(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Locale-independent natural ordering. Numeric runs use their significant length and digits;
+/// other text retains normalized Unicode order. This key is also used by the browser mock.
+pub fn mod_library_name_sort_key(value: &str) -> Vec<u8> {
+    let normalized = normalize_mod_library_query_key(value);
+    let bytes = normalized.as_bytes();
+    let mut key = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index].is_ascii_digit() {
+            let start = index;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            let digits = normalized[start..index].trim_start_matches('0');
+            let digits = if digits.is_empty() { "0" } else { digits };
+            key.push(b'0');
+            key.extend_from_slice(&(digits.len() as u64).to_be_bytes());
+            key.extend_from_slice(digits.as_bytes());
+            key.push(0);
+        } else {
+            key.push(bytes[index]);
+            index += 1;
+        }
+    }
+    key
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModLibrarySort {
+    NameAsc,
+    NameDesc,
+    ImportedAtAsc,
+    #[default]
+    ImportedAtDesc,
+    SizeAsc,
+    SizeDesc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +72,8 @@ pub struct ModLibraryProjectionRecord {
     pub author: Option<String>,
     pub version_label: Option<String>,
     pub size_label: String,
+    pub imported_at_unix_millis: Option<u64>,
+    pub content_size_bytes: Option<u64>,
     pub preview_image: StoredImportPreviewImage,
     pub labels: Vec<ModLibraryProjectionLabel>,
     /// 外部导入来源的 adapter id（如狩技盒子）；普通 zip 导入为 `None`。
@@ -109,6 +148,7 @@ pub struct ModLibraryProjectionQueryRequest {
     pub profile: Option<ModLibraryProjectionProfileQuery>,
     pub normalized_search: String,
     pub filter: ModLibraryProjectionQueryFilter,
+    pub sort: ModLibrarySort,
     pub page: u64,
     pub page_size: u32,
 }
@@ -231,6 +271,23 @@ pub trait ModLibraryProjectionRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn natural_name_keys_are_stable_across_numbers_and_compatibility_characters() {
+        assert_eq!(
+            mod_library_name_sort_key("Mod 02"),
+            vec![109, 111, 100, 32, 48, 0, 0, 0, 0, 0, 0, 0, 1, 50, 0]
+        );
+        assert_eq!(
+            mod_library_name_sort_key("ＭＯＤ　2"),
+            mod_library_name_sort_key("Mod 02")
+        );
+        assert!(mod_library_name_sort_key("Mod 2") < mod_library_name_sort_key("Mod 10"));
+        assert!(
+            mod_library_name_sort_key("Mod 99999999999999999999999")
+                < mod_library_name_sort_key("Mod 100000000000000000000000")
+        );
+    }
 
     #[test]
     fn query_key_v1_normalizes_compatibility_equivalents_and_whitespace() {

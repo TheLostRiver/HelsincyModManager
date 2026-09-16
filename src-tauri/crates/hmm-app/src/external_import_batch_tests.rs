@@ -2491,6 +2491,7 @@ impl ModImportPackagePreparer for NoopPackagePreparer {
         _request: ModImportPackagePrepareRequest<'_>,
     ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: "unused-package".to_owned(),
             sandbox_root: PathBuf::from("fixture-sandbox"),
         })

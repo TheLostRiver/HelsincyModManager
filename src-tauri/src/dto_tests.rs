@@ -471,6 +471,8 @@ mod preview_image_tests {
     #[test]
     fn serializes_mod_library_item_with_preview_image() {
         let dto: ModLibraryItemDto = hmm_app::ModLibraryItem {
+            imported_at_unix_millis: None,
+            content_size_bytes: None,
             id: "pkg-1".to_owned(),
             name: "pkg-1".to_owned(),
             author: Some("A Hunter".to_owned()),

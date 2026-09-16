@@ -117,7 +117,8 @@ impl PendingCatalogImport {
             .validate()
             .map_err(|_| ExternalImportBatchError::CatalogUnavailable)?;
         let mod_id = ModId::new(&analysis.package_id);
-        let revision = stored_revision_from_result(&mod_id, &analysis);
+        let mut revision = stored_revision_from_result(&mod_id, &analysis);
+        revision.statistics.imported_at_unix_millis = Some(imported_at_unix_millis);
         let logical_mod = StoredLogicalMod {
             mod_id,
             origin_revision_id: revision.revision_id.clone(),

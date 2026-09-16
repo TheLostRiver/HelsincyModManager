@@ -13,6 +13,7 @@ pub const MOD_IMPORT_UPSERT_MAX_ENTRIES: usize = 10_000;
 pub struct PreparedModPackage {
     pub package_id: String,
     pub sandbox_root: PathBuf,
+    pub content_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -432,6 +433,11 @@ pub struct StoredModImportAnalysis {
     pub task_id: String,
     pub package_id: String,
     pub display_name: String,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::ModRevisionStatistics::is_empty"
+    )]
+    pub statistics: crate::ModRevisionStatistics,
     #[serde(default)]
     pub metadata: StoredModPackageMetadata,
     #[serde(default = "default_preview_image")]
@@ -470,6 +476,11 @@ pub struct StoredModRevision {
     pub import_task_id: String,
     pub package_id: String,
     pub display_name: String,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::ModRevisionStatistics::is_empty"
+    )]
+    pub statistics: crate::ModRevisionStatistics,
     #[serde(default)]
     pub metadata: StoredModPackageMetadata,
     #[serde(default = "default_preview_image")]
@@ -537,6 +548,7 @@ impl StoredModRevision {
             task_id: self.import_task_id.clone(),
             package_id: self.package_id.clone(),
             display_name: self.display_name.clone(),
+            statistics: self.statistics.clone(),
             metadata: self.metadata.clone(),
             preview_image: self.preview_image.clone(),
         }
@@ -589,6 +601,19 @@ fn default_preview_image() -> StoredImportPreviewImage {
 }
 
 pub trait ModImportResultRepository: Send + Sync {
+    /// Only fills missing size facts for still-existing, matching revisions. It must never
+    /// recreate deleted records, change the display revision or replace an existing fact.
+    fn fill_missing_content_sizes(
+        &self,
+        updates: &[crate::ModRevisionSizeUpdate],
+    ) -> Result<usize> {
+        anyhow::ensure!(
+            updates.is_empty(),
+            "revision statistics update is unsupported"
+        );
+        Ok(0)
+    }
+
     fn save_new_mod(
         &self,
         logical_mod: &StoredLogicalMod,
@@ -640,10 +665,33 @@ pub trait ModImportResultRepository: Send + Sync {
     /// should override this rather than composing repeated point reads.
     fn catalog_snapshot(&self) -> Result<ModImportCatalogSnapshot> {
         let logical_mods = self.list_mods()?;
+        // Compatibility repositories usually have one analysis per package. Reuse that one
+        // read instead of cloning/scanning the whole list once for each display revision.
+        let analyses = self
+            .list_analysis()?
+            .into_iter()
+            .map(|analysis| (analysis.package_id.clone(), analysis))
+            .collect::<std::collections::HashMap<_, _>>();
         let mut revisions = Vec::with_capacity(logical_mods.len());
         for logical_mod in &logical_mods {
-            if let Some(revision) = self.get_revision(&logical_mod.display_revision_id)? {
+            if let Some(analysis) = analyses.get(logical_mod.display_revision_id.as_str()) {
+                revisions.push(StoredModRevision {
+                    revision_id: logical_mod.display_revision_id.clone(),
+                    mod_id: ModId::new(&analysis.mod_id),
+                    import_task_id: analysis.task_id.clone(),
+                    package_id: analysis.package_id.clone(),
+                    display_name: analysis.display_name.clone(),
+                    statistics: analysis.statistics.clone(),
+                    metadata: analysis.metadata.clone(),
+                    preview_image: analysis.preview_image.clone(),
+                });
+            } else if let Some(revision) = self.get_revision(&logical_mod.display_revision_id)? {
                 revisions.push(revision);
+            }
+            if logical_mod.origin_revision_id != logical_mod.display_revision_id {
+                if let Some(revision) = self.get_revision(&logical_mod.origin_revision_id)? {
+                    revisions.push(revision);
+                }
             }
         }
         Ok(ModImportCatalogSnapshot {
@@ -691,6 +739,7 @@ pub trait ModImportResultRepository: Send + Sync {
                 import_task_id: analysis.task_id,
                 package_id: analysis.package_id,
                 display_name: analysis.display_name,
+                statistics: analysis.statistics,
                 metadata: analysis.metadata,
                 preview_image: analysis.preview_image,
             }))
@@ -706,6 +755,7 @@ pub trait ModImportResultRepository: Send + Sync {
                 import_task_id: analysis.task_id,
                 package_id: analysis.package_id,
                 display_name: analysis.display_name,
+                statistics: analysis.statistics,
                 metadata: analysis.metadata,
                 preview_image: analysis.preview_image,
             })
@@ -796,6 +846,7 @@ mod tests {
             },
         };
         let revision = StoredModRevision {
+            statistics: Default::default(),
             revision_id: ModRevisionId::new("revision-v2"),
             mod_id: ModId::new("mod-a"),
             import_task_id: "task-v2".to_owned(),
@@ -839,6 +890,20 @@ mod tests {
                 }
             })
         );
+        let mut measured = revision;
+        measured.statistics = crate::ModRevisionStatistics {
+            imported_at_unix_millis: Some(123),
+            content_size_bytes: Some(0),
+        };
+        let encoded = serde_json::to_value(&measured).expect("serialize known statistics");
+        assert_eq!(
+            encoded["statistics"],
+            serde_json::json!({"imported_at_unix_millis": 123, "content_size_bytes": 0})
+        );
+        assert_eq!(
+            serde_json::from_value::<StoredModRevision>(encoded).unwrap(),
+            measured
+        );
     }
 
     #[test]
@@ -854,6 +919,7 @@ mod tests {
                     origin_provenance: StoredModOriginProvenance::Imported,
                 },
                 revision: StoredModRevision {
+                    statistics: Default::default(),
                     revision_id,
                     mod_id: ModId::new("mod-a"),
                     import_task_id: "task-v1".to_owned(),

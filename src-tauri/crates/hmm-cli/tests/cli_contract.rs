@@ -267,6 +267,7 @@ fn append_reinstall_v2_revision(sandbox: &Path) {
 
     JsonModImportResultRepository::new(sandbox.join("mod-import").join("results.json"))
         .append_revision(&StoredModRevision {
+            statistics: Default::default(),
             revision_id: ModRevisionId::new("revision-v2"),
             mod_id: ModId::new("mod-a"),
             import_task_id: "task-v2".to_owned(),
@@ -298,6 +299,7 @@ fn prepare_initial_armor_retarget_fixture(sandbox: &Path, game_root: &Path) {
     .expect("write armor Mod catalog");
     JsonModImportResultRepository::new(catalog_root.join("results.json"))
         .append_revision(&StoredModRevision {
+            statistics: Default::default(),
             revision_id: ModRevisionId::new("revision-armor"),
             mod_id: ModId::new("mod-a"),
             import_task_id: "task-armor-revision".to_owned(),

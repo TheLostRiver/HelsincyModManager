@@ -42,6 +42,39 @@ fn ordinary_import_uses_new_logical_mod_catalog_contract() {
     );
     assert_eq!(revisions.len(), 1);
     assert_eq!(revisions[0].mod_id, ModId::new("package-v1"));
+    assert!(revisions[0].statistics.imported_at_unix_millis.is_some());
+}
+
+#[test]
+fn library_uses_origin_import_time_and_display_revision_size_after_an_update() {
+    let repository = Arc::new(FakeRevisionCatalogRepository::default());
+    repository.seed("mod-a", "origin", "origin-package");
+    repository.revisions.lock().unwrap()[0].statistics = hmm_ports::ModRevisionStatistics {
+        imported_at_unix_millis: Some(100),
+        content_size_bytes: Some(300),
+    };
+    let mut display = candidate_revision("updated", "mod-a", "later-task");
+    display.statistics = hmm_ports::ModRevisionStatistics {
+        imported_at_unix_millis: Some(200),
+        content_size_bytes: Some(900),
+    };
+    repository.append_revision(&display).unwrap();
+    let service = ModLibraryService::new(
+        repository.clone(),
+        Arc::new(SingleMetadataRepository),
+        Arc::new(SingleCategoryRepository),
+    );
+    let items = service.get_mod_library().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].imported_at_unix_millis, Some(100));
+    assert_eq!(items[0].content_size_bytes, Some(900));
+    repository.revisions.lock().unwrap()[0]
+        .statistics
+        .imported_at_unix_millis = None;
+    assert_eq!(
+        service.get_mod_library().unwrap()[0].imported_at_unix_millis,
+        None
+    );
 }
 
 #[test]
@@ -677,6 +710,7 @@ impl ModImportPackagePreparer for SuccessfulPreparer {
         _request: ModImportPackagePrepareRequest<'_>,
     ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: self.package_id.clone(),
             sandbox_root: PathBuf::from("sandbox"),
         })
@@ -694,6 +728,7 @@ impl ModImportPackagePreparer for CountingPreparer {
     ) -> std::result::Result<PreparedModPackage, hmm_ports::ModImportPrepareError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: "unexpected-package".to_owned(),
             sandbox_root: PathBuf::from("unexpected-sandbox"),
         })
@@ -714,6 +749,7 @@ impl ModImportPackagePreparer for CancellingPreparer {
             .cancel_task(&self.task_id)
             .expect("cancel running task");
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: "package-v2".to_owned(),
             sandbox_root: PathBuf::from("sandbox"),
         })
@@ -829,6 +865,7 @@ impl FakeRevisionCatalogRepository {
             .lock()
             .expect("revisions lock")
             .push(StoredModRevision {
+                statistics: Default::default(),
                 revision_id,
                 mod_id: ModId::new(mod_id),
                 import_task_id: "task-v1".to_owned(),
@@ -1026,6 +1063,7 @@ impl ModImportResultRepository for FakeRevisionCatalogRepository {
             .lock()
             .expect("revisions lock")
             .push(StoredModRevision {
+                statistics: Default::default(),
                 revision_id,
                 mod_id,
                 import_task_id: analysis.task_id.clone(),
@@ -1187,6 +1225,7 @@ fn user_category() -> Category {
 
 fn candidate_revision(package_id: &str, mod_id: &str, task_id: &str) -> StoredModRevision {
     StoredModRevision {
+        statistics: Default::default(),
         revision_id: ModRevisionId::new(package_id),
         mod_id: ModId::new(mod_id),
         import_task_id: task_id.to_owned(),

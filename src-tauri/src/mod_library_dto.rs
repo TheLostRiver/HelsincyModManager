@@ -15,6 +15,10 @@ pub struct ModLibraryItemDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version_label: Option<String>,
     pub size_label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub imported_at_unix_millis: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_size_bytes: Option<u64>,
     pub status: ModInstallStatusDto,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub install_summary: Option<ModLibraryInstallSummaryDto>,
@@ -55,6 +59,8 @@ impl From<ModLibraryItem> for ModLibraryItemDto {
             author: item.author,
             version_label: item.version_label,
             size_label: item.size_label,
+            imported_at_unix_millis: item.imported_at_unix_millis,
+            content_size_bytes: item.content_size_bytes,
             status: item.status.into(),
             install_summary: None,
             category_labels: item
@@ -246,6 +252,8 @@ mod tests {
     #[test]
     fn item_omits_absent_optional_metadata() {
         let item = ModLibraryItemDto::from(ModLibraryItem {
+            imported_at_unix_millis: None,
+            content_size_bytes: None,
             id: "mod-a".to_owned(),
             name: "Armor A".to_owned(),
             author: None,
@@ -264,6 +272,8 @@ mod tests {
 
         assert!(!object.contains_key("author"));
         assert!(!object.contains_key("versionLabel"));
+        assert!(!object.contains_key("importedAtUnixMillis"));
+        assert!(!object.contains_key("contentSizeBytes"));
         // None 时整个键省略——普通 zip 导入的载荷不背这个字段。
         assert!(!object.contains_key("externalImportAdapterId"));
     }
@@ -271,6 +281,8 @@ mod tests {
     #[test]
     fn item_serializes_external_import_adapter_id_in_camel_case() {
         let item = ModLibraryItemDto::from(ModLibraryItem {
+            imported_at_unix_millis: None,
+            content_size_bytes: None,
             id: "mod-b".to_owned(),
             name: "External B".to_owned(),
             author: None,
@@ -296,6 +308,8 @@ mod tests {
         let page: ModLibraryPageDto = ModLibraryPage {
             items: vec![ModLibraryPageItem {
                 item: ModLibraryItem {
+                    imported_at_unix_millis: Some(1_750_000_000_000),
+                    content_size_bytes: Some(0),
                     id: "mod-a".to_owned(),
                     name: "Armor A".to_owned(),
                     author: Some("Hunter".to_owned()),
@@ -328,6 +342,11 @@ mod tests {
         let value = serde_json::to_value(page).expect("serialize mod library page");
 
         assert_eq!(value["items"][0]["status"], "installed");
+        assert_eq!(
+            value["items"][0]["importedAtUnixMillis"],
+            1_750_000_000_000u64
+        );
+        assert_eq!(value["items"][0]["contentSizeBytes"], 0);
         assert_eq!(value["items"][0]["installSummary"]["status"], "installed");
         assert_eq!(value["items"][0]["installSummary"]["managedFileCount"], 2);
         assert_eq!(value["items"][0]["installSummary"]["backupCount"], 1);
@@ -354,7 +373,9 @@ mod tests {
             BTreeSet::from([
                 "author",
                 "categoryLabels",
+                "contentSizeBytes",
                 "id",
+                "importedAtUnixMillis",
                 "installSummary",
                 "name",
                 "previewImage",

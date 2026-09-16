@@ -17,6 +17,127 @@ use std::thread;
 use std::time::Instant;
 
 #[test]
+fn missing_size_updates_preserve_revision_facts_and_never_recreate_deleted_records() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("results.json");
+    let repo = JsonModImportResultRepository::new(path.clone());
+    let mut origin = revision("origin", "a", "package-a", "task-a");
+    origin.statistics.imported_at_unix_millis = Some(123);
+    repo.save_new_mod(&logical_mod("a", "origin"), &origin)
+        .unwrap();
+    let mut display = revision("display", "a", "package-b", "task-b");
+    display.statistics = hmm_ports::ModRevisionStatistics {
+        imported_at_unix_millis: Some(456),
+        content_size_bytes: Some(999),
+    };
+    repo.append_revision(&display).unwrap();
+    let update = hmm_ports::ModRevisionSizeUpdate {
+        mod_id: ModId::new("a"),
+        revision_id: ModRevisionId::new("origin"),
+        package_id: "package-a".into(),
+        content_size_bytes: 0,
+    };
+    assert_eq!(
+        repo.fill_missing_content_sizes(&[hmm_ports::ModRevisionSizeUpdate {
+            package_id: "wrong".into(),
+            ..update.clone()
+        }])
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        repo.fill_missing_content_sizes(std::slice::from_ref(&update))
+            .unwrap(),
+        1
+    );
+    let reopened = JsonModImportResultRepository::new_read_only(path.clone());
+    let loaded = reopened
+        .get_revision(&ModRevisionId::new("origin"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded.statistics.imported_at_unix_millis, Some(123));
+    assert_eq!(loaded.statistics.content_size_bytes, Some(0));
+    assert_eq!(
+        reopened
+            .get_mod(&ModId::new("a"))
+            .unwrap()
+            .unwrap()
+            .display_revision_id,
+        ModRevisionId::new("display")
+    );
+    assert_eq!(
+        reopened
+            .get_revision(&ModRevisionId::new("display"))
+            .unwrap(),
+        Some(display)
+    );
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(
+        repo.fill_missing_content_sizes(&[hmm_ports::ModRevisionSizeUpdate {
+            content_size_bytes: 50,
+            ..update.clone()
+        }])
+        .unwrap(),
+        0
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert!(reopened
+        .fill_missing_content_sizes(std::slice::from_ref(&update))
+        .is_err());
+    repo.remove_mod_with_revisions(&ModId::new("a")).unwrap();
+    assert_eq!(repo.fill_missing_content_sizes(&[update]).unwrap(), 0);
+    assert!(repo.list_mods().unwrap().is_empty());
+}
+
+#[test]
+fn old_v2_catalog_has_unknown_statistics_without_a_read_time_rewrite() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("results.json");
+    let repo = JsonModImportResultRepository::new(path.clone());
+    repo.save_new_mod(
+        &logical_mod("a", "revision"),
+        &revision("revision", "a", "package", "task"),
+    )
+    .unwrap();
+    let mut encoded = read_json(&path);
+    encoded["revisions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("statistics");
+    let original = serde_json::to_vec(&encoded).unwrap();
+    fs::write(&path, &original).unwrap();
+    assert_eq!(
+        repo.get_revision(&ModRevisionId::new("revision"))
+            .unwrap()
+            .unwrap()
+            .statistics,
+        Default::default()
+    );
+    assert_eq!(fs::read(&path).unwrap(), original);
+}
+
+#[test]
+fn size_backfill_write_failure_preserves_the_original_catalog() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("results.json");
+    JsonModImportResultRepository::new(path.clone())
+        .save_new_mod(&logical_mod("a", "r"), &revision("r", "a", "p", "t"))
+        .unwrap();
+    let original = fs::read(&path).unwrap();
+    let repo = JsonModImportResultRepository::new(path.clone())
+        .with_test_write_failure(ModImportCatalogWriteFailure::Rename);
+    assert!(repo
+        .fill_missing_content_sizes(&[hmm_ports::ModRevisionSizeUpdate {
+            mod_id: ModId::new("a"),
+            revision_id: ModRevisionId::new("r"),
+            package_id: "p".into(),
+            content_size_bytes: 100,
+        }])
+        .is_err());
+    assert_eq!(fs::read(path).unwrap(), original);
+}
+
+#[test]
 fn mod_import_catalog_migrates_v1_record_without_losing_identity_or_provenance() {
     let temp = tempfile::tempdir().expect("temp dir");
     let path = temp.path().join("results.json");
@@ -990,6 +1111,7 @@ fn assert_concurrent_external_admission_race(
 
 fn revision(revision_id: &str, mod_id: &str, package_id: &str, task_id: &str) -> StoredModRevision {
     StoredModRevision {
+        statistics: Default::default(),
         revision_id: ModRevisionId::new(revision_id),
         mod_id: ModId::new(mod_id),
         import_task_id: task_id.to_owned(),
@@ -1037,6 +1159,7 @@ fn analysis(
     reason: PreviewImageRejectionReason,
 ) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
+        statistics: Default::default(),
         mod_id: mod_id.to_owned(),
         task_id: "task-a".to_owned(),
         package_id: package_id.to_owned(),
