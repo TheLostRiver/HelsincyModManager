@@ -311,7 +311,6 @@ export function ModPosterCard({
         <div className="mod-card__meta">
           <strong className="mod-card__title">{item.name}</strong>
           {categoryStrip}
-          <span className="mod-card__size">{item.sizeLabel}</span>
         </div>
       )}
 
@@ -320,13 +319,14 @@ export function ModPosterCard({
         <div className="mod-card__info-enhanced">
           <strong className="mod-card__title">{item.name}</strong>
           {categoryStrip}
-          <div className="mod-card__meta-row">
-            <span className="mod-card__meta-lead">
-              {authorLabel ? <span className="mod-card__author">{authorLabel}</span> : null}
-              {versionLabel ? <span className="mod-card__version-badge">{versionLabel}</span> : null}
-            </span>
-            <span className="mod-card__size">{item.sizeLabel}</span>
-          </div>
+          {authorLabel || versionLabel ? (
+            <div className="mod-card__meta-row">
+              <span className="mod-card__meta-lead">
+                {authorLabel ? <span className="mod-card__author">{authorLabel}</span> : null}
+                {versionLabel ? <span className="mod-card__version-badge">{versionLabel}</span> : null}
+              </span>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -340,10 +340,11 @@ export function ModPosterCard({
             {authorLabel ? <div className="mod-card__author">by {authorLabel}</div> : null}
             {categoryStrip}
           </div>
-          <div className="mod-card__footer-list">
-            {versionLabel ? <span>{card.versionLabel}{versionLabel}</span> : null}
-            <span>{card.sizeLabel}{item.sizeLabel}</span>
-          </div>
+          {versionLabel ? (
+            <div className="mod-card__footer-list">
+              <span>{card.versionLabel}{versionLabel}</span>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -357,10 +358,11 @@ export function ModPosterCard({
             ) : null}
             {categoryStrip}
           </div>
-          <div className="mod-card__tech-footer">
-            {versionLabel ? <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span> : null}
-            <span className="mod-card__tech-size" data-label="Size">{item.sizeLabel || "Unknown"}</span>
-          </div>
+          {versionLabel ? (
+            <div className="mod-card__tech-footer">
+              <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span>
+            </div>
+          ) : null}
           <div
             className="mod-card__tech-status"
             data-status={item.status}

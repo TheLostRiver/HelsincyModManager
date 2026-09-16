@@ -106,7 +106,6 @@
 .view-grid .mod-card__meta-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   font-size: 12px;
   color: var(--color-text-muted);
@@ -125,10 +124,6 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.view-grid .mod-card__size {
-  flex: 0 0 auto;
 }
 
 /* ---------- LIST 紧凑列表视图 ---------- */
@@ -274,7 +269,7 @@
 
 .mod-grid.view-tech .mod-card__tech-footer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px 8px;
 }
 
@@ -293,8 +288,7 @@
   letter-spacing: 0.5px;
 }
 
-.mod-grid.view-tech .mod-card__tech-version,
-.mod-grid.view-tech .mod-card__tech-size {
+.mod-grid.view-tech .mod-card__tech-version {
   font-family: var(--font-family-mono);
   font-size: 13px;
   font-weight: 600;
@@ -905,12 +899,6 @@
   line-height: 1.2;
   overflow-wrap: anywhere;
   letter-spacing: -0.2px;
-}
-
-.mod-card__size {
-  color: var(--color-text-muted);
-  font-size: 13px;
-  font-weight: 500;
 }
 
 .mod-card__categories {
