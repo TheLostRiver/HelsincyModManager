@@ -85,9 +85,13 @@
 .mod-library-page-controls__page-size-listbox {
   position: absolute;
   z-index: 60;
-  top: calc(100% + 8px);
-  left: 0;
-  min-inline-size: 96px;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-end: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  inline-size: 112px;
+  max-inline-size: calc(100vw - 24px);
   padding: 4px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -96,6 +100,7 @@
 }
 
 .mod-library-page-controls__page-size-option {
+  flex: 0 0 auto;
   inline-size: 100%;
   min-block-size: 32px;
   padding: 6px 8px;
