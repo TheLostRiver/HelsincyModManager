@@ -16,7 +16,7 @@ use thiserror::Error;
 
 pub const DEFAULT_MOD_LIBRARY_PAGE_SIZE: u32 = 24;
 pub const MAX_MOD_LIBRARY_SEARCH_CHARS: usize = 128;
-const ALLOWED_PAGE_SIZES: [u32; 4] = [12, 24, 48, 96];
+const ALLOWED_PAGE_SIZES: [u32; 4] = [24, 48, 96, 192];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModLibraryProfileContext {

@@ -1,4 +1,4 @@
-export const MOD_LIBRARY_PAGE_SIZES = [12, 24, 48, 96] as const;
+export const MOD_LIBRARY_PAGE_SIZES = [24, 48, 96, 192] as const;
 
 export type ModLibraryPageSize = (typeof MOD_LIBRARY_PAGE_SIZES)[number];
 

@@ -8,25 +8,28 @@ import {
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy } from "./modLibraryCopy";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
+import { ModLibraryPageControls } from "./ModLibraryPageControls";
+import type { ModLibraryPage } from "./modLibraryTypes";
 import "./ModLibraryPagination.css";
 
 export type ModLibraryPaginationProps = {
-  page: number;
   pageSize: ModLibraryPageSize;
-  matchingTotal: number;
+  result: Pick<ModLibraryPage, "page" | "pageSize" | "matchingTotal"> | null;
   busy?: boolean;
+  onPageSizeChange: (pageSize: ModLibraryPageSize) => void;
   onPageChange: (page: number) => void;
 };
 
 export function ModLibraryPagination({
-  page, pageSize, matchingTotal, busy = false, onPageChange,
+  pageSize, result, busy = false, onPageSizeChange, onPageChange,
 }: ModLibraryPaginationProps) {
   const { locale } = useI18n();
   const pagination = resolveCopy(modLibraryCopy, locale).pagination;
-  const totalPages = getModLibraryTotalPages(matchingTotal, pageSize);
-  if (totalPages <= 1) return null;
+  if (result === null || result.matchingTotal === 0) return null;
+  // 容量偏好可能正在刷新；页码与显隐跟随屏幕上仍在显示的结果。
+  const totalPages = getModLibraryTotalPages(result.matchingTotal, result.pageSize);
 
-  const currentPage = Math.min(Math.max(1, Math.floor(page)), totalPages);
+  const currentPage = Math.min(Math.max(1, Math.floor(result.page)), totalPages);
   const pageSlots = getModLibraryPageSlots(currentPage, totalPages);
   const requestPage = (nextPage: number) => {
     if (busy || nextPage < 1 || nextPage > totalPages || nextPage === currentPage) return;
@@ -36,9 +39,18 @@ export function ModLibraryPagination({
   const nextDisabled = busy || currentPage >= totalPages;
 
   return (
-    <footer className="mod-library-pagination" aria-label={pagination.toolbarAria}>
+    <footer
+      className={`mod-library-pagination${totalPages <= 1 ? " is-single-page" : ""}`}
+      aria-label={pagination.toolbarAria}
+    >
       <div className="mod-library-pagination__layout">
-        <nav
+        <ModLibraryPageControls
+          pageSize={pageSize}
+          result={result}
+          busy={busy}
+          onPageSizeChange={onPageSizeChange}
+        />
+        {totalPages > 1 ? <nav
           className="mod-library-pagination__navigation"
           aria-label={pagination.pageNavAria}
           aria-busy={busy}
@@ -155,7 +167,7 @@ export function ModLibraryPagination({
               </button>
             )}
           </ModLibraryControlTooltip>
-        </nav>
+        </nav> : null}
       </div>
     </footer>
   );

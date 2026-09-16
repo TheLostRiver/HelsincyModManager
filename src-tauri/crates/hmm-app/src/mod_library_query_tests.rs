@@ -625,14 +625,16 @@ fn validates_page_page_size_and_search_length() {
         }),
         Err(ModLibraryQueryError::PageInvalid)
     );
-    assert_eq!(
-        service.query(ModLibraryQuery {
-            page_size: 25,
-            ..ModLibraryQuery::default()
-        }),
-        Err(ModLibraryQueryError::PageSizeUnsupported)
-    );
-    for page_size in [12, 24, 48, 96] {
+    for page_size in [0, 12, 25, 193, u32::MAX] {
+        assert_eq!(
+            service.query(ModLibraryQuery {
+                page_size,
+                ..ModLibraryQuery::default()
+            }),
+            Err(ModLibraryQueryError::PageSizeUnsupported)
+        );
+    }
+    for page_size in [24, 48, 96, 192] {
         let page = service
             .query(ModLibraryQuery {
                 page_size,
@@ -659,7 +661,7 @@ fn validates_page_page_size_and_search_length() {
 
 #[test]
 fn covers_page_boundaries_and_clamps_extreme_pages() {
-    for count in [0_usize, 1, 11, 12, 13, 23, 24, 25, 95, 96, 97] {
+    for count in [0_usize, 1, 23, 24, 25, 191, 192, 193, 384, 385] {
         let records = (0..count)
             .map(|index| record(&format!("mod-{index:03}"), &format!("Mod {index:03}")))
             .collect();
@@ -672,7 +674,7 @@ fn covers_page_boundaries_and_clamps_extreme_pages() {
         )
         .query(ModLibraryQuery {
             page: u64::MAX,
-            page_size: 12,
+            page_size: 192,
             ..ModLibraryQuery::default()
         })
         .expect("boundary query");
@@ -680,12 +682,12 @@ fn covers_page_boundaries_and_clamps_extreme_pages() {
         let expected_page = if count == 0 {
             1
         } else {
-            count.div_ceil(12) as u64
+            count.div_ceil(192) as u64
         };
         let expected_items = if count == 0 {
             0
         } else {
-            count - (expected_page as usize - 1) * 12
+            count - (expected_page as usize - 1) * 192
         };
         assert_eq!(page.page, expected_page, "count={count}");
         assert_eq!(page.items.len(), expected_items, "count={count}");
@@ -696,7 +698,7 @@ fn covers_page_boundaries_and_clamps_extreme_pages() {
 
 #[test]
 fn returns_only_the_requested_page_after_stable_sorting() {
-    let records = (0..25)
+    let records = (0..385)
         .rev()
         .map(|index| record(&format!("mod-{index:03}"), &format!("Mod {index:03}")))
         .collect();
@@ -709,15 +711,15 @@ fn returns_only_the_requested_page_after_stable_sorting() {
     )
     .query(ModLibraryQuery {
         page: 2,
-        page_size: 12,
+        page_size: 192,
         ..ModLibraryQuery::default()
     })
     .expect("second page");
 
     assert_eq!(page.page, 2);
-    assert_eq!(page.items.len(), 12);
-    assert_eq!(ids(&page).first(), Some(&"mod-012"));
-    assert_eq!(ids(&page).last(), Some(&"mod-023"));
+    assert_eq!(page.items.len(), 192);
+    assert_eq!(ids(&page).first(), Some(&"mod-192"));
+    assert_eq!(ids(&page).last(), Some(&"mod-383"));
 }
 
 #[test]
@@ -755,7 +757,7 @@ fn searches_overlay_name_author_metadata_tags_and_user_category_names() {
         let page = service
             .query(ModLibraryQuery {
                 search: search.to_owned(),
-                page_size: 12,
+                page_size: 24,
                 ..ModLibraryQuery::default()
             })
             .expect("search query");
@@ -786,7 +788,7 @@ fn category_filter_uses_id_even_when_labels_are_equal() {
     let page = service
         .query(ModLibraryQuery {
             filter: ModLibraryFilter::Category("cat-b".to_owned()),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         })
         .expect("category id query");
@@ -795,7 +797,7 @@ fn category_filter_uses_id_even_when_labels_are_equal() {
     let empty = service
         .query(ModLibraryQuery {
             filter: ModLibraryFilter::Category(empty_category.id),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         })
         .expect("existing empty category");
@@ -806,7 +808,7 @@ fn category_filter_uses_id_even_when_labels_are_equal() {
     assert_eq!(
         service.query(ModLibraryQuery {
             filter: ModLibraryFilter::Category("missing".to_owned()),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::CategoryNotFound)
@@ -839,7 +841,7 @@ fn status_is_merged_for_the_full_snapshot_before_filtering() {
         .query(ModLibraryQuery {
             profile_context: Some(profile_context()),
             filter: ModLibraryFilter::Status(InstallManifestStatus::CleanupPending),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         })
         .expect("status filter");
@@ -875,7 +877,7 @@ fn profileless_queries_are_available_but_status_filter_fails_closed() {
 
     let page = service
         .query(ModLibraryQuery {
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         })
         .expect("profileless all query");
@@ -886,7 +888,7 @@ fn profileless_queries_are_available_but_status_filter_fails_closed() {
     assert_eq!(
         service.query(ModLibraryQuery {
             filter: ModLibraryFilter::Status(InstallManifestStatus::Installed),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::ProfileContextRequired)
@@ -907,7 +909,7 @@ fn overlay_is_applied_before_name_sort_and_mod_id_breaks_ties() {
         Arc::new(FakeStatusProvider::empty()),
     )
     .query(ModLibraryQuery {
-        page_size: 12,
+        page_size: 24,
         ..ModLibraryQuery::default()
     })
     .expect("sorted query");
@@ -930,7 +932,7 @@ fn repository_and_status_failures_return_stable_errors() {
     );
     assert_eq!(
         library_failure.query(ModLibraryQuery {
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::LibraryUnavailable)
@@ -948,7 +950,7 @@ fn repository_and_status_failures_return_stable_errors() {
     );
     assert_eq!(
         metadata_failure.query(ModLibraryQuery {
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::LibraryUnavailable)
@@ -968,7 +970,7 @@ fn repository_and_status_failures_return_stable_errors() {
     assert_eq!(
         category_failure.query(ModLibraryQuery {
             filter: ModLibraryFilter::Category("cat-a".to_owned()),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::LibraryUnavailable)
@@ -984,7 +986,7 @@ fn repository_and_status_failures_return_stable_errors() {
     assert_eq!(
         status_failure.query(ModLibraryQuery {
             profile_context: Some(profile_context()),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::StatusUnavailable)
@@ -1007,7 +1009,7 @@ fn malformed_status_responses_and_duplicate_library_ids_fail_closed() {
     assert_eq!(
         incomplete_status.query(ModLibraryQuery {
             profile_context: Some(profile_context()),
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::StatusUnavailable)
@@ -1022,7 +1024,7 @@ fn malformed_status_responses_and_duplicate_library_ids_fail_closed() {
     );
     assert_eq!(
         duplicate_library.query(ModLibraryQuery {
-            page_size: 12,
+            page_size: 24,
             ..ModLibraryQuery::default()
         }),
         Err(ModLibraryQueryError::LibraryUnavailable)

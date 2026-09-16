@@ -458,6 +458,55 @@ fn projection_query_keeps_totals_clamp_sort_filters_and_unicode_in_one_snapshot(
 }
 
 #[test]
+fn projection_query_paginates_192_items_without_gaps_or_duplicates() {
+    let temp = tempfile::tempdir().expect("temporary app data");
+    let conn = crate::open_database(&temp.path().join("hmm.db")).expect("open database");
+    let repository = SqliteModLibraryProjectionRepository::new(Arc::new(Mutex::new(conn)));
+    repository
+        .rebuild(&ModLibraryProjectionSnapshot {
+            source_fingerprint: "catalog-large-page".to_owned(),
+            records: (0..385)
+                .rev()
+                .map(|index| record(&format!("mod-{index:03}"), &format!("Mod {index:03}")))
+                .collect(),
+            profiles: vec![],
+        })
+        .expect("publish projection");
+
+    let mut ids = Vec::new();
+    for (requested_page, actual_page, expected_count) in
+        [(1, 1, 192), (2, 2, 192), (u64::MAX, 3, 1)]
+    {
+        let page = repository
+            .query(&ModLibraryProjectionQueryRequest {
+                source_fingerprint: "catalog-large-page".to_owned(),
+                profile: None,
+                normalized_search: String::new(),
+                filter: ModLibraryProjectionQueryFilter::All,
+                page: requested_page,
+                page_size: 192,
+            })
+            .expect("query large page");
+        assert_eq!(page.page, actual_page);
+        assert_eq!(page.page_size, 192);
+        assert_eq!(page.library_total, 385);
+        assert_eq!(page.matching_total, 385);
+        assert_eq!(page.items.len(), expected_count);
+        ids.extend(
+            page.items
+                .into_iter()
+                .map(|item| item.record.mod_id.as_str().to_owned()),
+        );
+    }
+    assert_eq!(
+        ids,
+        (0..385)
+            .map(|index| format!("mod-{index:03}"))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn projection_query_fails_closed_for_dirty_or_mismatched_generations() {
     let temp = tempfile::tempdir().expect("temporary app data");
     let conn = crate::open_database(&temp.path().join("hmm.db")).expect("open database");

@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy } from "./modLibraryCopy";
@@ -185,7 +185,7 @@ export function ModLibraryPageControls({
             }}
           >
             <span>{pagination.items(pageSize)}</span>
-            <ChevronDown size={14} strokeWidth={2.25} aria-hidden="true" />
+            <ChevronUp size={14} strokeWidth={2.25} aria-hidden="true" />
           </button>
 
           {pageSizeMenuOpen && !busy ? (
