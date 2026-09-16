@@ -227,19 +227,23 @@ impl ModImportPackagePreparer for ZipModImportPackagePreparer {
         // 无论成败都要清掉暂存——它不该活过这次调用。
         scratch.cleanup(&root);
 
-        if let Err(error) = extraction {
-            drop(sandbox);
-            let _ = remove_child_tree_nofollow(
-                &root,
-                std::ffi::OsStr::new(request.task_id),
-                "task-scoped mod import sandbox",
-            );
-            return Err(error);
-        }
+        let content_size_bytes = match extraction {
+            Ok(size) => size,
+            Err(error) => {
+                drop(sandbox);
+                let _ = remove_child_tree_nofollow(
+                    &root,
+                    std::ffi::OsStr::new(request.task_id),
+                    "task-scoped mod import sandbox",
+                );
+                return Err(error);
+            }
+        };
 
         Ok(PreparedModPackage {
             package_id: request.task_id.to_owned(),
             sandbox_root: self.sandbox_root.join(request.task_id),
+            content_size_bytes: Some(content_size_bytes),
         })
     }
 }
@@ -873,7 +877,7 @@ fn extract_archive_with_limits<R>(
     sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
     limits: ArchiveExtractionLimits,
-) -> std::result::Result<(), ModImportPrepareError>
+) -> std::result::Result<u64, ModImportPrepareError>
 where
     R: Read + Seek + ?Sized,
 {
@@ -887,8 +891,8 @@ where
                 archive: &mut archive,
                 index: 0,
             };
-            extract_archive(&mut source, sandbox_root, cancellation_token, limits)?;
-            return Ok(());
+            return extract_archive(&mut source, sandbox_root, cancellation_token, limits)
+                .map_err(ModImportPrepareError::Other);
         }
         Err(error) => anyhow::Error::new(error).context("failed to read zip archive"),
     };
@@ -903,7 +907,8 @@ where
     match sevenz_archive_source::SevenZipArchive::open(&mut *archive_file) {
         Ok(mut archive) => {
             let mut gate = ArchiveGate::new(sandbox_root, cancellation_token, limits);
-            return archive.extract_into(&mut gate);
+            archive.extract_into(&mut gate)?;
+            return Ok(gate.content_size_bytes());
         }
         // 打得开但用了不支持的特性（加密）——直接报，不要退回嗅探。
         Err(error @ ModImportPrepareError::UnsupportedArchiveFeature(_)) => return Err(error),
@@ -919,7 +924,7 @@ where
         Ok(mut source) => {
             let outcome = extract_archive(&mut source, sandbox_root, cancellation_token, limits);
             return match outcome {
-                Ok(()) => Ok(()),
+                Ok(size) => Ok(size),
                 // 适配器把「加密」「分卷」这类语义单独存着，不靠 downcast 反推
                 // ——外壳的接口是 anyhow，语义没法从里面还原。
                 Err(error) => Err(source

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ModLibraryFilter } from "./modLibraryFilters";
+import { readModLibrarySort, writeModLibrarySort, type ModLibrarySort } from "./modLibrarySort";
 import {
   consumeOneShotQueryKey,
   createLatestRequestSequenceGate,
@@ -109,6 +110,7 @@ export function useModLibraryQuery({
   }, []);
   const [submittedSearch, setSubmittedSearch] = useState(rawSearch);
   const [requestedPage, setRequestedPage] = useState(1);
+  const [sort, setSortState] = useState(() => readModLibrarySort(getBrowserStorage()));
   const [pageSize, setPageSizeState] = useState<ModLibraryPageSize>(() =>
     readModLibraryPageSize(getBrowserStorage()),
   );
@@ -158,11 +160,11 @@ export function useModLibraryQuery({
       ...(profileContext === null ? {} : { profileContext }),
       search: submittedSearch,
       filter: filterMapping.filter,
-      sort: "name_asc",
+      sort,
       page: profileQueryPage,
       pageSize,
     };
-  }, [filterMapping, pageSize, profileContext, profileQueryPage, submittedSearch]);
+  }, [filterMapping, pageSize, profileContext, profileQueryPage, sort, submittedSearch]);
 
   const queryKey = queryInput === null ? null : getQueryKey(queryInput);
 
@@ -346,6 +348,12 @@ export function useModLibraryQuery({
     setRequestedPage(1);
   }, []);
 
+  const setSort = useCallback((nextSort: ModLibrarySort) => {
+    if (nextSort === sort) return;
+    setRequestedPage(1);
+    setSortState(writeModLibrarySort(getBrowserStorage(), nextSort));
+  }, [sort]);
+
   const flushSearch = useCallback(() => {
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
@@ -420,6 +428,8 @@ export function useModLibraryQuery({
     page,
     pageSize,
     submittedSearch,
+    sort,
+    setSort,
     initialLoading: blockedReason === null && page === null && phase !== "error",
     refreshing: blockedReason === null && page !== null && phase === "refreshing",
     errorCode,

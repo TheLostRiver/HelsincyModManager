@@ -608,6 +608,7 @@ fn task_runner_prunes_thumbnail_cache_using_all_persisted_thumbnail_refs() {
     let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
     result_repository
         .save_analysis(&StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-old".to_owned(),
             task_id: "task-old".to_owned(),
             package_id: "pkg-old".to_owned(),
@@ -724,6 +725,7 @@ fn scheduled_thumbnail_cache_maintenance_runs_one_cycle_after_interval() {
     let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
     result_repository
         .save_analysis(&StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-1".to_owned(),
             task_id: "task-1".to_owned(),
             package_id: "pkg-1".to_owned(),
@@ -802,6 +804,7 @@ fn manual_thumbnail_cache_maintenance_uses_retained_refs_and_settings() {
     let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
     result_repository
         .save_analysis(&StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-1".to_owned(),
             task_id: "task-1".to_owned(),
             package_id: "pkg-1".to_owned(),
@@ -918,6 +921,7 @@ fn library_service_summarizes_preview_image_diagnostics_without_content() {
     let result_repository = std::sync::Arc::new(FakeModImportResultRepository::default());
     for record in [
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-thumbnail".to_owned(),
             task_id: "task-1".to_owned(),
             package_id: "pkg-thumbnail".to_owned(),
@@ -932,6 +936,7 @@ fn library_service_summarizes_preview_image_diagnostics_without_content() {
             },
         },
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-missing".to_owned(),
             task_id: "task-2".to_owned(),
             package_id: "pkg-missing".to_owned(),
@@ -942,6 +947,7 @@ fn library_service_summarizes_preview_image_diagnostics_without_content() {
             },
         },
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-decode".to_owned(),
             task_id: "task-3".to_owned(),
             package_id: "pkg-decode".to_owned(),
@@ -952,6 +958,7 @@ fn library_service_summarizes_preview_image_diagnostics_without_content() {
             },
         },
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "pkg-decode-2".to_owned(),
             task_id: "task-4".to_owned(),
             package_id: "pkg-decode-2".to_owned(),
@@ -1398,6 +1405,7 @@ impl ModImportPackagePreparer for FakePackagePreparer {
         assert_eq!(request.archive_path, self.expected_archive_path);
 
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: self.package_id.clone(),
             sandbox_root: self.sandbox_root.clone(),
         })
@@ -1431,6 +1439,7 @@ impl ModImportPackagePreparer for CancellingPackagePreparer {
             .expect("running task can be cancelled");
 
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: "pkg-1".to_owned(),
             sandbox_root: Path::new("sandbox").to_path_buf(),
         })
@@ -1462,6 +1471,7 @@ impl ModImportPackagePreparer for CancellationObservingPackagePreparer {
             .push(request.cancellation_token.is_cancelled());
 
         Ok(PreparedModPackage {
+            content_size_bytes: None,
             package_id: "pkg-1".to_owned(),
             sandbox_root: Path::new("sandbox").to_path_buf(),
         })

@@ -128,6 +128,19 @@ impl ProjectionTrackingModImportResultRepository {
 }
 
 impl ModImportResultRepository for ProjectionTrackingModImportResultRepository {
+    fn fill_missing_content_sizes(
+        &self,
+        updates: &[hmm_ports::ModRevisionSizeUpdate],
+    ) -> Result<usize> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+        let _activity_guard = self.tracker.begin_write()?;
+        let changed = self.delegate.fill_missing_content_sizes(updates)?;
+        self.finish_write();
+        Ok(changed)
+    }
+
     fn save_new_mod(
         &self,
         logical_mod: &StoredLogicalMod,
@@ -622,6 +635,7 @@ mod tests {
 
     fn analysis() -> StoredModImportAnalysis {
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: "mod-a".to_owned(),
             task_id: "task-a".to_owned(),
             package_id: "package-a".to_owned(),
@@ -728,6 +742,7 @@ mod tests {
                 origin_provenance: StoredModOriginProvenance::Imported,
             },
             revision: StoredModRevision {
+                statistics: Default::default(),
                 revision_id,
                 mod_id: ModId::new("mod-a"),
                 import_task_id: "task-a".to_owned(),
@@ -769,6 +784,7 @@ mod tests {
                     origin_provenance: StoredModOriginProvenance::Imported,
                 },
                 revision: StoredModRevision {
+                    statistics: Default::default(),
                     revision_id: ModRevisionId::new("revision-a"),
                     mod_id: ModId::new("mod-a"),
                     import_task_id: "task-a".to_owned(),

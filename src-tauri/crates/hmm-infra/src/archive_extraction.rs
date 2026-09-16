@@ -138,6 +138,10 @@ pub(crate) struct ArchiveGate<'a> {
 }
 
 impl<'a> ArchiveGate<'a> {
+    pub(crate) fn content_size_bytes(&self) -> u64 {
+        self.total_written_bytes
+    }
+
     pub(crate) fn new(
         sandbox_root: &'a Dir,
         cancellation_token: &'a dyn CancellationToken,
@@ -239,7 +243,7 @@ pub(crate) fn extract_archive(
     sandbox_root: &Dir,
     cancellation_token: &dyn CancellationToken,
     limits: ArchiveExtractionLimits,
-) -> Result<()> {
+) -> Result<u64> {
     let mut gate = ArchiveGate::new(sandbox_root, cancellation_token, limits);
     gate.declare_entry_count(source.declared_entry_count())?;
 
@@ -247,7 +251,7 @@ pub(crate) fn extract_archive(
         gate.accept_entry(&header, &mut |sink| source.write_current_to(sink))?;
     }
 
-    Ok(())
+    Ok(gate.content_size_bytes())
 }
 
 struct BudgetedSink<'a, W> {
@@ -643,6 +647,31 @@ mod tests {
         assert_eq!(
             std::fs::read(temp.path().join("nested").join("a.txt")).expect("read extracted"),
             b"hello world"
+        );
+    }
+
+    #[test]
+    fn reported_content_size_counts_actual_streams_including_custom_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let sandbox = Dir::open_ambient_dir(temp.path(), cap_std::ambient_authority()).unwrap();
+        let mut source = ShapedSource {
+            cursor: 0,
+            entries: vec![
+                directory("nested"),
+                file("nested/custom.bin", Some(1), b"1234567".into()),
+                file("readme.txt", None, b"abc".into()),
+                file("empty", Some(0), vec![]),
+            ],
+        };
+        assert_eq!(
+            extract_archive(
+                &mut source,
+                &sandbox,
+                &NeverCancelled,
+                limits(16, 1024, 4096)
+            )
+            .unwrap(),
+            10
         );
     }
 }

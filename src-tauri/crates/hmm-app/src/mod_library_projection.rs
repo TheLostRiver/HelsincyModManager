@@ -192,6 +192,7 @@ pub(crate) fn projection_query_request(
         profile,
         normalized_search: normalize_text(&query.search),
         filter,
+        sort: query.sort,
         page: query.page,
         page_size: query.page_size,
     })
@@ -270,6 +271,20 @@ fn fingerprint_records(
         hash_optional_text(&mut hasher, record.version_label.as_deref());
         hash_optional_text(&mut hasher, record.external_import_adapter_id.as_deref());
         hash_text(&mut hasher, &record.size_label);
+        hash_optional_text(
+            &mut hasher,
+            record
+                .imported_at_unix_millis
+                .map(|value| value.to_string())
+                .as_deref(),
+        );
+        hash_optional_text(
+            &mut hasher,
+            record
+                .content_size_bytes
+                .map(|value| value.to_string())
+                .as_deref(),
+        );
         hash_text(
             &mut hasher,
             &serde_json::to_string(&record.preview_image)
@@ -333,6 +348,8 @@ mod tests {
     #[test]
     fn global_fingerprint_is_stable_when_category_pair_order_varies() {
         let make_record = |labels| ModLibraryProjectionRecord {
+            imported_at_unix_millis: None,
+            content_size_bytes: None,
             mod_id: ModId::new("mod-a"),
             display_revision_id: ModRevisionId::new("revision-a"),
             package_id: "package-a".to_owned(),

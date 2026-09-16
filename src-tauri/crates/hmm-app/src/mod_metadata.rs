@@ -245,6 +245,7 @@ mod tests {
 
     fn sample_analysis(mod_id: &str) -> StoredModImportAnalysis {
         StoredModImportAnalysis {
+            statistics: Default::default(),
             mod_id: mod_id.to_owned(),
             task_id: "task-1".to_owned(),
             package_id: mod_id.to_owned(),

@@ -16,6 +16,7 @@ mod mod_import;
 mod mod_import_archive;
 mod mod_installation;
 mod mod_library_projection;
+mod mod_library_statistics;
 mod mod_metadata;
 mod mod_storage;
 mod plugin_selection;
@@ -114,14 +115,18 @@ pub use mod_installation::{
     ModInstallationScopeError, ModInstallationScopeIndex, ModInstallationScopeRepository,
 };
 pub use mod_library_projection::{
-    normalize_mod_library_query_key, ModLibraryProfileProjection, ModLibraryProfileProjectionState,
-    ModLibraryProjectionLabel, ModLibraryProjectionPageItem, ModLibraryProjectionProfileQuery,
-    ModLibraryProjectionQueryError, ModLibraryProjectionQueryFilter, ModLibraryProjectionQueryPage,
+    mod_library_name_sort_key, normalize_mod_library_query_key, ModLibraryProfileProjection,
+    ModLibraryProfileProjectionState, ModLibraryProjectionLabel, ModLibraryProjectionPageItem,
+    ModLibraryProjectionProfileQuery, ModLibraryProjectionQueryError,
+    ModLibraryProjectionQueryFilter, ModLibraryProjectionQueryPage,
     ModLibraryProjectionQueryRepository, ModLibraryProjectionQueryRequest,
     ModLibraryProjectionQueryStatus, ModLibraryProjectionReadiness, ModLibraryProjectionRecord,
     ModLibraryProjectionRepository, ModLibraryProjectionSnapshot, ModLibraryProjectionState,
-    ModLibraryProjectionStatus, ModLibraryProjectionStatusRecord,
+    ModLibraryProjectionStatus, ModLibraryProjectionStatusRecord, ModLibrarySort,
     MOD_LIBRARY_PROJECTION_SCHEMA_VERSION, MOD_LIBRARY_QUERY_KEY_VERSION,
+};
+pub use mod_library_statistics::{
+    ModPackageSizeReader, ModRevisionSizeUpdate, ModRevisionStatistics,
 };
 pub use mod_metadata::ModMetadataRepository;
 pub use mod_storage::{

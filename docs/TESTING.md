@@ -1,5 +1,34 @@
 # 测试指南
 
+## Mod 库排序与统计
+
+以下命令在仓库根目录执行。
+
+```powershell
+node --test src/features/mods/modLibrarySort.test.mjs src/features/mods/modLibraryQueryState.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-ports -p hmm-app -p hmm-infra --lib mod_library
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --lib mod_import
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --lib mod_revision_catalog_tests
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --lib mod_package_size
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --lib archive_
+```
+
+新 Windows 工作树先运行 `corepack pnpm run prepare:windows-sidecars:dev`。release 性能命令为：
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
+```
+
+基准保留 1,000／10,000 条完整人工记录、5 次预热和 40 次采样，名称基线与六种排序都执行兼容查询对照。
+10,000 条状态筛选的 p95 门槛仍为 14.23 ms，不能为新增规则降低标准。另核对 SQL 查询计划没有临时排序。
+自动回归只使用临时目录和人工数据：已知值不覆盖、删除不复活、origin 时间不随 display 变更、后台补齐
+只读文件长度、链接拒绝及保存失败不破坏原目录。未知时间不伪造，未知大小与零分开。
+
+浏览器在 1440×900、1024×640、三语、深浅主题和四种卡片视图下验证菜单完整、方向键／Escape／焦点返回、
+大小显示、搜索与筛选保留、回第一页／顶部、重载偏好及选择 ID 稳定。用一万条人工元数据确认只渲染当前页，
+分别记录点击到内容更新的时间；开发浏览器结果须与 release SQLite 查询和原生验收明确区分。
+设计说明见 [Mod 库排序](MOD_LIBRARY_SORTING_DESIGN.md)。
+
 ## 安装筛选与正式桌面批量操作
 
 ```powershell

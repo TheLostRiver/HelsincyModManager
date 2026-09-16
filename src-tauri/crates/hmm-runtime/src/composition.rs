@@ -177,6 +177,7 @@ pub struct HmmRuntime {
     pub game_launch: Arc<GameLaunchService>,
     pub mod_library: Arc<ModLibraryService>,
     pub mod_library_query: Arc<ModLibraryQueryService>,
+    pub mod_library_statistics: Arc<hmm_app::ModLibraryStatisticsService>,
     pub mod_dependency_graph: Arc<ModDependencyGraphService>,
     pub preview_image_candidates: Arc<PreviewImageCandidateListService>,
     pub preview_image_selection: Arc<PreviewImageCandidateSelectionService>,
@@ -595,16 +596,22 @@ impl HmmRuntime {
                 DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
             )),
         );
-        let mod_import_prepare_service = Arc::new(ModImportPrepareService::new(
-            Box::new(ZipModImportPackagePreparer::new_in_storage_root(
-                mod_storage.root.clone(),
-            )),
-            ModImportAnalysisService::new(
-                Box::new(preview_image_service),
-                Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
-                Box::new(SandboxModPackageMetadataAnalyzer),
-            ),
-        ));
+        let mod_package_size_reader: Arc<dyn hmm_ports::ModPackageSizeReader> = Arc::new(
+            hmm_infra::SandboxModPackageSizeReader::new_in_storage_root(mod_storage.root.clone()),
+        );
+        let mod_import_prepare_service = Arc::new(
+            ModImportPrepareService::new(
+                Box::new(ZipModImportPackagePreparer::new_in_storage_root(
+                    mod_storage.root.clone(),
+                )),
+                ModImportAnalysisService::new(
+                    Box::new(preview_image_service),
+                    Box::new(FileSystemThumbnailStore::new(app_data_dir.clone())),
+                    Box::new(SandboxModPackageMetadataAnalyzer),
+                ),
+            )
+            .with_size_reader(Arc::clone(&mod_package_size_reader)),
+        );
         let external_import = crate::external_import::compose(
             &app_data_dir,
             &mod_storage.root,
@@ -617,6 +624,10 @@ impl HmmRuntime {
             Arc::clone(&mod_storage_write_gate),
         )?;
         let mod_library = mod_library_composition.library_service();
+        let mod_library_statistics = Arc::new(hmm_app::ModLibraryStatisticsService::new(
+            Arc::clone(&mod_import_result_repository),
+            mod_package_size_reader,
+        ));
         let mod_shortcuts = Arc::new(hmm_app::ModShortcutService::new(
             Arc::clone(&mod_import_result_repository),
             Arc::clone(&mod_metadata_repository),
@@ -1107,6 +1118,7 @@ impl HmmRuntime {
             )),
             mod_library,
             mod_library_query,
+            mod_library_statistics,
             mod_dependency_graph,
             preview_image_candidates,
             preview_image_selection,
@@ -3603,6 +3615,7 @@ mod tests {
 
         fn get_analysis(&self, mod_id: &str) -> anyhow::Result<Option<StoredModImportAnalysis>> {
             Ok(Some(StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: mod_id.to_owned(),
                 task_id: "task-a".to_owned(),
                 package_id: "package-a".to_owned(),

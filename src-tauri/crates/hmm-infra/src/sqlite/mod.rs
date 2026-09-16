@@ -3,6 +3,7 @@ mod category_repository;
 mod external_import_batch_repository;
 mod migrations;
 mod mod_library_projection_repository;
+mod mod_library_sort;
 mod mod_metadata_repository;
 mod profile_repository;
 mod save_backup_background_settings_repository;

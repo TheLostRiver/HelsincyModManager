@@ -336,6 +336,45 @@ impl JsonModImportResultRepository {
 }
 
 impl ModImportResultRepository for JsonModImportResultRepository {
+    fn fill_missing_content_sizes(
+        &self,
+        updates: &[hmm_ports::ModRevisionSizeUpdate],
+    ) -> Result<usize> {
+        anyhow::ensure!(
+            updates.len() <= MOD_IMPORT_UPSERT_MAX_ENTRIES,
+            "statistics batch too large"
+        );
+        self.ensure_writable()?;
+        if updates.is_empty() {
+            return Ok(0);
+        }
+        self.with_exclusive_lock(|| {
+            let mut catalog = self.load_catalog()?.catalog;
+            let by_revision = updates
+                .iter()
+                .map(|update| (update.revision_id.as_str(), update))
+                .collect::<HashMap<_, _>>();
+            let mut changed = 0;
+            for revision in &mut catalog.revisions {
+                let Some(update) = by_revision.get(revision.revision_id.as_str()) else {
+                    continue;
+                };
+                if revision.mod_id == update.mod_id
+                    && revision.package_id == update.package_id
+                    && revision.statistics.content_size_bytes.is_none()
+                {
+                    revision.statistics.content_size_bytes = Some(update.content_size_bytes);
+                    changed += 1;
+                }
+            }
+            if changed > 0 {
+                validate_catalog(&catalog)?;
+                self.save_catalog(&catalog)?;
+            }
+            Ok(changed)
+        })
+    }
+
     fn save_new_mod(
         &self,
         logical_mod: &StoredLogicalMod,
@@ -711,6 +750,7 @@ fn revision_from_analysis(
         import_task_id: analysis.task_id.clone(),
         package_id: analysis.package_id.clone(),
         display_name: analysis.display_name.clone(),
+        statistics: analysis.statistics.clone(),
         metadata: analysis.metadata.clone(),
         preview_image: analysis.preview_image.clone(),
     }

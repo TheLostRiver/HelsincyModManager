@@ -356,6 +356,7 @@ mod tests {
         let repository = Arc::new(FakeModImportResultRepository::default());
         repository
             .save_analysis(&StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: "mod-1".to_owned(),
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
@@ -372,6 +373,7 @@ mod tests {
             .expect("save thumbnail analysis");
         repository
             .save_analysis(&StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: "mod-2".to_owned(),
                 task_id: "task-2".to_owned(),
                 package_id: "pkg-2".to_owned(),
@@ -421,6 +423,7 @@ mod tests {
         let repository = Arc::new(FakeModImportResultRepository::default());
         repository
             .save_analysis(&StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: "mod-1".to_owned(),
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),
@@ -478,6 +481,7 @@ mod tests {
         let repository = Arc::new(FakeModImportResultRepository::default());
         repository
             .save_analysis(&StoredModImportAnalysis {
+                statistics: Default::default(),
                 mod_id: "mod-1".to_owned(),
                 task_id: "task-1".to_owned(),
                 package_id: "pkg-1".to_owned(),

@@ -468,6 +468,7 @@ fn exercise_weapon_lifecycle(switch_to_default_strategy: bool) {
                 origin_provenance: StoredModOriginProvenance::Imported,
             },
             &StoredModRevision {
+                statistics: Default::default(),
                 revision_id: revision_id.clone(),
                 mod_id: mod_id.clone(),
                 import_task_id: "artificial-import".to_owned(),

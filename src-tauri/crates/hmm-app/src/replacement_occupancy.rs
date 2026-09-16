@@ -182,6 +182,7 @@ mod tests {
                 return Ok(None);
             };
             Ok(Some(StoredModRevision {
+                statistics: Default::default(),
                 revision_id: revision_id.clone(),
                 mod_id: ModId::new(mod_id),
                 import_task_id: "task-v1".to_owned(),

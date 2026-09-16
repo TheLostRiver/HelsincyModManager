@@ -1108,6 +1108,7 @@ fn logical_mod() -> StoredLogicalMod {
 
 fn candidate_revision(revision_id: &str, mod_id: &str) -> StoredModRevision {
     StoredModRevision {
+        statistics: Default::default(),
         revision_id: ModRevisionId::new(revision_id),
         mod_id: ModId::new(mod_id),
         import_task_id: format!("task-{revision_id}"),

@@ -84,6 +84,7 @@ fn stored_record(
     dependencies: Vec<String>,
 ) -> StoredModImportAnalysis {
     StoredModImportAnalysis {
+        statistics: Default::default(),
         mod_id: mod_id.to_owned(),
         task_id: format!("task-{mod_id}"),
         package_id: mod_id.to_owned(),

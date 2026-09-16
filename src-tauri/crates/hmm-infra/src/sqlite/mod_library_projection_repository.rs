@@ -332,7 +332,7 @@ impl ModLibraryProjectionQueryRepository for SqliteModLibraryProjectionRepositor
         let mut items = if let Some((status, profile_id, profile_generation)) = stored_status_filter
         {
             let mut statement = transaction
-                .prepare(STORED_STATUS_ROWS_SQL)
+                .prepare(&stored_status_rows_sql(request.sort))
                 .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
             let items = statement
                 .query_map(
@@ -354,16 +354,17 @@ impl ModLibraryProjectionQueryRepository for SqliteModLibraryProjectionRepositor
                 .map_err(|_| ModLibraryProjectionQueryError::Unavailable)?;
             items
         } else {
+            let (sort_index, sort_order) = super::mod_library_sort::sort_sql(request.sort);
             let rows_sql = format!(
                 "SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,\n\
                  i.version_label, i.size_label, i.preview_image_json, status_row.status,\n\
                  status_row.managed_file_count, status_row.backup_count,\n\
-                 i.external_import_adapter_id\n\
-                 FROM mod_library_projection_items i\n\
+                 i.external_import_adapter_id, i.imported_at_unix_millis, i.content_size_bytes\n\
+                 FROM mod_library_projection_items i INDEXED BY {sort_index}\n\
                  LEFT JOIN mod_library_projection_profile_status status_row\n\
                  ON status_row.profile_id = ?6 AND status_row.profile_generation = ?7\n\
                  AND status_row.mod_id = i.mod_id WHERE {QUERY_FILTER_SQL}\n\
-                 ORDER BY i.normalized_name COLLATE BINARY, i.mod_id COLLATE BINARY\n\
+                 ORDER BY {sort_order}\n\
                  LIMIT ?8 OFFSET ?9"
             );
             let mut statement = transaction
@@ -438,12 +439,15 @@ const STORED_STATUS_COUNT_SQL: &str = "
           )
       )";
 
-const STORED_STATUS_ROWS_SQL: &str = "
+pub(super) fn stored_status_rows_sql(sort: hmm_ports::ModLibrarySort) -> String {
+    let (sort_index, sort_order) = super::mod_library_sort::sort_sql(sort);
+    format!(
+        "
     SELECT i.mod_id, i.display_revision_id, i.package_id, i.display_name, i.author,
            i.version_label, i.size_label, i.preview_image_json, status_row.status,
            status_row.managed_file_count, status_row.backup_count,
-           i.external_import_adapter_id
-    FROM mod_library_projection_items i INDEXED BY idx_mod_library_projection_items_name
+           i.external_import_adapter_id, i.imported_at_unix_millis, i.content_size_bytes
+    FROM mod_library_projection_items i INDEXED BY {sort_index}
     CROSS JOIN mod_library_projection_profile_status status_row
     ON status_row.profile_id = ?2
        AND status_row.profile_generation = ?3
@@ -460,8 +464,10 @@ const STORED_STATUS_ROWS_SQL: &str = "
                 AND instr(search_label.normalized_name, ?5) > 0
           )
       )
-    ORDER BY i.normalized_name COLLATE BINARY, i.mod_id COLLATE BINARY
-    LIMIT ?6 OFFSET ?7";
+    ORDER BY {sort_order}
+    LIMIT ?6 OFFSET ?7"
+    )
+}
 
 const QUERY_FILTER_SQL: &str = "
     i.generation = ?1
@@ -561,9 +567,19 @@ fn read_projection_page_item(
             preview_image,
             labels: Vec::new(),
             external_import_adapter_id: row.get(11)?,
+            imported_at_unix_millis: read_optional_u64(row, 12)?,
+            content_size_bytes: read_optional_u64(row, 13)?,
         },
         status,
     })
+}
+
+fn read_optional_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Option<u64>> {
+    row.get::<_, Option<i64>>(index)?
+        .map(|value| {
+            u64::try_from(value).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(index, value))
+        })
+        .transpose()
 }
 
 fn read_projection_labels(
@@ -627,6 +643,7 @@ struct PreparedRecord {
     record: ModLibraryProjectionRecord,
     preview_image_json: String,
     normalized_name: String,
+    name_sort_key: Vec<u8>,
     normalized_author: String,
     normalized_labels: Vec<String>,
 }
@@ -709,6 +726,7 @@ fn prepare_record(record: &ModLibraryProjectionRecord) -> Result<PreparedRecord>
         record: record.clone(),
         preview_image_json,
         normalized_name: normalize_mod_library_query_key(&record.display_name),
+        name_sort_key: hmm_ports::mod_library_name_sort_key(&record.display_name),
         normalized_author: record
             .author
             .as_deref()
@@ -764,8 +782,9 @@ fn insert_record(
             "INSERT INTO mod_library_projection_items (
                  mod_id, generation, display_revision_id, package_id, display_name,
                  author, version_label, size_label, preview_image_json,
-                 normalized_name, normalized_author, external_import_adapter_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 normalized_name, normalized_author, external_import_adapter_id,
+                 imported_at_unix_millis, content_size_bytes, name_sort_key
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 record.mod_id.as_str(),
                 sqlite_i64(generation)?,
@@ -778,7 +797,10 @@ fn insert_record(
                 prepared.preview_image_json,
                 prepared.normalized_name,
                 prepared.normalized_author,
-                record.external_import_adapter_id
+                record.external_import_adapter_id,
+                record.imported_at_unix_millis.map(sqlite_i64).transpose()?,
+                record.content_size_bytes.map(sqlite_i64).transpose()?,
+                prepared.name_sort_key
             ],
         )
         .context("failed to insert Mod library projection item")?;

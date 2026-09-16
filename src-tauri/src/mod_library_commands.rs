@@ -118,10 +118,42 @@ fn parse_install_manifest_status(value: &str) -> Option<InstallManifestStatus> {
 fn mod_library_sort_from_dto(value: &str) -> Result<ModLibrarySort, CommandErrorDto> {
     match value {
         "name_asc" => Ok(ModLibrarySort::NameAsc),
+        "name_desc" => Ok(ModLibrarySort::NameDesc),
+        "imported_at_asc" => Ok(ModLibrarySort::ImportedAtAsc),
+        "imported_at_desc" => Ok(ModLibrarySort::ImportedAtDesc),
+        "size_asc" => Ok(ModLibrarySort::SizeAsc),
+        "size_desc" => Ok(ModLibrarySort::SizeDesc),
         _ => Err(CommandErrorDto {
             code: "mod_library_sort_invalid".to_owned(),
             message: "mod library sort is invalid".to_owned(),
         }),
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn accepts_only_supported_sort_tokens() {
+    for token in [
+        "name_asc",
+        "name_desc",
+        "imported_at_asc",
+        "imported_at_desc",
+        "size_asc",
+        "size_desc",
+    ] {
+        assert!(mod_library_sort_from_dto(token).is_ok());
+    }
+    for token in [
+        "",
+        "default",
+        "size",
+        "name_asc; DROP TABLE mods",
+        "createdAt",
+    ] {
+        assert_eq!(
+            mod_library_sort_from_dto(token).unwrap_err().code,
+            "mod_library_sort_invalid"
+        );
     }
 }
 

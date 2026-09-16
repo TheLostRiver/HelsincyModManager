@@ -26,6 +26,20 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
   if (cacheRef.current === null) cacheRef.current = createModLibrarySessionStore();
   const value = cacheRef.current;
 
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen("mod-library-statistics-updated", () => {
+      if (!disposed) value.invalidateAllPages();
+    }).then((dispose) => {
+      if (disposed) { dispose(); return; }
+      unlisten = dispose;
+      // Also covers a startup refresh that completed before the listener was ready.
+      value.invalidateAllPages();
+    }).catch(() => {});
+    return () => { disposed = true; unlisten?.(); };
+  }, [value]);
+
   // Task completion must invalidate snapshots even after the owning page unmounts.
   useEffect(() => {
     let disposed = false;

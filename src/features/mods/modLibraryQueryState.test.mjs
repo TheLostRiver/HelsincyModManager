@@ -268,6 +268,19 @@ function createQuery(overrides = {}) {
   };
 }
 
+test("file sizes are ordered across the full result before filtering and pagination", () => {
+  const items = Array.from({ length: 73 }, (_, index) => ({ ...mockItems[0], id: `item-${index}`, name: `Item ${index}`, contentSizeBytes: index * 1024 }));
+  const ids = [];
+  for (let page = 1; page <= 4; page += 1) {
+    const result = queryBrowserMockModLibrary(createQuery({ sort: "size_desc", page }), items);
+    ids.push(...result.items.map((item) => item.id));
+  }
+  assert.equal(new Set(ids).size, items.length);
+  assert.deepEqual(ids, items.map((item) => item.id).reverse());
+  const filtered = queryBrowserMockModLibrary(createQuery({ sort: "size_asc", search: "Item 7", filter: { kind: "category", categoryId: "armor" } }), items, [{ id: "armor", name: "Armor" }]);
+  assert.deepEqual(filtered.items.map((item) => item.id), ["item-7", "item-70", "item-71", "item-72"]);
+});
+
 test("browser mock query searches names, authors and category tags", () => {
   for (const search of ["zeta", "hunter", "classic"]) {
     const page = queryBrowserMockModLibrary(createQuery({ search }), mockItems);
