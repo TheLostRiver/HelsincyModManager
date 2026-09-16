@@ -7,10 +7,9 @@
 }
 
 .mod-library-pagination__layout {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 6px 16px;
   min-block-size: 44px;
   min-width: 0;
@@ -23,12 +22,23 @@
 }
 
 .mod-library-pagination.is-single-page .mod-library-pagination__layout {
-  justify-content: flex-end;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mod-library-pagination__layout > .mod-library-page-controls {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.mod-library-pagination.is-single-page .mod-library-page-controls {
+  justify-self: end;
 }
 
 .mod-library-pagination__navigation {
-  flex: 0 0 auto;
-  margin-inline-start: auto;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
 }
 
 .mod-library-pagination__navigation,
@@ -111,18 +121,18 @@
   outline-offset: 1px;
 }
 
-@container (max-width: 760px) {
+@container (max-width: 960px) {
   .mod-library-pagination__layout {
-    justify-content: center;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .mod-library-pagination__navigation {
-    margin-inline-start: 0;
+    grid-column: 1;
   }
 
   .mod-library-pagination:not(.is-single-page) .mod-library-page-controls {
-    flex: 0 0 100%;
-    justify-content: flex-end;
+    grid-row: 2;
+    justify-self: end;
   }
 }
 
