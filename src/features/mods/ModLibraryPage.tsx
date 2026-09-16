@@ -45,7 +45,6 @@ import { ModDetailDialog, type ModDetailDialogTab } from "./ModDetailDialog";
 import { useModImportDrop } from "./ModImportDropProvider";
 import { useModLibrarySessionCache } from "./ModLibrarySessionCacheProvider";
 import { ModLibraryPagination } from "./ModLibraryPagination";
-import { ModLibraryPageControls } from "./ModLibraryPageControls";
 import {
   ModLibraryEmptyState,
   ModLibraryInitialError,
@@ -1771,14 +1770,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             viewMode={viewMode}
             showCardCategoryLabels={showCardCategoryLabels}
             showCardHover={showCardHover}
-            pageControls={(
-              <ModLibraryPageControls
-                pageSize={libraryQuery.pageSize}
-                result={libraryPage}
-                busy={libraryQueryBusy}
-                onPageSizeChange={handlePageSizeChange}
-              />
-            )}
             onQueryChange={handleQueryChange}
             onQuerySubmit={libraryQuery.flushSearch}
             onFilterChange={handleFilterChange}
@@ -1996,10 +1987,10 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       </div>
 
       <ModLibraryPagination
-        page={libraryPage?.page ?? 1}
-        pageSize={libraryPage?.pageSize ?? libraryQuery.pageSize}
-        matchingTotal={libraryPage?.matchingTotal ?? 0}
+        pageSize={libraryQuery.pageSize}
+        result={libraryPage}
         busy={libraryQueryBusy}
+        onPageSizeChange={handlePageSizeChange}
         onPageChange={handlePageChange}
       />
 

@@ -12,10 +12,11 @@ import {
 } from "./modLibraryPaginationModel.ts";
 
 test("exposes the fixed page-size allowlist and default", () => {
-  assert.deepEqual(MOD_LIBRARY_PAGE_SIZES, [12, 24, 48, 96]);
+  assert.deepEqual(MOD_LIBRARY_PAGE_SIZES, [24, 48, 96, 192]);
   assert.equal(DEFAULT_MOD_LIBRARY_PAGE_SIZE, 24);
-  assert.equal(isModLibraryPageSize(12), true);
+  assert.equal(isModLibraryPageSize(12), false);
   assert.equal(isModLibraryPageSize(96), true);
+  assert.equal(isModLibraryPageSize(192), true);
   assert.equal(isModLibraryPageSize(0), false);
   assert.equal(isModLibraryPageSize(25), false);
 });
@@ -26,6 +27,8 @@ test("calculates total pages without inventing a page for empty results", () => 
   assert.equal(getModLibraryTotalPages(24, 24), 1);
   assert.equal(getModLibraryTotalPages(25, 24), 2);
   assert.equal(getModLibraryTotalPages(96, 48), 2);
+  assert.equal(getModLibraryTotalPages(192, 192), 1);
+  assert.equal(getModLibraryTotalPages(193, 192), 2);
 });
 
 test("calculates inclusive 1-based item ranges and clamps the last page", () => {

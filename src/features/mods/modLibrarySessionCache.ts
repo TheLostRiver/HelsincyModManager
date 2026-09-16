@@ -25,7 +25,7 @@ import type { ModLibraryPage } from "./modLibraryTypes";
  * 保留多少个分页槽位。
  *
  * 分页与搜索都会产生不同的 key（搜索经 250ms 防抖，一次停顿一个 key），不设上限的话
- * 会随会话单调增长。8 足够覆盖「翻几页再切回来」，而一页最多 96 条轻量条目，
+ * 会随会话单调增长。8 足够覆盖「翻几页再切回来」，而一页最多 192 条轻量条目，
  * 不含缩略图字节（走自定义协议 URL），整体开销可以忽略。
  */
 export const MOD_LIBRARY_PAGE_CACHE_LIMIT = 8;

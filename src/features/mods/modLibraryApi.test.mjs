@@ -30,7 +30,8 @@ test("mod library types expose preview image without local paths", () => {
 
   assert.match(source, /previewImage\??:\s*PreviewImage/);
   assert.match(source, /type QueryModLibraryInput/);
-  assert.match(source, /pageSize:\s*12\s*\|\s*24\s*\|\s*48\s*\|\s*96/);
+  assert.match(source, /pageSize:\s*ModLibraryPageSize/);
+  assert.match(source, /import type \{ ModLibraryPageSize \} from "\.\/modLibraryPaginationModel"/);
   assert.match(source, /type ModLibraryPage/);
   assert.match(source, /matchingTotal:\s*number/);
   assert.match(source, /from "\.\/modPreviewImageTypes"/);
