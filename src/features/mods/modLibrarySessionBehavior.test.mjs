@@ -2,6 +2,37 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, mountQuery, pageOf, profileKey, options, loadAfterWriteCallback } from "./testing/reactHarness.mjs";
 
+test("sort changes preserve search/filter/capacity, return to page one and reject old responses", options, async (t) => {
+  const h = await mountQuery(t);
+  await h.resolve(h.pending[0], pageOf("first"));
+  await act(async () => h.state.query.setPage(2));
+  const oldPage = h.pending.at(-1);
+  await act(async () => h.state.query.setSort("size_desc"));
+  const largeFirst = h.pending.at(-1);
+  assert.deepEqual(largeFirst.input, { ...oldPage.input, page: 1, sort: "size_desc" });
+  await act(async () => h.state.query.setSort("name_desc"));
+  const nameDescending = h.pending.at(-1);
+  await h.resolve(nameDescending, pageOf("sorted"));
+  await h.resolve(largeFirst, pageOf("outdated-size"));
+  await h.resolve(oldPage, pageOf("outdated-page", 2));
+  assert.equal(h.state.query.page.items[0].id, "sorted");
+  assert.equal(h.state.query.sort, "name_desc");
+  const count = h.pending.length;
+  await act(async () => h.state.query.setSort("name_desc"));
+  assert.equal(h.pending.length, count, "Choosing the current rule does not requery");
+});
+
+test("background statistics invalidation rejects a pending page and refreshes size ordering", options, async (t) => {
+  const h = await mountQuery(t);
+  const old = h.pending[0];
+  await act(async () => { for (const callback of h.api.statistics) callback({ payload: null }); });
+  const fresh = h.pending.at(-1);
+  assert.notEqual(fresh, old);
+  await h.resolve(old, pageOf("unknown-size"));
+  await h.resolve(fresh, pageOf("known-size"));
+  assert.equal(h.state.query.page.items[0].id, "known-size");
+});
+
 test("cache hit still revalidates and then settles", options, async (t) => {
   const h = await mountQuery(t);
   const old = pageOf("old");

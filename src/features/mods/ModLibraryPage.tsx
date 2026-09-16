@@ -1770,6 +1770,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             viewMode={viewMode}
             showCardCategoryLabels={showCardCategoryLabels}
             showCardHover={showCardHover}
+            sort={libraryQuery.sort}
+            onSortChange={(sort) => { libraryQuery.setSort(sort); resetContentScroll(); }}
             onQueryChange={handleQueryChange}
             onQuerySubmit={libraryQuery.flushSearch}
             onFilterChange={handleFilterChange}
@@ -1964,6 +1966,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
                   index={index}
                   showCategoryLabels={showCardCategoryLabels}
                   showHoverDetails={showCardHover}
+                  showContentSize={libraryQuery.sort === "size_asc" || libraryQuery.sort === "size_desc"}
                   externalState={externalStateResults.get(item.id) ?? null}
                 />
               ))}

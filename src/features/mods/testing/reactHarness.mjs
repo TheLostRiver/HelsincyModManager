@@ -17,8 +17,9 @@ const stubs = {
   event: `export function listen(name, callback) {
     const api = globalThis.__hmmReactTest;
     if (api.listenerFails) return Promise.reject(new Error("fixture listener failure"));
-    api.progress.add(callback);
-    return Promise.resolve(() => api.progress.delete(callback));
+    const listeners = name === "mod-library-statistics-updated" ? api.statistics : api.progress;
+    listeners.add(callback);
+    return Promise.resolve(() => listeners.delete(callback));
   }`,
   webview: `export function getCurrentWebview() {
     if (globalThis.__hmmReactTest.webviewUnavailable) throw new Error("fixture WebView unavailable");
@@ -103,7 +104,7 @@ function deferred() {
 }
 
 function runtime(listenerFails = false) {
-  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
+  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), statistics: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
   api.preview = async (paths) => paths.map((archivePath) => ({ archivePath, fileName: archivePath, sizeBytes: 10, errorCode: null, warningCode: null }));
   api.feedback = {
     pushToast: (toast) => api.toasts.push(toast),

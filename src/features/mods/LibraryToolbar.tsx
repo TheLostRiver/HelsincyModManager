@@ -1,6 +1,8 @@
 import { Search, Grid, LayoutGrid, List, MessageSquareText, Tags, TerminalSquare } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { ModViewMode } from "./ModLibraryPage";
+import { ModLibrarySortMenu } from "./ModLibrarySortMenu";
+import type { ModLibrarySort } from "./modLibrarySort";
 import { ModLibraryControlTooltip } from "./ModLibraryControlTooltip";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy } from "./modLibraryCopy";
@@ -13,6 +15,8 @@ type LibraryToolbarProps = {
   viewMode: ModViewMode;
   showCardCategoryLabels: boolean;
   showCardHover: boolean;
+  sort: ModLibrarySort;
+  onSortChange: (sort: ModLibrarySort) => void;
   onQueryChange: (value: string) => void;
   onQuerySubmit: () => void;
   onFilterChange: (value: ModLibraryFilter) => void;
@@ -30,6 +34,8 @@ export function LibraryToolbar({
   viewMode,
   showCardCategoryLabels,
   showCardHover,
+  sort,
+  onSortChange,
   onQueryChange,
   onQuerySubmit,
   onFilterChange,
@@ -65,6 +71,7 @@ export function LibraryToolbar({
         </div>
 
         <div className="library-toolbar__display-controls">
+          <ModLibrarySortMenu value={sort} onChange={onSortChange} />
           <ModLibraryControlTooltip content={labelToggleTitle} describeControl={false}>
             {() => (
               <button

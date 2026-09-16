@@ -8,6 +8,12 @@ Mod 安装、选择与恢复状态按游戏安装目录管理；存档配置档�
 恢复记录。进程内、跨进程游戏写锁均不因存档账号不同而分叉。兼容登记和拒绝边界见
 [Mod 安装作用域](MOD_INSTALLATION_SCOPE.md)。下文历史设计中的 Mod/profile 组合均按此边界解释。
 
+## Mod 库查询与排序
+
+Mod 库排序以 revision 统计和 SQLite 投影为展示事实：首次导入时间取 origin，大小取 display revision。
+桌面后台补齐缺失大小，查询与卡片不启动扫描；大小补齐只写 catalog 元数据，不改包或玩家文件。查询先
+全库排序再分页，前端保存偏好并消费当前页。数据兼容与索引见 [Mod 库排序](MOD_LIBRARY_SORTING_DESIGN.md)。
+
 ## 项目定位
 
 Helsincy Mod Manager 不是一个简单的压缩包解压工具，而是一个本地游戏 Mod 管理平台。

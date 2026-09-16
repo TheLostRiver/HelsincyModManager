@@ -1,4 +1,5 @@
 import type { PreviewImage } from "./modPreviewImageTypes";
+import type { ModLibrarySort } from "./modLibrarySort";
 import type { ModLibraryPageSize } from "./modLibraryPaginationModel";
 import type { InstallManifestStatus, InstallRecoveryIssueSummary, InstallRecoveryStatus } from "./modInstallPlanTypes";
 
@@ -27,6 +28,8 @@ export type ModLibraryItem = {
   author?: string;
   versionLabel?: string;
   sizeLabel: string;
+  importedAtUnixMillis?: number;
+  contentSizeBytes?: number;
   status: ModInstallStatus;
   installSummary?: ModInstallSummary;
   categoryLabels: CategoryLabel[];
@@ -51,7 +54,7 @@ export type QueryModLibraryInput = {
   profileContext?: ModLibraryProfileContext;
   search: string;
   filter: ModLibraryQueryFilter;
-  sort: "name_asc";
+  sort: ModLibrarySort;
   page: number;
   pageSize: ModLibraryPageSize;
 };

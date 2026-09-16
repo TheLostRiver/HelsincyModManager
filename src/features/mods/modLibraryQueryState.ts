@@ -1,4 +1,5 @@
 import type { ModLibraryFilter } from "./modLibraryFilters";
+import { isModLibrarySort, normalizeModLibraryText, sortBrowserModLibrary } from "./modLibrarySort.ts";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
 import {
   DEFAULT_MOD_LIBRARY_PAGE_SIZE,
@@ -337,12 +338,8 @@ function includesSearch(item: ModLibraryItem, normalizedSearch: string): boolean
   }
 
   return [item.name, item.author ?? "", ...item.categoryLabels.map((label) => label.name)].some(
-    (value) => value.toLocaleLowerCase().includes(normalizedSearch),
+    (value) => normalizeModLibraryText(value).includes(normalizedSearch),
   );
-}
-
-function compareText(left: string, right: string): number {
-  return left.localeCompare(right, "zh-Hans-CN", { sensitivity: "base", numeric: true });
 }
 
 function clampRequestedPage(page: number, pageCount: number): number {
@@ -357,7 +354,7 @@ export function queryBrowserMockModLibrary(
   sourceItems: readonly ModLibraryItem[],
   categories: readonly BrowserMockCategory[] = [],
 ): ModLibraryPage {
-  if (input.sort !== "name_asc") {
+  if (!isModLibrarySort(input.sort)) {
     throw new BrowserMockModLibraryQueryError("mod_library_sort_invalid");
   }
   if (input.filter.kind === "status" && !hasUsableProfileContext(input.profileContext)) {
@@ -373,9 +370,9 @@ export function queryBrowserMockModLibrary(
     throw new BrowserMockModLibraryQueryError("mod_library_category_not_found");
   }
 
-  const normalizedSearch = input.search.trim().toLocaleLowerCase();
+  const normalizedSearch = normalizeModLibraryText(input.search);
   const normalizedItems = sourceItems.map(normalizeBrowserMockItem);
-  const matchingItems = normalizedItems
+  const matchingItems = sortBrowserModLibrary(normalizedItems
     .filter((item) => includesSearch(item, normalizedSearch))
     .filter((item) => {
       switch (input.filter.kind) {
@@ -386,8 +383,7 @@ export function queryBrowserMockModLibrary(
         case "category":
           return item.categoryLabels.some((label) => label.name === categoryName);
       }
-    })
-    .sort((left, right) => compareText(left.name, right.name) || compareText(left.id, right.id));
+    }), input.sort);
 
   const pageSize = parseModLibraryPageSize(input.pageSize);
   const pageCount = Math.max(1, Math.ceil(matchingItems.length / pageSize));

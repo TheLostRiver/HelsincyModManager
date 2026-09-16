@@ -5,7 +5,7 @@ import { isUnsafeInstallStatus } from "./modLibraryLoadState";
 import type { ModLibraryItem } from "./modLibraryTypes";
 import { visibleCategoryLabelsForCard } from "./modLibraryFilters";
 import type { ModCardSelectionIntent, ModSelectionMode } from "./modSelection";
-import { resolveCopy, useI18n } from "../../shared/i18n";
+import { localeMeta, resolveCopy, useI18n } from "../../shared/i18n";
 import { modLibraryCopy, type ModLibraryCopy } from "./modLibraryCopy";
 import { externalImportCopy } from "./external-import/externalImportCopy";
 import { projectExternalCardBadge } from "./externalCardBadge";
@@ -14,6 +14,8 @@ import { externalStateCopy } from "./externalStateCopy";
 import "./ModPosterCard.css";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { ModCardHover } from "./ModCardHover";
+import { formatModContentSize } from "./modLibrarySort";
+import { modLibrarySortCopy } from "./modLibrarySortCopy";
 
 type ModPosterCardProps = {
   gameId: GameId;
@@ -28,6 +30,7 @@ type ModPosterCardProps = {
   index?: number;
   showCategoryLabels?: boolean;
   showHoverDetails?: boolean;
+  showContentSize?: boolean;
   /** 本会话的外部状态扫描结果（#286 3b-2）；null 表示本会话没扫过。 */
   externalState?: ExternalModStateDto | null;
 };
@@ -93,10 +96,17 @@ export function ModPosterCard({
   index = 0,
   showCategoryLabels = true,
   showHoverDetails = false,
+  showContentSize = false,
   externalState = null,
 }: ModPosterCardProps) {
   const { locale } = useI18n();
   const card = resolveCopy(modLibraryCopy, locale).card;
+  const sortCopy = resolveCopy(modLibrarySortCopy, locale);
+  const contentSize = showContentSize ? (
+    <span className="mod-card__content-size" aria-label={sortCopy.sizeLabel} title={sortCopy.sizeHint}>
+      {formatModContentSize(item.contentSizeBytes, localeMeta[locale].bcp47) ?? sortCopy.unknownSize}
+    </span>
+  ) : null;
   // #286 3b-2：有本会话扫描结果时，徽标取代状态文案位（档位随视图，见
   // externalInstallStatusView 的宽度实测表）；「外部」短标位置不变。
   const externalBadge = projectExternalCardBadge({
@@ -310,6 +320,7 @@ export function ModPosterCard({
       {isClassic && (
         <div className="mod-card__meta">
           <strong className="mod-card__title">{item.name}</strong>
+          {contentSize}
           {categoryStrip}
         </div>
       )}
@@ -319,12 +330,13 @@ export function ModPosterCard({
         <div className="mod-card__info-enhanced">
           <strong className="mod-card__title">{item.name}</strong>
           {categoryStrip}
-          {authorLabel || versionLabel ? (
+          {authorLabel || versionLabel || showContentSize ? (
             <div className="mod-card__meta-row">
               <span className="mod-card__meta-lead">
                 {authorLabel ? <span className="mod-card__author">{authorLabel}</span> : null}
                 {versionLabel ? <span className="mod-card__version-badge">{versionLabel}</span> : null}
               </span>
+              {contentSize}
             </div>
           ) : null}
         </div>
@@ -340,9 +352,10 @@ export function ModPosterCard({
             {authorLabel ? <div className="mod-card__author">by {authorLabel}</div> : null}
             {categoryStrip}
           </div>
-          {versionLabel ? (
+          {versionLabel || showContentSize ? (
             <div className="mod-card__footer-list">
-              <span>{card.versionLabel}{versionLabel}</span>
+              {versionLabel ? <span>{card.versionLabel}{versionLabel}</span> : null}
+              {contentSize}
             </div>
           ) : null}
         </div>
@@ -358,9 +371,10 @@ export function ModPosterCard({
             ) : null}
             {categoryStrip}
           </div>
-          {versionLabel ? (
+          {versionLabel || showContentSize ? (
             <div className="mod-card__tech-footer">
-              <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span>
+              {versionLabel ? <span className="mod-card__tech-version" data-label="Version">{versionLabel}</span> : null}
+              {contentSize}
             </div>
           ) : null}
           <div
