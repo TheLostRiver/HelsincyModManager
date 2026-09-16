@@ -51,14 +51,22 @@ function createStorage(initialValue = null) {
 }
 
 test("page size parsing accepts only the supported values", () => {
-  for (const pageSize of [12, 24, 48, 96]) {
+  for (const pageSize of [24, 48, 96, 192]) {
     assert.equal(parseModLibraryPageSize(pageSize), pageSize);
     assert.equal(parseModLibraryPageSize(String(pageSize)), pageSize);
   }
 
-  for (const invalidValue of [null, undefined, "", "25", 25, 24.5, Number.NaN, Infinity, {}]) {
+  for (const invalidValue of [null, undefined, "", "12", 12, "25", 25, 193, 24.5, Number.NaN, Infinity, {}]) {
     assert.equal(parseModLibraryPageSize(invalidValue), DEFAULT_MOD_LIBRARY_PAGE_SIZE);
   }
+});
+
+test("legacy 12-item preferences load as 24 and the largest capacity survives a storage round trip", () => {
+  const storage = createStorage("12");
+  assert.equal(readModLibraryPageSize(storage), 24);
+  assert.equal(writeModLibraryPageSize(storage, 192), 192);
+  assert.equal(storage.values.get(MOD_LIBRARY_PAGE_SIZE_STORAGE_KEY), "192");
+  assert.equal(readModLibraryPageSize(storage), 192);
 });
 
 test("page size storage reads, writes and falls back without surfacing storage failures", () => {
@@ -255,7 +263,7 @@ function createQuery(overrides = {}) {
     filter: { kind: "all" },
     sort: "name_asc",
     page: 1,
-    pageSize: 12,
+    pageSize: 24,
     ...overrides,
   };
 }
@@ -302,7 +310,7 @@ test("browser mock query applies stable name/id sorting and clamps oversized pag
   const firstPage = queryBrowserMockModLibrary(createQuery(), mockItems);
   assert.deepEqual(firstPage.items.map((item) => item.id), ["alpha-1", "alpha-2", "zeta-2"]);
 
-  const manyItems = Array.from({ length: 13 }, (_, index) => ({
+  const manyItems = Array.from({ length: 25 }, (_, index) => ({
     id: `mod-${String(index + 1).padStart(2, "0")}`,
     name: `Mod ${String(index + 1).padStart(2, "0")}`,
     sizeLabel: "1 MB",
@@ -311,10 +319,10 @@ test("browser mock query applies stable name/id sorting and clamps oversized pag
   }));
   const clamped = queryBrowserMockModLibrary(createQuery({ page: 99 }), manyItems);
   assert.equal(clamped.page, 2);
-  assert.equal(clamped.pageSize, 12);
-  assert.equal(clamped.libraryTotal, 13);
-  assert.equal(clamped.matchingTotal, 13);
-  assert.deepEqual(clamped.items.map((item) => item.id), ["mod-13"]);
+  assert.equal(clamped.pageSize, 24);
+  assert.equal(clamped.libraryTotal, 25);
+  assert.equal(clamped.matchingTotal, 25);
+  assert.deepEqual(clamped.items.map((item) => item.id), ["mod-25"]);
 
   const empty = queryBrowserMockModLibrary(createQuery({ page: 99, search: "missing" }), manyItems);
   assert.equal(empty.page, 1);
