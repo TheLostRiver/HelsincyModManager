@@ -17,12 +17,14 @@
 }
 
 .mod-library-pagination.is-single-page {
-  border-top-color: transparent;
+  border-top: 0;
   background: transparent;
 }
 
 .mod-library-pagination.is-single-page .mod-library-pagination__layout {
   grid-template-columns: minmax(0, 1fr);
+  min-block-size: 0;
+  padding-block: 4px 0;
 }
 
 .mod-library-pagination__layout > .mod-library-page-controls {

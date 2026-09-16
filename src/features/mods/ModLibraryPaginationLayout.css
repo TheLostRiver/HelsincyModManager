@@ -4,6 +4,11 @@
   min-width: 0;
 }
 
+/* 无翻页按钮时收紧底边距；顶部与左右间距仍供状态栏背板对齐使用。 */
+.app-surface:has(.route-transition__layer[data-route-id="mods"]:not(.is-exiting)):not(:has(.mod-library-pagination__navigation)) {
+  padding-bottom: 8px;
+}
+
 @media (max-width: 1280px) and (max-height: 720px) {
   .app-surface:has(.route-transition__layer[data-route-id="mods"]) {
     overflow-y: auto;
