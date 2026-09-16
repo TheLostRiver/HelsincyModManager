@@ -9,4 +9,4 @@
 # 加入条件：该提交 `git diff -w` 之外没有任何语义改动。
 
 # style: 全仓执行 cargo fmt
-af3f39e166dfeb663811f563f5ccbd7647ed0ba4
+c97d32c41c6f3d380206367c40caff1ff80e87a7
