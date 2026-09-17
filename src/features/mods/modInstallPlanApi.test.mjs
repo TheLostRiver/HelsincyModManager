@@ -206,8 +206,7 @@ test("mod library page starts install task and tracks only matching task progres
   const taskStateSource = readSource("src/features/mods/modInstallTaskState.ts");
 
   assert.match(source, /startInstallTask/);
-  assert.match(source, /TASK_PROGRESS_EVENT_NAME/);
-  assert.match(source, /listen<\s*TaskProgressEventDto\s*>/);
+  assert.match(source, /listenModLibraryTaskProgress/);
   assert.match(source, /event\.payload\.taskId\s*!==\s*installTaskState\.taskId/);
   assert.match(source, /event\.payload\.kind\s*!==\s*"install"/);
   assert.match(source, /pendingInstallProgressEventsRef/);
@@ -241,32 +240,30 @@ test("mod library page starts uninstall only from a durable installed summary on
   assert.match(taskStateSource, /install\.uninstall\.completed/);
   assert.match(source, /UninstallConfirmationDialog/);
   assert.match(source, /onConfirm=\{startSelectedUninstallTask\}/);
-  assert.match(source, /refreshModLibraryDurableStatuses\(page\.items/);
-  assert.match(source, /loadManifestStatuses:[\s\S]*?getInstallManifestStatus/);
-  assert.match(source, /loadRecoveryStatuses:[\s\S]*?scanInstallRecovery/);
+  assert.match(source, /loadModLibraryPageWithStatuses/);
+  assert.match(source, /!libraryQuery\.statusTrusted/);
   assert.match(source, /const currentItem = libraryItems\.find\(\(item\) => item\.id === uninstallConfirmation\.modId\)/);
   assert.match(source, /currentSummary\?\.status\s*!==\s*"installed"/);
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
-test("mod library page overlays the current query page and verifies terminal facts independently", () => {
+test("mod library page and terminal feedback consume the same verified recovery snapshot", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
   const refreshSource = readSource("src/features/mods/modLibraryRecoveryRefresh.ts");
 
   assert.match(source, /queryModLibrary/);
-  assert.match(source, /refreshModLibraryDurableStatuses\(page\.items/);
+  assert.match(source, /loadModLibraryPageWithStatuses/);
   assert.match(source, /getInstallManifestStatus/);
   assert.match(source, /scanInstallRecovery/);
   assert.match(source, /useModInstallation/);
-  assert.match(source, /input\.profileContext\s*===\s*undefined/);
+  assert.match(source, /readStatusSnapshot/);
   assert.match(source, /profileId:\s*installationScopeId/);
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
   assert.match(refreshSource, /items\.map\(\(item\) => item\.id\)/);
-  assert.match(refreshSource, /applyInstallManifestStatusSummaries\(items,\s*manifestStatuses\)/);
-  assert.match(refreshSource, /applyInstallRecoverySummaries\(itemsWithManifestStatus,\s*recoveryStatuses\)/);
+  assert.match(refreshSource, /applyInstallRecoverySummaries\(items,\s*recoveryStatuses\)/);
   assert.match(refreshSource, /items:\s*applyInstallManifestUnavailable\(items\)/);
-  assert.match(refreshSource, /items:\s*applyInstallRecoveryUnavailable\(itemsWithManifestStatus\)/);
+  assert.doesNotMatch(refreshSource, /loadManifestStatuses/);
   assert.match(source, /isManagedInstallTaskTerminal\(installTaskState\)/);
   assert.match(source, /refreshTerminalDurableStatus/);
   assert.match(source, /createModLibraryStatusProbe\(modId,\s*modName\)/);

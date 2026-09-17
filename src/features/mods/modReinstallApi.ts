@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { trackModLibraryTaskStart } from "./modLibraryWriteTracking.ts";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
   PreviewReinstallPlanInput,
@@ -21,7 +22,7 @@ export function previewReinstallPlan(
 }
 
 export function startReinstallTask(input: StartReinstallTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_reinstall_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_reinstall_task", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,
@@ -30,5 +31,5 @@ export function startReinstallTask(input: StartReinstallTaskInput): Promise<Task
       layer: input.layer,
       planToken: input.planToken,
     },
-  });
+  }));
 }

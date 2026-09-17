@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { trackModLibraryTaskStart } from "./modLibraryWriteTracking.ts";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
   GetInstallManifestStatusInput,
@@ -29,7 +30,7 @@ export function previewInstallPlanForImportedMod(
 }
 
 export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_install_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_install_task", {
     request: {
       gameId: input.gameId,
       modId: input.modId,
@@ -38,17 +39,17 @@ export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStar
       layerPriority: input.layerPriority,
       ...(input.expectedRevisionId === undefined ? {} : { expectedRevisionId: input.expectedRevisionId }),
     },
-  });
+  }));
 }
 
 export function startUninstallTask(input: StartUninstallTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_uninstall_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_uninstall_task", {
     request: {
       gameId: input.gameId,
       modId: input.modId,
       profileId: input.profileId,
     },
-  });
+  }));
 }
 
 export function getInstallManifestStatus(
@@ -85,7 +86,7 @@ export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promis
 }
 
 export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_recovery_action_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_recovery_action_task", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,
@@ -93,5 +94,5 @@ export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Pr
       actionKind: input.actionKind,
       ...(input.planToken ? { planToken: input.planToken } : {}),
     },
-  });
+  }));
 }

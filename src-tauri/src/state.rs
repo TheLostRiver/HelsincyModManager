@@ -20,6 +20,7 @@ enum AppStateStartup {
 pub struct AppState {
     runtime: HmmRuntime,
     batch_environment: Result<RuntimeEnvironment, &'static str>,
+    pub(crate) task_progress_snapshots: crate::task_events::TaskProgressSnapshots,
 }
 
 impl AppState {
@@ -58,6 +59,7 @@ impl AppState {
         let state = Self {
             runtime,
             batch_environment,
+            task_progress_snapshots: Default::default(),
         };
         run_state_startup(startup, &state);
         Ok(state)

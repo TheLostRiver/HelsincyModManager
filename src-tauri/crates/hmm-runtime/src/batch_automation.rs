@@ -145,7 +145,11 @@ impl BatchPlanFactsProvider for BatchFactsProvider {
         let read_only = ReadOnlyInstallAutomation::from_environment(&self.environment)
             .map_err(|error| anyhow::anyhow!(error.code()))?;
         match request.operation {
-            BatchOperation::Install => facts_for_install_batch(&read_only, request),
+            BatchOperation::Install => facts_for_install_batch(
+                &read_only,
+                request,
+                operation_environment_digest(&self.environment, request),
+            ),
             BatchOperation::Uninstall => read_only.read_batch_uninstall_facts(
                 request,
                 operation_environment_digest(&self.environment, request),
@@ -156,11 +160,38 @@ impl BatchPlanFactsProvider for BatchFactsProvider {
             ),
         }
     }
+
+    fn read_batch_item_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        mod_id: &ModId,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        anyhow::ensure!(
+            request.items.iter().any(|item| item.mod_id() == mod_id),
+            "batch item is not selected"
+        );
+        let read_only = ReadOnlyInstallAutomation::from_environment(&self.environment)
+            .map_err(|error| anyhow::anyhow!(error.code()))?;
+        let environment_digest = operation_environment_digest(&self.environment, request);
+        match request.operation {
+            BatchOperation::Install => {
+                let mut item_request = request.clone();
+                item_request.items.retain(|item| item.mod_id() == mod_id);
+                facts_for_install_batch(&read_only, &item_request, environment_digest)
+            }
+            BatchOperation::Uninstall => {
+                read_only.read_batch_uninstall_item_facts(request, mod_id, environment_digest)
+            }
+            // Reinstall has additional cross-item binding semantics; retain its full read.
+            BatchOperation::Reinstall => self.read_batch_plan_facts(request),
+        }
+    }
 }
 
 fn facts_for_install_batch(
     read_only: &ReadOnlyInstallAutomation,
     request: &NormalizedBatchPlanRequest,
+    environment_digest: String,
 ) -> anyhow::Result<BatchPlanFacts> {
     let mut items = Vec::with_capacity(request.items.len());
     for item in &request.items {
@@ -200,15 +231,8 @@ fn facts_for_install_batch(
         ));
     }
 
-    let environment_digest = digest_json(&(
-        "hmm-batch-environment-v1",
-        request.game_id.as_str(),
-        request.profile_id.as_str(),
-        items
-            .iter()
-            .map(|item| &item.fact_digest)
-            .collect::<Vec<_>>(),
-    ));
+    // Item digests already belong to the sealed plan. The environment identity must not
+    // change merely because a per-item revalidation reads a subset of that plan.
     let prerequisite_rules_version = items
         .iter()
         .find_map(|item| item.prerequisite.rules_version);
@@ -1283,6 +1307,10 @@ fn map_retry_error(error: BatchInstallRetryError) -> BatchAutomationError {
 #[cfg(test)]
 #[path = "runtime_equipment_batch_tests.rs"]
 mod equipment_tests;
+
+#[cfg(test)]
+#[path = "batch_refresh_tests.rs"]
+mod refresh_tests;
 
 #[cfg(test)]
 mod tests {

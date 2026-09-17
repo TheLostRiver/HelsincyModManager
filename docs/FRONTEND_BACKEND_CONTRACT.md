@@ -102,11 +102,17 @@ Tauri command 使用 `snake_case`，以动词或查询动作开头：
 - 读取和写入受控设置：`get_thumbnail_cache_settings`、`set_thumbnail_cache_settings`、`get_log_storage_settings`、`set_log_storage_settings`、`get_debug_log_settings`、`set_debug_log_settings`、`get_mod_import_settings`、`set_mod_import_settings`
 - Mod 存储目录（#275）：`get_mod_storage_settings`、`validate_mod_storage_dir`、`set_mod_storage_dir`、`start_mod_storage_migration_task`
 - 取消长任务：`cancel_task`
+- 查询任务最近进度：`get_task_progress`
 - T17 批量迁移：`select_external_import_source`、`start_external_import_scan`、`get_external_import_preview`、`create_external_import_selection`、`update_external_import_selection`、`select_all_external_import_candidates`、`start_external_import_batch`、`retry_external_import_batch`、`get_external_import_batch_result`
 - ARMOR 替换目标：`list_replacement_targets`、`analyze_imported_mod_replacement`、`get_mod_replacement_summary`、`preview_initial_retarget_install`、`start_retarget_install_task`、`preview_retarget_reinstall`、`start_retarget_reinstall_task`
 - Mod 删除：`preview_mod_deletion`、`delete_mod_from_library`
 - Mod 快捷入口：`open_mod_folder(modId)`、`open_mod_nexus_page(modId)`
 - 检查是否有可用更新：`check_app_update`
+
+`query_mod_library`、`get_install_manifest_status`、`scan_install_recovery` 和
+`get_batch_mod_lifecycle_result` 使用 async command 加显式 blocking worker；作用域读取、锁等待、
+SQLite 和文件校验全部在 worker 内完成，Windows mutex 的取得和释放不跨 await。该调度变化不改变
+查询 DTO 或文件安全校验规则。
 
 命名应表达用例，而不是底层文件操作。禁止新增类似 `copy_file`、`delete_path`、`read_any_file` 这类宽泛文件系统 command。
 
@@ -479,6 +485,10 @@ planning/preflight/processing/stopping 等中间 phase，`cancel_task` 对 batch
 前端在确认、执行和重试期间阻止重复提交及关闭；筛选刷新只作废未确认预览，不自动关闭执行结果。
 每次写入请求结束都失效共享库缓存，包括 command/result 查询失败及离开页面后的迟到结果；
 卡片状态与状态筛选仍由后端清单和查询投影决定。
+
+批量 API 在 invoke 前登记应用级写占用，start/retry Promise 完成后统一释放；父终态、返回值和结果
+分页展示不各自触发库刷新。批量 result 查询在 blocking worker 中执行。批量仍通过 batchId /
+attemptNumber 的持久化结果恢复状态，不把临时 runtime 的子任务当作桌面 TaskManager 任务。
 
 `previewToken` 和 `planToken` 是唯一允许 token 的两个直接 response 字段。前端只在当前确认流程的
 内存中持有，不写 local storage、状态持久化、日志或 diagnostics；调用 `seal`/`start` 后立即丢弃。
@@ -1039,6 +1049,10 @@ TaskProgressEventDto
   recovery_required 终态，不能用本地取消状态覆盖后端事实。transport 或 command response 的 cancelled
   可以先用于即时反馈，但 runner 若因取消终态持久化失败发送 `recovery_required`，后者必须覆盖 cancelled。
 - 长任务最终结果应通过 `resultRef` 或查询 command 获取，避免把巨大结果塞进进度事件。
+- `get_task_progress({ taskId }) -> TaskProgressEventDto | null` 只读取本进程最近发布的进度快照，
+  不重放任务、不访问文件、不修改任务状态；emit 失败也保留快照。空 ID 返回 `task_id_empty`，快照锁
+  不可读返回 `task_store_unavailable`。已结束任务仅保留有界历史；缺失、进程重启或读取失败不能解释成
+  已完成。库 Provider 对活跃桌面任务补查以恢复遗失终态，UI 仍匹配 kind、taskId 和 phase。
 - 写入同一游戏实例的 commit 阶段必须串行。
 
 ## 安全约束
@@ -1761,8 +1775,15 @@ cancel_task(taskId)
 - `start_uninstall_task` 是后端驱动的最小安全卸载入口。前端只提交 `gameId`、`modId` 和 `profileId`；后端在同一 `gameId/profileId` 写锁下读取受控 manifest，且只处理该 Mod 的 manifest entries。该 command 不接受 `targetPath`、game root、backup root/ref、manifest root/path、sandbox/cache 路径、导入包路径或游戏目录路径。
 - `start_uninstall_task` 只会对存在 `installed_file` 摘要且当前目标文件 size/SHA-256 与 manifest 匹配的 entries 执行破坏性动作：无 `backup_ref` 的条目（本工具新增的文件，或 #286 接管认领的文件）会删除；有 `backup_ref` 的覆盖文件会从受控 backup 恢复。接管条目没有可还原的原版，删除即删除——接管确认弹窗提前告知（见「外部 MOD 接管」一节），卸载确认弹窗再次告知：`get_install_manifest_status` / `scan_install_recovery` 的摘要携带 `adoptedFileCount`（该 MOD 清单条目中 `adopted: true` 的数量），前端在它大于 0 时必须展示「接管文件」指标与三语提示，并把它纳入确认态与当前摘要的漂移比对（漂移即阻断确认）。缺少摘要、目标摘要不匹配、目标缺失、backup 缺失或 backup 读取失败都会阻断自动卸载。
 - `start_uninstall_task` 返回 `TaskStartedDto { taskId, kind: "install", status: "queued" }`，并发送 `hmm://task-progress` 的 `install.uninstall.queued` 事件；后台 runner 会发送 `install.uninstall.processing`、`install.uninstall.completed` 或 `install.uninstall.failed`。失败事件的 `error` 使用稳定前缀 `install_uninstall_failed:<phase>`，当前 phase 可为 `lock`、`uninstall`、`complete`、`recovery_pending` 或 `recovery_unavailable`；后两者表示在卸载前分别因存在待收敛重装恢复事务或恢复仓储不可用而 fail-closed。写入准入层还可能直接给出 `write_safety_rejected` 与四个 `write_admission_*`（`busy` / `cancelled` / `order_violation` / `unavailable`），语义同上。事件 payload 不承载目标路径、完整本地路径、manifest 内容、backup ref 或第三方 Mod 内容。
-- 正式前端卸载 UI 只能在 `get_install_manifest_status` 摘要显示 `installed` 时提供单选卸载入口；typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。若摘要返回 `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required` 或 `unknown`，必须阻断安装/重装和自动卸载入口。前端按 `taskId` 和 `install.uninstall.*` phase 展示任务状态，完成后重新查询 manifest 摘要；失败时不根据 Mod 包内容、展示标签或页面内存态推断修复动作。
-- 若前端额外调用 `scan_install_recovery` 摘要，只能用于展示 issue code、计数和恢复中心所需的聚合详情；不能用它推断未文档化修复动作，也不能根据 Mod 包内容、展示标签或页面内存态推断修复动作。
+- 正式前端卸载 UI 只能在当前作用域的已验证摘要显示 `installed` 时提供单选卸载入口；库页使用一次
+  `scan_install_recovery`（`completed` 映射为 `installed`）更新安装状态、接管计数和恢复详情。
+  typed API 只能调用 `start_uninstall_task` 并传入 `gameId`、`modId`、`profileId`。摘要为
+  `committed_cleanup_pending`、`cleanup_pending`、`rollback_required`、`repair_required`、`unknown`，
+  或刷新失败／未完成时，必须阻断相应写入口。前端按 taskId 与 phase 展示进度，终态后重新验证。
+- 库页将当前页 IDs 和任务目标 IDs 合并扫描，卡片和终态反馈共用带 scope/generation 的同一结果；
+  缺失、重复或错作用域的摘要不能充当已验证事实。刷新与写入期间保留展示快照，不以旧快照解锁按钮、
+  菜单、快捷键或已打开的确认窗；失败时保留浏览并允许显式重试。不得根据摘要推断未文档化修复动作。
+  不带 gameId 的 `get_install_manifest_status` 继续为批量解析提供精确 installedRevisionId。
 - `start_uninstall_task` 会写最小 Audit Log 事件，字段只包含 `task_id`、`game_id`、`mod_id`、`profile_id`、`removed_file_count` 和 `restored_file_count` 等短 id/计数；失败事件可额外包含与 task event 一致的稳定 `error_code`。事件不记录完整本地路径、用户名、Steam ID、sandbox/cache 路径、backup 路径、manifest 正文或第三方 Mod 内容。
 - `start_import_mod_revision_task` 接收 `archivePath` 和既有 `modId`，复用普通导入的安全解压、取消和持久化链路，并返回 `TaskStartedDto { taskId, kind: "mod_import", status: "queued" }`。archive path 只允许出现在这个 picker 驱动的导入入口；`get_mod_revisions`、`preview_reinstall_plan` 和 `start_reinstall_task` 均不接受 archive/source/sandbox/game-root/target/backup/manifest path。
 - `get_mod_revisions` 返回一张 logical Mod 的 `originRevisionId`、`displayRevisionId` 和全部受其所有的 revision ids。origin/display revision 的权威来源是 revision catalog；installed revision 的权威来源始终是当前 profile 的 completed manifest entry set，不能从 display revision、导入顺序、任务内存或“最新版本”推断。

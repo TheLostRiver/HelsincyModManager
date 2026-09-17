@@ -820,7 +820,10 @@ impl BatchInstallTaskRunner {
         batch: &SealedBatch,
         plan_item: &hmm_core::BatchItemPlan,
     ) -> BatchItemFactsCheck {
-        let facts = match self.facts_provider.read_batch_plan_facts(&batch.request) {
+        let facts = match self
+            .facts_provider
+            .read_batch_item_facts(&batch.request, plan_item.input_snapshot.mod_id())
+        {
             Ok(facts) => facts,
             Err(_) => return BatchItemFactsCheck::Unavailable,
         };

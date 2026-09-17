@@ -49,7 +49,7 @@ test("running notice is strictly task keyed and terminal toast stays feature loc
   assert.match(stateSource, /return null/);
 });
 
-test("terminal feedback is published only after durable manifest and recovery refresh", () => {
+test("terminal feedback is published only after the shared durable recovery refresh", () => {
   const page = readSource("src/features/mods/ModLibraryPage.tsx");
   const profileRefEffect = page.search(
     /useEffect\(\(\) => \{\s*installationScopeIdRef\.current = installationScope\.status === "ready" \? installationScopeId : null;\s*\}, \[installationScope\.status, installationScopeId\]\);/,
@@ -74,11 +74,12 @@ test("terminal feedback is published only after durable manifest and recovery re
   assert.ok(profileRefEffect < durableProbeStart);
   assert.equal(page.match(/installationScopeIdRef\.current\s*=/g)?.length, 1);
   assert.ok(writeRefreshStart >= 0);
-  assert.match(writeRefresh, /resetContentScroll\(\);\s*await refreshModLibrary\(\);/);
+  assert.match(writeRefresh, /await synchronizeLibraryPage\(\)/);
   assert.ok(durableProbeStart >= 0);
-  assert.match(durableProbe, /refreshModLibraryDurableStatuses\(\[createModLibraryStatusProbe\(modId,\s*modName\)\]/);
-  assert.match(durableProbe, /loadManifestStatuses:[\s\S]*?getInstallManifestStatus/);
-  assert.match(durableProbe, /loadRecoveryStatuses:[\s\S]*?scanInstallRecovery/);
+  assert.match(durableProbe, /await synchronizeLibraryPage\(\)/);
+  assert.match(durableProbe, /readStatusSnapshot\(DEFAULT_INSTALL_GAME_ID, profileId\)/);
+  assert.match(durableProbe, /createModLibraryStatusProbe\(modId,\s*modName\)/);
+  assert.doesNotMatch(durableProbe, /getInstallManifestStatus|scanInstallRecovery/);
   assert.doesNotMatch(durableProbe, /libraryItems(?:Ref)?|libraryPage/);
   assert.ok(refreshStart >= 0);
   assert.ok(allSettledCall > refreshStart);

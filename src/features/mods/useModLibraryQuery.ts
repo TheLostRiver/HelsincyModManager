@@ -45,13 +45,18 @@ export type ModLibraryQueryCache = {
   invalidatePage: (profileKey: string, queryKey: string) => void;
   getGeneration: () => number;
   subscribe: (notify: () => void) => () => void;
+  isWriting?: () => boolean;
+  waitForWrites?: () => Promise<void>;
+  readDisplayPage?: (profileKey: string, queryKey: string) => ModLibraryPage | null;
 };
+
+export type ModLibraryLoadContext = { generation: number; isCurrent: () => boolean };
 
 type UseModLibraryQueryInput = {
   rawSearch: string;
   filter: ModLibraryFilter;
   profileContext: ModLibraryProfileContext | null;
-  loadPage: (input: QueryModLibraryInput) => Promise<ModLibraryPage>;
+  loadPage: (input: QueryModLibraryInput, context: ModLibraryLoadContext) => Promise<ModLibraryPage>;
   cache?: ModLibraryQueryCache | null;
 };
 
@@ -130,6 +135,8 @@ export function useModLibraryQuery({
   const latestCommittedQueryKeyRef = useRef<string | null>(null);
   const latestCommittedGenerationRef = useRef(cacheGeneration);
   const lastExecutionRef = useRef<{ queryKey: string; generation: number; loadPage: typeof loadPage } | null>(null);
+  const inFlightRef = useRef<{ queryKey: string; generation: number; requestId: number; loadPage: typeof loadPage; promise: Promise<ModLibraryPage | null> } | null>(null);
+  const resolvedRef = useRef<{ queryKey: string; generation: number; loadPage: typeof loadPage; page: ModLibraryPage } | null>(null);
   const latestRequestRef = useRef<ModLibraryQueryRequest | null>(null);
   const profileQueryPage = resolveProfileQueryPage(
     previousProfileKeyRef.current,
@@ -199,11 +206,12 @@ export function useModLibraryQuery({
 
     // 命中就先摆出上次的结果。注意这里**不** return——下面的请求照发，
     // 缓存只负责填住「请求在路上」这段空窗，不负责代替事实。
-    const cachedPage = cacheRef.current?.readPage(profileKey, queryKey) ?? null;
+    const cachedPage = cacheRef.current?.readPage(profileKey, queryKey)
+      ?? cacheRef.current?.readDisplayPage?.(profileKey, queryKey) ?? null;
 
     setExecutionState((current) => ({
       ...resolveQueryStartExecutionState(
-        current.generation === cacheGeneration ? current : { ...current, record: null },
+        current,
         profileKey,
         cachedPage,
       ),
@@ -212,15 +220,23 @@ export function useModLibraryQuery({
   }, [cacheGeneration, profileKey, queryInput, queryKey]);
 
   const executeQuery = useCallback(
-    async (request: ModLibraryQueryRequest) => {
-      if (!mountedRef.current) return null;
-      const requestId = requestGateRef.current.beginRequest();
+    (request: ModLibraryQueryRequest, onlyIfStale = false): Promise<ModLibraryPage | null> => {
+      if (!mountedRef.current || cacheRef.current?.isWriting?.()) return Promise.resolve(null);
       const generation = cacheRef.current?.getGeneration() ?? 0;
+      const inFlight = inFlightRef.current;
+      if (inFlight?.queryKey === request.queryKey && inFlight.generation === generation
+        && inFlight.loadPage === loadPage && requestGateRef.current.isLatest(inFlight.requestId)) return inFlight.promise;
+      const resolved = resolvedRef.current;
+      if (onlyIfStale && resolved?.queryKey === request.queryKey && resolved.generation === generation
+        && resolved.loadPage === loadPage) return Promise.resolve(resolved.page);
+      const requestId = requestGateRef.current.beginRequest();
+      resolvedRef.current = null;
       lastExecutionRef.current = { queryKey: request.queryKey, generation, loadPage };
 
       const isCurrentResponse = () => isCommittedModLibraryQueryResponse(
         mountedRef.current && requestGateRef.current.isLatest(requestId)
-          && generation === (cacheRef.current?.getGeneration() ?? 0),
+          && generation === (cacheRef.current?.getGeneration() ?? 0)
+          && !cacheRef.current?.isWriting?.(),
         latestCommittedQueryKeyRef.current,
         request.queryKey,
       );
@@ -229,54 +245,63 @@ export function useModLibraryQuery({
       // 再查一遍只会把可能更新的在途结果按回到同一份旧快照。
       setExecutionState((current) => ({
         ...resolveQueryStartExecutionState(
-          current.generation === generation ? current : { ...current, record: null },
+          current,
           request.profileKey,
           null,
         ),
         generation,
       }));
 
-      try {
-        const page = await loadPage(request.input);
-        if (!isCurrentResponse()) {
-          return null;
+      const promise = Promise.resolve().then(async () => {
+        try {
+          if (!isCurrentResponse()) return null;
+          const page = await loadPage(request.input, { generation, isCurrent: isCurrentResponse });
+          if (!isCurrentResponse()) {
+            return null;
+          }
+
+          setExecutionState({
+            record: { profileKey: request.profileKey, page },
+            phase: page.statusVerified === false ? "error" : "idle",
+            phaseProfileKey: request.profileKey,
+            errorCode: page.statusVerified === false ? "mod_library_status_unavailable" : null,
+            generation,
+          });
+
+          resolvedRef.current = { queryKey: request.queryKey, generation, loadPage, page };
+          if (page.page !== request.input.page) {
+            // 缓存身份以结果实际对应的页码为准，避免夹紧后的额外查询及错误的分页快照。
+            const clampedInput = { ...request.input, page: page.page };
+            skippedClampQueryKeyRef.current = getQueryKey(clampedInput);
+            resolvedRef.current.queryKey = skippedClampQueryKeyRef.current;
+            if (page.statusVerified !== false) {
+              cacheRef.current?.writePage(request.profileKey, skippedClampQueryKeyRef.current, page, generation);
+            }
+            setRequestedPage(page.page);
+          } else if (page.statusVerified !== false) {
+            cacheRef.current?.writePage(request.profileKey, request.queryKey, page, generation);
+          }
+
+          return page;
+        } catch (error: unknown) {
+          if (!isCurrentResponse()) {
+            return null;
+          }
+
+          cacheRef.current?.invalidatePage(request.profileKey, request.queryKey);
+          setExecutionState((current) => ({
+            ...current,
+            phase: "error",
+            phaseProfileKey: request.profileKey,
+            errorCode: normalizeModLibraryQueryErrorCode(error),
+          }));
+          throw error;
+        } finally {
+          if (inFlightRef.current?.requestId === requestId) inFlightRef.current = null;
         }
-
-        setExecutionState({
-          record: { profileKey: request.profileKey, page },
-          phase: "idle",
-          phaseProfileKey: request.profileKey,
-          errorCode: null,
-          generation,
-        });
-
-        if (page.page !== request.input.page) {
-          // 后端把页码夹紧了，这份结果对应的其实是夹紧后的查询。按请求时的 key 存会让
-          // 下次请求越界页码时先闪一下别的页，所以按**结果实际对应**的 key 存。
-          const clampedInput = { ...request.input, page: page.page };
-          skippedClampQueryKeyRef.current = getQueryKey(clampedInput);
-          cacheRef.current?.writePage(request.profileKey, skippedClampQueryKeyRef.current, page, generation);
-          setRequestedPage(page.page);
-        } else {
-          cacheRef.current?.writePage(request.profileKey, request.queryKey, page, generation);
-        }
-
-        return page;
-      } catch (error: unknown) {
-        if (!isCurrentResponse()) {
-          return null;
-        }
-
-        cacheRef.current?.invalidatePage(request.profileKey, request.queryKey);
-        setExecutionState((current) => ({
-          ...current,
-          record: null,
-          phase: "error",
-          phaseProfileKey: request.profileKey,
-          errorCode: normalizeModLibraryQueryErrorCode(error),
-        }));
-        throw error;
-      }
+      });
+      inFlightRef.current = { queryKey: request.queryKey, generation, requestId, loadPage, promise };
+      return promise;
     },
     [loadPage],
   );
@@ -327,6 +352,7 @@ export function useModLibraryQuery({
     () => () => {
       requestGateRef.current.invalidate();
       lastExecutionRef.current = null;
+      inFlightRef.current = null;
       if (debounceTimerRef.current !== null) {
         window.clearTimeout(debounceTimerRef.current);
       }
@@ -371,6 +397,16 @@ export function useModLibraryQuery({
     return executeQuery(request);
   }, [executeQuery]);
 
+  // Write callbacks and the generation effect converge on the same in-flight or completed
+  // synchronization. Explicit user refresh remains a fresh request after errors/completion.
+  const synchronize = useCallback(async () => {
+    const profile = latestRequestRef.current?.profileKey;
+    await cacheRef.current?.waitForWrites?.();
+    const request = latestRequestRef.current;
+    if (request?.profileKey !== profile) return null;
+    return request === null ? null : executeQuery(request, true);
+  }, [executeQuery]);
+
   const updateCurrentPageItems = useCallback(
     (update: (items: ModLibraryItem[]) => ModLibraryItem[]) => {
       if (!mountedRef.current || latestRequestRef.current?.profileKey !== profileKey) return;
@@ -383,12 +419,14 @@ export function useModLibraryQuery({
       const committedQueryKey = latestCommittedQueryKeyRef.current;
       const generation = cacheRef.current?.getGeneration() ?? 0;
       requestGateRef.current.invalidate();
+      inFlightRef.current = null;
+      resolvedRef.current = null;
       if (committedQueryKey !== null) {
         cacheRef.current?.invalidatePage(profileKey, committedQueryKey);
       }
 
       setExecutionState((current) => {
-        if (current.record?.profileKey !== profileKey || current.generation !== generation) {
+        if (current.record?.profileKey !== profileKey) {
           return {
             ...current,
             record: null,
@@ -401,8 +439,8 @@ export function useModLibraryQuery({
 
         return {
           ...current,
-          phase: "idle",
-          errorCode: null,
+          phase: "error",
+          errorCode: "mod_library_status_unavailable",
           record: {
             ...current.record,
             page: {
@@ -417,7 +455,8 @@ export function useModLibraryQuery({
   );
 
   const generationIsCurrent = executionState.generation === cacheGeneration;
-  const page = generationIsCurrent && executionState.record?.profileKey === profileKey ? executionState.record.page : null;
+  const page = executionState.record?.profileKey === profileKey ? executionState.record.page : null;
+  const writing = cache?.isWriting?.() ?? false;
   const phaseIsCurrent = generationIsCurrent && executionState.phaseProfileKey === profileKey;
   const phase = phaseIsCurrent ? executionState.phase : "initial-loading";
   const errorCode = phaseIsCurrent ? executionState.errorCode : null;
@@ -431,7 +470,9 @@ export function useModLibraryQuery({
     sort,
     setSort,
     initialLoading: blockedReason === null && page === null && phase !== "error",
-    refreshing: blockedReason === null && page !== null && phase === "refreshing",
+    refreshing: blockedReason === null && page !== null && (phase === "refreshing" || !generationIsCurrent || writing),
+    statusTrusted: blockedReason === null && page !== null && phase === "idle" && generationIsCurrent && !writing && page.statusVerified !== false,
+    writing,
     errorCode,
     blockedReason,
     setPage,
@@ -439,6 +480,7 @@ export function useModLibraryQuery({
     resetPage,
     flushSearch,
     refresh,
+    synchronize,
     updateCurrentPageItems,
   };
 }

@@ -1,5 +1,23 @@
 # 测试指南
 
+## Mod 写入后的列表同步
+
+```powershell
+node --test src/features/mods/modLibraryRefreshBehavior.test.mjs src/features/mods/modLibraryPageLoader.test.mjs src/features/mods/modLibraryRecoveryRefresh.test.mjs src/features/mods/modLibraryWriteTracking.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs
+cargo test -p hmm-app --lib batch_
+cargo test -p hmm-runtime --lib batch_
+cargo test -p hmm-tauri --lib task_events
+```
+
+用真实 hook／Provider 和可控 IPC 时序验证：写入前占用、终态早到、重复和乱序事件、批量与重试、
+跨路由、作用域切换、启动／查询失败、失败不解锁、保留卡片与同一轮共享状态扫描。批量 5／10／20
+项分别验证 runner 一次全读加 N 次窄读；无恢复记录的卸载文件与备份读取各为 2N，不计单项事务自身
+复核。Runtime 用临时目录的 10 项安装／卸载验证真实事务与未归属文件保留，其他安全反例继续执行。
+
+Windows 验收另用人工 fixture 延长文件扫描／锁等待，确认宿主窗口交互仍响应、列表不整页清空、
+普通安装／卸载不重置滚动。自动测试的调用次数不代表真实 Mod 的秒级耗时；磁盘速度、文件体积和
+必要恢复校验仍影响扫描完成时间。跨层候选须运行完整 `scripts/verify.ps1`。
+
 ## Mod 库排序与统计
 
 以下命令在仓库根目录执行。

@@ -53,7 +53,7 @@ test("the existing add action owns import and refreshes the library on completio
     panelSource,
     /<ModImportAction\s+label=\{buttonText\.add\}\s+disabledReason=\{storageWriteFreezeReason\}\s+onImported=\{onImportCompleted\}/,
   );
-  assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
+  assert.match(pageSource, /onImportCompleted=\{refreshModLibraryAfterChange\}/);
   assert.match(dataSource, /id: "add", label: "导入 Mod"/);
 });
 

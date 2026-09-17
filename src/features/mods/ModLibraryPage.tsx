@@ -8,7 +8,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listenModLibraryTaskProgress } from "./modLibraryWriteTracking.ts";
 import { useFeedback } from "../../shared/feedback";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import { BackToTopButton } from "./BackToTopButton";
@@ -84,7 +84,7 @@ import {
   type ModLifecycleToast,
 } from "./modLifecycleFeedbackState";
 import { useExternalStateSession } from "./ExternalStateSessionProvider";
-import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
+import type { TaskProgressEventDto } from "./modImportTypes";
 import { getModLibraryBackToTopTarget, scrollModLibraryBackToTop } from "./modLibraryBackToTop";
 import { getModRevisions, queryModLibrary } from "./modLibraryApi";
 import { listCategories, type CategoryItem } from "./modCategoryApi";
@@ -95,7 +95,7 @@ import {
   normalizeLibraryFilter,
   type ModLibraryFilter,
 } from "./modLibraryFilters";
-import { isUnsafeInstallStatus } from "./modLibraryLoadState";
+import { applyInstallRecoverySummaries, isUnsafeInstallStatus } from "./modLibraryLoadState";
 import { createDetailDialogState } from "./modLibraryRefresh";
 import {
   isPlainBrowserDevRuntime,
@@ -103,8 +103,8 @@ import {
 } from "./modLibraryQueryState";
 import {
   createModLibraryStatusProbe,
-  refreshModLibraryDurableStatuses,
 } from "./modLibraryRecoveryRefresh";
+import { loadModLibraryPageWithStatuses } from "./modLibraryPageLoader.ts";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import type {
   ModInstallSummary,
@@ -131,7 +131,7 @@ import { ModInstallationNotice } from "./ModInstallationNotice";
 import { useModStorageSettings } from "../settings/ModStorageSettingsProvider";
 import { useInstallConfigTarget } from "../install-config/InstallConfigTargetProvider";
 import { getModStorageFreezeReason } from "../settings/modStorageTypes";
-import { useModLibraryQuery } from "./useModLibraryQuery";
+import { useModLibraryQuery, type ModLibraryLoadContext } from "./useModLibraryQuery";
 import { useModReinstallWorkflow } from "./useModReinstallWorkflow";
 import {
   analyzeImportedModReplacement,
@@ -371,7 +371,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   const installationScopeIdRef = useRef<string | null>(installationScopeId);
   const pageMountedRef = useRef(true);
   const handledInstallTerminalTaskIdsRef = useRef(new Set<string>());
-  const handledBatchTerminalAttemptsRef = useRef(new Set<string>());
   const startFailureToastSequenceRef = useRef(0);
   const deleteToastSequenceRef = useRef(0);
   const pendingInstallProgressEventsRef = useRef<Map<string, TaskProgressEventDto>>(new Map());
@@ -430,29 +429,14 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }),
     [],
   );
-  const loadModLibraryPage = useCallback(async (input: QueryModLibraryInput): Promise<ModLibraryPageResult> => {
-    const page = browserPreviewEnabled
-      ? queryBrowserMockModLibrary(input, fallbackModLibraryItems, categoriesRef.current)
-      : await queryModLibrary(input);
-    if (browserPreviewEnabled || input.profileContext === undefined) {
-      return page;
-    }
-
-    const { profileId } = input.profileContext;
-    const durableStatuses = await refreshModLibraryDurableStatuses(page.items, {
-      loadManifestStatuses: (modIds) => getInstallManifestStatus({
-        gameId: DEFAULT_INSTALL_GAME_ID,
-        profileId,
-        modIds,
-      }),
-      loadRecoveryStatuses: (modIds) => scanInstallRecovery({
-        gameId: DEFAULT_INSTALL_GAME_ID,
-        profileId,
-        modIds,
-      }),
+  const loadModLibraryPage = useCallback(async (input: QueryModLibraryInput, context: ModLibraryLoadContext): Promise<ModLibraryPageResult> => {
+    if (browserPreviewEnabled) return queryBrowserMockModLibrary(input, fallbackModLibraryItems, categoriesRef.current);
+    return loadModLibraryPageWithStatuses(input, context, {
+      query: queryModLibrary,
+      scan: scanInstallRecovery,
+      cache: librarySessionCache,
     });
-    return { ...page, items: durableStatuses.items };
-  }, [browserPreviewEnabled]);
+  }, [browserPreviewEnabled, librarySessionCache]);
   const libraryQuery = useModLibraryQuery({
     rawSearch: query,
     filter: activeFilter,
@@ -503,7 +487,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     [profileContext],
   );
   const batchWorkflow = useBatchModLifecycleWorkflow({
-    onWriteSettled: librarySessionCache.invalidateAllPages,
     gameId: profileContext === null ? null : DEFAULT_INSTALL_GAME_ID,
     profileId: profileContext?.profileId ?? null,
     loadManifestStatuses: (modIds) =>
@@ -525,10 +508,11 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     refresh: refreshLibraryPage,
     resetPage: resetLibraryPage,
     updateCurrentPageItems,
+    synchronize: synchronizeLibraryPage,
   } = libraryQuery;
   const libraryQueryBlocked = libraryQuery.blockedReason !== null;
-  const libraryQueryBusy = !libraryQueryBlocked
-    && (libraryQuery.initialLoading || libraryQuery.refreshing);
+  // Display snapshots also survive errors; every write entry must require verified facts.
+  const libraryQueryBusy = !libraryQuery.statusTrusted;
   const libraryQueryErrorMessage =
     libraryQuery.errorCode === null
       ? null
@@ -622,10 +606,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [refreshCategories, refreshLibraryPage]);
 
   const refreshModLibraryAfterWrite = useCallback(async () => {
+    await synchronizeLibraryPage();
+  }, [synchronizeLibraryPage]);
+
+  const refreshModLibraryAfterChange = useCallback(async () => {
     librarySessionCache.invalidateAllPages();
-    resetContentScroll();
     await refreshModLibrary();
-  }, [librarySessionCache, refreshModLibrary, resetContentScroll]);
+  }, [librarySessionCache, refreshModLibrary]);
 
   // 拖拽导入（T22 / #366）在 RouterOutlet 之上，回调穿不过路由，所以走计数订阅：
   // 后台每导进一个就 +1，更新分类与选择；分页由共享失效订阅刷新。**不重置滚动**——玩家可能正在翻库，
@@ -640,20 +627,16 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [libraryRevision, refreshCategories]);
 
   const refreshTerminalDurableStatus = useCallback(
-    (profileId: string, modId: string, modName: string) =>
-      refreshModLibraryDurableStatuses([createModLibraryStatusProbe(modId, modName)], {
-        loadManifestStatuses: (modIds) => getInstallManifestStatus({
-          gameId: DEFAULT_INSTALL_GAME_ID,
-          profileId,
-          modIds,
-        }),
-        loadRecoveryStatuses: (modIds) => scanInstallRecovery({
-          gameId: DEFAULT_INSTALL_GAME_ID,
-          profileId,
-          modIds,
-        }),
-      }),
-    [],
+    async (profileId: string, modId: string, modName: string) => {
+      await synchronizeLibraryPage();
+      const snapshot = librarySessionCache.readStatusSnapshot(DEFAULT_INSTALL_GAME_ID, profileId);
+      const summary = snapshot?.summaries.find((item) => item.modId === modId);
+      return {
+        verified: snapshot?.verified === true && summary !== undefined,
+        items: applyInstallRecoverySummaries([createModLibraryStatusProbe(modId, modName)], summary ? [summary] : []),
+      };
+    },
+    [librarySessionCache, synchronizeLibraryPage],
   );
 
   const reinstallWorkflow = useModReinstallWorkflow({
@@ -662,31 +645,13 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     selectedItem,
     writeTaskActive: managedInstallTaskActive,
     refreshLibrary: refreshModLibraryAfterWrite,
+    readInstallStatus: (context) => {
+      const snapshot = librarySessionCache.readStatusSnapshot(context.gameId, context.profileId);
+      const status = snapshot?.verified ? snapshot.summaries.find((summary) => summary.modId === context.modId)?.status : undefined;
+      return status === "completed" ? "installed" : status ?? "unknown";
+    },
   });
   const { openReinstall } = reinstallWorkflow;
-
-  /*
-   * 写任务一开跑就把分页缓存作废。
-   *
-   * 写完成时的刷新会把缓存重新填上——但**前提是玩家还留在这一页**。点了安装就切走、
-   * 后台装完的情况下，页面早卸载了，那次刷新的响应会被 request gate 挡下（不写缓存），
-   * 于是缓存里留着的是「装之前」的状态。切回来先摆出它，玩家会以为安装没生效。
-   *
-   * 所以在**开始**写的时候就丢掉：留在页面上的话马上会被刷新结果填回来；不留的话
-   * 缓存就是空的，切回来老老实实出骨架屏。两条路都不会摆出已经过时的状态。
-   */
-  // 四条都取「写真的在跑」而不是「相关面板开着」：重装用 taskActive 不用 workflowActive
-  // （后者只表示预览弹窗开着，那是读），批量只取执行或重试中（预览也是读）。
-  // 打开一个预览再关掉不该白清一次缓存。
-  const libraryWriteInFlight =
-    managedInstallTaskActive
-    || reinstallWorkflow.taskActive
-    || deletionBusy
-    || batchWorkflow.taskActive;
-  useEffect(() => {
-    if (!libraryWriteInFlight) return;
-    librarySessionCache.invalidateAllPages();
-  }, [librarySessionCache, libraryWriteInFlight]);
 
   const uninstallBlockerMessage = useMemo(() => {
     if (uninstallConfirmation === null) {
@@ -821,19 +786,6 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [selectedIds, selectionMode]);
 
   useEffect(() => {
-    if (batchWorkflow.state.status !== "result") {
-      return;
-    }
-    const batchAttemptKey = `${batchWorkflow.state.batchId}:${batchWorkflow.state.attemptNumber}`;
-    if (handledBatchTerminalAttemptsRef.current.has(batchAttemptKey)) {
-      return;
-    }
-
-    handledBatchTerminalAttemptsRef.current.add(batchAttemptKey);
-    void refreshLibraryPage().catch(() => undefined);
-  }, [batchWorkflow.state, refreshLibraryPage]);
-
-  useEffect(() => {
     if (!isManagedInstallTaskTerminal(installTaskState)) {
       return;
     }
@@ -896,7 +848,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     let disposed = false;
     let unlistenTaskProgress: (() => void) | null = null;
 
-    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
+    void listenModLibraryTaskProgress((event) => {
       if (disposed) {
         return;
       }
@@ -994,7 +946,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
   }, [libraryItems.length, scrollUiState.showScrollUi, updateScrollUiState]);
 
   const selectionInteractionDisabledReason = libraryQueryBusy
-    ? copy.page.queryBusy
+    ? libraryQueryErrorMessage ?? (libraryQueryBlocked ? libraryQueryBlockedMessage : copy.page.queryBusy)
     : managedInstallTaskActive || reinstallWorkflow.workflowActive
       ? copy.page.cardAction.waitInstallTask
       : batchWorkflow.state.status !== "idle"
@@ -1534,6 +1486,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     }
 
     setDeletionBusy(true);
+    const writeToken = librarySessionCache.beginWrite();
     let deleted = 0;
     const failures: string[] = [];
     for (const entry of targets) {
@@ -1552,6 +1505,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       }
     }
     setDeletionBusy(false);
+    librarySessionCache.finishWrite(writeToken);
 
     if (!pageMountedRef.current) {
       return;
@@ -1802,7 +1756,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
             canReinstallSelection={canReinstallSelected}
             canUninstallSelection={canUninstallSelected}
             canDeleteSelection={selectionMode === "batch" && selectedIds.size > 0}
-            onImportCompleted={refreshModLibraryAfterWrite}
+            onImportCompleted={refreshModLibraryAfterChange}
             onAction={handleAction}
           />
         </div>
@@ -1862,7 +1816,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           onReplacementTargetChange={batchWorkflow.setReplacementTarget}
           onReapplyTargetChange={batchWorkflow.setReapplyTarget}
           onPreviewWithReplacementTargets={batchWorkflow.previewWithReplacementTargets}
-          onConfirm={() => void batchWorkflow.confirmAndStart()}
+          writeDisabled={libraryQueryBusy}
+          onConfirm={() => { if (!libraryQueryBusy) void batchWorkflow.confirmAndStart(); }}
           onClose={batchWorkflow.reset}
         />
       )}
@@ -1870,7 +1825,8 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       {batchWorkflow.state.status === "result" && (
         <BatchModLifecycleResultPanel
           workflowState={batchWorkflow.state}
-          onRetry={() => void batchWorkflow.retry()}
+          writeDisabled={libraryQueryBusy}
+          onRetry={() => { if (!libraryQueryBusy) void batchWorkflow.retry(); }}
           onLoadMore={() => void batchWorkflow.loadMoreResult()}
           onClose={closeBatchResult}
         />
@@ -1907,7 +1863,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
           profileId={installationScope.status === "ready" ? installationScopeId : null}
           installStatus={detailDialogState.fallbackItem?.installSummary?.status}
           onClose={() => setDetailDialogState(null)}
-          onSaved={refreshModLibraryAfterWrite}
+          onSaved={refreshModLibraryAfterChange}
           onExternalStateResult={recordExternalStateResult}
         />
       ) : null}
@@ -1926,7 +1882,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
         <div
           ref={contentRef}
           className="mod-library__content"
-          aria-busy={libraryQueryBusy}
+          aria-busy={libraryQuery.initialLoading || libraryQuery.refreshing}
         >
           {libraryQueryBlocked ? (
             <ModLibraryQueryBlockedState
@@ -1992,7 +1948,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       <ModLibraryPagination
         pageSize={libraryQuery.pageSize}
         result={libraryPage}
-        busy={libraryQueryBusy}
+        busy={libraryQuery.initialLoading || libraryQuery.refreshing}
         onPageSizeChange={handlePageSizeChange}
         onPageChange={handlePageChange}
       />

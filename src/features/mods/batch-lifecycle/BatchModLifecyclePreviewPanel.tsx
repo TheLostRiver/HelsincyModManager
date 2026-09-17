@@ -21,6 +21,7 @@ import { PluginSelectionPanel } from "../../install-plugins/PluginSelectionPanel
 import type { PluginInventory } from "../../install-plugins/pluginSelectionTypes";
 
 export type BatchModLifecyclePreviewPanelProps = {
+  writeDisabled?: boolean;
   pluginChoices?: PluginInventory[];
   pluginSaving?: boolean;
   pluginError?: unknown;
@@ -144,6 +145,7 @@ function PreviewItems({ request }: { request: BatchModLifecycleRequestDto }) {
 }
 
 export function BatchModLifecyclePreviewPanel({
+  writeDisabled = false,
   workflowState,
   resolution,
   policy,
@@ -364,7 +366,7 @@ export function BatchModLifecyclePreviewPanel({
             <button
               type="button"
               className="batch-panel__confirm"
-              disabled={confirmDisabled}
+              disabled={writeDisabled || confirmDisabled}
               onClick={onConfirm}
             >
               <CheckCircle2 size={16} aria-hidden="true" />

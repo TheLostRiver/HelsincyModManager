@@ -19,7 +19,7 @@ test("cache provider encloses both the router and window-wide import queue", () 
 
 test("the stable cache store and task subscription belong to the long-lived provider", () => {
   assert.match(provider, /useRef<ModLibrarySessionStore \| null>/);
-  assert.match(provider, /value\.observeTask\(payload\)/);
+  assert.match(provider, /publishModLibraryTaskProgress\(payload\)/);
   assert.doesNotMatch(provider, /useState/);
   assert.match(provider, /unlisten\?\.\(\)/);
 });
@@ -30,15 +30,12 @@ test("the library consumes the shared cache and versioned category snapshot", ()
   assert.match(page, /librarySessionCache\.writeCategories\(loadedCategories, cacheGeneration\)/);
 });
 
-test("known write starts invalidate pages without treating read previews as writes", () => {
-  const start = page.indexOf("const libraryWriteInFlight =");
-  const end = page.indexOf("if (!libraryWriteInFlight) return;");
-  assert.ok(start >= 0 && end > start);
-  const predicate = page.slice(start, end);
-  for (const fact of ["managedInstallTaskActive", "reinstallWorkflow.taskActive", "deletionBusy", "batchWorkflow.taskActive"]) {
-    assert.ok(predicate.includes(fact));
-  }
-  assert.doesNotMatch(predicate, /workflowActive|status !== "idle"/);
+test("write ownership is registered by API starts rather than page render effects", () => {
+  assert.doesNotMatch(page, /const libraryWriteInFlight/);
+  const api = readFileSync("src/features/mods/modInstallPlanApi.ts", "utf8");
+  assert.match(api, /trackModLibraryTaskStart\(input, \(\) => invoke<TaskStartedDto>\("start_install_task"/);
+  assert.match(api, /trackModLibraryTaskStart\(input, \(\) => invoke<TaskStartedDto>\("start_uninstall_task"/);
+  assert.match(provider, /attachModLibraryWriteTracking\(value\)/);
 });
 
 test("only invalidation subscriptions drive cache-related query effects", () => {

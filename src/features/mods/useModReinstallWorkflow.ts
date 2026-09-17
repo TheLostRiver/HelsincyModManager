@@ -1,10 +1,10 @@
-import { listen } from "@tauri-apps/api/event";
+import { listenModLibraryTaskProgress } from "./modLibraryWriteTracking.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveCopy, useI18n } from "../../shared/i18n";
 import type { GameId } from "../game-setup/gameSetupTypes";
 import { getInstallManifestStatus } from "./modInstallPlanApi";
 import type { InstallManifestStatus } from "./modInstallPlanTypes";
-import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
+import type { TaskProgressEventDto } from "./modImportTypes";
 import { getModRevisions } from "./modLibraryApi";
 import type { ModLibraryItem, ModRevisionList } from "./modLibraryTypes";
 import { modReinstallCopy } from "./modReinstallCopy";
@@ -51,6 +51,7 @@ type UseModReinstallWorkflowInput = {
   selectedItem: ModLibraryItem | null;
   writeTaskActive: boolean;
   refreshLibrary: () => Promise<void> | void;
+  readInstallStatus?: (context: ReinstallTaskContext) => InstallManifestStatus;
 };
 
 type ReinstallTaskContext = {
@@ -65,6 +66,7 @@ export function useModReinstallWorkflow({
   selectedItem,
   writeTaskActive,
   refreshLibrary,
+  readInstallStatus,
 }: UseModReinstallWorkflowInput) {
   const { locale } = useI18n();
   const reCopy = resolveCopy(modReinstallCopy, locale);
@@ -127,10 +129,13 @@ export function useModReinstallWorkflow({
 
   const refreshTaskDurableFacts = useCallback(
     async (context: ReinstallTaskContext) => {
+      // The library owns one scan for the page and terminal target union.
+      await Promise.resolve(refreshLibrary()).catch(() => undefined);
       const [facts] = await Promise.all([
         refreshReinstallDurableFacts({
           loadRevisions: () => getModRevisions({ modId: context.modId }),
           loadInstallStatus: async () => {
+            if (readInstallStatus) return readInstallStatus(context);
             const summaries = await getInstallManifestStatus({
               gameId: context.gameId,
               profileId: context.profileId,
@@ -139,9 +144,6 @@ export function useModReinstallWorkflow({
             return summaries.find((summary) => summary.modId === context.modId)?.status ?? "unknown";
           },
         }),
-        Promise.resolve()
-          .then(() => refreshLibrary())
-          .catch(() => undefined),
       ]);
 
       setTrackedDialogState((current) => {
@@ -159,7 +161,7 @@ export function useModReinstallWorkflow({
       });
       if (scopeRef.current.gameId === context.gameId && scopeRef.current.profileId === context.profileId) reloadPlugins();
     },
-    [refreshLibrary, setTrackedDialogState, reloadPlugins],
+    [refreshLibrary, readInstallStatus, setTrackedDialogState, reloadPlugins],
   );
 
   const applyProgressState = useCallback(
@@ -190,7 +192,7 @@ export function useModReinstallWorkflow({
     let disposed = false;
     let unlistenTaskProgress: (() => void) | null = null;
 
-    void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, (event) => {
+    void listenModLibraryTaskProgress((event) => {
       if (
         disposed ||
         event.payload.kind !== "install" ||

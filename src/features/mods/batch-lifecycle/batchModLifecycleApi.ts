@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { trackModLibraryBatchWrite } from "../modLibraryWriteTracking.ts";
 import type { TaskStartedDto } from "../modImportTypes";
 import {
   BATCH_MOD_LIFECYCLE_RESULT_PAGE_SIZE,
@@ -36,10 +37,10 @@ export function startBatchModLifecycle(input: {
   batchId: string;
   planToken: string;
 }): Promise<BatchModLifecycleStartedDto> {
-  return invoke<BatchModLifecycleStartedDto>("start_batch_mod_lifecycle", {
+  return trackModLibraryBatchWrite(() => invoke<BatchModLifecycleStartedDto>("start_batch_mod_lifecycle", {
     batchId: input.batchId,
     planToken: input.planToken,
-  });
+  }));
 }
 
 export function getBatchModLifecycleResult(input: {
@@ -63,10 +64,10 @@ export function retryBatchModLifecycle(input: {
   batchId: string;
   expectedAttemptNumber: number;
 }): Promise<BatchModLifecycleStartedDto> {
-  return invoke<BatchModLifecycleStartedDto>("retry_batch_mod_lifecycle", {
+  return trackModLibraryBatchWrite(() => invoke<BatchModLifecycleStartedDto>("retry_batch_mod_lifecycle", {
     batchId: input.batchId,
     expectedAttemptNumber: input.expectedAttemptNumber,
-  });
+  }));
 }
 
 /** Cancellation reuses the controlled `cancel_task` command. T13-06 batch `start`/`retry`

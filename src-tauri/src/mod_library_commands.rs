@@ -11,23 +11,28 @@ use hmm_core::{GameId, ProfileId};
 use tauri::State;
 
 #[tauri::command]
-pub fn query_mod_library(
+pub async fn query_mod_library(
     request: QueryModLibraryRequestDto,
     state: State<'_, AppState>,
 ) -> Result<ModLibraryPageDto, CommandErrorDto> {
     let query = mod_library_query_from_dto(request)?;
-    if let Some(context) = &query.profile_context {
-        crate::mod_installation_commands::require_scope(
-            &state,
-            &context.game_id,
-            &context.profile_id,
-        )?;
-    }
-    state
-        .mod_library_query
-        .query(query)
-        .map(Into::into)
-        .map_err(mod_library_query_error_to_command_error)
+    let scope = std::sync::Arc::clone(&state.mod_installation_scope);
+    let service = state.mod_library_query.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(context) = &query.profile_context {
+            scope
+                .require_current(&context.game_id, &context.profile_id)
+                .map_err(crate::mod_installation_commands::scope_error)?;
+        }
+        service
+            .query(query)
+            .map(Into::into)
+            .map_err(mod_library_query_error_to_command_error)
+    })
+    .await
+    .map_err(|_| {
+        mod_library_query_error_to_command_error(ModLibraryQueryError::LibraryUnavailable)
+    })?
 }
 
 fn mod_library_query_from_dto(

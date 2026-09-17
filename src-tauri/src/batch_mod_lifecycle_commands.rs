@@ -141,7 +141,7 @@ pub async fn start_batch_mod_lifecycle(
 }
 
 #[tauri::command]
-pub fn get_batch_mod_lifecycle_result(
+pub async fn get_batch_mod_lifecycle_result(
     batch_id: String,
     attempt_number: u32,
     cursor: Option<String>,
@@ -150,15 +150,21 @@ pub fn get_batch_mod_lifecycle_result(
 ) -> Result<BatchModLifecycleResultPageDto, CommandErrorDto> {
     let environment = state
         .batch_lifecycle_environment()
-        .map_err(batch_environment_error)?;
+        .map_err(batch_environment_error)?
+        .clone();
     let offset = parse_result_cursor(cursor)?;
     let limit = parse_result_limit(limit)?;
-    let snapshot = BatchLifecycleAutomation::result_with_database(
-        environment,
-        &batch_id,
-        attempt_number,
-        state.database_handle(),
-    )
+    let database = state.database_handle();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        BatchLifecycleAutomation::result_with_database(
+            &environment,
+            &batch_id,
+            attempt_number,
+            database,
+        )
+    })
+    .await
+    .map_err(|_| batch_internal_error())?
     .map_err(batch_automation_error)?;
     Ok(project_result_page(snapshot, offset, limit))
 }

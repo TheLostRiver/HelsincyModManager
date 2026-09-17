@@ -133,7 +133,7 @@ use save_directory_discovery_commands::{
 };
 use save_restore_commands::{preview_save_restore, start_save_restore_task};
 use state::AppState;
-use task_commands::cancel_task;
+use task_commands::{cancel_task, get_task_progress};
 use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use update_commands::check_app_update;
@@ -201,6 +201,7 @@ pub fn run() {
             save_game_directory,
             scan_game_candidates,
             cancel_task,
+            get_task_progress,
             select_external_import_source,
             start_external_import_scan,
             start_external_mod_state_scan,

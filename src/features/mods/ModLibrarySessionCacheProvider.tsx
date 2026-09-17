@@ -13,9 +13,11 @@
 // `modLibrarySessionCache.ts` 与 `modLibrarySessionStore.ts` 里；这里只持有 store 并订阅任务边界。
 
 import { listen } from "@tauri-apps/api/event";
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { createModLibrarySessionStore, type ModLibrarySessionStore } from "./modLibrarySessionStore";
+import { attachModLibraryWriteTracking, publishModLibraryTaskProgress } from "./modLibraryWriteTracking.ts";
+import { getTaskProgress } from "./modTaskProgressApi.ts";
 
 export type ModLibrarySessionCacheValue = ModLibrarySessionStore;
 
@@ -25,6 +27,25 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
   const cacheRef = useRef<ModLibrarySessionStore | null>(null);
   if (cacheRef.current === null) cacheRef.current = createModLibrarySessionStore();
   const value = cacheRef.current;
+  useLayoutEffect(() => attachModLibraryWriteTracking(value), [value]);
+
+  // Events are the fast path. Poll only active desktop tasks to recover a missed terminal
+  // event, even after the page unmounts. An unavailable/unknown task stays occupied.
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await Promise.all(value.activeTaskIds().map(async (taskId) => {
+        try {
+          const event = await getTaskProgress(taskId);
+          if (!disposed && event?.taskId === taskId) publishModLibraryTaskProgress(event);
+        } catch { /* Keep the write occupied; the next observation can recover it. */ }
+      }));
+      if (!disposed) timer = setTimeout(() => { void poll(); }, 1500);
+    };
+    timer = setTimeout(() => { void poll(); }, 1500);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [value]);
 
   useEffect(() => {
     let disposed = false;
@@ -45,7 +66,7 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, ({ payload }) => {
-      if (!disposed) value.observeTask(payload);
+      if (!disposed) publishModLibraryTaskProgress(payload);
     }).then((dispose) => {
       if (disposed) { dispose(); return; }
       unlisten = dispose;

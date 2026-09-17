@@ -34,7 +34,6 @@ export type UseBatchModLifecycleWorkflowInput = {
   profileId: string | null;
   loadManifestStatuses: (modIds: string[]) => Promise<InstallManifestStatusSummary[]>;
   loadRevisions: (modId: string) => Promise<ModRevisionList>;
-  onWriteSettled: () => void;
   loadReplacementTargetFacts?: (
     modIds: string[],
   ) => Promise<BatchModLifecycleReplacementTargetFacts[]>;
@@ -70,7 +69,6 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     profileId,
     loadManifestStatuses,
     loadRevisions,
-    onWriteSettled,
     loadReplacementTargetFacts,
   } = input;
   const [state, setState] = useState<BatchModLifecycleWorkflowState>({ status: "idle" });
@@ -473,7 +471,6 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     }
     const generation = generationRef.current;
     const operation = operationOfRequest(current.request);
-    let writeRequested = false;
     updateState({
       status: "confirming",
       request: current.request,
@@ -501,7 +498,6 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: sealed.batchId,
         planToken: sealed.planToken,
       });
-      writeRequested = true;
       const started = await startBatchModLifecycle({
         batchId: sealed.batchId,
         planToken: sealed.planToken,
@@ -524,12 +520,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: activeAttemptRef.current?.batchId ?? null,
         attemptNumber: activeAttemptRef.current?.attemptNumber ?? null,
       });
-    } finally {
-      // A command/result error may follow successful writes. Invalidate even after unmount
-      // or scope changes; never let an old page cache survive a settled write attempt.
-      if (writeRequested) onWriteSettled();
     }
-  }, [loadResultPage, onWriteSettled, updateState]);
+  }, [loadResultPage, updateState]);
 
   const retry = useCallback(async () => {
     const active = activeAttemptRef.current;
@@ -567,10 +559,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           attemptNumber: active.attemptNumber,
         });
       }
-    } finally {
-      onWriteSettled();
     }
-  }, [loadResultPage, onWriteSettled, updateState]);
+  }, [loadResultPage, updateState]);
 
   const loadMorePendingRef = useRef(false);
   const loadMoreResult = useCallback(async () => {
