@@ -42,7 +42,7 @@ import { resolveCopy, useI18n } from "../i18n";
 import { tourOverlayCopy } from "./tourOverlayCopy";
 import { getFocusableElements } from "../feedback/focusTrap";
 import { useModalFocusTrap } from "../feedback/useModalFocusTrap";
-import { shouldDockTourPanel } from "./tourGeometry";
+import { shouldDockTourPanel, TOUR_PANEL_LAYOUT } from "./tourGeometry";
 import type { TourFeatureIcon, TourOutcome, TourStep } from "./tourTypes";
 import { useTourTarget } from "./useTourTarget";
 
@@ -115,16 +115,12 @@ export function TourOverlay({
     placement: (step.placement ?? "right-start") as Placement,
     whileElementsMounted: autoUpdate,
     middleware: [
-      offset(16),
-      flip({ padding: 16, fallbackAxisSideDirection: "end" }),
-      shift({ padding: 16 }),
+      offset(TOUR_PANEL_LAYOUT.targetGap),
+      flip({ padding: TOUR_PANEL_LAYOUT.viewportPadding, fallbackAxisSideDirection: "end" }),
+      shift({ padding: TOUR_PANEL_LAYOUT.viewportPadding }),
       size({
-        padding: 16,
-        apply({ availableHeight, availableWidth, elements }) {
-          elements.floating.style.setProperty(
-            "--tour-available-width",
-            `${Math.max(0, availableWidth)}px`,
-          );
+        padding: TOUR_PANEL_LAYOUT.viewportPadding,
+        apply({ availableHeight, elements }) {
           elements.floating.style.setProperty(
             "--tour-available-height",
             `${Math.max(0, availableHeight)}px`,
@@ -290,7 +286,12 @@ export function TourOverlay({
     panelLayout.kind === "welcome" ? "is-welcome" : "is-targeted",
     isDocked ? "is-docked" : "",
   ].filter(Boolean).join(" ");
-  const positionerStyle = panelLayout.kind === "floating" ? panelLayout.style : undefined;
+  const positionerStyle = {
+    "--tour-panel-width": `${TOUR_PANEL_LAYOUT.width}px`,
+    "--tour-panel-min-height": `${TOUR_PANEL_LAYOUT.minHeight}px`,
+    "--tour-viewport-padding": `${TOUR_PANEL_LAYOUT.viewportPadding}px`,
+    ...(panelLayout.kind === "floating" ? panelLayout.style : {}),
+  } as CSSProperties;
 
   return (
     <FeedbackPortal>
@@ -309,7 +310,7 @@ export function TourOverlay({
         <div
           ref={setPositionerRef}
           className={positionerClassName}
-          style={positionerStyle as CSSProperties | undefined}
+          style={positionerStyle}
         >
           <section
             ref={panelRef}
