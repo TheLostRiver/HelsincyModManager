@@ -18,6 +18,8 @@ Windows 验收另用人工 fixture 延长文件扫描／锁等待，确认宿主
 普通安装／卸载不重置滚动。自动测试的调用次数不代表真实 Mod 的秒级耗时；磁盘速度、文件体积和
 必要恢复校验仍影响扫描完成时间。跨层候选须运行完整 `scripts/verify.ps1`。
 
+2026-09-17 的同机 native 对照结果见 [Mod 列表刷新性能采样](testing/mod-library-refresh-performance-2026-09-17.md)。
+
 ## Mod 库排序与统计
 
 以下命令在仓库根目录执行。
