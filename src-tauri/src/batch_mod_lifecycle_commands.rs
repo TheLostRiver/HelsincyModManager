@@ -125,12 +125,16 @@ pub async fn start_batch_mod_lifecycle(
         .map_err(batch_environment_error)?
         .clone();
     let database = state.database_handle();
+    let observer = std::sync::Arc::new(
+        crate::mod_installation_state::TauriModInstallationStateObserver::new(&app_handle),
+    );
     let (operation, run) = tauri::async_runtime::spawn_blocking(move || {
-        BatchLifecycleAutomation::start_request_with_database(
+        BatchLifecycleAutomation::start_request_with_observer(
             &environment,
             &batch_id,
             &plan_token,
             database,
+            observer,
         )
     })
     .await
@@ -181,12 +185,16 @@ pub async fn retry_batch_mod_lifecycle(
         .map_err(batch_environment_error)?
         .clone();
     let database = state.database_handle();
+    let observer = std::sync::Arc::new(
+        crate::mod_installation_state::TauriModInstallationStateObserver::new(&app_handle),
+    );
     let (operation, _retry, run) = tauri::async_runtime::spawn_blocking(move || {
-        BatchLifecycleAutomation::retry_with_operation_with_database(
+        BatchLifecycleAutomation::retry_with_operation_with_observer(
             &environment,
             &batch_id,
             expected_attempt_number,
             database,
+            observer,
         )
     })
     .await

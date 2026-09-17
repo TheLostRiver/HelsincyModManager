@@ -283,7 +283,12 @@ fn spawn_recovery_action_runner(
     request: StartRecoveryActionTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let _ = runner.run_recovery_action_task_with_observer(&task_id, request, &observer);
     });
 }
@@ -295,7 +300,12 @@ fn spawn_uninstall_runner(
     request: StartUninstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let _ = runner.run_uninstall_task_with_observer(&task_id, request, &observer);
     });
 }
@@ -308,7 +318,12 @@ fn spawn_install_runner(
     expected_revision: Option<hmm_core::ModRevisionId>,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         match expected_revision {
             Some(revision) => {
                 let _ = runner.run_install_revision_task_with_observer(

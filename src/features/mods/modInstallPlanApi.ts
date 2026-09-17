@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { trackModLibraryTaskStart } from "./modLibraryWriteTracking.ts";
+import { trackModLibraryTaskStart, trackModLibraryIntegrityScan, trackModLibraryManifestScan } from "./modLibraryWriteTracking.ts";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
   GetInstallManifestStatusInput,
@@ -55,23 +55,23 @@ export function startUninstallTask(input: StartUninstallTaskInput): Promise<Task
 export function getInstallManifestStatus(
   input: GetInstallManifestStatusInput,
 ): Promise<InstallManifestStatusSummary[]> {
-  return invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
+  return trackModLibraryManifestScan(input, () => invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
     request: {
       ...(input.gameId === undefined ? {} : { gameId: input.gameId }),
       profileId: input.profileId,
       modIds: input.modIds,
     },
-  });
+  }));
 }
 
 export function scanInstallRecovery(input: ScanInstallRecoveryInput): Promise<InstallRecoverySummary[]> {
-  return invoke<InstallRecoverySummary[]>("scan_install_recovery", {
+  return trackModLibraryIntegrityScan(input, () => invoke<InstallRecoverySummary[]>("scan_install_recovery", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,
       modIds: input.modIds,
     },
-  });
+  }));
 }
 
 export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promise<InstallRecoveryActionPreview> {

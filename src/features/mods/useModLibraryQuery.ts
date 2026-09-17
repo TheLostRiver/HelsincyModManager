@@ -48,9 +48,12 @@ export type ModLibraryQueryCache = {
   isWriting?: () => boolean;
   waitForWrites?: () => Promise<void>;
   readDisplayPage?: (profileKey: string, queryKey: string) => ModLibraryPage | null;
+  getDisplayVersion?: () => number;
+  subscribeDisplay?: (notify: () => void) => () => void;
+  projectPage?: (page: ModLibraryPage, context: ModLibraryProfileContext | null) => ModLibraryPage;
 };
 
-export type ModLibraryLoadContext = { generation: number; isCurrent: () => boolean };
+export type ModLibraryLoadContext = { generation: number; isCurrent: () => boolean; refresh?: boolean };
 
 type UseModLibraryQueryInput = {
   rawSearch: string;
@@ -108,6 +111,8 @@ export function useModLibraryQuery({
     cache?.getGeneration ?? noCacheGeneration,
     noCacheGeneration,
   );
+  const displayVersion = useSyncExternalStore(cache?.subscribeDisplay ?? noCacheSubscription,
+    cache?.getDisplayVersion ?? noCacheGeneration, noCacheGeneration);
   const mountedRef = useRef(false);
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -135,7 +140,7 @@ export function useModLibraryQuery({
   const latestCommittedQueryKeyRef = useRef<string | null>(null);
   const latestCommittedGenerationRef = useRef(cacheGeneration);
   const lastExecutionRef = useRef<{ queryKey: string; generation: number; loadPage: typeof loadPage } | null>(null);
-  const inFlightRef = useRef<{ queryKey: string; generation: number; requestId: number; loadPage: typeof loadPage; promise: Promise<ModLibraryPage | null> } | null>(null);
+  const inFlightRef = useRef<{ queryKey: string; generation: number; requestId: number; refresh: boolean; loadPage: typeof loadPage; promise: Promise<ModLibraryPage | null> } | null>(null);
   const resolvedRef = useRef<{ queryKey: string; generation: number; loadPage: typeof loadPage; page: ModLibraryPage } | null>(null);
   const latestRequestRef = useRef<ModLibraryQueryRequest | null>(null);
   const profileQueryPage = resolveProfileQueryPage(
@@ -220,11 +225,11 @@ export function useModLibraryQuery({
   }, [cacheGeneration, profileKey, queryInput, queryKey]);
 
   const executeQuery = useCallback(
-    (request: ModLibraryQueryRequest, onlyIfStale = false): Promise<ModLibraryPage | null> => {
+    (request: ModLibraryQueryRequest, onlyIfStale = false, refresh = false): Promise<ModLibraryPage | null> => {
       if (!mountedRef.current || cacheRef.current?.isWriting?.()) return Promise.resolve(null);
       const generation = cacheRef.current?.getGeneration() ?? 0;
       const inFlight = inFlightRef.current;
-      if (inFlight?.queryKey === request.queryKey && inFlight.generation === generation
+      if (inFlight?.queryKey === request.queryKey && (!refresh || inFlight.refresh) && inFlight.generation === generation
         && inFlight.loadPage === loadPage && requestGateRef.current.isLatest(inFlight.requestId)) return inFlight.promise;
       const resolved = resolvedRef.current;
       if (onlyIfStale && resolved?.queryKey === request.queryKey && resolved.generation === generation
@@ -255,7 +260,7 @@ export function useModLibraryQuery({
       const promise = Promise.resolve().then(async () => {
         try {
           if (!isCurrentResponse()) return null;
-          const page = await loadPage(request.input, { generation, isCurrent: isCurrentResponse });
+          const page = await loadPage(request.input, { generation, isCurrent: isCurrentResponse, refresh });
           if (!isCurrentResponse()) {
             return null;
           }
@@ -300,7 +305,7 @@ export function useModLibraryQuery({
           if (inFlightRef.current?.requestId === requestId) inFlightRef.current = null;
         }
       });
-      inFlightRef.current = { queryKey: request.queryKey, generation, requestId, loadPage, promise };
+      inFlightRef.current = { queryKey: request.queryKey, generation, requestId, refresh, loadPage, promise };
       return promise;
     },
     [loadPage],
@@ -394,7 +399,7 @@ export function useModLibraryQuery({
     if (request === null) {
       return null;
     }
-    return executeQuery(request);
+    return executeQuery(request, false, true);
   }, [executeQuery]);
 
   // Write callbacks and the generation effect converge on the same in-flight or completed
@@ -455,7 +460,11 @@ export function useModLibraryQuery({
   );
 
   const generationIsCurrent = executionState.generation === cacheGeneration;
-  const page = executionState.record?.profileKey === profileKey ? executionState.record.page : null;
+  const recordedPage = executionState.record?.profileKey === profileKey ? executionState.record.page : null;
+  const page = useMemo(() => recordedPage === null ? null : cache?.projectPage?.(recordedPage, profileContext) ?? recordedPage,
+    // The display version changes independently of the query generation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cache, recordedPage, profileContext, displayVersion]);
   const writing = cache?.isWriting?.() ?? false;
   const phaseIsCurrent = generationIsCurrent && executionState.phaseProfileKey === profileKey;
   const phase = phaseIsCurrent ? executionState.phase : "initial-loading";

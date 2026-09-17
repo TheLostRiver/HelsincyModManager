@@ -62,10 +62,10 @@ use hmm_games_mhw::{
 };
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::PgrepGameRunningDetector;
-#[cfg(target_os = "windows")]
-use hmm_infra::TasklistGameRunningDetector;
 #[cfg(not(target_os = "windows"))]
 use hmm_infra::UnsupportedSaveBackupBackgroundRegistry;
+#[cfg(target_os = "windows")]
+use hmm_infra::WindowsGameRunningDetector;
 #[cfg(target_os = "windows")]
 use hmm_infra::WindowsScheduledTaskRegistry;
 use hmm_infra::{
@@ -191,6 +191,7 @@ pub struct HmmRuntime {
     pub install_preflight: Arc<ImportedModInstallPreflightService>,
     pub package_contents_query: Arc<PackageContentsQueryService>,
     pub install_manifest_query: Arc<InstallManifestQueryService>,
+    pub mod_installation_state_query: Arc<hmm_app::ModInstallationStateQueryService>,
     pub replacement_occupancy: Arc<ReplacementOccupancyService>,
     pub mod_deletion: Arc<ModDeletionService>,
     pub install_recovery_scanner: Arc<ConfiguredInstallRecoveryScanner>,
@@ -1132,6 +1133,13 @@ impl HmmRuntime {
             install_preflight,
             package_contents_query,
             install_manifest_query,
+            mod_installation_state_query: Arc::new(hmm_app::ModInstallationStateQueryService::new(
+                Arc::clone(&install_manifest_repository),
+                Arc::new(JsonInstallRecoveryRecordRepository::new(
+                    app_data_dir.join("install").join("recovery"),
+                )),
+                Arc::clone(&reinstall_recovery_repository),
+            )),
             replacement_occupancy,
             mod_shortcuts,
             mod_installation_scope,
@@ -2736,7 +2744,7 @@ fn game_running_detector_for_platform(
     let process_names = game_process_names_by_game(adapters);
     #[cfg(target_os = "windows")]
     {
-        Arc::new(TasklistGameRunningDetector::new(process_names))
+        Arc::new(WindowsGameRunningDetector::new(process_names))
     }
     #[cfg(not(target_os = "windows"))]
     {

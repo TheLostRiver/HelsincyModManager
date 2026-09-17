@@ -71,11 +71,27 @@ pub fn emit_task_progress(
 
 pub(crate) struct TauriTaskProgressObserver<'a> {
     app_handle: &'a AppHandle,
+    installation: Option<(hmm_core::GameId, hmm_core::ProfileId, hmm_core::ModId)>,
 }
 
 impl<'a> TauriTaskProgressObserver<'a> {
     pub(crate) fn new(app_handle: &'a AppHandle) -> Self {
-        Self { app_handle }
+        Self {
+            app_handle,
+            installation: None,
+        }
+    }
+
+    pub(crate) fn for_mod(
+        app_handle: &'a AppHandle,
+        game_id: &hmm_core::GameId,
+        profile_id: &hmm_core::ProfileId,
+        mod_id: &hmm_core::ModId,
+    ) -> Self {
+        Self {
+            app_handle,
+            installation: Some((game_id.clone(), profile_id.clone(), mod_id.clone())),
+        }
     }
 }
 
@@ -83,6 +99,20 @@ impl TaskProgressObserver for TauriTaskProgressObserver<'_> {
     type Error = CommandErrorDto;
 
     fn observe(&self, event: &TaskProgressEvent) -> Result<(), Self::Error> {
+        if matches!(
+            event.status,
+            hmm_app::TaskStatus::Completed
+                | hmm_app::TaskStatus::Failed
+                | hmm_app::TaskStatus::Cancelled
+        ) {
+            if let Some((game_id, profile_id, mod_id)) = &self.installation {
+                use hmm_app::ModInstallationStateObserver;
+                crate::mod_installation_state::TauriModInstallationStateObserver::new(
+                    self.app_handle,
+                )
+                .state_changed(&event.task_id, game_id, profile_id, mod_id);
+            }
+        }
         emit_task_progress_dto(self.app_handle, event.clone().into())
     }
 }

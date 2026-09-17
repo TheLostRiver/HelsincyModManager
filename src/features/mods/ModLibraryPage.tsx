@@ -68,6 +68,7 @@ import {
   startInstallTask,
   startUninstallTask,
 } from "./modInstallPlanApi";
+import { getModInstallationStates } from "./modInstallationStateApi";
 import type { UnsafeInstallStatus } from "./modInstallPlanTypes";
 import {
   isManagedInstallTaskPhase,
@@ -95,15 +96,12 @@ import {
   normalizeLibraryFilter,
   type ModLibraryFilter,
 } from "./modLibraryFilters";
-import { applyInstallRecoverySummaries, isUnsafeInstallStatus } from "./modLibraryLoadState";
+import { applyInstallManifestStatusSummaries, createModLibraryStatusProbe, isUnsafeInstallStatus } from "./modLibraryLoadState";
 import { createDetailDialogState } from "./modLibraryRefresh";
 import {
   isPlainBrowserDevRuntime,
   queryBrowserMockModLibrary,
 } from "./modLibraryQueryState";
-import {
-  createModLibraryStatusProbe,
-} from "./modLibraryRecoveryRefresh";
 import { loadModLibraryPageWithStatuses } from "./modLibraryPageLoader.ts";
 import { getModLibraryScrollUiState } from "./modLibraryScrollUi";
 import type {
@@ -433,6 +431,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     if (browserPreviewEnabled) return queryBrowserMockModLibrary(input, fallbackModLibraryItems, categoriesRef.current);
     return loadModLibraryPageWithStatuses(input, context, {
       query: queryModLibrary,
+      states: getModInstallationStates,
       scan: scanInstallRecovery,
       cache: librarySessionCache,
     });
@@ -633,7 +632,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
       const summary = snapshot?.summaries.find((item) => item.modId === modId);
       return {
         verified: snapshot?.verified === true && summary !== undefined,
-        items: applyInstallRecoverySummaries([createModLibraryStatusProbe(modId, modName)], summary ? [summary] : []),
+        items: applyInstallManifestStatusSummaries([createModLibraryStatusProbe(modId, modName)], summary ? [summary] : []),
       };
     },
     [librarySessionCache, synchronizeLibraryPage],
@@ -648,7 +647,7 @@ export function ModLibraryPage({ onAction }: ModLibraryPageProps) {
     readInstallStatus: (context) => {
       const snapshot = librarySessionCache.readStatusSnapshot(context.gameId, context.profileId);
       const status = snapshot?.verified ? snapshot.summaries.find((summary) => summary.modId === context.modId)?.status : undefined;
-      return status === "completed" ? "installed" : status ?? "unknown";
+      return status ?? "unknown";
     },
   });
   const { openReinstall } = reinstallWorkflow;

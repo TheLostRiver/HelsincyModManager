@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createModLibrarySessionStore } from "./modLibrarySessionStore.ts";
-import { attachModLibraryWriteTracking, publishModLibraryTaskProgress, trackModLibraryTaskStart, trackModLibraryBatchWrite } from "./modLibraryWriteTracking.ts";
+import { attachModLibraryWriteTracking, publishModLibraryTaskProgress, trackModLibraryTaskStart, trackModLibraryBatchWrite, trackModLibraryManifestScan } from "./modLibraryWriteTracking.ts";
 
 const target = { gameId: "mhw", profileId: "scope", modId: "a" };
 const task = (taskId, status = "queued") => ({ taskId, kind: "install", status });
@@ -11,6 +11,19 @@ function setup(t) {
   t.after(attachModLibraryWriteTracking(store));
   return store;
 }
+
+test("detail integrity findings survive manifest-only reads and clear only after a fresh scan", async (t) => {
+  const store = setup(t);
+  const input = { gameId: target.gameId, profileId: target.profileId, modIds: [target.modId] };
+  const summary = { profileId: target.profileId, modId: target.modId, status: "installed", managedFileCount: 1, backupCount: 0 };
+  store.acceptInstallationStates({ ...input, epoch: "test", revision: 1, available: true, reset: false, summaries: [summary] }, store.getGeneration());
+  const page = { items: [{ id: target.modId, status: "installed" }] };
+  await trackModLibraryManifestScan(input, async () => [{ ...summary, status: "repair_required" }]);
+  await trackModLibraryManifestScan({ profileId: target.profileId, modIds: input.modIds }, async () => [summary]);
+  assert.equal(store.projectPage(page, target).items[0].status, "repair_required");
+  await trackModLibraryManifestScan(input, async () => [summary]);
+  assert.equal(store.projectPage(page, target).items[0].status, "installed");
+});
 
 test("a terminal event before the start reply closes the registered writer once", async (t) => {
   const store = setup(t);

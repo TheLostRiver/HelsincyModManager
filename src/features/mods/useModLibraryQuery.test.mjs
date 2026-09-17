@@ -48,7 +48,7 @@ test("backend page clamp updates the requested page without issuing a duplicate 
 
 test("refresh reuses the latest committed query and current-profile data only", () => {
   assert.match(source, /latestRequestRef\.current/);
-  assert.match(source, /return executeQuery\(request\)/);
+  assert.match(source, /return executeQuery\(request, false, true\)/);
   assert.match(source, /current\.record\?\.profileKey !== profileKey/);
   assert.doesNotMatch(source, /getModLibrary\(|visibleItems|\.slice\(/);
 });

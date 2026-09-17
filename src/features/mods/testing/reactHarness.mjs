@@ -17,7 +17,8 @@ const stubs = {
   event: `export function listen(name, callback) {
     const api = globalThis.__hmmReactTest;
     if (api.listenerFails) return Promise.reject(new Error("fixture listener failure"));
-    const listeners = name === "mod-library-statistics-updated" ? api.statistics : api.progress;
+    const listeners = name === "mod-library-statistics-updated" ? api.statistics
+      : name === "hmm://mod-installation-state" ? api.installation : api.progress;
     listeners.add(callback);
     return Promise.resolve(() => listeners.delete(callback));
   }`,
@@ -106,8 +107,9 @@ function deferred() {
 }
 
 function runtime(listenerFails = false) {
-  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), statistics: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
+  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), installation: new Set(), statistics: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
   api.getTaskProgress = async () => null;
+  api.emitInstallation = (payload) => { for (const callback of api.installation) callback({ payload }); };
   api.preview = async (paths) => paths.map((archivePath) => ({ archivePath, fileName: archivePath, sizeBytes: 10, errorCode: null, warningCode: null }));
   api.feedback = {
     pushToast: (toast) => api.toasts.push(toast),
@@ -159,13 +161,13 @@ export async function mountQuery(t, { listenerFails = false, loadPage: loadOverr
     if (loadOverride) return loadOverride(input, context, state.cache);
     const request = { input, context, ...deferred() }; pending.push(request); return request.promise;
   };
-  function QueryProbe({ profileContext = profile }) {
-    state.query = useModLibraryQuery({ rawSearch: "", filter: all, profileContext, loadPage, cache: state.cache });
+  function QueryProbe({ profileContext = profile, filter = all }) {
+    state.query = useModLibraryQuery({ rawSearch: "", filter, profileContext, loadPage, cache: state.cache });
     return null;
   }
-  function Host({ show, profileContext }) {
+  function Host({ show, profileContext, filter }) {
     state.cache = useModLibrarySessionCache();
-    return show ? React.createElement(QueryProbe, { profileContext }) : null;
+    return show ? React.createElement(QueryProbe, { profileContext, filter }) : null;
   }
   const tree = (props) => React.createElement(ModLibrarySessionCacheProvider, null, React.createElement(Host, props));
   let root;

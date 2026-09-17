@@ -1,4 +1,5 @@
-import type { ModLibrarySessionStore } from "./modLibrarySessionStore.ts";
+import type { ModLibrarySessionStore, ModLibraryWriteTarget } from "./modLibrarySessionStore.ts";
+import type { GetInstallManifestStatusInput, InstallManifestStatusSummary, InstallRecoverySummary, ScanInstallRecoveryInput } from "./modInstallPlanTypes";
 import type { TaskProgressEventDto, TaskStartedDto } from "./modImportTypes.ts";
 
 // The application provider owns the store; API starts register before invoking IPC so a
@@ -39,14 +40,42 @@ export async function trackModLibraryTaskStart(
 
 /** Batch start/retry currently resolves only after the whole attempt has stopped. Its
  * journal/result uses a different runtime, so it must not be polled in desktop TaskManager. */
-export async function trackModLibraryBatchWrite<T extends { task: TaskStartedDto }>(start: () => Promise<T>): Promise<T> {
+export async function trackModLibraryBatchWrite<T extends { task: TaskStartedDto }>(start: () => Promise<T>, target?: ModLibraryWriteTarget): Promise<T> {
   const owner = store;
-  const token = owner?.beginWrite();
+  const token = owner?.beginWrite(target);
   try {
     const result = await start();
     if (token !== undefined) owner?.bindWriteTask(token, result.task);
     return result;
   } finally {
     if (token !== undefined) owner?.finishWrite(token);
+  }
+}
+
+export async function trackModLibraryIntegrityScan(input: ScanInstallRecoveryInput, scan: () => Promise<InstallRecoverySummary[]>): Promise<InstallRecoverySummary[]> {
+  const finish = store?.beginIntegrityScan(input.gameId, input.profileId, input.modIds);
+  try {
+    const summaries = await scan();
+    finish?.(summaries);
+    return summaries;
+  } catch (error) {
+    finish?.(null);
+    throw error;
+  }
+}
+
+/** The legacy gameId form also performs an integrity scan. Keep findings from detail
+ * and plugin workflows; the manifest-only form must never clear integrity evidence. */
+export async function trackModLibraryManifestScan(input: GetInstallManifestStatusInput, query: () => Promise<InstallManifestStatusSummary[]>): Promise<InstallManifestStatusSummary[]> {
+  if (input.gameId === undefined) return query();
+  const finish = store?.beginIntegrityScan(input.gameId, input.profileId, input.modIds);
+  try {
+    const summaries = await query();
+    finish?.(summaries.map((summary) => ({ ...summary, status: summary.status === "installed" ? "completed" : summary.status,
+      adoptedFileCount: summary.adoptedFileCount ?? 0, issueCount: 0, issues: [] })));
+    return summaries;
+  } catch (error) {
+    finish?.(null);
+    throw error;
   }
 }

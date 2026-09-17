@@ -73,6 +73,13 @@ fn spawn_external_mod_adopt_runner(
     launch: ExternalModAdoptTaskLaunch,
 ) {
     std::thread::spawn(move || {
+        use hmm_runtime::TaskProgressObserver;
+        let observer = crate::task_events::TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &launch.game_id,
+            &launch.profile_id,
+            &launch.mod_id,
+        );
         let task_id = launch.task.task_id.clone();
         let task_kind = launch.task.kind;
         let mod_id = launch.mod_id.as_str().to_owned();
@@ -88,7 +95,7 @@ fn spawn_external_mod_adopt_runner(
         };
 
         for event in events {
-            let _ = emit_task_progress(&app_handle, event);
+            let _ = observer.observe(&event);
         }
     });
 }

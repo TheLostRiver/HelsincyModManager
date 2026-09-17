@@ -278,6 +278,7 @@ pub struct BatchInstallTaskRunner {
     clock: Arc<dyn AppClock>,
     token_codec: Arc<dyn BatchTokenCodec>,
     expected_operation: BatchOperation,
+    state_observer: Option<Arc<dyn crate::ModInstallationStateObserver>>,
 }
 
 impl BatchInstallTaskRunner {
@@ -322,7 +323,16 @@ impl BatchInstallTaskRunner {
             clock,
             token_codec,
             expected_operation,
+            state_observer: None,
         }
+    }
+
+    pub fn with_state_observer(
+        mut self,
+        observer: Arc<dyn crate::ModInstallationStateObserver>,
+    ) -> Self {
+        self.state_observer = Some(observer);
+        self
     }
 
     pub fn run(
@@ -671,7 +681,18 @@ impl BatchInstallTaskRunner {
                 reason_code,
                 retryable,
             );
-            self.repository.record_item_result(&result).map_err(|_| {
+            let recorded = self.repository.record_item_result(&result);
+            // Observe the durable files even when the journal write failed. A failed
+            // notification never changes the transaction result or authorizes another item.
+            if let Some(observer) = &self.state_observer {
+                observer.state_changed(
+                    &task_id,
+                    &batch.plan.game_id,
+                    &batch.plan.profile_id,
+                    plan_item.input_snapshot.mod_id(),
+                );
+            }
+            recorded.map_err(|_| {
                 self.interrupt_for_journal_error(
                     &batch,
                     admitted_attempt.attempt_number,

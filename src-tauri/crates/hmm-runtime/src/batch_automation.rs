@@ -722,7 +722,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         plan_token: &str,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
-        Self::start_request_internal(environment, batch_id, plan_token, None)
+        Self::start_request_internal(environment, batch_id, plan_token, None, None)
     }
 
     /// Starts a batch while reading its sealed identity through the GUI-owned database handle.
@@ -732,7 +732,24 @@ impl BatchLifecycleAutomation {
         plan_token: &str,
         database: Arc<Mutex<rusqlite::Connection>>,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
-        Self::start_request_internal(environment, batch_id, plan_token, Some(database))
+        Self::start_request_internal(environment, batch_id, plan_token, Some(database), None)
+    }
+
+    /// GUI observation follows each item; it cannot affect write admission or the journal.
+    pub fn start_request_with_observer(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        plan_token: &str,
+        database: SharedBatchDatabase,
+        observer: Arc<dyn hmm_app::ModInstallationStateObserver>,
+    ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
+        Self::start_request_internal(
+            environment,
+            batch_id,
+            plan_token,
+            Some(database),
+            Some(observer),
+        )
     }
 
     fn start_request_internal(
@@ -740,6 +757,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         plan_token: &str,
         database: Option<SharedBatchDatabase>,
+        observer: Option<Arc<dyn hmm_app::ModInstallationStateObserver>>,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
         precheck_batch_token(plan_token, "plan")?;
@@ -757,7 +775,10 @@ impl BatchLifecycleAutomation {
                 .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
             batch.plan.operation
         };
-        let context = build_write_context(environment, operation)?;
+        let mut context = build_write_context(environment, operation)?;
+        if let Some(observer) = observer {
+            context.runner = context.runner.with_state_observer(observer);
+        }
         let batch = context
             .repository
             .load_batch(&batch_id)
@@ -795,7 +816,7 @@ impl BatchLifecycleAutomation {
         ),
         BatchAutomationError,
     > {
-        Self::retry_with_operation_internal(environment, batch_id, attempt_number, None)
+        Self::retry_with_operation_internal(environment, batch_id, attempt_number, None, None)
     }
 
     /// Retries a batch while reconciling its journal through the GUI-owned database handle.
@@ -812,7 +833,36 @@ impl BatchLifecycleAutomation {
         ),
         BatchAutomationError,
     > {
-        Self::retry_with_operation_internal(environment, batch_id, attempt_number, Some(database))
+        Self::retry_with_operation_internal(
+            environment,
+            batch_id,
+            attempt_number,
+            Some(database),
+            None,
+        )
+    }
+
+    pub fn retry_with_operation_with_observer(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: SharedBatchDatabase,
+        observer: Arc<dyn hmm_app::ModInstallationStateObserver>,
+    ) -> Result<
+        (
+            BatchOperation,
+            BatchInstallRetryResult,
+            BatchInstallRunResult,
+        ),
+        BatchAutomationError,
+    > {
+        Self::retry_with_operation_internal(
+            environment,
+            batch_id,
+            attempt_number,
+            Some(database),
+            Some(observer),
+        )
     }
 
     fn retry_with_operation_internal(
@@ -820,6 +870,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         attempt_number: u32,
         database: Option<SharedBatchDatabase>,
+        observer: Option<Arc<dyn hmm_app::ModInstallationStateObserver>>,
     ) -> Result<
         (
             BatchOperation,
@@ -836,7 +887,10 @@ impl BatchLifecycleAutomation {
             database.as_ref(),
         )?;
         let operation = reconciled_batch.plan.operation;
-        let context = build_write_context(environment, operation)?;
+        let mut context = build_write_context(environment, operation)?;
+        if let Some(observer) = observer {
+            context.runner = context.runner.with_state_observer(observer);
+        }
         let retry = context
             .retry
             .retry(&batch_id, attempt_number)

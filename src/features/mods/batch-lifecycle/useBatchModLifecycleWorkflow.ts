@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ModLibraryWriteTarget } from "../modLibrarySessionStore";
 import {
   getBatchModLifecycleResult,
   previewBatchModLifecycle,
@@ -86,6 +87,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   });
   const replacementTargetsRef = useRef<{ modId: string; targetId: string }[]>([]);
   const activeAttemptRef = useRef<{ batchId: string; attemptNumber: number } | null>(null);
+  const activeWriteTargetRef = useRef<ModLibraryWriteTarget | undefined>(undefined);
   const scopeKey = JSON.stringify([gameId, profileId]);
   const stateScopeRef = useRef(scopeKey);
 
@@ -103,6 +105,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     setPluginError(null);
     previewRequestRef.current = null;
     activeAttemptRef.current = null;
+    activeWriteTargetRef.current = undefined;
     replacementTargetsRef.current = [];
     resolutionRef.current = { items: [], excluded: [], unresolvable: [] };
     updateState({ status: "idle" });
@@ -498,9 +501,12 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: sealed.batchId,
         planToken: sealed.planToken,
       });
+      activeWriteTargetRef.current = { gameId: current.request.gameId, profileId: current.request.profileId,
+        modIds: current.request.items.map((item) => item.modId) };
       const started = await startBatchModLifecycle({
         batchId: sealed.batchId,
         planToken: sealed.planToken,
+        target: activeWriteTargetRef.current,
       });
       if (generation !== generationRef.current) {
         return;
@@ -541,6 +547,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       const started = await retryBatchModLifecycle({
         batchId: active.batchId,
         expectedAttemptNumber: active.attemptNumber,
+        target: activeWriteTargetRef.current,
       });
       if (generation !== generationRef.current) {
         return;

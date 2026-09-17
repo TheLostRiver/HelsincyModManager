@@ -88,7 +88,7 @@ pub use game_config_repository::JsonGameConfigRepository;
 pub use game_directory_probe::{RealGameDirectoryProbe, RealGameDirectoryProbeFactory};
 pub use game_discovery::{NoopGameDiscoveryService, SteamGameDiscoveryService};
 pub use game_launcher::SystemGameLaunchRunner;
-pub use game_running_detector::{PgrepGameRunningDetector, TasklistGameRunningDetector};
+pub use game_running_detector::{PgrepGameRunningDetector, WindowsGameRunningDetector};
 pub use install_commit::{
     FileSystemInstallBackupStore, FileSystemInstallGameFileSystem,
     FileSystemInstallSourceFileReader, JsonInstallManifestRepository,

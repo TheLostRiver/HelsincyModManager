@@ -77,7 +77,7 @@ test("query failure keeps display content but never trusts stale facts or loops 
   assert.equal(h.state.query.page.items[0].id, "recovered");
 });
 
-test("write completion invalidates all slots and does not duplicate refresh requests", options, async (t) => {
+test("write completion retains catalog slots and does not duplicate synchronization", options, async (t) => {
   const h = await mountQuery(t);
   const firstInput = h.pending[0].input;
   await h.resolve(h.pending[0], pageOf("first"));
@@ -94,21 +94,22 @@ test("write completion invalidates all slots and does not duplicate refresh requ
   assert.equal(h.pending.length, 3, "Explicit refresh and invalidation effect must share this request");
   await h.resolve(h.pending[2], pageOf("after-write", 2));
   await refreshed;
-  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(firstInput)), null);
+  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(firstInput)).items[0].id, "first");
   assert.equal(h.state.query.page.items[0].id, "after-write");
   assert.equal(h.state.query.refreshing, false);
   await act(async () => afterWrite());
   assert.equal(h.pending.length, 3, "A later terminal callback reuses the completed synchronization");
 });
 
-test("task completion invalidates cache while the library page is unmounted", options, async (t) => {
+test("task completion retains the unmounted catalog but requires new status verification", options, async (t) => {
   const h = await mountQuery(t);
   const input = h.pending[0].input;
   await h.resolve(h.pending[0], pageOf("before-install"));
   await h.update({ show: false });
   await act(async () => h.api.emit("installation", "queued", null, "install"));
   await act(async () => h.api.emit("installation", "completed", null, "install"));
-  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(input)), null);
+  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(input)).items[0].id, "before-install");
+  assert.equal(h.state.cache.readStatusSnapshot("mhw", "test-profile"), null);
   await h.update({ show: true });
   assert.equal(h.state.query.page.items[0].id, "before-install");
   assert.equal(h.state.query.statusTrusted, false);
@@ -145,13 +146,16 @@ test("profile changes and late responses cannot mix snapshots", options, async (
   assert.equal(h.state.query.page.items[0].id, "profile-two");
 });
 
-test("automatic and concurrent manual refreshes share one in-flight query", options, async (t) => {
+test("explicit refresh upgrades a metadata query and concurrent explicit refreshes share it", options, async (t) => {
   const h = await mountQuery(t);
-  let refreshed;
-  await act(async () => { refreshed = h.state.query.refresh(); });
-  assert.equal(h.pending.length, 1);
-  await h.resolve(h.pending[0], pageOf("new"));
-  await refreshed;
+  let refreshed, repeated;
+  await act(async () => { refreshed = h.state.query.refresh(); repeated = h.state.query.refresh(); });
+  assert.equal(h.pending.length, 2);
+  assert.equal(h.pending[1].context.refresh, true);
+  await h.resolve(h.pending[0], pageOf("stale"));
+  assert.equal(h.state.query.page, null);
+  await h.resolve(h.pending[1], pageOf("new"));
+  await Promise.all([refreshed, repeated]);
   assert.equal(h.state.query.page.items[0].id, "new");
 });
 

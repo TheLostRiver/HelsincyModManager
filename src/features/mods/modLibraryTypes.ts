@@ -65,7 +65,7 @@ export type ModLibraryPage = {
   pageSize: ModLibraryPageSize;
   libraryTotal: number;
   matchingTotal: number;
-  /** Frontend scan result; absent on the raw catalog DTO and browser fixtures. */
+  /** Fresh durable metadata read; separate integrity findings can still block a card. */
   statusVerified?: boolean;
 };
 

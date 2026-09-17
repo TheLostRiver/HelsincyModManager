@@ -23,6 +23,7 @@ mod mod_deletion_commands;
 mod mod_import_commands;
 mod mod_import_settings_commands;
 mod mod_installation_commands;
+mod mod_installation_state;
 mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
@@ -225,6 +226,7 @@ pub fn run() {
             start_install_task,
             start_uninstall_task,
             get_install_manifest_status,
+            mod_installation_state::get_mod_installation_states,
             scan_install_recovery,
             preview_recovery_action,
             start_recovery_action_task,

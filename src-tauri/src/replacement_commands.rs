@@ -1,3 +1,4 @@
+use hmm_runtime::TaskProgressObserver;
 use std::sync::Arc;
 
 use hmm_app::{
@@ -272,12 +273,18 @@ fn spawn_retarget_reinstall_runner(
     request: StartRetargetReinstallTaskRequest,
 ) {
     std::thread::spawn(move || {
+        let observer = crate::task_events::TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let events = match runner.run_retarget_reinstall_task(&task_id, request) {
             Ok(events) => events,
             Err(error) => error.events,
         };
         for event in events {
-            let _ = emit_task_progress(&app_handle, event);
+            let _ = observer.observe(&event);
         }
     });
 }
@@ -299,6 +306,12 @@ fn spawn_runner(
     expected_revision: Option<hmm_core::ModRevisionId>,
 ) {
     std::thread::spawn(move || {
+        let observer = crate::task_events::TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let result = match expected_revision {
             Some(revision) => runner.run_equipment_retarget_install_task_at_revision(
                 &task_id,
@@ -312,7 +325,7 @@ fn spawn_runner(
             Err(error) => error.events,
         };
         for event in events {
-            let _ = emit_task_progress(&app_handle, event);
+            let _ = observer.observe(&event);
         }
     });
 }

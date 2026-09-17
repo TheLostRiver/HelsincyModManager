@@ -331,17 +331,28 @@ src/
 修改偏好不立即跳走当前页，导航提交后记忆最后页面。普通与悬浮侧栏共用唯一导航定义，未接入入口隐藏。
 
 Mod 库的会话缓存由路由之上的 `ModLibrarySessionCacheProvider` 持有。分页、搜索及 profile 槽位
-只缓存已完成的查询；展示快照与已验证的安装状态分开。安装／卸载／重装 API 在 invoke 前登记
+只缓存已完成的目录查询；安装元数据与文件完整性结果分别保存。安装／卸载／重装 API 在 invoke 前登记
 应用级写占用，绑定 taskId，终态与迟到启动回复合并；批量 start/retry 持有整个执行 Promise 的占用。
 generation 在一组写入开始和全部结束时推进，旧响应不得提交；活跃写期间暂停库查询，结束后自动
 与显式同步共用同一个在途请求。同作用域卡片与滚动保留，刷新／写入／查询失败时所有依赖安装事实的
 入口关闭，查询错误不自动循环。切换安装作用域不沿用旧状态。
 
-库页查询后仅扫描一次「当前页 IDs ∪ 写任务目标 IDs」，由同一份带 generation、scope 和 verified
-信息的结果更新卡片与终态提示；页面没有目标不能当作已卸载。空集合不调用 recovery scanner。
-保留不带 gameId 的 manifest-only 查询供批量取得精确 installedRevisionId。三个库相关查询与批量结果
-查询在 Tauri blocking worker 中完成作用域读取和阻塞 I/O；恢复扫描的跨进程准入、锁顺序、哈希和备份
-读取不变。任务进度在 emit 前保存窄的进程内快照，Provider 仅对活跃任务查询该快照补收遗失事件，
+普通安装状态同步只读取「当前页 IDs ∪ 已缓存页 IDs ∪ 写任务目标 IDs」的持久化元数据，目录页不因
+安装／卸载失效；导入、删除和元数据编辑仍使目录失效。状态筛选重新查询成员、总数和夹紧页码。
+`hmm-app::ModInstallationStateQueryService` 仅依赖 manifest、普通 recovery 和 reinstall transaction
+仓储，不读取游戏文件或备份内容。`ModInstallationStateSession` 每次重新读仓储，以每个 scope 的
+epoch/revision 给观察排序，并比较前后摘要，包含共享归属变更影响的其他 Mod。它不替代写入准入。
+单项终态前、批量每项 executor 返回且尝试记账后发布 `hmm://mod-installation-state`，携带 taskId；
+记账或发布失败不伪造玩家文件回滚。前端按 Mod 合并版本，展示版本独立于查询 generation，因此批量
+进行中即可更新已完成项。终态轻量补读覆盖全部保留卡片及任务目标，修复漏事件，页面没有目标不能
+当作已卸载。空集合不调用 recovery scanner。
+
+显式刷新和恢复中心保留完整性扫描。已知 unknown／repair 等扫描结果不会被普通 manifest 观察清除；
+只有较新的扫描可以更新完整性结论，跨写入的扫描结果不得回填。保留不带 gameId 的 manifest-only
+查询供批量取得精确 installedRevisionId。库相关查询和批量结果查询在 Tauri blocking worker 中读取
+作用域并执行阻塞 I/O；恢复扫描的跨进程准入、锁顺序、哈希和备份读取不变。
+Windows 进程检测使用 Tool Help 原生快照，每次写入前重新查询，快照／枚举失败有界重试三次后返回
+Unknown；仅枚举成功耗尽才返回 NotRunning。任务进度在 emit 前保存窄的进程内快照，Provider 仅对活跃任务查询该快照补收遗失事件，
 未知／失败读取不推断完成。分类响应写回仍匹配发起时的 generation。
 
 拖拽导入由路由之上的 `ModImportDropProvider` 持有会话草稿、已确认批次和串行执行队列。待导入、

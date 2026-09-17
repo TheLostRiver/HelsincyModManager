@@ -247,9 +247,9 @@ test("mod library page starts uninstall only from a durable installed summary on
   assert.doesNotMatch(source, /targetPath:\s*|allowedTargetRoots|archivePath|manifestPath|backupRoot|backupRef/i);
 });
 
-test("mod library page and terminal feedback consume the same verified recovery snapshot", () => {
+test("mod library page and terminal feedback consume the same durable metadata snapshot", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
-  const refreshSource = readSource("src/features/mods/modLibraryRecoveryRefresh.ts");
+  const refreshSource = readSource("src/features/mods/modLibraryPageLoader.ts");
 
   assert.match(source, /queryModLibrary/);
   assert.match(source, /loadModLibraryPageWithStatuses/);
@@ -261,8 +261,11 @@ test("mod library page and terminal feedback consume the same verified recovery 
   assert.match(source, /gameId:\s*DEFAULT_INSTALL_GAME_ID/);
   assert.match(source, /modIds/);
   assert.match(refreshSource, /items\.map\(\(item\) => item\.id\)/);
-  assert.match(refreshSource, /applyInstallRecoverySummaries\(items,\s*recoveryStatuses\)/);
-  assert.match(refreshSource, /items:\s*applyInstallManifestUnavailable\(items\)/);
+  assert.match(refreshSource, /await services\.states\(/);
+  assert.match(refreshSource, /acceptInstallationStates\(update, context\.generation\)/);
+  assert.match(refreshSource, /finishStatusRead\(gameId, profileId, context\.generation, modIds, verified\)/);
+  assert.match(refreshSource, /context\.refresh[\s\S]*?await services\.scan/);
+  assert.match(source, /states: getModInstallationStates/);
   assert.doesNotMatch(refreshSource, /loadManifestStatuses/);
   assert.match(source, /isManagedInstallTaskTerminal\(installTaskState\)/);
   assert.match(source, /refreshTerminalDurableStatus/);
