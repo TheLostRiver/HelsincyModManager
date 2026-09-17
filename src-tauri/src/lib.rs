@@ -23,6 +23,7 @@ mod mod_deletion_commands;
 mod mod_import_commands;
 mod mod_import_settings_commands;
 mod mod_installation_commands;
+mod mod_installation_state;
 mod mod_library_commands;
 mod mod_library_dto;
 #[cfg(test)]
@@ -133,7 +134,7 @@ use save_directory_discovery_commands::{
 };
 use save_restore_commands::{preview_save_restore, start_save_restore_task};
 use state::AppState;
-use task_commands::cancel_task;
+use task_commands::{cancel_task, get_task_progress};
 use tauri::{Manager, RunEvent, State};
 use thumbnail_protocol::register_thumbnail_protocol;
 use update_commands::check_app_update;
@@ -201,6 +202,7 @@ pub fn run() {
             save_game_directory,
             scan_game_candidates,
             cancel_task,
+            get_task_progress,
             select_external_import_source,
             start_external_import_scan,
             start_external_mod_state_scan,
@@ -224,6 +226,7 @@ pub fn run() {
             start_install_task,
             start_uninstall_task,
             get_install_manifest_status,
+            mod_installation_state::get_mod_installation_states,
             scan_install_recovery,
             preview_recovery_action,
             start_recovery_action_task,

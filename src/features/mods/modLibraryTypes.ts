@@ -65,6 +65,8 @@ export type ModLibraryPage = {
   pageSize: ModLibraryPageSize;
   libraryTotal: number;
   matchingTotal: number;
+  /** Fresh durable metadata read; separate integrity findings can still block a card. */
+  statusVerified?: boolean;
 };
 
 export type ModPackageMetadata = {

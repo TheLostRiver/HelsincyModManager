@@ -10,6 +10,10 @@ type ResolveLoadedModLibraryItemsInput = {
   fallbackItems: ModLibraryItem[];
 };
 
+export function createModLibraryStatusProbe(modId: string, modName: string): ModLibraryItem {
+  return { id: modId, name: modName, sizeLabel: "", status: "unknown", categoryLabels: [] };
+}
+
 export function isUnsafeInstallStatus(status: string): status is UnsafeInstallStatus {
   switch (status) {
     case "committed_cleanup_pending":

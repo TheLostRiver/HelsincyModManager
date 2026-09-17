@@ -14,6 +14,7 @@ import type { BatchModLifecycleWorkflowState } from "./batchModLifecycleWorkflow
 import "./BatchModLifecyclePanel.css";
 
 export type BatchModLifecycleResultPanelProps = {
+  writeDisabled?: boolean;
   workflowState: BatchModLifecycleWorkflowState;
   onRetry: () => void;
   onLoadMore: () => void;
@@ -34,6 +35,7 @@ function statusTone(status: string): string {
 }
 
 export function BatchModLifecycleResultPanel({
+  writeDisabled = false,
   workflowState,
   onRetry,
   onLoadMore,
@@ -139,7 +141,7 @@ export function BatchModLifecycleResultPanel({
             </button>
           )}
           {retryAvailableByStatus && (
-            <button type="button" className="batch-panel__confirm" onClick={onRetry}>
+            <button type="button" className="batch-panel__confirm" disabled={writeDisabled} onClick={onRetry}>
               <RefreshCw size={16} aria-hidden="true" />
               {panelCopy.retryFailed}
             </button>

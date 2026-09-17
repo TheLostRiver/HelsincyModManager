@@ -25,6 +25,8 @@ struct FakeUninstallState {
     manifest_save_count: AtomicUsize,
     files: Mutex<BTreeMap<String, Vec<u8>>>,
     game_write_count: AtomicUsize,
+    file_read_count: AtomicUsize,
+    backup_read_count: AtomicUsize,
     file_read_errors: Mutex<BTreeSet<String>>,
     backups: Mutex<BTreeMap<String, Vec<u8>>>,
     backup_read_errors: Mutex<BTreeSet<String>>,
@@ -68,6 +70,7 @@ impl FakeUninstallState {
 
 impl InstallGameFileSystem for FakeUninstallState {
     fn read_game_file(&self, target_path: &InstallTargetPath) -> anyhow::Result<Option<Vec<u8>>> {
+        self.file_read_count.fetch_add(1, Ordering::Relaxed);
         if self
             .file_read_errors
             .lock()
@@ -113,6 +116,7 @@ impl InstallBackupStore for FakeUninstallState {
     }
 
     fn read_backup(&self, backup_ref: &str) -> anyhow::Result<Option<Vec<u8>>> {
+        self.backup_read_count.fetch_add(1, Ordering::Relaxed);
         if self
             .backup_read_errors
             .lock()
@@ -386,6 +390,95 @@ fn ready_facts_distinguish_remove_and_restore_without_package_reads() {
 }
 
 #[test]
+fn per_item_revalidation_reads_linear_file_and_backup_volume() {
+    for count in [5, 10, 20] {
+        let state = Arc::new(FakeUninstallState::default());
+        let ids: Vec<_> = (0..count)
+            .map(|i| (format!("mod-{i}"), format!("rev-{i}")))
+            .collect();
+        let mut entries = Vec::new();
+        for (id, revision) in &ids {
+            let target = format!("nativePC/{id}.bin");
+            let backup = format!("backup-{id}");
+            entries.push(entry(id, Some(revision), &target, b"mod", Some(&backup)));
+            state.add_file(&target, b"mod");
+            state.add_backup(&backup, b"original");
+        }
+        state.set_manifest(manifest(entries));
+        let request = request(
+            &ids.iter()
+                .map(|(id, revision)| (id.as_str(), revision.as_str()))
+                .collect::<Vec<_>>(),
+        );
+        let provider = provider(state.clone());
+        let full = provider
+            .read_batch_plan_facts(&request)
+            .expect("initial preflight");
+        for (id, _) in &ids {
+            let narrow = provider
+                .read_batch_item_facts(&request, &ModId::new(id))
+                .expect("current item");
+            assert_eq!(narrow.items.len(), 1);
+            assert_eq!(
+                narrow.items[0],
+                *full
+                    .items
+                    .iter()
+                    .find(|item| item.mod_id.as_str() == id)
+                    .unwrap()
+            );
+            assert_eq!(narrow.environment_digest, full.environment_digest);
+            assert!(narrow.global_blocking_reasons.is_empty());
+        }
+        assert_eq!(state.file_read_count.load(Ordering::Relaxed), count * 2);
+        assert_eq!(state.backup_read_count.load(Ordering::Relaxed), count * 2);
+        assert_eq!(state.game_write_count.load(Ordering::Relaxed), 0);
+    }
+}
+
+#[test]
+fn per_item_revalidation_detects_current_drift_and_unselected_recovery() {
+    let state = Arc::new(FakeUninstallState::default());
+    state.set_manifest(manifest(vec![entry(
+        "a",
+        Some("rev-a"),
+        "nativePC/a.bin",
+        b"a",
+        Some("backup-a"),
+    )]));
+    state.add_file("nativePC/a.bin", b"a");
+    state.add_backup("backup-a", b"original");
+    let request = request(&[("a", "rev-a")]);
+    let provider = provider(state.clone());
+    let original = provider.read_batch_plan_facts(&request).unwrap();
+    state.add_file("nativePC/a.bin", b"changed");
+    state
+        .backup_read_errors
+        .lock()
+        .unwrap()
+        .insert("backup-a".to_owned());
+    state.add_recovery_record(InstallRecoveryRecord {
+        profile_id: ProfileId::new("default"),
+        mod_id: ModId::new("outside"),
+        status: InstallRecoveryRecordStatus::Committing,
+        entries: Vec::new(),
+    });
+    let current = provider
+        .read_batch_item_facts(&request, &ModId::new("a"))
+        .unwrap();
+    assert_ne!(current.items[0].fact_digest, original.items[0].fact_digest);
+    assert!(reasons(&current, "a").contains(&"installed_target_changed".to_owned()));
+    assert!(reasons(&current, "a").contains(&"install_backup_unavailable".to_owned()));
+    assert!(current
+        .global_blocking_reasons
+        .iter()
+        .any(|reason| reason.code == "batch_global_recovery_active"));
+    assert!(provider
+        .read_batch_item_facts(&request, &ModId::new("outside"))
+        .is_err());
+}
+
+#[test]
 fn facts_emit_target_claims_in_windows_canonical_order() {
     let state = Arc::new(FakeUninstallState::default());
     state.set_manifest(manifest(vec![
@@ -535,9 +628,18 @@ fn install_and_reinstall_recovery_are_global_blockers() {
         targets: Vec::new(),
     });
 
-    let facts = provider(state)
-        .read_batch_plan_facts(&request(&[("a", "rev-a"), ("b", "rev-b")]))
-        .expect("facts");
+    let provider = provider(state);
+    let selected = request(&[("a", "rev-a"), ("b", "rev-b")]);
+    let facts = provider.read_batch_plan_facts(&selected).expect("facts");
+
+    let narrow = provider
+        .read_batch_item_facts(&selected, &ModId::new("a"))
+        .unwrap();
+    assert_eq!(
+        narrow.global_blocking_reasons,
+        facts.global_blocking_reasons
+    );
+    assert_eq!(narrow.items.len(), 1);
 
     assert_eq!(
         facts.global_blocking_reasons[0].code,
@@ -656,9 +758,21 @@ fn shared_and_external_ownership_fail_closed() {
     state.add_backup("external-backup", b"baseline-external");
 
     let normalized = request(&[("a", "rev-a"), ("b", "rev-b")]);
-    let facts = provider(state)
-        .read_batch_plan_facts(&normalized)
-        .expect("facts");
+    let provider = provider(state);
+    let facts = provider.read_batch_plan_facts(&normalized).expect("facts");
+    let narrow = provider
+        .read_batch_item_facts(&normalized, &ModId::new("a"))
+        .unwrap();
+    assert!(narrow
+        .global_blocking_reasons
+        .iter()
+        .any(|reason| reason.code == "batch_global_backup_conflict"));
+    assert!(narrow
+        .global_blocking_reasons
+        .iter()
+        .any(|reason| reason.code == "batch_global_target_conflict"));
+    assert!(reasons(&narrow, "a").contains(&"install_backup_owned_by_other_mod".to_owned()));
+    assert!(reasons(&narrow, "a").contains(&"install_target_owned_by_other_mod".to_owned()));
     let plan =
         build_batch_plan(normalized, facts.clone(), BatchResourceLimits::default()).expect("plan");
 

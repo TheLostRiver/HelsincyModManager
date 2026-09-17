@@ -59,13 +59,14 @@ test("invalidation rejects old responses and finishes a fresh query", options, a
   assert.equal(h.state.query.initialLoading || h.state.query.refreshing, false);
 });
 
-test("query failure clears unverified facts without an automatic retry loop", options, async (t) => {
+test("query failure keeps display content but never trusts stale facts or loops retries", options, async (t) => {
   const h = await mountQuery(t);
   await h.resolve(h.pending[0], pageOf("old-status"));
   await h.update({ show: false });
   await h.update({ show: true });
   await act(async () => h.pending[1].reject({ code: "mod_library_status_unavailable" }));
-  assert.equal(h.state.query.page, null, "Unverified installation facts must not unlock card actions");
+  assert.equal(h.state.query.page.items[0].id, "old-status");
+  assert.equal(h.state.query.statusTrusted, false, "Unverified facts must not unlock card actions");
   assert.equal(h.state.query.errorCode, "mod_library_status_unavailable");
   assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(h.pending[1].input)), null);
   assert.equal(h.pending.length, 2);
@@ -76,33 +77,42 @@ test("query failure clears unverified facts without an automatic retry loop", op
   assert.equal(h.state.query.page.items[0].id, "recovered");
 });
 
-test("write completion invalidates all slots and does not duplicate refresh requests", options, async (t) => {
+test("write completion retains catalog slots and does not duplicate synchronization", options, async (t) => {
   const h = await mountQuery(t);
   const firstInput = h.pending[0].input;
   await h.resolve(h.pending[0], pageOf("first"));
   await act(async () => h.state.query.setPage(2));
   await h.resolve(h.pending[1], pageOf("second", 2));
-  const afterWrite = loadAfterWriteCallback(() => h.state.query.refresh(), h.state.cache);
+  const afterWrite = loadAfterWriteCallback(() => h.state.query.synchronize());
+  await act(async () => h.api.emit("writer", "queued", null, "install"));
+  assert.equal(h.pending.length, 2);
+  assert.equal(h.state.query.page.items[0].id, "second");
+  assert.equal(h.state.query.initialLoading, false);
+  await act(async () => h.api.emit("writer", "completed", null, "install"));
   let refreshed;
   await act(async () => { refreshed = afterWrite(); });
   assert.equal(h.pending.length, 3, "Explicit refresh and invalidation effect must share this request");
   await h.resolve(h.pending[2], pageOf("after-write", 2));
   await refreshed;
-  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(firstInput)), null);
+  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(firstInput)).items[0].id, "first");
   assert.equal(h.state.query.page.items[0].id, "after-write");
   assert.equal(h.state.query.refreshing, false);
+  await act(async () => afterWrite());
+  assert.equal(h.pending.length, 3, "A later terminal callback reuses the completed synchronization");
 });
 
-test("task completion invalidates cache while the library page is unmounted", options, async (t) => {
+test("task completion retains the unmounted catalog but requires new status verification", options, async (t) => {
   const h = await mountQuery(t);
   const input = h.pending[0].input;
   await h.resolve(h.pending[0], pageOf("before-install"));
   await h.update({ show: false });
   await act(async () => h.api.emit("installation", "queued", null, "install"));
   await act(async () => h.api.emit("installation", "completed", null, "install"));
-  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(input)), null);
+  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(input)).items[0].id, "before-install");
+  assert.equal(h.state.cache.readStatusSnapshot("mhw", "test-profile"), null);
   await h.update({ show: true });
-  assert.equal(h.state.query.page, null);
+  assert.equal(h.state.query.page.items[0].id, "before-install");
+  assert.equal(h.state.query.statusTrusted, false);
   await h.resolve(h.pending.at(-1), pageOf("installed"));
   assert.equal(h.state.query.page.items[0].id, "installed");
 });
@@ -111,10 +121,12 @@ test("active writes do not repopulate cache before their terminal event", option
   const h = await mountQuery(t);
   await h.resolve(h.pending[0], pageOf("before"));
   await act(async () => h.api.emit("writer", "queued", null, "install"));
-  await h.resolve(h.pending[1], pageOf("during-write"));
-  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(h.pending[1].input)), null);
+  assert.equal(h.pending.length, 1, "No query is started during an active write");
+  assert.equal(h.state.query.page.items[0].id, "before");
+  assert.equal(h.state.query.statusTrusted, false);
+  assert.equal(h.state.cache.readPage(profileKey, JSON.stringify(h.pending[0].input)), null);
   await act(async () => h.api.emit("writer", "completed", null, "install"));
-  await h.resolve(h.pending[2], pageOf("after"));
+  await h.resolve(h.pending[1], pageOf("after"));
   assert.equal(h.state.query.page.items[0].id, "after");
 });
 
@@ -134,13 +146,16 @@ test("profile changes and late responses cannot mix snapshots", options, async (
   assert.equal(h.state.query.page.items[0].id, "profile-two");
 });
 
-test("out-of-order responses cannot overwrite a newer manual refresh", options, async (t) => {
+test("explicit refresh upgrades a metadata query and concurrent explicit refreshes share it", options, async (t) => {
   const h = await mountQuery(t);
-  let refreshed;
-  await act(async () => { refreshed = h.state.query.refresh(); });
+  let refreshed, repeated;
+  await act(async () => { refreshed = h.state.query.refresh(); repeated = h.state.query.refresh(); });
+  assert.equal(h.pending.length, 2);
+  assert.equal(h.pending[1].context.refresh, true);
+  await h.resolve(h.pending[0], pageOf("stale"));
+  assert.equal(h.state.query.page, null);
   await h.resolve(h.pending[1], pageOf("new"));
-  await refreshed;
-  await h.resolve(h.pending[0], pageOf("old"));
+  await Promise.all([refreshed, repeated]);
   assert.equal(h.state.query.page.items[0].id, "new");
 });
 
@@ -198,4 +213,18 @@ test("stale profile callbacks cannot cancel the current profile query", options,
   await act(async () => staleUpdate((items) => items));
   await h.resolve(h.pending[1], pageOf("two"));
   assert.equal(h.state.query.page.items[0].id, "two");
+});
+
+test("a synchronous loader failure releases the in-flight request for explicit retry", options, async (t) => {
+  let calls = 0;
+  const h = await mountQuery(t, { loadPage: () => {
+    calls++;
+    if (calls === 1) throw { code: "mod_library_status_unavailable" };
+    return Promise.resolve(pageOf("recovered"));
+  } });
+  assert.equal(h.state.query.statusTrusted, false);
+  assert.equal(h.state.query.errorCode, "mod_library_status_unavailable");
+  await act(async () => h.state.query.refresh());
+  assert.equal(h.state.query.statusTrusted, true);
+  assert.equal(calls, 2);
 });

@@ -1039,6 +1039,25 @@ impl ReadOnlyInstallAutomation {
         request: &NormalizedBatchPlanRequest,
         environment_digest: String,
     ) -> anyhow::Result<BatchPlanFacts> {
+        self.batch_uninstall_facts_provider(request, environment_digest)?
+            .read_batch_plan_facts(request)
+    }
+
+    pub(crate) fn read_batch_uninstall_item_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        mod_id: &ModId,
+        environment_digest: String,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        self.batch_uninstall_facts_provider(request, environment_digest)?
+            .read_batch_item_facts(request, mod_id)
+    }
+
+    fn batch_uninstall_facts_provider(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        environment_digest: String,
+    ) -> anyhow::Result<BatchUninstallPlanFactsProvider> {
         let game_instance = self.load_admitted_game_instance(&request.game_id)?;
         let backup_store = Arc::new(FileSystemInstallBackupStore::new(
             self.app_data_dir.join("install").join("backups"),
@@ -1054,12 +1073,11 @@ impl ReadOnlyInstallAutomation {
             Arc::clone(&self.reinstall_recovery_repository),
             snapshot_store,
         );
-        BatchUninstallPlanFactsProvider::new(
+        Ok(BatchUninstallPlanFactsProvider::new(
             Arc::clone(&self.manifest_repository),
             recovery_scan,
             environment_digest,
-        )
-        .read_batch_plan_facts(request)
+        ))
     }
 
     pub(crate) fn read_batch_reinstall_facts(

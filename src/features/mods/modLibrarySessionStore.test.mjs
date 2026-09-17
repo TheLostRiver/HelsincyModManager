@@ -84,3 +84,16 @@ test("loss of task observation invalidates and disables cached snapshots", () =>
   store.writePage("p", "q", page, store.getGeneration());
   assert.equal(store.readPage("p", "q"), null);
 });
+
+test("an import finishing during another writer still invalidates the catalog", () => {
+  const store = readyStore();
+  const input = { profileContext: { gameId: "mhw", profileId: "p" }, filter: { kind: "all" } };
+  const profileKey = "profile:mhw\u0000p";
+  store.writePage(profileKey, JSON.stringify(input), page, store.getGeneration());
+  const write = store.beginWrite({ gameId: "mhw", profileId: "p", modId: "existing" });
+  store.observeTask(event("import", "queued", "mod_import"));
+  store.observeTask(event("import", "completed", "mod_import"));
+  store.finishWrite(write);
+  assert.equal(store.readCatalogPage(input), null);
+  assert.equal(store.readDisplayPage(profileKey, JSON.stringify(input)), page);
+});

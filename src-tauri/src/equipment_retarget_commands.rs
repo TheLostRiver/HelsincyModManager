@@ -17,6 +17,7 @@ use hmm_app::{
     StartEquipmentRetargetReinstallTaskRequest, TaskProgressEvent,
 };
 use hmm_core::{FileLayer, ModId, ProfileId, ReplacementSourceId};
+use hmm_runtime::TaskProgressObserver;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
@@ -103,6 +104,12 @@ pub fn start_equipment_retarget_install_task(
     let runner = Arc::clone(&state.retarget_install_task_runner);
     let task_id = task.task_id.clone();
     std::thread::spawn(move || {
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let result = match expected_revision {
             Some(revision) => {
                 runner.run_equipment_retarget_install_task_at_revision(&task_id, request, revision)
@@ -111,7 +118,7 @@ pub fn start_equipment_retarget_install_task(
         };
         let events = result.unwrap_or_else(|error| error.events);
         for event in events {
-            let _ = emit_task_progress(&app_handle, event);
+            let _ = observer.observe(&event);
         }
     });
     Ok(task.into())
@@ -204,7 +211,12 @@ fn queue_equipment_reinstall(
     let runner = Arc::clone(&state.reinstall_task_runner);
     let task_id = task.task_id.clone();
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.selection.game_id,
+            &request.selection.profile_id,
+            &request.selection.mod_id,
+        );
         let _ = runner
             .run_equipment_retarget_reinstall_task_with_observer(&task_id, request, &observer);
     });

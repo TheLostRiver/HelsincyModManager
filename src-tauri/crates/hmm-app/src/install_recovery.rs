@@ -259,18 +259,37 @@ impl InstallRecoveryScanService {
         &self,
         request: InstallRecoveryScanRequest,
     ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
+        self.scan_selected(request, false)
+    }
+
+    /// Deep-checks the requested items plus every durable recovery transaction. Ordinary
+    /// unselected completed entries are not represented as verified summaries. Batch callers
+    /// separately reload/validate the whole manifest and its target/backup ownership.
+    pub(crate) fn scan_with_recovery_records(
+        &self,
+        request: InstallRecoveryScanRequest,
+    ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
+        self.scan_selected(request, true)
+    }
+
+    fn scan_selected(
+        &self,
+        request: InstallRecoveryScanRequest,
+        include_recovery_records: bool,
+    ) -> Result<Vec<InstallRecoverySummary>, InstallRecoveryScanError> {
         let manifest = self
             .manifest_repository
             .load_manifest(&request.profile_id)
             .map_err(|_| InstallRecoveryScanError::ManifestUnavailable)?;
 
         let scan_all_mods = request.mod_ids.is_empty();
-        let recovery_records = if scan_all_mods {
+        let list_records = scan_all_mods || include_recovery_records;
+        let recovery_records = if list_records {
             self.list_recovery_records(&request.profile_id)?
         } else {
             BTreeMap::new()
         };
-        let reinstall_transactions = if scan_all_mods {
+        let reinstall_transactions = if list_records {
             self.list_reinstall_transactions(&request.profile_id)?
         } else {
             BTreeMap::new()
@@ -282,6 +301,18 @@ impl InstallRecoveryScanService {
                 &recovery_records,
                 &reinstall_transactions,
             )
+        } else if include_recovery_records {
+            request
+                .mod_ids
+                .into_iter()
+                .chain(recovery_scan_mod_ids(
+                    None,
+                    &recovery_records,
+                    &reinstall_transactions,
+                ))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
         } else {
             request.mod_ids
         };
@@ -290,7 +321,7 @@ impl InstallRecoveryScanService {
         for mod_id in mod_ids {
             let recovery_record = if let Some(record) = recovery_records.get(mod_id.as_str()) {
                 Some(record.clone())
-            } else if scan_all_mods {
+            } else if list_records {
                 None
             } else {
                 self.load_recovery_record(&request.profile_id, &mod_id)?
@@ -298,7 +329,7 @@ impl InstallRecoveryScanService {
             let reinstall_transaction =
                 if let Some(transaction) = reinstall_transactions.get(mod_id.as_str()) {
                     Some(transaction.clone())
-                } else if scan_all_mods {
+                } else if list_records {
                     None
                 } else {
                     self.load_reinstall_transaction(&request.profile_id, &mod_id)?

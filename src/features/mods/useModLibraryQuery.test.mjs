@@ -20,7 +20,7 @@ test("every request shares one latest-response gate for success and failure", ()
   assert.match(source, /requestGateRef\.current\.isLatest\(requestId\)/);
   assert.match(source, /latestCommittedQueryKeyRef\.current/);
   assert.match(source, /request\.queryKey/);
-  assert.equal(source.match(/if \(!isCurrentResponse\(\)\)/g)?.length, 2);
+  assert.equal(source.match(/if \(!isCurrentResponse\(\)\)/g)?.length, 3);
   assert.match(source, /requestGateRef\.current\.invalidate\(\)/);
 });
 
@@ -48,7 +48,7 @@ test("backend page clamp updates the requested page without issuing a duplicate 
 
 test("refresh reuses the latest committed query and current-profile data only", () => {
   assert.match(source, /latestRequestRef\.current/);
-  assert.match(source, /return executeQuery\(request\)/);
+  assert.match(source, /return executeQuery\(request, false, true\)/);
   assert.match(source, /current\.record\?\.profileKey !== profileKey/);
   assert.doesNotMatch(source, /getModLibrary\(|visibleItems|\.slice\(/);
 });
@@ -56,7 +56,7 @@ test("refresh reuses the latest committed query and current-profile data only", 
 test("blocked status filters stop loading instead of degrading to an all query", () => {
   assert.match(source, /filterMapping\.kind === "blocked"[\s\S]*?return null/);
   assert.match(source, /blockedReason === null && page === null && phase !== "error"/);
-  assert.match(source, /blockedReason === null && page !== null && phase === "refreshing"/);
+  assert.match(source, /refreshing: blockedReason === null && page !== null/);
 });
 
 test("semantic query keys suppress duplicate effects and profile changes query page one", () => {

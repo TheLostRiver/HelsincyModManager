@@ -3,12 +3,24 @@ use hmm_core::{
     BatchAttempt, BatchAttemptStatus, BatchId, BatchItemId, BatchItemResult, GameId, ProfileId,
     SealedBatch,
 };
-use hmm_core::{BatchPlanFacts, NormalizedBatchPlanRequest};
+use hmm_core::{BatchPlanFacts, ModId, NormalizedBatchPlanRequest};
 
 pub trait BatchPlanFactsProvider: Send + Sync {
     /// Reads the current batch facts without mutating repositories or creating artifacts.
     fn read_batch_plan_facts(&self, request: &NormalizedBatchPlanRequest)
         -> Result<BatchPlanFacts>;
+
+    /// Revalidates one item and current global blockers before its transaction starts.
+    /// The original selection must remain available for ownership/conflict checks. Providers
+    /// may omit other item facts, but must use the same environment identity as the full read.
+    /// The conservative default preserves the full-read semantics for other providers.
+    fn read_batch_item_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        _mod_id: &ModId,
+    ) -> Result<BatchPlanFacts> {
+        self.read_batch_plan_facts(request)
+    }
 }
 
 pub struct BatchSealRequest<'a> {

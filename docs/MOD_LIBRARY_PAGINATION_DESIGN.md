@@ -316,10 +316,16 @@ ModLibraryPagination.css
 ModLibraryPageControls.tsx
 ModLibraryPageControls.css
 ModLibraryQueryFeedback.tsx
-modLibraryRecoveryRefresh.ts
+modLibraryPageLoader.ts
+modInstallationStateCache.ts
 ```
 
 不要继续把分页、请求竞态和选择重置逻辑全部堆入已经较大的 `ModLibraryPage.tsx` / `ModLibraryPage.css`。
+
+后续安装状态同步已与完整性扫描拆开：普通写入保留目录分页，逐项事件更新已提交状态，终态轻量
+补读当前页、保留页和任务目标以恢复漏事件；状态筛选仍重查成员、计数和夹紧页码。显式刷新与恢复
+中心保留文件扫描，已知异常独立保存，不由普通 manifest 状态清除。详见
+[会话缓存与拖拽导入](ARCHITECTURE.md#会话缓存与拖拽导入)。
 
 ## 持久化与性能演进
 

@@ -30,6 +30,8 @@ mod mod_import_archive;
 mod mod_import_diagnostics;
 mod mod_import_task;
 mod mod_installation;
+mod mod_installation_state;
+mod mod_installation_state_session;
 mod mod_library_projection;
 mod mod_library_projection_tracking;
 mod mod_library_query;
@@ -253,6 +255,12 @@ pub use mod_import_task::{
     StartImportModTaskRequest, TaskStarted,
 };
 pub use mod_installation::ModInstallationScopeService;
+pub use mod_installation_state::{
+    ModInstallationStateObserver, ModInstallationStateQueryService, ModInstallationStateSnapshot,
+};
+pub use mod_installation_state_session::{
+    ModInstallationStateSession, ModInstallationStateUpdate, MAX_MOD_INSTALLATION_STATE_IDS,
+};
 pub use mod_library_projection::ModLibraryProjectionRefreshService;
 pub use mod_library_projection_tracking::{
     ModLibraryProjectionFreshnessGuard, ProjectionTrackingCategoryRepository,

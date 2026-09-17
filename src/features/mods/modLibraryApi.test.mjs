@@ -47,9 +47,9 @@ test("mod library page consumes paged queries and limits mock data to plain-brow
   assert.match(source, /hasTauriRuntime:\s*hasTauriRuntime\(\)/);
   assert.match(
     source,
-    /const page = browserPreviewEnabled\s*\?\s*queryBrowserMockModLibrary\(input,\s*fallbackModLibraryItems,\s*categoriesRef\.current\)\s*:\s*await queryModLibrary\(input\);/,
+    /if \(browserPreviewEnabled\) return queryBrowserMockModLibrary\(input,\s*fallbackModLibraryItems,\s*categoriesRef\.current\)/,
   );
-  assert.match(source, /if \(browserPreviewEnabled \|\| input\.profileContext === undefined\) \{\s*return page;/);
+  assert.match(source, /loadModLibraryPageWithStatuses\(input, context/);
   assert.match(source, /const libraryQuery = useModLibraryQuery\(\{[\s\S]*?loadPage:\s*loadModLibraryPage/);
   assert.match(source, /const libraryPage = libraryQuery\.page/);
   assert.doesNotMatch(source, /\bgetModLibrary\b|setLibraryItems/);
@@ -59,16 +59,16 @@ test("mod library page consumes paged queries and limits mock data to plain-brow
   );
 });
 
-test("mod library write completions use a dedicated refresh that clears selection and returns to the top", () => {
+test("write completion synchronizes without resetting scroll while library edits invalidate metadata", () => {
   const source = readSource("src/features/mods/ModLibraryPage.tsx");
 
   assert.match(
     source,
-    /const refreshModLibraryAfterWrite = useCallback\(async \(\) => \{\s*librarySessionCache\.invalidateAllPages\(\);\s*resetContentScroll\(\);\s*await refreshModLibrary\(\);/,
+    /const refreshModLibraryAfterWrite = useCallback\(async \(\) => \{\s*await synchronizeLibraryPage\(\);/,
   );
   assert.match(source, /refreshLibrary:\s*refreshModLibraryAfterWrite/);
-  assert.match(source, /onImportCompleted=\{refreshModLibraryAfterWrite\}/);
-  assert.match(source, /onSaved=\{refreshModLibraryAfterWrite\}/);
+  assert.match(source, /onImportCompleted=\{refreshModLibraryAfterChange\}/);
+  assert.match(source, /onSaved=\{refreshModLibraryAfterChange\}/);
   assert.match(source, /Promise\.allSettled\(\[\s*refreshModLibraryAfterWrite\(\)/);
   assert.match(source, /case "refresh":[\s\S]*?refreshModLibrary\(\)/);
 });

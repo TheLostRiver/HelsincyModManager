@@ -541,6 +541,17 @@ Batch apply 在第一项写入前检查：
 - 后项重新读取自己的相关事实；非重叠前项的预期变化不算 stale。
 - 如果前项变化实际影响后项 target/manifest/preflight，后项返回 `batch_item_plan_stale`。
 
+执行期 `BatchPlanFactsProvider::read_batch_item_facts` 保留完整 request 供全局归属检查，允许只返回
+当前项 facts；默认实现保守地全读。批次开始的完整 preflight、stop/continue、重试和锁内最终复核不变。
+Runtime 安装实现仅重建当前计划，环境标识不混入条目 digest；每项 digest 仍绑定到 sealed plan，旧版本
+聚合环境摘要的未执行计划需要重新预览。正常 N 项的 runner 准备量由 N×(N+1) 降为 2N 次单项计划构建
+（不含 preview/seal 与单项 executor 的独立校验）。
+
+卸载的逐项读取仍重新加载／验证全局 manifest、全批所选目标与备份归属，并深度扫描当前项及所有
+install/reinstall recovery records；普通非当前项文件不每轮重读，也不伪造它们的已验证摘要。新共享
+target/backup、非选中恢复事务、当前文件或备份漂移继续阻断。没有恢复记录的 N 项普通批次，runner
+的文件／备份读取为一次完整扫描加每项一次深度检查；真正重装暂保留其完整 facts 读取语义。
+
 第一项写入前发现 stale：整个 batch `blocked`，零写入。中途发现 item stale：按 stop/continue 处理；
 已经成功项不回滚。
 

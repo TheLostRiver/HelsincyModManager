@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { trackModLibraryTaskStart, trackModLibraryIntegrityScan, trackModLibraryManifestScan } from "./modLibraryWriteTracking.ts";
 import type { TaskStartedDto } from "./modImportTypes";
 import type {
   GetInstallManifestStatusInput,
@@ -29,7 +30,7 @@ export function previewInstallPlanForImportedMod(
 }
 
 export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_install_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_install_task", {
     request: {
       gameId: input.gameId,
       modId: input.modId,
@@ -38,39 +39,39 @@ export function startInstallTask(input: StartInstallTaskInput): Promise<TaskStar
       layerPriority: input.layerPriority,
       ...(input.expectedRevisionId === undefined ? {} : { expectedRevisionId: input.expectedRevisionId }),
     },
-  });
+  }));
 }
 
 export function startUninstallTask(input: StartUninstallTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_uninstall_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_uninstall_task", {
     request: {
       gameId: input.gameId,
       modId: input.modId,
       profileId: input.profileId,
     },
-  });
+  }));
 }
 
 export function getInstallManifestStatus(
   input: GetInstallManifestStatusInput,
 ): Promise<InstallManifestStatusSummary[]> {
-  return invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
+  return trackModLibraryManifestScan(input, () => invoke<InstallManifestStatusSummary[]>("get_install_manifest_status", {
     request: {
       ...(input.gameId === undefined ? {} : { gameId: input.gameId }),
       profileId: input.profileId,
       modIds: input.modIds,
     },
-  });
+  }));
 }
 
 export function scanInstallRecovery(input: ScanInstallRecoveryInput): Promise<InstallRecoverySummary[]> {
-  return invoke<InstallRecoverySummary[]>("scan_install_recovery", {
+  return trackModLibraryIntegrityScan(input, () => invoke<InstallRecoverySummary[]>("scan_install_recovery", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,
       modIds: input.modIds,
     },
-  });
+  }));
 }
 
 export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promise<InstallRecoveryActionPreview> {
@@ -85,7 +86,7 @@ export function previewRecoveryAction(input: PreviewRecoveryActionInput): Promis
 }
 
 export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Promise<TaskStartedDto> {
-  return invoke<TaskStartedDto>("start_recovery_action_task", {
+  return trackModLibraryTaskStart(input, () => invoke<TaskStartedDto>("start_recovery_action_task", {
     request: {
       gameId: input.gameId,
       profileId: input.profileId,
@@ -93,5 +94,5 @@ export function startRecoveryActionTask(input: StartRecoveryActionTaskInput): Pr
       actionKind: input.actionKind,
       ...(input.planToken ? { planToken: input.planToken } : {}),
     },
-  });
+  }));
 }

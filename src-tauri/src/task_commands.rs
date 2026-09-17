@@ -10,6 +10,14 @@ const SAVE_BACKUP_CANCELLED_PHASE: &str = "save_backup.cancelled";
 const SAVE_RESTORE_CANCELLED_PHASE: &str = "save_restore.cancelled";
 
 #[tauri::command]
+pub fn get_task_progress(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<crate::dto::TaskProgressEventDto>, CommandErrorDto> {
+    state.task_progress_snapshots.get(&parse_task_id(task_id)?)
+}
+
+#[tauri::command]
 pub fn cancel_task(
     task_id: String,
     state: State<'_, AppState>,

@@ -5,17 +5,19 @@
 // 路由切换会卸载页面组件，页级 state 活不过一次切页。库页的查询结果原本就是页级 state，
 // 于是每次进 Mod 库都从零重查一遍，先给一屏骨架屏。
 //
-// 缓存本身放在 ref 上而不是 state 上：写缓存**不该**引起任何重渲染。它不是界面数据源，
-// 只是「上次提交过的结果」的存放处；真正驱动界面的仍然是页面自己的查询 state。
-// 顺带的好处是这里导出的几个回调身份恒定，可以安全地被下游放进 effect 依赖里。
+// Store 放在 ref 上保持身份稳定。目录缓存写回不驱动查询；安装状态事件通过独立展示订阅
+// 更新对应卡片，不推进查询 generation。写入边界的轻量补读负责恢复丢失的状态通知。
 //
 // 缓存语义（命中不取消请求、按 (配置档, 查询) 分槽、失效倒向重新取数）在
 // `modLibrarySessionCache.ts` 与 `modLibrarySessionStore.ts` 里；这里只持有 store 并订阅任务边界。
 
 import { listen } from "@tauri-apps/api/event";
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { TASK_PROGRESS_EVENT_NAME, type TaskProgressEventDto } from "./modImportTypes";
 import { createModLibrarySessionStore, type ModLibrarySessionStore } from "./modLibrarySessionStore";
+import { attachModLibraryWriteTracking, publishModLibraryTaskProgress } from "./modLibraryWriteTracking.ts";
+import { getTaskProgress } from "./modTaskProgressApi.ts";
+import { MOD_INSTALLATION_STATE_EVENT, type ModInstallationStateEvent } from "./modInstallationStateTypes";
 
 export type ModLibrarySessionCacheValue = ModLibrarySessionStore;
 
@@ -25,6 +27,37 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
   const cacheRef = useRef<ModLibrarySessionStore | null>(null);
   if (cacheRef.current === null) cacheRef.current = createModLibrarySessionStore();
   const value = cacheRef.current;
+  useLayoutEffect(() => attachModLibraryWriteTracking(value), [value]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<ModInstallationStateEvent>(MOD_INSTALLATION_STATE_EVENT, ({ payload }) => {
+      if (!disposed) value.observeInstallationState(payload);
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    }).catch(() => { /* Terminal metadata queries still reconcile all retained cards. */ });
+    return () => { disposed = true; unlisten?.(); };
+  }, [value]);
+
+  // Events are the fast path. Poll only active desktop tasks to recover a missed terminal
+  // event, even after the page unmounts. An unavailable/unknown task stays occupied.
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await Promise.all(value.activeTaskIds().map(async (taskId) => {
+        try {
+          const event = await getTaskProgress(taskId);
+          if (!disposed && event?.taskId === taskId) publishModLibraryTaskProgress(event);
+        } catch { /* Keep the write occupied; the next observation can recover it. */ }
+      }));
+      if (!disposed) timer = setTimeout(() => { void poll(); }, 1500);
+    };
+    timer = setTimeout(() => { void poll(); }, 1500);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [value]);
 
   useEffect(() => {
     let disposed = false;
@@ -45,7 +78,7 @@ export function ModLibrarySessionCacheProvider({ children }: { children: ReactNo
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void listen<TaskProgressEventDto>(TASK_PROGRESS_EVENT_NAME, ({ payload }) => {
-      if (!disposed) value.observeTask(payload);
+      if (!disposed) publishModLibraryTaskProgress(payload);
     }).then((dispose) => {
       if (disposed) { dispose(); return; }
       unlisten = dispose;

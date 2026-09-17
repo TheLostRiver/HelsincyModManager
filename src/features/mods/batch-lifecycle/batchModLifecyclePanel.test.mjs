@@ -140,16 +140,10 @@ test("ModLibraryPage dispatches lifecycle flows by explicit selection mode", () 
   assert.match(page, /BatchModLifecyclePreviewPanel/);
   assert.match(page, /BatchModLifecycleResultPanel/);
   assert.match(page, /useEffect\(\(\) => \{\s*batchWorkflow\.invalidatePreview\(\);/);
-  assert.match(page, /handledBatchTerminalAttemptsRef = useRef\(new Set<string>\(\)\)/);
-  assert.match(page, /batchWorkflow\.state\.status !== "result"/);
-  assert.match(
-    page,
-    /const batchAttemptKey = `\$\{batchWorkflow\.state\.batchId\}:\$\{batchWorkflow\.state\.attemptNumber\}`/,
-  );
-  assert.match(
-    page,
-    /handledBatchTerminalAttemptsRef\.current\.add\(batchAttemptKey\);\s*void refreshLibraryPage\(\)\.catch/,
-  );
+  assert.doesNotMatch(page, /handledBatchTerminalAttemptsRef/);
+  assert.match(page, /writeDisabled=\{libraryQueryBusy\}/);
+  assert.match(page, /if \(!libraryQueryBusy\) void batchWorkflow\.confirmAndStart\(\)/);
+  assert.match(page, /if \(!libraryQueryBusy\) void batchWorkflow\.retry\(\)/);
 });
 
 test("batch lifecycle resolves exact installed revisions from manifest facts", () => {

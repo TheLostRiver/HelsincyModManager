@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ModLibraryWriteTarget } from "../modLibrarySessionStore";
 import {
   getBatchModLifecycleResult,
   previewBatchModLifecycle,
@@ -34,7 +35,6 @@ export type UseBatchModLifecycleWorkflowInput = {
   profileId: string | null;
   loadManifestStatuses: (modIds: string[]) => Promise<InstallManifestStatusSummary[]>;
   loadRevisions: (modId: string) => Promise<ModRevisionList>;
-  onWriteSettled: () => void;
   loadReplacementTargetFacts?: (
     modIds: string[],
   ) => Promise<BatchModLifecycleReplacementTargetFacts[]>;
@@ -70,7 +70,6 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     profileId,
     loadManifestStatuses,
     loadRevisions,
-    onWriteSettled,
     loadReplacementTargetFacts,
   } = input;
   const [state, setState] = useState<BatchModLifecycleWorkflowState>({ status: "idle" });
@@ -88,6 +87,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
   });
   const replacementTargetsRef = useRef<{ modId: string; targetId: string }[]>([]);
   const activeAttemptRef = useRef<{ batchId: string; attemptNumber: number } | null>(null);
+  const activeWriteTargetRef = useRef<ModLibraryWriteTarget | undefined>(undefined);
   const scopeKey = JSON.stringify([gameId, profileId]);
   const stateScopeRef = useRef(scopeKey);
 
@@ -105,6 +105,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     setPluginError(null);
     previewRequestRef.current = null;
     activeAttemptRef.current = null;
+    activeWriteTargetRef.current = undefined;
     replacementTargetsRef.current = [];
     resolutionRef.current = { items: [], excluded: [], unresolvable: [] };
     updateState({ status: "idle" });
@@ -473,7 +474,6 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
     }
     const generation = generationRef.current;
     const operation = operationOfRequest(current.request);
-    let writeRequested = false;
     updateState({
       status: "confirming",
       request: current.request,
@@ -501,10 +501,12 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: sealed.batchId,
         planToken: sealed.planToken,
       });
-      writeRequested = true;
+      activeWriteTargetRef.current = { gameId: current.request.gameId, profileId: current.request.profileId,
+        modIds: current.request.items.map((item) => item.modId) };
       const started = await startBatchModLifecycle({
         batchId: sealed.batchId,
         planToken: sealed.planToken,
+        target: activeWriteTargetRef.current,
       });
       if (generation !== generationRef.current) {
         return;
@@ -524,12 +526,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
         batchId: activeAttemptRef.current?.batchId ?? null,
         attemptNumber: activeAttemptRef.current?.attemptNumber ?? null,
       });
-    } finally {
-      // A command/result error may follow successful writes. Invalidate even after unmount
-      // or scope changes; never let an old page cache survive a settled write attempt.
-      if (writeRequested) onWriteSettled();
     }
-  }, [loadResultPage, onWriteSettled, updateState]);
+  }, [loadResultPage, updateState]);
 
   const retry = useCallback(async () => {
     const active = activeAttemptRef.current;
@@ -549,6 +547,7 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
       const started = await retryBatchModLifecycle({
         batchId: active.batchId,
         expectedAttemptNumber: active.attemptNumber,
+        target: activeWriteTargetRef.current,
       });
       if (generation !== generationRef.current) {
         return;
@@ -567,10 +566,8 @@ export function useBatchModLifecycleWorkflow(input: UseBatchModLifecycleWorkflow
           attemptNumber: active.attemptNumber,
         });
       }
-    } finally {
-      onWriteSettled();
     }
-  }, [loadResultPage, onWriteSettled, updateState]);
+  }, [loadResultPage, updateState]);
 
   const loadMorePendingRef = useRef(false);
   const loadMoreResult = useCallback(async () => {

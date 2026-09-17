@@ -20,6 +20,8 @@ enum AppStateStartup {
 pub struct AppState {
     runtime: HmmRuntime,
     batch_environment: Result<RuntimeEnvironment, &'static str>,
+    pub(crate) task_progress_snapshots: crate::task_events::TaskProgressSnapshots,
+    pub(crate) mod_installation_state_session: std::sync::Arc<hmm_app::ModInstallationStateSession>,
 }
 
 impl AppState {
@@ -56,8 +58,14 @@ impl AppState {
             hmm_runtime::production_app_data_dir().as_deref(),
         );
         let state = Self {
+            mod_installation_state_session: std::sync::Arc::new(
+                hmm_app::ModInstallationStateSession::new(std::sync::Arc::clone(
+                    &runtime.mod_installation_state_query,
+                )),
+            ),
             runtime,
             batch_environment,
+            task_progress_snapshots: Default::default(),
         };
         run_state_startup(startup, &state);
         Ok(state)

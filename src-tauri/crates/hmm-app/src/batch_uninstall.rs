@@ -45,6 +45,28 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
         &self,
         request: &NormalizedBatchPlanRequest,
     ) -> anyhow::Result<BatchPlanFacts> {
+        self.read_facts(request, None)
+    }
+
+    fn read_batch_item_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        mod_id: &ModId,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        anyhow::ensure!(
+            request.items.iter().any(|item| item.mod_id() == mod_id),
+            "batch item is not selected"
+        );
+        self.read_facts(request, Some(mod_id))
+    }
+}
+
+impl BatchUninstallPlanFactsProvider {
+    fn read_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        current_mod_id: Option<&ModId>,
+    ) -> anyhow::Result<BatchPlanFacts> {
         anyhow::ensure!(
             request.operation == hmm_core::BatchOperation::Uninstall,
             "batch operation is not uninstall"
@@ -65,12 +87,12 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
         let manifest = self
             .manifest_repository
             .load_manifest(&request.profile_id)?;
-        let recovery_summaries = self
-            .recovery_scan_service
-            .scan(InstallRecoveryScanRequest {
-                profile_id: request.profile_id.clone(),
-                mod_ids: Vec::new(),
-            })?;
+        let recovery_summaries =
+            self.recovery_scan_service
+                .scan_with_recovery_records(InstallRecoveryScanRequest {
+                    profile_id: request.profile_id.clone(),
+                    mod_ids: current_mod_id.into_iter().cloned().collect(),
+                })?;
         let summaries_by_mod = recovery_summaries
             .iter()
             .cloned()
@@ -102,6 +124,24 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
             );
         }
 
+        if current_mod_id.is_some() {
+            // Full preflight derives this from all target claims. A narrow read must still
+            // detect ownership collisions introduced between items, including two later items.
+            let conflicts = target_owners
+                .values()
+                .filter(|owners| {
+                    owners
+                        .iter()
+                        .filter(|owner| selected_mod_ids.contains(*owner))
+                        .count()
+                        > 1
+                })
+                .count();
+            if conflicts > 0 {
+                global_reason_counts.insert("batch_global_target_conflict".to_owned(), conflicts);
+            }
+        }
+
         let mut active_recovery_count = recovery_summaries
             .iter()
             .filter(|summary| recovery_is_globally_active(summary))
@@ -120,6 +160,9 @@ impl BatchPlanFactsProvider for BatchUninstallPlanFactsProvider {
 
         let mut items = Vec::with_capacity(request.items.len());
         for input in &request.items {
+            if current_mod_id.is_some_and(|mod_id| input.mod_id() != mod_id) {
+                continue;
+            }
             let BatchItemInput::Uninstall(input) = input else {
                 anyhow::bail!("batch item operation is not uninstall");
             };

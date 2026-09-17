@@ -1,5 +1,25 @@
 # 测试指南
 
+## Mod 写入后的列表同步
+
+```powershell
+node --test src/features/mods/modLibraryRefreshBehavior.test.mjs src/features/mods/modLibraryPageLoader.test.mjs src/features/mods/modInstallationStateCache.test.mjs src/features/mods/modLibraryWriteTracking.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs
+cargo test -p hmm-app --lib batch_
+cargo test -p hmm-runtime --lib batch_
+cargo test -p hmm-tauri --lib task_events
+```
+
+用真实 hook／Provider 和可控 IPC 时序验证：写入前占用、终态早到、重复和乱序事件、批量与重试、
+跨路由、作用域切换、启动／查询失败、失败不解锁、保留目录与同一轮共享轻量状态查询。批量 5／10／20
+项分别验证 runner 一次全读加 N 次窄读；无恢复记录的卸载文件与备份读取各为 2N，不计单项事务自身
+复核。Runtime 用临时目录的 10 项安装／卸载验证真实事务与未归属文件保留，其他安全反例继续执行。
+
+Windows 验收另用人工 fixture 延长文件扫描／锁等待，确认宿主窗口交互仍响应、列表不整页清空、
+普通安装／卸载不重置滚动。自动测试的调用次数不代表真实 Mod 的秒级耗时；磁盘速度、文件体积和
+必要恢复校验仍影响扫描完成时间。跨层候选须运行完整 `scripts/verify.ps1`。
+
+2026-09-17 的同机 native 对照结果见 [Mod 列表刷新性能采样](testing/mod-library-refresh-performance-2026-09-17.md)。
+
 ## Mod 库排序与统计
 
 以下命令在仓库根目录执行。
@@ -463,6 +483,22 @@ node --test src/app/onboarding/onboardingLanguageBehavior.test.mjs src/app/onboa
 键盘焦点与原生方向键、窄屏布局仍需浏览器交互检查；渲染器通过不代表 WebView2 验收通过。
 
 ### 拖拽与会话缓存
+
+安装状态增量同步的聚焦回归：
+
+```powershell
+node --test src/features/mods/modInstallationStateCache.test.mjs src/features/mods/modLibraryPageLoader.test.mjs src/features/mods/modLibraryRefreshBehavior.test.mjs src/features/mods/modLibrarySessionStore.test.mjs src/features/mods/modLibrarySessionBehavior.test.mjs
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --lib mod_installation_state
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-app --lib state_tests
+cargo test --manifest-path src-tauri/Cargo.toml -p hmm-infra --lib game_running_detector
+```
+
+覆盖逐项显示且不重查目录／扫描文件、漏事件后补读旁及卡片、同 Mod 与跨 Mod 乱序、epoch/reset、
+状态筛选重查及分页夹紧、查询失败关闭、完整性负面结论保留与跨写入扫描丢弃。Rust 测试覆盖每次
+重新读元数据、非法／错作用域清单、恢复残留、共享归属变化、记账失败仍观察已发生的事务，以及
+批次中途游戏变为 Running／Unknown 后不写下一项。Windows 原生检测覆盖当前进程、精确映像名、
+大小写、别名、枚举错误和三次有界重试。真实性能仍需使用隔离人工数据的 release 桌面采样，区分
+操作执行、列表补齐、逐项显示和预览／封存，不能用这些单元测试耗时代表玩家体验。
 
 拖拽队列与会话缓存的 React 生命周期回归使用匹配 React 版本的 `react-test-renderer`，加载真实
 Provider、hook 和 runner，仅替换 IPC 与展示叶子。正式用例通过 `pnpm test` 一并执行：

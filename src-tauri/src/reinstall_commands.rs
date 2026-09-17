@@ -87,7 +87,12 @@ fn spawn_reinstall_runner(
     request: StartReinstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let _ = runner.run_reinstall_task_with_observer(&task_id, request, &observer);
     });
 }

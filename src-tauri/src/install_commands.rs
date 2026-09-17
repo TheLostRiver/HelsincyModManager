@@ -168,50 +168,69 @@ pub fn start_uninstall_task(
 }
 
 #[tauri::command]
-pub fn get_install_manifest_status(
+pub async fn get_install_manifest_status(
     request: InstallManifestStatusRequestDto,
     state: State<'_, AppState>,
 ) -> Result<Vec<InstallManifestStatusSummaryDto>, CommandErrorDto> {
     let (game_id, request) = install_manifest_status_request_from_dto(request)?;
-    let scope_game = game_id.clone().unwrap_or_else(GameId::mhw);
-    crate::mod_installation_commands::require_scope(&state, &scope_game, &request.profile_id)?;
-    let summaries = if let Some(game_id) = game_id {
-        state
-            .install_recovery_scanner
-            .scan(
-                game_id,
-                InstallRecoveryScanRequest {
-                    profile_id: request.profile_id,
-                    mod_ids: request.mod_ids,
-                },
-            )
-            .map_err(install_recovery_scan_error_to_command_error)?
-            .into_iter()
-            .map(recovery_summary_to_manifest_status_summary)
-            .collect()
-    } else {
-        state
-            .install_manifest_query
-            .query_statuses(request)
-            .map_err(install_manifest_query_error_to_command_error)?
-    };
+    let scope = Arc::clone(&state.mod_installation_scope);
+    let scanner = state.install_recovery_scanner.clone();
+    let manifest_query = state.install_manifest_query.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let scope_game = game_id.clone().unwrap_or_else(GameId::mhw);
+        scope
+            .require_current(&scope_game, &request.profile_id)
+            .map_err(crate::mod_installation_commands::scope_error)?;
+        let summaries = if let Some(game_id) = game_id {
+            scanner
+                .scan(
+                    game_id,
+                    InstallRecoveryScanRequest {
+                        profile_id: request.profile_id,
+                        mod_ids: request.mod_ids,
+                    },
+                )
+                .map_err(install_recovery_scan_error_to_command_error)?
+                .into_iter()
+                .map(recovery_summary_to_manifest_status_summary)
+                .collect()
+        } else {
+            manifest_query
+                .query_statuses(request)
+                .map_err(install_manifest_query_error_to_command_error)?
+        };
 
-    Ok(summaries.into_iter().map(Into::into).collect())
+        Ok(summaries.into_iter().map(Into::into).collect())
+    })
+    .await
+    .map_err(|_| CommandErrorDto {
+        code: "install_manifest_unavailable".to_owned(),
+        message: "install manifest status is unavailable".to_owned(),
+    })?
 }
 
 #[tauri::command]
-pub fn scan_install_recovery(
+pub async fn scan_install_recovery(
     request: InstallRecoveryScanRequestDto,
     state: State<'_, AppState>,
 ) -> Result<Vec<InstallRecoverySummaryDto>, CommandErrorDto> {
     let (game_id, request) = install_recovery_scan_request_from_dto(request)?;
-    crate::mod_installation_commands::require_scope(&state, &game_id, &request.profile_id)?;
-    let summaries = state
-        .install_recovery_scanner
-        .scan(game_id, request)
-        .map_err(install_recovery_scan_error_to_command_error)?;
+    let scope = Arc::clone(&state.mod_installation_scope);
+    let scanner = state.install_recovery_scanner.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        scope
+            .require_current(&game_id, &request.profile_id)
+            .map_err(crate::mod_installation_commands::scope_error)?;
+        let summaries = scanner
+            .scan(game_id, request)
+            .map_err(install_recovery_scan_error_to_command_error)?;
 
-    Ok(summaries.into_iter().map(Into::into).collect())
+        Ok(summaries.into_iter().map(Into::into).collect())
+    })
+    .await
+    .map_err(|_| {
+        install_recovery_scan_error_to_command_error(InstallRecoveryScanError::ManifestUnavailable)
+    })?
 }
 
 #[tauri::command]
@@ -264,7 +283,12 @@ fn spawn_recovery_action_runner(
     request: StartRecoveryActionTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let _ = runner.run_recovery_action_task_with_observer(&task_id, request, &observer);
     });
 }
@@ -276,7 +300,12 @@ fn spawn_uninstall_runner(
     request: StartUninstallTaskRequest,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         let _ = runner.run_uninstall_task_with_observer(&task_id, request, &observer);
     });
 }
@@ -289,7 +318,12 @@ fn spawn_install_runner(
     expected_revision: Option<hmm_core::ModRevisionId>,
 ) {
     std::thread::spawn(move || {
-        let observer = TauriTaskProgressObserver::new(&app_handle);
+        let observer = TauriTaskProgressObserver::for_mod(
+            &app_handle,
+            &request.game_id,
+            &request.profile_id,
+            &request.mod_id,
+        );
         match expected_revision {
             Some(revision) => {
                 let _ = runner.run_install_revision_task_with_observer(

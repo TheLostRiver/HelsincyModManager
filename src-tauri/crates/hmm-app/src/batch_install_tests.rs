@@ -16,6 +16,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
+#[path = "batch_install_refresh_tests.rs"]
+mod refresh_tests;
+#[path = "batch_install_state_tests.rs"]
+mod state_tests;
+
 #[derive(Default)]
 struct FakeRepository {
     batch: Mutex<Option<SealedBatch>>,

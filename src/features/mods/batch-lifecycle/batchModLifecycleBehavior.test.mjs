@@ -8,6 +8,8 @@ registerReactTestModules({}, {
   "@tauri-apps/api/core": "export const invoke = (command, input) => globalThis.__batchLifecycleTest.invoke(command, input);",
 });
 const { useBatchModLifecycleWorkflow } = await import("./useBatchModLifecycleWorkflow.ts");
+const { createModLibrarySessionStore } = await import("../modLibrarySessionStore.ts");
+const { attachModLibraryWriteTracking } = await import("../modLibraryWriteTracking.ts");
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const options = { concurrency: false, timeout: 5000 };
 const deferred = () => {
@@ -21,6 +23,15 @@ const sealed = { batchId: "batch-a", planToken: "opaque-plan" };
 
 async function mount(t) {
   const api = { calls: [], handlers: {}, settled: 0 };
+  const cache = createModLibrarySessionStore();
+  const detach = attachModLibraryWriteTracking(cache);
+  let wasWriting = false;
+  const unsubscribe = cache.subscribe(() => {
+    const writing = cache.isWriting();
+    if (wasWriting && !writing) api.settled++;
+    wasWriting = writing;
+  });
+  t.after(() => { unsubscribe(); detach(); });
   api.invoke = async (command, input) => {
     api.calls.push({ command, input });
     if (api.handlers[command]) return api.handlers[command](input);
@@ -43,7 +54,6 @@ async function mount(t) {
       loadManifestStatuses: async (ids) => ids.map((modId) => ({ modId, status: "not_installed" })),
       loadRevisions: async (modId) => ({ modId, originRevisionId: `rev-${modId}`, displayRevisionId: `rev-${modId}`,
         revisions: [{ revisionId: `rev-${modId}` }] }),
-      onWriteSettled: () => { api.settled++; },
     });
     return null;
   }

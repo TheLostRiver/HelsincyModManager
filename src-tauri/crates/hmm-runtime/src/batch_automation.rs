@@ -145,7 +145,11 @@ impl BatchPlanFactsProvider for BatchFactsProvider {
         let read_only = ReadOnlyInstallAutomation::from_environment(&self.environment)
             .map_err(|error| anyhow::anyhow!(error.code()))?;
         match request.operation {
-            BatchOperation::Install => facts_for_install_batch(&read_only, request),
+            BatchOperation::Install => facts_for_install_batch(
+                &read_only,
+                request,
+                operation_environment_digest(&self.environment, request),
+            ),
             BatchOperation::Uninstall => read_only.read_batch_uninstall_facts(
                 request,
                 operation_environment_digest(&self.environment, request),
@@ -156,11 +160,38 @@ impl BatchPlanFactsProvider for BatchFactsProvider {
             ),
         }
     }
+
+    fn read_batch_item_facts(
+        &self,
+        request: &NormalizedBatchPlanRequest,
+        mod_id: &ModId,
+    ) -> anyhow::Result<BatchPlanFacts> {
+        anyhow::ensure!(
+            request.items.iter().any(|item| item.mod_id() == mod_id),
+            "batch item is not selected"
+        );
+        let read_only = ReadOnlyInstallAutomation::from_environment(&self.environment)
+            .map_err(|error| anyhow::anyhow!(error.code()))?;
+        let environment_digest = operation_environment_digest(&self.environment, request);
+        match request.operation {
+            BatchOperation::Install => {
+                let mut item_request = request.clone();
+                item_request.items.retain(|item| item.mod_id() == mod_id);
+                facts_for_install_batch(&read_only, &item_request, environment_digest)
+            }
+            BatchOperation::Uninstall => {
+                read_only.read_batch_uninstall_item_facts(request, mod_id, environment_digest)
+            }
+            // Reinstall has additional cross-item binding semantics; retain its full read.
+            BatchOperation::Reinstall => self.read_batch_plan_facts(request),
+        }
+    }
 }
 
 fn facts_for_install_batch(
     read_only: &ReadOnlyInstallAutomation,
     request: &NormalizedBatchPlanRequest,
+    environment_digest: String,
 ) -> anyhow::Result<BatchPlanFacts> {
     let mut items = Vec::with_capacity(request.items.len());
     for item in &request.items {
@@ -200,15 +231,8 @@ fn facts_for_install_batch(
         ));
     }
 
-    let environment_digest = digest_json(&(
-        "hmm-batch-environment-v1",
-        request.game_id.as_str(),
-        request.profile_id.as_str(),
-        items
-            .iter()
-            .map(|item| &item.fact_digest)
-            .collect::<Vec<_>>(),
-    ));
+    // Item digests already belong to the sealed plan. The environment identity must not
+    // change merely because a per-item revalidation reads a subset of that plan.
     let prerequisite_rules_version = items
         .iter()
         .find_map(|item| item.prerequisite.rules_version);
@@ -698,7 +722,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         plan_token: &str,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
-        Self::start_request_internal(environment, batch_id, plan_token, None)
+        Self::start_request_internal(environment, batch_id, plan_token, None, None)
     }
 
     /// Starts a batch while reading its sealed identity through the GUI-owned database handle.
@@ -708,7 +732,24 @@ impl BatchLifecycleAutomation {
         plan_token: &str,
         database: Arc<Mutex<rusqlite::Connection>>,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
-        Self::start_request_internal(environment, batch_id, plan_token, Some(database))
+        Self::start_request_internal(environment, batch_id, plan_token, Some(database), None)
+    }
+
+    /// GUI observation follows each item; it cannot affect write admission or the journal.
+    pub fn start_request_with_observer(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        plan_token: &str,
+        database: SharedBatchDatabase,
+        observer: Arc<dyn hmm_app::ModInstallationStateObserver>,
+    ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
+        Self::start_request_internal(
+            environment,
+            batch_id,
+            plan_token,
+            Some(database),
+            Some(observer),
+        )
     }
 
     fn start_request_internal(
@@ -716,6 +757,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         plan_token: &str,
         database: Option<SharedBatchDatabase>,
+        observer: Option<Arc<dyn hmm_app::ModInstallationStateObserver>>,
     ) -> Result<(BatchOperation, BatchInstallRunResult), BatchAutomationError> {
         let batch_id = parse_batch_id(batch_id)?;
         precheck_batch_token(plan_token, "plan")?;
@@ -733,7 +775,10 @@ impl BatchLifecycleAutomation {
                 .ok_or_else(|| BatchAutomationError::new("batch_unavailable"))?;
             batch.plan.operation
         };
-        let context = build_write_context(environment, operation)?;
+        let mut context = build_write_context(environment, operation)?;
+        if let Some(observer) = observer {
+            context.runner = context.runner.with_state_observer(observer);
+        }
         let batch = context
             .repository
             .load_batch(&batch_id)
@@ -771,7 +816,7 @@ impl BatchLifecycleAutomation {
         ),
         BatchAutomationError,
     > {
-        Self::retry_with_operation_internal(environment, batch_id, attempt_number, None)
+        Self::retry_with_operation_internal(environment, batch_id, attempt_number, None, None)
     }
 
     /// Retries a batch while reconciling its journal through the GUI-owned database handle.
@@ -788,7 +833,36 @@ impl BatchLifecycleAutomation {
         ),
         BatchAutomationError,
     > {
-        Self::retry_with_operation_internal(environment, batch_id, attempt_number, Some(database))
+        Self::retry_with_operation_internal(
+            environment,
+            batch_id,
+            attempt_number,
+            Some(database),
+            None,
+        )
+    }
+
+    pub fn retry_with_operation_with_observer(
+        environment: &RuntimeEnvironment,
+        batch_id: &str,
+        attempt_number: u32,
+        database: SharedBatchDatabase,
+        observer: Arc<dyn hmm_app::ModInstallationStateObserver>,
+    ) -> Result<
+        (
+            BatchOperation,
+            BatchInstallRetryResult,
+            BatchInstallRunResult,
+        ),
+        BatchAutomationError,
+    > {
+        Self::retry_with_operation_internal(
+            environment,
+            batch_id,
+            attempt_number,
+            Some(database),
+            Some(observer),
+        )
     }
 
     fn retry_with_operation_internal(
@@ -796,6 +870,7 @@ impl BatchLifecycleAutomation {
         batch_id: &str,
         attempt_number: u32,
         database: Option<SharedBatchDatabase>,
+        observer: Option<Arc<dyn hmm_app::ModInstallationStateObserver>>,
     ) -> Result<
         (
             BatchOperation,
@@ -812,7 +887,10 @@ impl BatchLifecycleAutomation {
             database.as_ref(),
         )?;
         let operation = reconciled_batch.plan.operation;
-        let context = build_write_context(environment, operation)?;
+        let mut context = build_write_context(environment, operation)?;
+        if let Some(observer) = observer {
+            context.runner = context.runner.with_state_observer(observer);
+        }
         let retry = context
             .retry
             .retry(&batch_id, attempt_number)
@@ -1283,6 +1361,10 @@ fn map_retry_error(error: BatchInstallRetryError) -> BatchAutomationError {
 #[cfg(test)]
 #[path = "runtime_equipment_batch_tests.rs"]
 mod equipment_tests;
+
+#[cfg(test)]
+#[path = "batch_refresh_tests.rs"]
+mod refresh_tests;
 
 #[cfg(test)]
 mod tests {

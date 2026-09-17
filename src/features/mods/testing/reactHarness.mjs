@@ -14,10 +14,12 @@ const reactUrls = new Map(["react", "react/jsx-runtime", "react/jsx-dev-runtime"
   (name) => [name, pathToFileURL(require.resolve(name)).href],
 ));
 const stubs = {
+  core: `export function invoke(command, args) { return globalThis.__hmmReactTest.invoke(command, args); }`,
   event: `export function listen(name, callback) {
     const api = globalThis.__hmmReactTest;
     if (api.listenerFails) return Promise.reject(new Error("fixture listener failure"));
-    const listeners = name === "mod-library-statistics-updated" ? api.statistics : api.progress;
+    const listeners = name === "mod-library-statistics-updated" ? api.statistics
+      : name === "hmm://mod-installation-state" ? api.installation : api.progress;
     listeners.add(callback);
     return Promise.resolve(() => listeners.delete(callback));
   }`,
@@ -36,13 +38,16 @@ const stubs = {
   importApi: `export function previewDroppedModArchives(paths) { return globalThis.__hmmReactTest.preview(paths); }
     export function startImportModTask(input) { return globalThis.__hmmReactTest.startImport(input); }`,
   overlay: `export function ModImportDropOverlay(props) { globalThis.__hmmReactTest.overlay = props; return null; }`,
+  taskProgress: `export function getTaskProgress(taskId) { return globalThis.__hmmReactTest.getTaskProgress(taskId); }`,
 };
 stubs.cacheEvent = stubs.event.replace("api.listenerFails", "api.listenerFails || api.cacheListenerFails");
 const substitutions = new Map([
+  ["@tauri-apps/api/core", "core"],
   ["@tauri-apps/api/event", "event"], ["@tauri-apps/api/webview", "webview"],
   ["../../shared/feedback", "feedback"], ["../../shared/i18n", "i18n"],
   ["../settings/ModStorageSettingsProvider", "storage"], ["../settings/modStorageTypes", "storageTypes"],
   ["./modImportApi", "importApi"], ["./ModImportDropOverlay", "overlay"],
+  ["./modTaskProgressApi.ts", "taskProgress"],
 ]);
 
 // Load the actual TS/TSX modules; replace only IPC and presentation boundaries.
@@ -104,7 +109,9 @@ function deferred() {
 }
 
 function runtime(listenerFails = false) {
-  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), statistics: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
+  const api = { locale: "en", frozen: null, listenerFails, progress: new Set(), installation: new Set(), statistics: new Set(), drop: new Set(), starts: [], notices: new Map(), toasts: [] };
+  api.getTaskProgress = async () => null;
+  api.emitInstallation = (payload) => { for (const callback of api.installation) callback({ payload }); };
   api.preview = async (paths) => paths.map((archivePath) => ({ archivePath, fileName: archivePath, sizeBytes: 10, errorCode: null, warningCode: null }));
   api.feedback = {
     pushToast: (toast) => api.toasts.push(toast),
@@ -148,18 +155,21 @@ export async function mountDrop(t, { cacheListenerFails = false, webviewUnavaila
   return { api, changeRoute: async (route) => { await act(async () => root.update(tree(route))); } };
 }
 
-export async function mountQuery(t, { listenerFails = false } = {}) {
+export async function mountQuery(t, { listenerFails = false, loadPage: loadOverride } = {}) {
   const api = runtime(listenerFails);
   const state = {};
   const pending = [];
-  const loadPage = (input) => { const request = { input, ...deferred() }; pending.push(request); return request.promise; };
-  function QueryProbe({ profileContext = profile }) {
-    state.query = useModLibraryQuery({ rawSearch: "", filter: all, profileContext, loadPage, cache: state.cache });
+  const loadPage = (input, context) => {
+    if (loadOverride) return loadOverride(input, context, state.cache);
+    const request = { input, context, ...deferred() }; pending.push(request); return request.promise;
+  };
+  function QueryProbe({ profileContext = profile, filter = all }) {
+    state.query = useModLibraryQuery({ rawSearch: "", filter, profileContext, loadPage, cache: state.cache });
     return null;
   }
-  function Host({ show, profileContext }) {
+  function Host({ show, profileContext, filter }) {
     state.cache = useModLibrarySessionCache();
-    return show ? React.createElement(QueryProbe, { profileContext }) : null;
+    return show ? React.createElement(QueryProbe, { profileContext, filter }) : null;
   }
   const tree = (props) => React.createElement(ModLibrarySessionCacheProvider, null, React.createElement(Host, props));
   let root;
@@ -173,7 +183,7 @@ export async function mountQuery(t, { listenerFails = false } = {}) {
   };
 }
 
-export function loadAfterWriteCallback(refresh, cache) {
+export function loadAfterWriteCallback(refresh) {
   const url = new URL("ModLibraryPage.tsx", featureUrl);
   const source = readFileSync(url, "utf8");
   const ast = ts.createSourceFile(fileURLToPath(url), source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -184,6 +194,6 @@ export function loadAfterWriteCallback(refresh, cache) {
   }
   visit(ast);
   assert.equal(declarations.length, 1, "Exactly one production write callback is required");
-  return new Function("useCallback", "resetContentScroll", "refreshModLibrary", "librarySessionCache",
-    `return (${declarations[0].initializer.getText(ast)});`)((fn) => fn, () => {}, refresh, cache);
+  return new Function("useCallback", "synchronizeLibraryPage",
+    `return (${declarations[0].initializer.getText(ast)});`)((fn) => fn, refresh);
 }
