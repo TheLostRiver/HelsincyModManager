@@ -7,6 +7,13 @@ export type TourRect = {
   height: number;
 };
 
+export const TOUR_PANEL_LAYOUT = {
+  width: 440,
+  minHeight: 280,
+  viewportPadding: 16,
+  targetGap: 16,
+} as const;
+
 export function expandAndClampRect(
   rect: Pick<DOMRectReadOnly, "top" | "right" | "bottom" | "left">,
   padding: number,
@@ -43,7 +50,15 @@ export function shouldDockTourPanel(
 ) {
   if (viewportWidth <= 600) return true;
   if (!rect) return false;
-  return rect.width > viewportWidth * 0.72 && rect.height > viewportHeight * 0.55;
+
+  const { width, minHeight, viewportPadding, targetGap } = TOUR_PANEL_LAYOUT;
+  const clearance = viewportPadding + targetGap;
+  const fitsAboveOrBelow = viewportWidth - 2 * viewportPadding >= width
+    && Math.max(rect.top, viewportHeight - rect.bottom) - clearance >= minHeight;
+  const fitsBeside = viewportHeight - 2 * viewportPadding >= minHeight
+    && Math.max(rect.left, viewportWidth - rect.right) - clearance >= width;
+
+  return !fitsAboveOrBelow && !fitsBeside;
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

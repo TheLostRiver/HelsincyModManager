@@ -69,6 +69,68 @@ test("tour geometry expands, clamps, and chooses responsive panel docking", asyn
   );
 });
 
+test("tour panels dock when every side would squeeze the readable content area", async () => {
+  const { shouldDockTourPanel } = await importTypeScriptModule(
+    "src/shared/onboarding/tourGeometry.ts",
+  );
+
+  const scenarios = [
+    {
+      name: "configured dashboard fallback with narrow side gaps",
+      viewport: [1468, 897],
+      rect: { top: 178, right: 1054, bottom: 810, left: 262, width: 792, height: 632 },
+    },
+    {
+      name: "central target below the old viewport-percentage threshold",
+      viewport: [1280, 800],
+      rect: { top: 280, right: 880, bottom: 520, left: 400, width: 480, height: 240 },
+    },
+    {
+      name: "space above is one pixel short after the gap and viewport padding",
+      viewport: [1280, 800],
+      rect: { top: 311, right: 1260, bottom: 780, left: 20, width: 1240, height: 469 },
+    },
+    {
+      name: "wide viewport with too little height for readable side placement",
+      viewport: [1280, 240],
+      rect: { top: 20, right: 220, bottom: 80, left: 20, width: 200, height: 60 },
+    },
+  ];
+
+  for (const { name, viewport, rect } of scenarios) {
+    assert.equal(shouldDockTourPanel(rect, ...viewport), true, name);
+  }
+});
+
+test("tour panels stay floating when any side fits, including exact clearance boundaries", async () => {
+  const { shouldDockTourPanel } = await importTypeScriptModule(
+    "src/shared/onboarding/tourGeometry.ts",
+  );
+
+  const scenarios = [
+    { name: "above", top: 312, right: 1260, bottom: 780, left: 20, width: 1240, height: 468 },
+    { name: "below", top: 20, right: 1260, bottom: 488, left: 20, width: 1240, height: 468 },
+    { name: "right", top: 20, right: 808, bottom: 780, left: 20, width: 788, height: 760 },
+    { name: "left", top: 20, right: 1260, bottom: 780, left: 472, width: 788, height: 760 },
+  ];
+
+  for (const { name, ...rect } of scenarios) {
+    assert.equal(shouldDockTourPanel(rect, 1280, 800), false, name);
+  }
+});
+
+test("tour panel docking responds to viewport growth and shrinking without retaining old layout", async () => {
+  const { shouldDockTourPanel } = await importTypeScriptModule(
+    "src/shared/onboarding/tourGeometry.ts",
+  );
+  const rect = { top: 178, right: 1054, bottom: 810, left: 262, width: 792, height: 632 };
+
+  assert.equal(shouldDockTourPanel(rect, 1468, 897), true);
+  assert.equal(shouldDockTourPanel(rect, 1920, 1080), false);
+  assert.equal(shouldDockTourPanel(rect, 1468, 1200), false);
+  assert.equal(shouldDockTourPanel(rect, 1468, 897), true);
+});
+
 test("tour storage fails open for missing or corrupt state and respects content versions", async () => {
   const {
     ONBOARDING_STORAGE_KEY,

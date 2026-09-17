@@ -109,7 +109,7 @@
 .tour-panel-positioner {
   position: fixed;
   z-index: 1;
-  max-height: min(var(--tour-available-height, calc(100dvh - 32px)), calc(100dvh - 32px));
+  max-height: calc(100dvh - 2 * var(--tour-viewport-padding));
   pointer-events: none;
 }
 
@@ -121,15 +121,24 @@
 }
 
 .tour-panel-positioner.is-targeted {
-  width: min(440px, var(--tour-available-width, calc(100vw - 32px)));
+  width: min(var(--tour-panel-width), calc(100vw - 2 * var(--tour-viewport-padding)));
+  /* Keep enough body space while flip searches for another side of the target. */
+  max-height: min(
+    max(var(--tour-panel-min-height), var(--tour-available-height, 100dvh)),
+    calc(100dvh - 2 * var(--tour-viewport-padding))
+  );
 }
 
 .tour-panel-positioner.is-docked {
-  right: 16px;
-  bottom: 16px;
+  right: var(--tour-viewport-padding);
+  bottom: var(--tour-viewport-padding);
   left: auto;
   width: min(560px, calc(100vw - 32px));
-  max-height: min(46dvh, 440px);
+  max-height: min(
+    max(46dvh, var(--tour-panel-min-height)),
+    440px,
+    calc(100dvh - 2 * var(--tour-viewport-padding))
+  );
   transform: none;
 }
 
