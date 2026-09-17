@@ -195,7 +195,16 @@ export function createModLibrarySessionStore() {
     readCategories: () => readCachedCategories(cache),
     writeCategories: (categories: readonly CategoryItem[], expectedGeneration: number) => {
       if (expectedGeneration !== generation) return;
+      const previous = readCachedCategories(cache);
+      const changed = previous === null ? cache.pages.length > 0 : (previous.length !== categories.length || categories.some((category, index) => {
+        const before = previous[index];
+        return before.id !== category.id || before.name !== category.name || before.color !== category.color
+          || before.sortOrder !== category.sortOrder || before.modCount !== category.modCount;
+      }));
       cache = writeCachedCategories(cache, categories);
+      // Category edits happen outside the Mod route; its next category read must also
+      // invalidate cached card labels, filter membership and counts when facts changed.
+      if (changed) invalidateAllPages();
     },
     setAvailable: (next: boolean) => {
       if (available === next) return;

@@ -14,6 +14,7 @@ const reactUrls = new Map(["react", "react/jsx-runtime", "react/jsx-dev-runtime"
   (name) => [name, pathToFileURL(require.resolve(name)).href],
 ));
 const stubs = {
+  core: `export function invoke(command, args) { return globalThis.__hmmReactTest.invoke(command, args); }`,
   event: `export function listen(name, callback) {
     const api = globalThis.__hmmReactTest;
     if (api.listenerFails) return Promise.reject(new Error("fixture listener failure"));
@@ -41,6 +42,7 @@ const stubs = {
 };
 stubs.cacheEvent = stubs.event.replace("api.listenerFails", "api.listenerFails || api.cacheListenerFails");
 const substitutions = new Map([
+  ["@tauri-apps/api/core", "core"],
   ["@tauri-apps/api/event", "event"], ["@tauri-apps/api/webview", "webview"],
   ["../../shared/feedback", "feedback"], ["../../shared/i18n", "i18n"],
   ["../settings/ModStorageSettingsProvider", "storage"], ["../settings/modStorageTypes", "storageTypes"],

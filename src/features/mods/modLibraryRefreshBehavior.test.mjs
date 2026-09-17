@@ -169,3 +169,34 @@ test("a failed event connection recovers only after backend progress confirms te
   await h.resolve(h.pending[1], pageOf("verified"));
   assert.equal(h.state.query.statusTrusted, true);
 });
+
+for (const cacheCategories of [false, true]) {
+test(`fresh category metadata updates retained card labels (${cacheCategories ? "known" : "missing"} prior categories)`, options, async (t) => {
+  let categoryName = "Before", catalogReads = 0, revision = 0;
+  const categories = () => [{ id: "category", name: categoryName, sortOrder: 0, modCount: 1 }];
+  const h = await mountQuery(t, { loadPage: (input, context, cache) => loadModLibraryPageWithStatuses(input, context, {
+    cache,
+    query: async () => {
+      catalogReads++;
+      return { ...pageOf("mod"), items: [{ ...pageOf("mod").items[0], categoryLabels: [{ id: "category", name: categoryName }] }] };
+    },
+    states: async ({ gameId, profileId, modIds }) => ({ gameId, profileId, modIds, epoch: "categories", revision: ++revision,
+      reset: false, available: true, summaries: modIds.map((modId) => ({ profileId, modId, status: "not_installed", managedFileCount: 0, backupCount: 0 })) }),
+    scan: async () => assert.fail("category edits do not require an integrity scan"),
+  }) });
+  if (cacheCategories) await act(async () => h.state.cache.writeCategories(categories(), h.state.cache.getGeneration()));
+  const beforeReads = catalogReads;
+  await h.update({ show: false });
+  categoryName = "After";
+  await h.update({ show: true });
+  assert.equal(catalogReads, beforeReads, "a route return initially reuses the catalog");
+  await act(async () => h.state.cache.writeCategories(categories(), h.state.cache.getGeneration()));
+  await act(async () => h.state.query.synchronize());
+  assert.equal(h.state.query.page.items[0].categoryLabels[0].name, "After");
+  assert.equal(catalogReads, beforeReads + 1);
+  const generation = h.state.cache.getGeneration();
+  await act(async () => h.state.cache.writeCategories(categories(), generation));
+  assert.equal(h.state.cache.getGeneration(), generation);
+  assert.equal(catalogReads, beforeReads + 1);
+});
+}

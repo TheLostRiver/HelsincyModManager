@@ -52,6 +52,19 @@ export async function trackModLibraryBatchWrite<T extends { task: TaskStartedDto
   }
 }
 
+/** Catalog changes survive route unmounts and failed replies. Invalidate before releasing
+ * occupancy so an outer batch still performs only one terminal catalog query. */
+export async function trackModLibraryCatalogWrite<T>(write: () => Promise<T>): Promise<T> {
+  const owner = store;
+  const token = owner?.beginWrite();
+  try {
+    return await write();
+  } finally {
+    owner?.invalidateAllPages();
+    if (token !== undefined) owner?.finishWrite(token);
+  }
+}
+
 export async function trackModLibraryIntegrityScan(input: ScanInstallRecoveryInput, scan: () => Promise<InstallRecoverySummary[]>): Promise<InstallRecoverySummary[]> {
   const finish = store?.beginIntegrityScan(input.gameId, input.profileId, input.modIds);
   try {

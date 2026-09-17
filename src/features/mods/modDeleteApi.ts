@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { trackModLibraryCatalogWrite } from "./modLibraryWriteTracking.ts";
 
 export type ModDeletionPreview = {
   modId: string;
@@ -19,5 +20,5 @@ export function previewModDeletion(modId: string): Promise<ModDeletionPreview> {
 }
 
 export function deleteModFromLibrary(modId: string): Promise<ModDeletionResult> {
-  return invoke("delete_mod_from_library", { modId });
+  return trackModLibraryCatalogWrite(() => invoke<ModDeletionResult>("delete_mod_from_library", { modId }));
 }
