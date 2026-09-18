@@ -35,7 +35,8 @@ Sandbox 完成主链和受控 partial failure -> retry 补充链，Gate C 为 `c
 WR-01 武器重定向设计、WR-02A 纯解析、WR-03A 人工 binary transformer、WR-03B
 staging/InstallPlan/manifest/recovery 集成与 WR-04 受控 Tauri/UI/Gate D 均已完成；Gate D 于
 2026-08-06 标记为 `certified`。LOG-01 Task/Audit retention、LOG-02 日志总空间上限与 LOG-03 Debug Log
-均已完成；AR6（269 条三语）与 WR-02B（601 条三语分片）已于 2026-08-21 入库；WR-05 已于
+均已完成；AR6 防具 catalog（269 条三语，2026-08-21 入库；2026-09-07 随 `#356` 按模型变体
+扩至 529 条）与 WR-02B 武器 catalog（601 条三语分片）均已入库；WR-05 已于
 2026-08-22 翻转门禁并退役 developer seed，武器重定向对 Production 开放；`game_terminology`
 许可签核已于 2026-08-23 完成（GAME_TERMINOLOGY_SIGNOFF.md），发版前置仅剩全量 catalog
 Sandbox Gate 复验。
@@ -88,7 +89,7 @@ Production 已由 CLI-3C（2026-08-24）开放：token 由 per-installation secr
 | T8 存档备份 | 已完成 / SAVE-02 至 SAVE-05 Certified | 备份、后台核心、安装态保护、installer cleanup、玩家恢复、时间/空间 retention 与独立备份中心均已认证 |
 | T9 Rich Manifest | 部分完成 | Gate 所需 metadata、状态消费、plan hash、binding snapshot 已落地；完整泛化和写侧门禁未完成 |
 | T10 前置依赖检查 | 单项 lifecycle 已完成 / 平台待扩展 | MHW:I bundled rules、诊断查询、install/reinstall 的 blocked/warning decision、锁内重验和 UI/CLI 展示已落地；更多依赖类型、自动修复与完整平台仍未完成 |
-| T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6（269 条三语）与 WR-02B（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；许可签核已完成（2026-08-23）；发版前置：全量 catalog Sandbox Gate 复验 |
+| T11 装备 Retarget | Armor / Weapon 流程均 Certified；catalog 全量在册 | AR1-AR5 与 WR-04 Gate D 已认证；CAT-01、WR-01~03B 已完成；AR6 防具（269 条三语，2026-09-07 随 `#356` 扩至 529 条）与 WR-02B 武器（601 条三语）已入库，WR-05 已翻转门禁开放 Production（seed 退役）；许可签核已完成（2026-08-23）；发版前置：全量 catalog Sandbox Gate 复验 |
 | T12 Mod 详情完整版 | 部分完成、其余暂停 | Gate 所需重定向入口已完成并独立为悬浮窗口；完整扩展范围未恢复 |
 | T13 批量操作 | Gate C 已认证；正式桌面入口待人工验收 | sealed plan/preview、batch runner、SQLite journal、retry、故障证据、Sandbox CLI、6 个窄 Tauri command、typed API 与批量 UI 已落地；原 Sandbox 主链与恢复已验收。正式桌面现已接入同根 capability、GUI 数据库与既有写入门禁，并补充安装筛选、部分失败重试和结果面板保护回归；本轮临时 fixture 与浏览器验证不代替真实安装态验收 |
 | T14 任务队列 UI | 暂停 | 依赖 T13 的真实多任务需求 |
@@ -145,9 +146,13 @@ Armor Retarget 的流程认证与 catalog 完整度是两个状态：
 - AR1-AR5 已证明 armor source 分析、结构化 slot 改写、staging、InstallPlan、binding snapshot、
   真正重装 target switch、重启恢复和 manifest 卸载安全链。
 - bundled armor catalog 已由 AR6 扩容至 269 条中英日三语（2026-08-21 入库，此前仅最小
-  稳定 seed）；catalog 在册不等于每个目标都已通过真机全量验收。
-- 本地候选防具数据有 272 条安全相对路径；display name 存在重复，因此名称不能作为稳定 ID。
-- 本地候选武器数据覆盖 14 类、3125 个展示名称，但只有 603 个唯一目标路径；同一路径最多对应
+  稳定 seed），并随 `#356`（2026-09-07）升至 `mhw-armor-v4` 的 529 条：269 件装备按游戏本体里
+  实际存在的模型变体展开（260 件两套模型各出 2 条，4 件仅女性、5 件仅男性各出 1 条），因单文件
+  超出仓库体积硬限（256KB / 10000 行）而拆为 `m_equip`（265）/`f_equip`（264）两片。catalog
+  在册不等于每个目标都已通过真机全量验收。
+- 本地候选防具数据有 529 条安全相对路径；display name 存在重复（529 条目标只对应 269 个唯一
+  名称，其中 260 个名称各出现 2 次），因此名称不能作为稳定 ID。
+- 本地候选武器数据覆盖 14 类、3123 个展示名称，但只有 601 个唯一目标路径；同一路径最多对应
   48 个名称，必须建模为稳定 target + aliases，而不是重复安装目标。
 - 武器目标属于独立的 MHW:I weapon catalog/path parser/adapter。不能塞进
   `MhwArmorReplacementAdapter`，也不能让前端解析 `nativePC/wp`。
