@@ -33,10 +33,13 @@ export default tseslint.config(
     },
   },
   {
-    // armor-data 是本地候选数据与抓取工具，tmp 是临时诊断脚本与产物，
-    // 两者都不纳入版本管理，也不该被 lint。
+    // armor-data 是本地候选数据与抓取工具；tmp、.planning、.plan-attestation 是临时
+    // 诊断脚本、计划与证明产物。四者都在 .gitignore 里，不纳入版本管理，也不该被
+    // lint——里面的脚本会用到 console / process / setTimeout 这类只在本机跑才有的全局。
     ignores: [
       ".claude",
+      ".plan-attestation",
+      ".planning",
       ".vite",
       ".worktrees",
       "armor-data",
