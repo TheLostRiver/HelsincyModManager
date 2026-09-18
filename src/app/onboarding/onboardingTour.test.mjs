@@ -143,7 +143,7 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.equal(manualTour.contentVersion, 5);
   assert.equal(manualTour.steps[0].id, "language");
   assert.equal(manualTour.steps[1].id, "profiles-list");
-  assert.equal(manualTour.steps.length, 18);
+  assert.equal(manualTour.steps.length, 19);
   assert.equal(manualTour.steps.filter((step) => step.interaction === "target-only").length, 3);
   assert.equal(manualTour.steps.some((step) => step.id.startsWith("page-")), false);
   assert.deepEqual(
@@ -176,7 +176,7 @@ test("core onboarding stays concise while optional pages build local tours", asy
   assert.equal(automaticTour.steps[0].id, "language");
   assert.equal(automaticTour.steps[1].id, "welcome");
   assert.equal(automaticTour.steps[2].id, "dashboard-steam-scan");
-  assert.equal(automaticTour.steps.length, 19);
+  assert.equal(automaticTour.steps.length, 20);
   assert.equal(automaticTour.steps.at(-1).id, "settings-background-protection");
   assert.equal(automaticTour.steps.some((step) => step.id === "mods-toolbar"), false);
   assert.equal(automaticTour.steps.some((step) => step.id === "dashboard-status"), false);
@@ -211,6 +211,33 @@ test("core onboarding stays concise while optional pages build local tours", asy
   ]);
 });
 
+test("every core tour introduces Hunting Box migration after importing mods in all languages", async () => {
+  const { buildOnboardingTour, ONBOARDING_ROUTE_ORDER } = await importTypeScriptModule(
+    "src/app/onboarding/firstRunTour.ts",
+  );
+  const { onboardingTourCopy } = await importTypeScriptModule(
+    "src/app/onboarding/onboardingTourCopy.ts",
+  );
+  const sourceNames = { zh_cn: "狩技盒子", en: "Hunting Box", ja: "狩技ボックス" };
+
+  for (const [locale, copy] of Object.entries(onboardingTourCopy)) {
+    for (const route of ONBOARDING_ROUTE_ORDER) {
+      const tour = buildOnboardingTour(route, copy);
+      const modSteps = tour.steps.filter((step) => step.id.startsWith("mods-"));
+      assert.deepEqual(modSteps.map((step) => step.id), [
+        "mods-import", "mods-external-import", "mods-library", "mods-lifecycle",
+      ], `${locale}: ${route}`);
+      const migration = modSteps[1];
+      assert.equal(migration.target, "mods.external-import");
+      assert.equal(migration.fallbackTarget, "mods.actions");
+      assert.equal(migration.interaction, "blocked");
+      assert.deepEqual(migration.advance, { kind: "controls" });
+      assert.ok(migration.description.includes(sourceNames[locale]));
+      assert.ok(migration.bullets.some((bullet) => bullet.includes("Mods_582010")));
+    }
+  }
+});
+
 test("tour anchors are additive and preserve the existing dashboard status rail", () => {
   const classicSidebar = readProjectFile(
     "src/app/shell/layouts/classic-sidebar/ClassicSidebar.tsx",
@@ -225,6 +252,7 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   const gamePrerequisites = readProjectFile("src/features/game-setup/GamePrerequisitePanel.tsx");
   const modToolbar = readProjectFile("src/features/mods/LibraryToolbar.tsx");
   const modActions = readProjectFile("src/features/mods/CompactActionPanel.tsx");
+  const externalImport = readProjectFile("src/features/mods/external-import/ExternalImportAction.tsx");
   const modLibrary = readProjectFile("src/features/mods/ModLibraryPage.tsx");
   const profileList = readProjectFile("src/features/profiles/ProfileListPanel.tsx");
   const profilePage = readProjectFile("src/features/profiles/ProfilePage.tsx");
@@ -254,6 +282,7 @@ test("tour anchors are additive and preserve the existing dashboard status rail"
   assert.match(modToolbar, /data-tour-id="mods\.toolbar"/);
   assert.match(modActions, /data-tour-id="mods\.actions"/);
   assert.match(modActions, /tourId="mods\.import-action"/);
+  assert.match(externalImport, /data-tour-id="mods\.external-import"/);
   assert.match(modLibrary, /data-tour-id="mods\.library"/);
   assert.match(profileList, /data-tour-id="profiles\.list"/);
   assert.match(profilePage, /data-tour-id="profiles\.settings"/);
