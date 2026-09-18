@@ -43,6 +43,7 @@ src-tauri/binaries/
 /task_plan.md
 /findings.md
 /progress.md
+/HANDOFF.md
 tmp/
 temp/
 cache/
