@@ -428,6 +428,7 @@ export function ExternalImportAction({ onImported, disabledReason }: ExternalImp
           <button
             type="button"
             className="compact-action is-neutral external-import-action__trigger"
+            data-tour-id="mods.external-import"
             data-listener-status={listenerStatus}
             disabled={listenerStatus === "loading" || disabledReason !== undefined}
             aria-label={extCopy.action.trigger}

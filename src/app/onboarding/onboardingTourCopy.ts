@@ -32,7 +32,7 @@ export type OnboardingTourCopy = {
     dashboard: RouteGuidanceCopy<
       "dashboard-steam-scan" | "dashboard-manual-directory" | "dashboard-launch-game" | "dashboard-prerequisites"
     >;
-    mods: RouteGuidanceCopy<"mods-import" | "mods-library" | "mods-lifecycle">;
+    mods: RouteGuidanceCopy<"mods-import" | "mods-external-import" | "mods-library" | "mods-lifecycle">;
     recovery: RouteGuidanceCopy<"recovery-overview" | "recovery-actions" | "recovery-mods">;
     categories: RouteGuidanceCopy<"categories-create" | "categories-manage">;
     profiles: RouteGuidanceCopy<
@@ -110,7 +110,15 @@ export const onboardingTourCopy = {
           "mods-import": {
             title: "把 Mod 导入资料库",
             description: "“导入 Mod”用于添加新包；选择单个 Mod 后还可以导入新版本。",
-            bullets: ["导入只建立受控资料记录。", "从第三方管理器迁移也从快捷操作区开始。"],
+            bullets: ["导入只建立受控资料记录。"],
+          },
+          "mods-external-import": {
+            title: "迁移狩技盒子的 Mod",
+            description: "通过“迁移第三方 Mod”，把狩技盒子库中的 Mod 批量导入 HMM。",
+            bullets: [
+              "选择狩技盒子的 Mod 库目录（通常是 Mods_582010），扫描后勾选要导入的项目。",
+              "迁移只导入资料库，不改动盒子原文件，也不会自动安装到游戏目录。",
+            ],
           },
           "mods-library": {
             title: "从资料库选择 Mod",
@@ -329,7 +337,15 @@ export const onboardingTourCopy = {
           "mods-import": {
             title: "Import mods into the library",
             description: "\"Import mod\" adds new packages; with a single mod selected you can also import a new version.",
-            bullets: ["Importing only creates controlled library records.", "Migration from third-party managers also starts from the quick actions area."],
+            bullets: ["Importing only creates controlled library records."],
+          },
+          "mods-external-import": {
+            title: "Migrate mods from Hunting Box",
+            description: "Use \"Migrate third-party mods\" to import mods from Hunting Box into HMM's library in batches.",
+            bullets: [
+              "Choose the Hunting Box mod library (usually Mods_582010), then scan and select the mods to import.",
+              "Migration only imports into the library. It leaves the source files unchanged and does not install mods into the game.",
+            ],
           },
           "mods-library": {
             title: "Pick mods from the library",
@@ -548,7 +564,15 @@ export const onboardingTourCopy = {
           "mods-import": {
             title: "Mod をライブラリへインポート",
             description: "「Mod をインポート」で新しいパッケージを追加します。単一の Mod を選択すると新バージョンのインポートも可能です。",
-            bullets: ["インポートは管理されたライブラリ記録の作成のみです。", "サードパーティ管理ツールからの移行もクイック操作エリアから始まります。"],
+            bullets: ["インポートは管理されたライブラリ記録の作成のみです。"],
+          },
+          "mods-external-import": {
+            title: "狩技ボックスの Mod を移行",
+            description: "「サードパーティ Mod を移行」から、狩技ボックスの Mod を HMM ライブラリへ一括インポートできます。",
+            bullets: [
+              "狩技ボックスの Mod フォルダー（通常は Mods_582010）を選択し、スキャン後にインポートする項目を選びます。",
+              "移行はライブラリへのインポートのみです。元のファイルは変更せず、ゲームへの自動インストールも行いません。",
+            ],
           },
           "mods-library": {
             title: "ライブラリから Mod を選択",

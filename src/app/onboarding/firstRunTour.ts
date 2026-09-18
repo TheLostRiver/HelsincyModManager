@@ -36,6 +36,7 @@ const routeFeatureMeta: Record<AppRouteId, readonly TourFeatureMeta[]> = {
   ],
   mods: [
     { id: "mods-import", target: "mods.import-action", fallbackTarget: "mods.actions", placement: "bottom-start" },
+    { id: "mods-external-import", target: "mods.external-import", fallbackTarget: "mods.actions", placement: "bottom-start" },
     { id: "mods-library", target: "mods.library", placement: "top-start" },
     { id: "mods-lifecycle", target: "mods.actions", placement: "bottom-start" },
   ],
