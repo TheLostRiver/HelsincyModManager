@@ -20,9 +20,10 @@
   ;
   ; $1 keeps the ASCII token: it is the stable key quoted in support reports and
   ; lines up with the exit codes above. $3 carries the same reason as copy for
-  ; the localized message.
+  ; the localized message and is only ever read by the SimpChinese branch, so
+  ; even its fallback stays Chinese.
   StrCpy $1 "cleanup_failed"
-  StrCpy $3 "unknown reason"
+  StrCpy $3 "未知原因"
   ${If} $0 = 20
     StrCpy $1 "busy"
     StrCpy $3 "后台备份任务正在运行"
