@@ -11,7 +11,10 @@
     ],
     "windows": {
       "nsis": {
-        "installerHooks": "windows/nsis-installer-hooks.nsh"
+        "installerHooks": "windows/nsis-installer-hooks.nsh",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "languages": ["English", "SimpChinese"]
       },
       "wix": {
         "template": "windows/wix/main.wxs",
