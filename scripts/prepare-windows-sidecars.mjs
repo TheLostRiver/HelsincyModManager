@@ -195,6 +195,54 @@ export function assertNoDynamicMsvcCrtImports(
   }
 }
 
+export function assertWindowsGuiSubsystem(binaryContents, binaryName, targetTriple) {
+  assertSupportedBinaryName(binaryName);
+  assertTargetTriple(targetTriple);
+  if (!targetTriple.split("-").includes("windows")) {
+    return;
+  }
+
+  const contents = Buffer.isBuffer(binaryContents)
+    ? binaryContents
+    : Buffer.from(binaryContents);
+  const invalidHeader = () => {
+    throw new Error(`Windows sidecar has an invalid PE header: ${binaryName}`);
+  };
+  // IMAGE_DOS_HEADER.e_lfanew locates the PE signature and 20-byte COFF header.
+  if (contents.length < 64 || contents.readUInt16LE(0) !== 0x5a4d) {
+    invalidHeader();
+  }
+  const peOffset = contents.readUInt32LE(0x3c);
+  if (
+    peOffset < 64 ||
+    peOffset > contents.length - 24 ||
+    contents.readUInt32LE(peOffset) !== 0x00004550
+  ) {
+    invalidHeader();
+  }
+
+  const optionalOffset = peOffset + 24;
+  const optionalSize = contents.readUInt16LE(peOffset + 20);
+  if (optionalSize < 2 || optionalSize > contents.length - optionalOffset) {
+    invalidHeader();
+  }
+  const magic = contents.readUInt16LE(optionalOffset);
+  const minimumSize = magic === 0x10b ? 96 : magic === 0x20b ? 112 : 0;
+  if (minimumSize === 0 || optionalSize < minimumSize) {
+    invalidHeader();
+  }
+  // Subsystem has the same offset in PE32 and PE32+. GUI means no auto console,
+  // not that these headless programs create a window or run a GUI event loop.
+  if (contents.readUInt16LE(optionalOffset + 68) !== 2) {
+    throw new Error(`Windows sidecar must use the Windows GUI subsystem: ${binaryName}`);
+  }
+}
+
+function assertSidecarBinary(contents, binaryName, targetTriple) {
+  assertWindowsGuiSubsystem(contents, binaryName, targetTriple);
+  assertNoDynamicMsvcCrtImports(contents, binaryName, targetTriple);
+}
+
 function sidecarDestination(destinationDirectory, binaryName, targetTriple) {
   const resolvedDirectory = path.resolve(destinationDirectory);
   const destination = path.resolve(
@@ -204,6 +252,16 @@ function sidecarDestination(destinationDirectory, binaryName, targetTriple) {
   if (path.dirname(destination) !== resolvedDirectory) {
     throw new Error("Windows sidecar destination escaped the binaries directory");
   }
+  return destination;
+}
+
+export function copySidecarBuildOutput(source, destinationDirectory, binaryName, targetTriple) {
+  const destination = sidecarDestination(destinationDirectory, binaryName, targetTriple);
+  assertSidecarBuildOutput(source, binaryName);
+  assertSidecarBinary(readFileSync(source), binaryName, targetTriple);
+  copyFileSync(source, destination);
+  // Validate the actual bundle input too, rather than trusting a source-only check.
+  assertSidecarBinary(readFileSync(destination), binaryName, targetTriple);
   return destination;
 }
 
@@ -251,15 +309,11 @@ export function prepareSidecars(args = []) {
       profile,
       `${binaryName}${extension}`,
     );
-    assertSidecarBuildOutput(source, binaryName);
-    assertNoDynamicMsvcCrtImports(
-      readFileSync(source),
+    copySidecarBuildOutput(
+      source,
+      destinationDirectory,
       binaryName,
       targetTriple,
-    );
-    copyFileSync(
-      source,
-      sidecarDestination(destinationDirectory, binaryName, targetTriple),
     );
   }
 }

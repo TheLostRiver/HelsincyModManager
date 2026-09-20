@@ -101,6 +101,11 @@ fi
 echo "Running verification entrypoint contract tests..."
 "${node_bin}" --test scripts/verify-entrypoints.test.mjs
 
+echo "Running Windows packaging checker tests..."
+"${node_bin}" --test scripts/prepare-windows-sidecars.test.mjs
+"${node_bin}" --test scripts/windows-installer-cleanup-config.test.mjs
+"${node_bin}" --test scripts/windows-binaries.test.mjs
+
 if [[ -f "package.json" ]]; then
   corepack_bin="$(resolve_posix_command corepack)"
 

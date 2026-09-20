@@ -959,7 +959,7 @@ Slice 4A 提供显式、release-only、默认 ignored 的确定性 harness：
 
 ```powershell
 # 新 worktree 首次运行 hmm-tauri 测试时先准备 ignored development sidecar。
-cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev
+cmd /c corepack pnpm run prepare:windows-sidecars:dev
 cargo test -p hmm-tauri --release mod_library_read_model_baseline -- --ignored --nocapture
 ```
 
@@ -1713,7 +1713,7 @@ cargo test -p hmm-app --test save_backup_scheduler
 cargo test -p hmm-app --test save_backup_task
 cargo test -p hmm-infra --test save_backup_scheduler_repository
 cargo test -p hmm-tauri background_worker
-cargo check -p hmm-tauri --bin hmm-save-backup-worker
+cargo check -p hmm-save-backup-sidecars --bin hmm-save-backup-worker
 ```
 
 要求：worker 与 scheduler 测试使用 fake ports、固定 clock 和临时 SQLite/目录；不得使用真实 Windows Scheduled Task、真实游戏进程、真实 MHW 安装、Steam userdata 或玩家存档。该切片验证的是 `tray_only` 下的单次 `--once` worker、持久化 lease/heartbeat 与既有任务链路复用，不证明主客户端退出后已经自动运行，也不构成 `protected` 或完整后台保障。
@@ -1730,11 +1730,11 @@ cargo test -p hmm-app --test save_backup_background_worker
 cargo test -p hmm-app --test save_backup_scheduler
 cargo test -p hmm-app --test save_backup_task
 cargo test -p hmm-tauri save_backup
-cargo check -p hmm-tauri --bin hmm-save-backup-worker
-node --test scripts/prepare-save-backup-worker-sidecar.test.mjs
+cargo check -p hmm-save-backup-sidecars --bin hmm-save-backup-worker
+node --test scripts/prepare-windows-sidecars.test.mjs
 ```
 
-要求：平台注册自动化只能使用 fake registry/command runner；健康矩阵使用 fixed clock；repository 使用临时 SQLite；sidecar 测试只检查构建配置和 Cargo metadata。普通测试和 `verify.ps1` 不得创建、更新、启动或删除真实 Scheduled Task。`get_save_backup_background_status` 必须保持只读，并覆盖 exact + fresh、future、stale、drift、permission 和 unsupported 等 fail-closed 状态。
+要求：平台注册自动化只能使用 fake registry/command runner；健康矩阵使用 fixed clock；repository 使用临时 SQLite；sidecar 测试只检查构建配置、Cargo metadata、人工 PE fixture 与编译产物 header，不运行生产入口。普通测试和 `verify.ps1` 不得创建、更新、启动或删除真实 Scheduled Task。`get_save_backup_background_status` 必须保持只读，并覆盖 exact + fresh、future、stale、drift、permission 和 unsupported 等 fail-closed 状态。
 
 真实 Windows 验收只允许人工在一次性本地账户或 VM 按 [Windows 存档后台任务人工 Smoke](testing/windows-save-backup-scheduled-task-smoke.md) 执行。只有安装态 sibling worker、任务真实触发、fresh heartbeat 和最终 cleanup 全部通过，才能记录 Windows runtime acceptance；不得在开发者日常账户为了完成 checklist 运行 ignored smoke。
 
@@ -1753,9 +1753,48 @@ cargo test -p hmm-tauri installer_cleanup
 PowerShell 操作内部必须在删除前两次复核 owner/state，并在删除后 read-back。foreign 与 busy 分支必须在
 `Unregister-ScheduledTask` 前返回，post-delete owned/foreign 分别映射为 removal/ownership unverified。
 
-Windows sidecar 准备脚本必须仅对 `windows-msvc` 目标追加静态 CRT 构建标志，并在复制 bundle 输入前
-拒绝仍导入 `VCRUNTIME140`、`MSVCP140` 或 UCRT runtime API 的产物。disposable VM 不预装 Visual C++
-Redistributable；安装器 helper/worker 不能把该运行库作为隐性前提。
+Windows/MSVC 的 GUI、worker 与 cleanup 统一由根目录 `.cargo/config.toml` 启用静态 CRT，涵盖
+debug/release 和通过 Cargo 构建的 C/C++ 依赖；非 Windows/MSVC 目标不受影响。sidecar 准备脚本
+仍在自己的 Cargo 子进程中追加该标志并检查复制输入，但这不能替代 GUI 的最终产物检查。
+disposable VM 不预装 Visual C++ Redistributable；主程序和两个 helper 都不能把它作为隐性前提。
+
+该配置同时强制 `STATIC_VCRUNTIME=false`，覆盖 Tauri CLI 默认注入的 `true`：`tauri-build` 的
+同名“静态”兼容层实际会禁用 `libucrt` 并选择动态 `ucrt`，与完整 `+crt-static` 策略冲突。
+`src-tauri/build.rs` 跟踪此环境项变化以重新生成链接指令；仅设置 Rust 标志仍可能留下 UCRT 导入。
+
+```powershell
+node --test scripts/windows-binaries.test.mjs scripts/verify-entrypoints.test.mjs
+# 普通 native release 构建；检查目录内三份短文件名 EXE，不执行它们。
+node scripts/check-windows-binaries.mjs target/release
+# 显式 --target 构建必须传本次实际输出目录，debug 构建再加 --debug。
+node scripts/check-windows-binaries.mjs target/x86_64-pc-windows-msvc/release
+```
+
+最终门禁解析普通与 delay import descriptors，拒绝 MSVCP/MSVCR/VCRUNTIME/ConCRT/VCOMP/VCCORLIB、
+UCRT 及其 debug/版本变体；不把正文中的相同字符串误判为导入。三个文件须为完整 x64 PE，release
+均须 `Subsystem=2`；`--debug` 只允许主 GUI 使用 console，两个 helper 仍须无控制台。缺文件、
+坏 PE、越界/未终止目录或名称均须失败。人工 fixture、真实 CLI 正负退出码、构建配置与验证入口
+接线测试纳入 `verify.ps1` 和 `verify.sh`。Release workflow 在收集/上传前检查实际链接产物。
+不得用外部 `RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS` 覆盖静态 CRT 后跳过门禁；自定义 target-dir/profile
+必须显式传入对应目录，不能检查旧产物。交付测试包还须只读解包，对三份实际 payload 再执行门禁，
+最后在干净 VM 手动安装/启动；导入表通过本身不等于安装态启动通过。
+
+Windows 的 worker 与 cleanup 在 debug/release 均须使用 GUI 子系统（`Subsystem=2`），避免计划任务或
+安装器直接启动时闪出控制台。Node 测试覆盖 PE32/PE32+、可变 PE 偏移、console/未知子系统、坏魔数、
+越界偏移和截断 header；无效来源不能创建或覆盖 bundle 输入。实际准备脚本在复制前后都校验产物，
+非 Windows 输出不受 PE 规则影响。Windows-only Rust 测试通过 `CARGO_BIN_EXE_*` 读取 Cargo 实际
+编译的两个 bin，不能只以源码字符串断言代替链接结果：
+
+```powershell
+cargo test -p hmm-save-backup-sidecars --test windows_subsystem
+cargo test --release -p hmm-save-backup-sidecars --test windows_subsystem
+```
+
+上述测试不执行 sidecar。人工无窗口验收仍只在一次性 Windows 账户/VM 使用 synthetic 存档：确认
+最终安装文件的子系统，观察启用后的首次运行、至少两个 15 分钟周期及登录触发；无到期时无窗口且
+heartbeat 更新，到期时无窗口且备份/manifest 完整。另验游戏运行时延后、失败退出/不健康状态、关闭
+后台保护后任务注销，以及仅开启 Profile 自动计划的对照。无控制台不应取消退出码或健康/审计证据；
+不能将“未看到窗口”单独当作执行成功，也不能在日常账户运行生产 worker/cleanup 来完成自动测试。
 
 Windows packaging build gate 只生成并检查 artifact，不安装或运行 installer：
 
@@ -1891,7 +1930,7 @@ cargo test -p hmm-infra task_log
 cargo test -p hmm-infra diagnostics_health
 
 # Windows 上运行 Tauri 测试前先生成 ignored development sidecar。
-cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev
+cmd /c corepack pnpm run prepare:windows-sidecars:dev
 cargo test -p hmm-tauri
 ```
 
@@ -2035,8 +2074,8 @@ cargo test --workspace
 建议补充：
 
 ```powershell
-cmd /c corepack pnpm run prepare:save-backup-worker-sidecar:dev
-cmd /c corepack pnpm run prepare:save-backup-worker-sidecar
+cmd /c corepack pnpm run prepare:windows-sidecars:dev
+cmd /c corepack pnpm run prepare:windows-sidecars
 cmd /c corepack pnpm run tauri:build
 ```
 
