@@ -35,6 +35,7 @@ export type BackupPolicyCopy = {
   };
   panel: {
     title: string;
+    timezoneHint: string;
     retentionCount: string;
     retentionDays: string;
     retentionSpace: string;
@@ -75,6 +76,7 @@ export const backupPolicyCopy = {
     },
     panel: {
       title: "自动备份",
+      timezoneHint: "按系统本地时间执行（含夏令时）",
       retentionCount: "保留数量",
       retentionDays: "保留天数",
       retentionSpace: "空间上限（MiB）",
@@ -113,6 +115,7 @@ export const backupPolicyCopy = {
     },
     panel: {
       title: "Auto backup",
+      timezoneHint: "Uses system local time, including daylight saving time",
       retentionCount: "Retained count",
       retentionDays: "Retained days",
       retentionSpace: "Space limit (MiB)",
@@ -151,6 +154,7 @@ export const backupPolicyCopy = {
     },
     panel: {
       title: "自動バックアップ",
+      timezoneHint: "システムの現地時刻に従います（夏時間を含む）",
       retentionCount: "保持数",
       retentionDays: "保持日数",
       retentionSpace: "容量上限（MiB）",

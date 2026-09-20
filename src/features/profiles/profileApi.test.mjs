@@ -134,3 +134,16 @@ test("backup policy maps all zero retention limits to the unbounded form", () =>
   assert.match(defaults, /maxAgeDays:\s*null/);
   assert.match(defaults, /maxTotalBytes:\s*null/);
 });
+
+test("backup schedule keeps local wall time and labels the system timezone in every locale", () => {
+  const picker = readSource("src/features/profiles/BackupSchedulePicker.tsx");
+  const panel = readSource("src/features/profiles/BackupPolicyPanel.tsx");
+  const copy = readSource("src/features/profiles/backupPolicyCopy.ts");
+  const api = readSource("src/features/profiles/profileSaveSettingsApi.ts");
+  assert.match(picker, /onChange\(\{ \.\.\.schedule, hour, minute \}\)/);
+  assert.match(panel, /copy\.timezoneHint/);
+  assert.match(copy, /timezoneHint: "按系统本地时间执行（含夏令时）"/);
+  assert.match(copy, /timezoneHint: "Uses system local time, including daylight saving time"/);
+  assert.match(copy, /timezoneHint: "システムの現地時刻に従います（夏時間を含む）"/);
+  assert.doesNotMatch(picker + api, /getTimezoneOffset|Date\.UTC|setUTCHours|toISOString/);
+});

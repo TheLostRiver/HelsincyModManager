@@ -10,6 +10,7 @@ export type ProfileDirectorySelectionDto = {
 };
 
 export type ProfileBackupScheduleDto = {
+  // 本地日历规则，跟随操作系统时区；不得预先换算为 UTC 小时或固定 offset。
   cadence: BackupCadence;
   hour: number | null;
   minute: number | null;

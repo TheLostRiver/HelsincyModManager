@@ -602,6 +602,7 @@ export function ProfilePage() {
         preRestoreBackupEnabled: draftSettings.preRestoreBackupEnabled,
       });
       setSettingsState({ status: "ready", settings });
+      setAutoBackupCheckRefreshToken((token) => token + 1);
       setDraftSettings(settings);
       setPendingDirectories({});
       setDirty(false);
