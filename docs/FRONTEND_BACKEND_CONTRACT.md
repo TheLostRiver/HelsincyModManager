@@ -1289,6 +1289,9 @@ confirm_profile_save_directory_candidate({ discoveryId, candidateId })
 - `validate_profile_backup_directory` 校验备份目标目录；当后端能判断目录关系时，必须拒绝位于当前游戏安装目录内的位置。
 - `open_profile_directory` 在系统文件管理器中打开该 Profile 已配置的存档或备份目录。`kind` 只接受 `save` 与 `backup`，未知值返回 `profile_directory_kind_invalid`。**前端不传路径**：真实路径由后端从持久化事实解析，并在打开前复核仍是普通目录（拒绝 symlink、junction、重解析点与非目录），因此该命令无法被用于打开任意位置。自定义目录按玩家所选原样打开，打开动作不向玩家目录写入；`backup` 使用托管默认目录（`defaulted`）时，后端按 `mode` 解析默认备份根下该 Profile 的受控子目录，缺失时逐级 nofollow 补建（只补应用自有托管树）后打开。目录未配置（`unset`）时返回错误，不退化成打开任意其他位置。
 - `set_profile_save_settings` 只在 app-service 校验通过后存储配置；后续为该设置域接入 audit 支持后，自动备份设置变更应写入 Audit Log 事件。
+- `schedule.hour/minute/weekdays` 表示操作系统本地日历的钟点和星期（`0` 为周日），不是 UTC 钟点。
+  默认跟随系统时区及目标日期的夏令时规则；字段形状不变，不由前端提交固定 offset 或预转换 UTC。
+  保存成功后前端重新调用后端检查，刷新下次计划；保存失败不启动新检查。
 - `retention.maxCount` 范围为 0..=999，其中 `0` 表示不按数量限制。`retention.maxAgeDays` 与
   `retention.maxTotalBytes` 的 `null` 表示不限制；为支持数字输入 UI，Tauri DTO 边界也接受数值 `0`
   并归一化为 `null`/领域层 `None`。非零年龄范围仍为 1..=3650 天，非零空间范围仍为 16 MiB..=1 TiB。
@@ -1409,6 +1412,10 @@ get_save_backup_background_status({ request: { gameId, profileId } })
   `save_backup_center_profile_missing`、`save_backup_center_backup_missing`、`save_backup_note_invalid`、
   `save_backup_task_conflict` 和 `save_backup_retention_failed`；前端不得用 message 文本分支。
 - `check_auto_save_backup` 是客户端运行期/启动时的自动备份检查入口；它根据后端持久化的 Profile 存档设置和备份历史判断当前计划是否到期。若到期，后端会以 `trigger = "auto"` 复用存档备份任务链路并返回 `startedTask`。
+- `checkedAt/lastDueAt/nextDueAt/lastAutoBackupAt` 仍为 UTC Unix 毫秒。后端每次按系统本地日历重算，
+  不把持久化的 `nextDueAt` 当作独立 due 事实。跳时中不存在的钟点顺延到第一个有效分钟，回拨重复
+  钟点取第一次；错过多个窗口仍只追赶一次。系统时区不可解析返回稳定
+  `save_backup_auto_timezone_unavailable`，不获取租约、不启动备份、不静默改用 UTC。
 - 计划到期时后端先做游戏运行检测：游戏运行中或无法判断时保守延后，不获取调度租约、不启动任务，并在 `pendingReason` 返回 `game_running` / `game_running_unknown`；游戏退出后的下一次检查自动补跑。运行检测由后端 `GameRunningDetector` port 决定，前端不参与判断。
 - 前端只能传递 `gameId`、`profileId`、可选 `note` 和可选 `limit`；不得传入存档源路径、备份根目录、文件名、manifest 正文、文件列表、hash、sandbox/cache 路径或 backup ref。
 - Tauri command 只做 DTO 映射和 app service 转发；目录解析、默认备份目录、自选根目录子目录、压缩、manifest、SQLite 历史、保留策略和审计均由后端服务处理。
