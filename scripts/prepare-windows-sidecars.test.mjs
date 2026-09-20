@@ -1,15 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   WINDOWS_SIDECAR_BINARIES,
   assertNoDynamicMsvcCrtImports,
   assertSidecarBuildOutput,
+  assertWindowsGuiSubsystem,
   buildProfile,
   capturedCommandFailure,
+  copySidecarBuildOutput,
   hostTripleFromRustc,
   resolveTargetTriple,
   sidecarRustFlags,
@@ -21,6 +31,163 @@ import {
 
 const worker = "hmm-save-backup-worker";
 const installerCleanup = "hmm-save-backup-installer-cleanup";
+
+function peHeaderFixture({ magic = 0x20b, subsystem = 2, peOffset = 0x80 } = {}) {
+  const optionalSize = magic === 0x10b ? 224 : 240;
+  const bytes = Buffer.alloc(peOffset + 24 + optionalSize);
+  bytes.writeUInt16LE(0x5a4d, 0);
+  bytes.writeUInt32LE(peOffset, 0x3c);
+  bytes.writeUInt32LE(0x00004550, peOffset);
+  bytes.writeUInt16LE(magic === 0x10b ? 0x14c : 0x8664, peOffset + 4);
+  bytes.writeUInt16LE(optionalSize, peOffset + 20);
+  bytes.writeUInt16LE(magic, peOffset + 24);
+  bytes.writeUInt16LE(subsystem, peOffset + 24 + 68);
+  return bytes;
+}
+
+function temporarySidecarDirectory(t) {
+  const directory = mkdtempSync(path.join(tmpdir(), "hmm-sidecar-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  return directory;
+}
+
+test("accepts Windows GUI subsystem in PE32 and PE32+ for both sidecars", () => {
+  for (const binary of WINDOWS_SIDECAR_BINARIES) {
+    for (const magic of [0x10b, 0x20b]) {
+      for (const peOffset of [0x40, 0x80, 0x100]) {
+        assert.doesNotThrow(() =>
+          assertWindowsGuiSubsystem(
+            peHeaderFixture({ magic, peOffset }), binary, "x86_64-pc-windows-msvc",
+          ),
+        );
+      }
+    }
+  }
+});
+
+test("rejects console and every other tested non-GUI Windows subsystem", () => {
+  for (const binary of WINDOWS_SIDECAR_BINARIES) {
+    for (const target of [
+      "x86_64-pc-windows-msvc", "x86_64-pc-windows-gnu", "aarch64-pc-windows-msvc",
+    ]) {
+      for (const magic of [0x10b, 0x20b]) {
+        for (const subsystem of [0, 1, 3, 7, 9, 10, 0xffff]) {
+          assert.throws(
+            () => assertWindowsGuiSubsystem(
+              peHeaderFixture({ magic, subsystem }), binary, target,
+            ),
+            { message: `Windows sidecar must use the Windows GUI subsystem: ${binary}` },
+          );
+        }
+      }
+    }
+  }
+});
+
+test("rejects malformed or truncated PE headers with a stable error", () => {
+  const malformed = [
+    Buffer.alloc(0), Buffer.alloc(63), Buffer.from("not a PE file"),
+    peHeaderFixture({ magic: 0x107 }),
+  ];
+  for (const mutate of [
+    (bytes) => bytes.writeUInt16LE(0, 0),
+    (bytes) => bytes.writeUInt32LE(0, 0x80),
+    (bytes) => bytes.writeUInt32LE(63, 0x3c),
+    (bytes) => bytes.writeUInt32LE(0xffffffff, 0x3c),
+    (bytes) => bytes.writeUInt32LE(bytes.length - 23, 0x3c),
+    (bytes) => bytes.writeUInt16LE(0, 0x80 + 20),
+    (bytes) => bytes.writeUInt16LE(1, 0x80 + 20),
+    (bytes) => bytes.writeUInt16LE(69, 0x80 + 20),
+    (bytes) => bytes.writeUInt16LE(111, 0x80 + 20),
+    (bytes) => bytes.writeUInt16LE(0xffff, 0x80 + 20),
+  ]) {
+    const bytes = peHeaderFixture();
+    mutate(bytes);
+    malformed.push(bytes);
+  }
+  const shortPe32 = peHeaderFixture({ magic: 0x10b });
+  shortPe32.writeUInt16LE(95, 0x80 + 20);
+  malformed.push(shortPe32);
+  for (const magic of [0x10b, 0x20b]) {
+    const valid = peHeaderFixture({ magic });
+    for (let length = 0; length < valid.length; length += 1) {
+      malformed.push(valid.subarray(0, length));
+    }
+  }
+  for (const bytes of malformed) {
+    assert.throws(
+      () => assertWindowsGuiSubsystem(bytes, worker, "x86_64-pc-windows-msvc"),
+      { message: `Windows sidecar has an invalid PE header: ${worker}` },
+    );
+  }
+});
+
+test("does not apply PE requirements to non-Windows outputs", () => {
+  for (const target of ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]) {
+    assert.doesNotThrow(() =>
+      assertWindowsGuiSubsystem(Buffer.from("non-PE fixture"), worker, target),
+    );
+  }
+  assert.throws(
+    () => assertWindowsGuiSubsystem(
+      peHeaderFixture(), "arbitrary-helper", "x86_64-pc-windows-msvc",
+    ),
+    /unsupported Windows sidecar binary/,
+  );
+  assert.throws(
+    () => assertWindowsGuiSubsystem(peHeaderFixture(), worker, "../windows"),
+    /invalid Rust target triple/,
+  );
+});
+
+test("copies verified GUI sidecars to their exact bundle input names", (t) => {
+  const directory = temporarySidecarDirectory(t);
+  const destinationDirectory = path.join(directory, "binaries");
+  mkdirSync(destinationDirectory);
+  for (const binary of WINDOWS_SIDECAR_BINARIES) {
+    const source = path.join(directory, `${binary}.exe`);
+    const bytes = peHeaderFixture();
+    writeFileSync(source, bytes);
+    const destination = copySidecarBuildOutput(
+      source, destinationDirectory, binary, "x86_64-pc-windows-msvc",
+    );
+    assert.equal(
+      destination, path.join(destinationDirectory, `${binary}-x86_64-pc-windows-msvc.exe`),
+    );
+    assert.deepEqual(readFileSync(destination), bytes);
+  }
+});
+
+test("invalid build outputs cannot create or overwrite a bundle input", (t) => {
+  const directory = temporarySidecarDirectory(t);
+  const destinationDirectory = path.join(directory, "binaries");
+  mkdirSync(destinationDirectory);
+  for (const binary of WINDOWS_SIDECAR_BINARIES) {
+    const source = path.join(directory, `${binary}.exe`);
+    const destination = path.join(destinationDirectory, `${binary}-x86_64-pc-windows-msvc.exe`);
+    for (const bytes of [
+      peHeaderFixture({ subsystem: 3 }),
+      Buffer.alloc(0),
+      Buffer.concat([peHeaderFixture(), Buffer.from("VCRUNTIME140.dll")]),
+    ]) {
+      writeFileSync(source, bytes);
+      assert.throws(() => copySidecarBuildOutput(
+        source, destinationDirectory, binary, "x86_64-pc-windows-msvc",
+      ));
+      assert.equal(existsSync(destination), false);
+    }
+    const previous = peHeaderFixture();
+    writeFileSync(destination, previous);
+    writeFileSync(source, peHeaderFixture({ subsystem: 3 }));
+    assert.throws(
+      () => copySidecarBuildOutput(
+        source, destinationDirectory, binary, "x86_64-pc-windows-msvc",
+      ),
+      /must use the Windows GUI subsystem/,
+    );
+    assert.deepEqual(readFileSync(destination), previous);
+  }
+});
 
 test("uses a fixed Windows sidecar allowlist", () => {
   assert.deepEqual(WINDOWS_SIDECAR_BINARIES, [worker, installerCleanup]);

@@ -14,6 +14,12 @@ P7.1 的单次 worker 基础上，P7.2a 已实现 Windows 平台核心：
 - worker sidecar 的 dev/release 准备脚本和 Windows `externalBin` 已接入；target-triple 源产物被 Git 忽略。
 - 自动化测试仅使用 fake registry/command runner、固定 clock、临时 SQLite/目录和人工 fixture，不创建、更新、启动或删除真实 Scheduled Task。
 
+Windows 的 worker 与 installer cleanup 独立 bin 在 debug/release 均使用 `windows` 子系统，避免系统
+直接启动时自动创建控制台；这不创建 GUI/WebView，也不改变任务的 Interactive/Limited 身份、固定参数
+或轮询频率。sidecar 准备脚本在复制前和复制后读取真实 PE header，要求 `Subsystem=2`；主 GUI 的
+编译属性不能替代这两个 bin 的声明。worker 失败仍返回非零退出码，保护状态仍依赖 exact read-back
+与 fresh heartbeat，不能依赖控制台 stderr 可见性，也不能把“没有窗口”当成备份成功。
+
 P7.2b 已在上述平台核心上接入应用级用户流程：
 
 - 全局 SQLite 设置持久化 `desired_enabled`、`enabled_at`、`last_worker_heartbeat_at` 和更新时间；worker 在禁用时立即 no-op，不枚举 Profile、不触发备份、不写 heartbeat。

@@ -102,6 +102,30 @@ test("required CI context delegates to the full Bash verification entrypoint", (
   );
 });
 
+test("both verification entrypoints execute Windows packaging tests and propagate failures", () => {
+  const powershell = readRepoFile("scripts/verify.ps1");
+  const bash = readRepoFile("scripts/verify.sh");
+  for (const name of ["prepare-windows-sidecars", "windows-installer-cleanup-config", "windows-binaries"]) {
+    assert.match(powershell, new RegExp(
+      `^    node --test scripts/${name}\\.test\\.mjs\\s*if \\(\\$LASTEXITCODE -ne 0\\) \\{\\s*exit \\$LASTEXITCODE\\s*\\}`,
+      "m",
+    ));
+    assert.ok(bash.split(/\r?\n/).includes(`"\${node_bin}" --test scripts/${name}.test.mjs`));
+  }
+  assert.match(bash, /^set -euo pipefail$/m);
+});
+
+test("release checks linked GUI and sidecars before collecting or uploading artifacts", () => {
+  const workflow = readRepoFile(".github/workflows/release.yml");
+  assert.match(workflow, /^ {8}run: node scripts\/check-windows-binaries\.mjs target\/release$/m);
+  assertOrdered(workflow, [
+    "run: corepack pnpm run tauri:build",
+    "- name: Verify Windows binary dependencies and subsystems\n        shell: bash\n        run: node scripts/check-windows-binaries.mjs target/release",
+    "- name: Collect and rename artifacts",
+    "- name: Create draft release",
+  ], "release.yml");
+});
+
 /*
  * 策略检查在这个仓库里有**两套独立实现**：
  *

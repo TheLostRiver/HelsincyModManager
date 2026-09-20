@@ -84,6 +84,12 @@ jobs:
         shell: bash
         run: corepack pnpm run tauri:build
 
+      # Check actual linked EXEs (including the GUI), not just sidecar build flags.
+      # This native build uses target/release; an explicit --target needs its own path.
+      - name: Verify Windows binary dependencies and subsystems
+        shell: bash
+        run: node scripts/check-windows-binaries.mjs target/release
+
       # Tauri 产物名带空格且不含平台/架构/渠道信息，与
       # docs/release/发布与产物说明.md 的命名规则不一致，此处统一重命名。
       #

@@ -1,0 +1,10 @@
+# Apply to the GUI, sidecars and their C/C++ dependencies in every MSVC build.
+# Setting RUSTFLAGS only in the sidecar child process does not cover the GUI.
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+rustflags = ["-Ctarget-feature=+crt-static"]
+
+# Tauri CLI sets this to true, but tauri-build's partial-static shim explicitly
+# disables libucrt and selects dynamic ucrt. Cargo must override the CLI value.
+# tauri-build only consumes this setting on Windows/MSVC.
+[env]
+STATIC_VCRUNTIME = { value = "false", force = true }
