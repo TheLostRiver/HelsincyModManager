@@ -621,6 +621,12 @@ WriteManifest
 
 默认备份目录应位于应用数据目录下，而不是游戏目录里。
 
+自动备份的每日/每周计划按系统本地日历解释，UTC instant 继续用于历史、审计和租约。
+`hmm-ports::LocalCalendar` 隔离本地日期与钟点解析；`hmm-infra::SystemLocalCalendar` 读取目标日期
+的系统时区规则，`hmm-app` 负责星期、窗口和夏令时缺失/重复钟点策略。`hmm-runtime` 向客户端及
+headless worker 装配同一实现，前端不预转换 UTC 或承担 due 判断。详见
+[自动备份后台保障设计](SAVE_BACKUP_BACKGROUND_AUTOMATION_DESIGN.md#本地日历与时区)。
+
 SAVE-04 在同一备份边界上增加独立的玩家存档恢复事务：来源只能是已持久化的 backup summary +
 manifest，前端只提交 game/profile/backup identity、短时 preview token 和确认位。完整 archive、manifest、
 hash、相对路径、大小和 containment 校验，以及目标同父目录 staging，都在共享写锁外完成；默认开启的

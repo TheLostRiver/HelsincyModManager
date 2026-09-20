@@ -1689,6 +1689,7 @@ archive/manifest 为 `3/3`、`pre_restore=1/1`、需处理为 0。证据与候�
 
 ```powershell
 cargo test -p hmm-app --test save_backup_scheduler
+cargo test -p hmm-infra --lib local_calendar
 cargo test -p hmm-infra --test save_backup_scheduler_repository
 cargo test -p hmm-infra game_running
 cargo test -p hmm-games-mhw adapter_reports
@@ -1697,6 +1698,12 @@ cmd /c corepack pnpm run test -- src/features/profiles/profileFrontendIntegratio
 ```
 
 要求：调度器测试使用 fake repository / fake clock / fake game running detector；scheduler state repository 测试使用临时 SQLite；游戏运行检测测试只用 fixture 字符串，不依赖真实进程或真实游戏；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
+
+时区回归使用注入的日历 fixture；infra 的 IANA 规则测试仅使用 dev dependency `chrono-tz`，不得修改
+开发机系统时区。覆盖 UTC+8、负偏移和非整小时偏移、当地/UTC 跨日的 weekly、23/25 小时日计划、
+DST 缺失分钟顺延、重复分钟只取第一次、时区变更重算旧 next due、UTC 历史与 lease TTL 不被平移、
+不可解析时不启动任务，以及 worker 与客户端共用日历。前端验证原样提交本地钟点、三语时区说明和
+保存成功后的后端检查刷新。真实 Windows 系统时区切换验收仍限一次性测试账户或 VM。
 
 P7.1 后台备份 headless worker 与调度租约基础能力至少运行以下可复制的聚焦验证：
 

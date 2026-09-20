@@ -12,6 +12,7 @@ mod game_prerequisites;
 mod game_running;
 mod game_setup;
 mod install;
+mod local_calendar;
 mod mod_import;
 mod mod_import_archive;
 mod mod_installation;
@@ -35,6 +36,8 @@ mod text_log;
 mod write_admission;
 
 use anyhow::Result;
+
+pub use local_calendar::{LocalCalendar, LocalTimeMapping};
 
 pub type PortResult<T> = anyhow::Result<T>;
 

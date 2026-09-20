@@ -62,6 +62,7 @@ mod save_backup_background;
 mod save_backup_background_worker;
 mod save_backup_center;
 mod save_backup_exit_guard;
+mod save_backup_schedule;
 mod save_backup_scheduler;
 mod save_backup_task;
 mod save_directory_discovery;
@@ -367,7 +368,7 @@ pub use save_backup_exit_guard::{
 };
 pub use save_backup_scheduler::{
     SaveBackupAutoCheckRequest, SaveBackupAutoCheckResult, SaveBackupAutoCheckStatus,
-    SaveBackupAutoSchedulerError, SaveBackupAutoSchedulerService,
+    SaveBackupAutoSchedulerError, SaveBackupAutoSchedulerService, SaveBackupSchedulerTiming,
 };
 pub use save_backup_task::{
     SaveBackupExecutor, SaveBackupTaskRunError, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,

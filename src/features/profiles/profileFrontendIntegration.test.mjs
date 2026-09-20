@@ -393,6 +393,16 @@ test("profile page wires client runtime auto backup checks honestly", () => {
   assert.match(saveManagerCss, /\.profile-auto-backup-protection/);
 });
 
+test("saving schedule refreshes backend due information only after persistence succeeds", () => {
+  const pageSource = readSource("src/features/profiles/ProfilePage.tsx");
+  const saveSettingsStart = pageSource.indexOf("const saveSettings = async");
+  assert.ok(saveSettingsStart >= 0);
+  const saveSettings = pageSource.slice(saveSettingsStart);
+  const success = saveSettings.slice(saveSettings.indexOf("try {"), saveSettings.indexOf("} catch (error)"));
+  assert.match(success, /await setProfileSaveSettings\([\s\S]*?setAutoBackupCheckRefreshToken\(\(token\) => token \+ 1\)/);
+  assert.doesNotMatch(success.slice(0, success.indexOf("await setProfileSaveSettings")), /setAutoBackupCheckRefreshToken/);
+});
+
 test("profile background status supports starting without an enable toggle", () => {
   const typesSource = readSource("src/features/profiles/profileSaveBackupTypes.ts");
   const pageSource = readSource("src/features/profiles/ProfilePage.tsx");

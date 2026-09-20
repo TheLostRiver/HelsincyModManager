@@ -17,6 +17,7 @@ mod game_discovery;
 mod game_launcher;
 mod game_running_detector;
 mod install_commit;
+mod local_calendar;
 mod log_retention;
 mod log_storage_budget;
 mod managed_log;
@@ -161,6 +162,8 @@ pub use task_log::FileSystemTaskLogWriter;
 pub use text_log::FileSystemTextLogReader;
 
 pub struct SystemClock;
+
+pub use local_calendar::SystemLocalCalendar;
 
 impl AppClock for SystemClock {
     fn now_unix_millis(&self) -> Result<u128> {

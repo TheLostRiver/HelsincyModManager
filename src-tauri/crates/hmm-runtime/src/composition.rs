@@ -47,13 +47,14 @@ use hmm_app::{
     RetargetInstallTaskService, RetargetReinstallRequest, RetargetReinstallTaskExecutor,
     RetargetStagingMaterializerFactory, SaveBackupAutoSchedulerService,
     SaveBackupBackgroundService, SaveBackupBackgroundWorker, SaveBackupCenterService,
-    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupService, SaveBackupTaskRunner,
-    SaveBackupTaskScopeRegistry, SaveBackupTaskService, SaveProfileMaintenanceScopeRegistry,
-    SaveRestoreService, SaveRestoreTaskRunner, SaveRestoreTaskScopeRegistry,
-    SaveRestoreTaskService, Sha256SaveRestoreTokenCodec, StartRecoveryActionTaskRequest,
-    StartRetargetInstallTaskRequest, SupportDiagnosticsExportService, TaskManager,
-    ThumbnailCacheMaintenanceScheduler, UninstallTaskRunner, UninstallTaskService,
-    DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY, DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
+    SaveBackupExecutor, SaveBackupExitGuard, SaveBackupSchedulerTiming, SaveBackupService,
+    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
+    SaveProfileMaintenanceScopeRegistry, SaveRestoreService, SaveRestoreTaskRunner,
+    SaveRestoreTaskScopeRegistry, SaveRestoreTaskService, Sha256SaveRestoreTokenCodec,
+    StartRecoveryActionTaskRequest, StartRetargetInstallTaskRequest,
+    SupportDiagnosticsExportService, TaskManager, ThumbnailCacheMaintenanceScheduler,
+    UninstallTaskRunner, UninstallTaskService, DEFAULT_PREVIEW_IMAGE_PROCESSING_CONCURRENCY,
+    DEFAULT_THUMBNAIL_CACHE_MAINTENANCE_INTERVAL,
 };
 use hmm_core::{GameId, GameInstance, PackageFileId, PreviewImagePolicy, ReplacementBindingId};
 use hmm_games_mhw::{
@@ -90,7 +91,7 @@ use hmm_infra::{
     SqliteSaveBackupBackgroundSettingsRepository, SqliteSaveBackupRepository,
     SqliteSaveBackupSchedulerStateRepository, SqliteSaveRestoreTransactionRepository,
     SteamCommunityProfileClient, SteamGameDiscoveryService, SteamUserdataSaveDirectoryScanner,
-    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner,
+    SystemClock, SystemDiagnosticsEnvironmentProvider, SystemGameLaunchRunner, SystemLocalCalendar,
     SystemShellDirectoryOpener, TaskScopedModImportSandboxLocator, ZipModImportPackagePreparer,
     DEFAULT_LOG_STORAGE_MAX_BYTES,
 };
@@ -758,7 +759,10 @@ impl HmmRuntime {
             Arc::clone(&save_backup_scheduler_state_repository),
             game_running_detector_for_platform(&game_adapters),
             Arc::clone(&audit_log_writer),
-            Arc::new(SystemClock),
+            SaveBackupSchedulerTiming {
+                clock: Arc::new(SystemClock),
+                calendar: Arc::new(SystemLocalCalendar),
+            },
         ));
         let save_directory_discovery = Arc::new(ProfileSaveDirectoryDiscoveryService::new(
             Arc::clone(&game_config_repository),

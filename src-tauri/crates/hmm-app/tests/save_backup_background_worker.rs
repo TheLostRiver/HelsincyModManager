@@ -2,8 +2,8 @@ use anyhow::Result;
 use hmm_app::{
     CreateSaveBackupRequest, CreateSaveBackupResult, SaveBackupAutoCheckRequest,
     SaveBackupAutoSchedulerService, SaveBackupBackgroundWorker, SaveBackupExecutor,
-    SaveBackupTaskRunner, SaveBackupTaskScopeRegistry, SaveBackupTaskService,
-    StartSaveBackupTaskRequest, TaskManager,
+    SaveBackupSchedulerTiming, SaveBackupTaskRunner, SaveBackupTaskScopeRegistry,
+    SaveBackupTaskService, StartSaveBackupTaskRequest, TaskManager,
 };
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
@@ -21,9 +21,30 @@ use hmm_ports::{
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+#[path = "support/local_calendar.rs"]
+mod local_calendar;
+
 const DAY_MS: u128 = 86_400_000;
 const HOUR_MS: u128 = 3_600_000;
 const NOW: u128 = 2 * DAY_MS + 4 * HOUR_MS;
+
+#[test]
+fn headless_worker_uses_the_same_local_calendar_for_next_due() {
+    let harness = Harness::with_calendar(Arc::new(local_calendar::FixedLocalCalendar(8 * 3600)));
+    harness.enable_background();
+    harness.insert_profile("default");
+    let mut settings = daily_settings("default");
+    settings.schedule.hour = Some(12); // UTC 04:00 = 本地 12:00。
+    harness.insert_settings(settings);
+    let result = harness.worker().run_once("worker-local").unwrap();
+    assert_eq!(result.started_tasks, 1);
+    let state = harness
+        .scheduler_state_repository
+        .get_state(&GameId::mhw(), &ProfileId::new("default"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.next_due_at, Some(NOW + DAY_MS));
+}
 
 #[test]
 fn worker_records_one_global_heartbeat_after_completed_cycle() {
@@ -454,6 +475,10 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
+        Self::with_calendar(Arc::new(local_calendar::FixedLocalCalendar::default()))
+    }
+
+    fn with_calendar(calendar: Arc<dyn hmm_ports::LocalCalendar>) -> Self {
         let background_settings = Arc::new(FakeBackgroundSettingsRepository::default());
         let profile_repository = Arc::new(FakeProfileRepository::default());
         let settings_repository = Arc::new(FakeProfileSaveSettingsRepository::default());
@@ -471,7 +496,10 @@ impl Harness {
             scheduler_state_repository.clone(),
             game_running_detector.clone(),
             audit_log.clone(),
-            scheduler_clock.clone(),
+            SaveBackupSchedulerTiming {
+                clock: scheduler_clock.clone(),
+                calendar,
+            },
         ));
         let executor = Arc::new(RecordingSaveBackupExecutor::default());
         let task_manager = Arc::new(TaskManager::new());

@@ -271,6 +271,30 @@ save_backup_scheduler_state
 
 ## 调度规则
 
+### 本地日历与时区
+
+每日/每周的 `hour/minute/weekdays` 均为用户操作系统的本地日历规则，默认跟随系统时区，不按
+界面语言、国家或 IP 猜测时区。设置每日 08:00，在北京、纽约或柏林均指各自当地 08:00。
+本轮不提供固定指定时区选项。
+
+应用层通过 `LocalCalendar` port 将 UTC instant 映射到当地日期，并解析每个目标日期的钟点；
+`hmm-infra::SystemLocalCalendar` 使用操作系统时区规则，runtime 向客户端和 headless worker 装配
+同一实现。应用层选择星期、最近/下次窗口及跳时策略；React 与 Tauri 不计算 due。
+
+- 每轮重新读取目标日期规则，不缓存设置时的固定 UTC offset，不用固定 24 小时累加日计划。
+  夏令时切换前后，相邻两次当地 08:00 可以相隔 23 或 25 小时。
+- 跳时导致钟点不存在时，按分钟顺延到第一个有效钟点（最多查找 24 小时，含整日跳过）。
+- 回拨导致钟点重复时，只采用较早的 UTC instant。已成功的该窗口不会因第二次出现而重复备份。
+- 系统时区变更后，下轮检查按新时区重新计算。保留既有「最新成功自动备份时间」去重与租约机制；
+  跨时区旅行并不承诺同一当地日期只备份一次，新时区中新到期的窗口仍可能触发一次备份。
+- 日期/时区查询失败或在有限范围内无法解析时，返回 `save_backup_auto_timezone_unavailable`，
+  不获取租约、不启动备份，不静默回退 UTC。
+
+计划字段和 SQLite schema 保持兼容；已有 `hour/minute/weekdays` 直接按本地语义解释。下一轮检查
+重算并覆盖旧 `next_due_at`，不平移历史、审计、manifest 或租约的 UTC 时间戳。
+`next_due_at` 表示到期瞬间，不承诺准点执行：系统任务约每 15 分钟检查，游戏运行、休眠、目录
+不可用及任务占用仍按原安全规则延后。
+
 ### due 判断
 
 调度器只基于后端持久化设置判断：
@@ -278,14 +302,17 @@ save_backup_scheduler_state
 - profile 是否存在。
 - profile 是否启用自动备份。
 - schedule 是否为 daily / weekly 等自动节奏。
-- `next_due_at` 是否已到。
-- 上次成功时间是否已满足间隔。
+- 按当前系统本地日历计算的最近已到期窗口。
+- 最新成功自动备份是否已覆盖该窗口（成功时间不早于该窗口的 UTC instant）。
 
 前端展示用 view model 可以格式化这些信息，但不能计算最终 due 事实。
 
 ### 追赶策略
 
 如果错过多个计划窗口，不应一次性补多个备份。默认只执行一次追赶备份，然后根据当前 schedule 计算下一次 `next_due_at`。
+
+保持现有首次启用语义：没有成功自动备份历史时，最近已到期窗口也视为待追赶，因此可能立即
+备份一次，而不是必须等到下一个设置钟点。手动备份不替代自动窗口的成功记录。
 
 原因：
 
@@ -424,6 +451,7 @@ save_backup_auto_skipped_game_running_unknown
 save_backup_auto_source_invalid
 save_backup_auto_destination_unavailable
 save_backup_auto_task_conflict
+save_backup_auto_timezone_unavailable
 ```
 
 错误 message 不包含完整本地路径、Steam ID、Windows 用户名、存档内容、manifest 正文或备份根目录。

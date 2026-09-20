@@ -323,6 +323,15 @@ mod tests {
     }
 
     #[test]
+    fn auto_backup_timezone_error_has_a_stable_sanitized_contract() {
+        let error = auto_save_backup_error_to_command_error(
+            SaveBackupAutoSchedulerError::TimezoneUnavailable,
+        );
+        assert_eq!(error.code, "save_backup_auto_timezone_unavailable");
+        assert_eq!(error.message, "auto save backup check failed");
+    }
+
+    #[test]
     fn background_status_errors_map_to_stable_codes_without_details() {
         for (error, expected) in [
             (

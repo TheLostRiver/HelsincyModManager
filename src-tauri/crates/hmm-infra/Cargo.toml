@@ -10,6 +10,7 @@ repository.workspace = true
 anyhow.workspace = true
 cap-fs-ext.workspace = true
 cap-std.workspace = true
+chrono.workspace = true
 fs2 = "0.4.3"
 hmac.workspace = true
 rusqlite.workspace = true
@@ -69,6 +70,7 @@ winreg = "0.56"
 libc.workspace = true
 
 [dev-dependencies]
+chrono-tz = "0.10"
 # 打开语料生成器：rar 的负测语料只能现场合成（.rar 提交不进仓库，
 # 且开发机上没有 RAR 压缩器）。理由见 hmm-unrar-sys/src/fixture.rs。
 hmm-unrar-sys = { path = "../hmm-unrar-sys", features = ["test-fixtures"] }

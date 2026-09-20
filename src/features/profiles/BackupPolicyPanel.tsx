@@ -47,7 +47,7 @@ export function BackupPolicyPanel({
       <div className="profile-policy-card__header panel-header-row">
         <div>
           <h2 id="profile-backup-policy-title">{copy.title}</h2>
-          <span>Schedule and retention</span>
+          <span>{copy.timezoneHint}</span>
         </div>
         <ShieldCheck size={18} aria-hidden="true" />
       </div>
