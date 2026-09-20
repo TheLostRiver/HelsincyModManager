@@ -2,23 +2,21 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use hmm_core::{
-    BackupCadence, GameId, ProfileBackupSchedule, ProfileId, SaveBackupBackgroundProtectionStatus,
+    BackupCadence, GameId, ProfileId, SaveBackupBackgroundProtectionStatus,
     SaveBackupSchedulerLeaseRequest, SaveBackupSchedulerPendingReason, SaveBackupSchedulerState,
     SaveBackupStatus, SaveBackupSummary, SaveBackupTrigger,
 };
 use hmm_ports::{
     AppClock, AuditLogEvent, AuditLogWriter, AuditWriteFailurePolicy, GameRunningDetector,
-    GameRunningStatus, ProfileRepository, ProfileSaveSettingsRepository, SaveBackupRepository,
-    SaveBackupSchedulerStateRepository,
+    GameRunningStatus, LocalCalendar, ProfileRepository, ProfileSaveSettingsRepository,
+    SaveBackupRepository, SaveBackupSchedulerStateRepository,
 };
 use thiserror::Error;
 
+use crate::save_backup_schedule::schedule_window;
 use crate::StartSaveBackupTaskRequest;
 
 const MILLIS_PER_MINUTE: u128 = 60_000;
-const MILLIS_PER_DAY: u128 = 86_400_000;
-const MINUTES_PER_DAY: u32 = 24 * 60;
-const UNIX_EPOCH_WEEKDAY: u8 = 4;
 const SCHEDULER_LEASE_TTL_MILLIS: u128 = 5 * MILLIS_PER_MINUTE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +57,8 @@ pub enum SaveBackupAutoSchedulerError {
     SchedulerStateUnavailable,
     #[error("app clock is unavailable")]
     ClockUnavailable,
+    #[error("system local timezone is unavailable")]
+    TimezoneUnavailable,
 }
 
 impl SaveBackupAutoSchedulerError {
@@ -69,8 +69,14 @@ impl SaveBackupAutoSchedulerError {
             Self::HistoryUnavailable => "save_backup_auto_history_unavailable",
             Self::SchedulerStateUnavailable => "save_backup_scheduler_unavailable",
             Self::ClockUnavailable => "save_backup_auto_clock_unavailable",
+            Self::TimezoneUnavailable => "save_backup_auto_timezone_unavailable",
         }
     }
+}
+
+pub struct SaveBackupSchedulerTiming {
+    pub clock: Arc<dyn AppClock>,
+    pub calendar: Arc<dyn LocalCalendar>,
 }
 
 pub struct SaveBackupAutoSchedulerService {
@@ -81,6 +87,7 @@ pub struct SaveBackupAutoSchedulerService {
     game_running_detector: Arc<dyn GameRunningDetector>,
     audit_log: Arc<dyn AuditLogWriter>,
     clock: Arc<dyn AppClock>,
+    calendar: Arc<dyn LocalCalendar>,
 }
 
 impl SaveBackupAutoSchedulerService {
@@ -91,7 +98,7 @@ impl SaveBackupAutoSchedulerService {
         scheduler_state_repository: Arc<dyn SaveBackupSchedulerStateRepository>,
         game_running_detector: Arc<dyn GameRunningDetector>,
         audit_log: Arc<dyn AuditLogWriter>,
-        clock: Arc<dyn AppClock>,
+        timing: SaveBackupSchedulerTiming,
     ) -> Self {
         Self {
             profile_repository,
@@ -100,7 +107,8 @@ impl SaveBackupAutoSchedulerService {
             scheduler_state_repository,
             game_running_detector,
             audit_log,
-            clock,
+            clock: timing.clock,
+            calendar: timing.calendar,
         }
     }
 
@@ -179,7 +187,9 @@ impl SaveBackupAutoSchedulerService {
             });
         }
 
-        let schedule_window = schedule_window(&settings.schedule, checked_at);
+        let schedule_window =
+            schedule_window(&settings.schedule, checked_at, self.calendar.as_ref())
+                .map_err(|_| SaveBackupAutoSchedulerError::TimezoneUnavailable)?;
         let last_auto_backup_at = latest_completed_auto_backup_at(
             &self.backup_repository,
             &request.game_id,
@@ -422,11 +432,6 @@ fn scheduler_lease_owner(game_id: &GameId, profile_id: &ProfileId, checked_at: u
     )
 }
 
-struct ScheduleWindow {
-    last_due_at: Option<u128>,
-    next_due_at: Option<u128>,
-}
-
 fn latest_completed_auto_backup_at(
     repository: &Arc<dyn SaveBackupRepository>,
     game_id: &GameId,
@@ -445,115 +450,4 @@ fn latest_completed_auto_backup_at(
 
 fn is_completed_auto_backup(summary: &SaveBackupSummary) -> bool {
     summary.trigger == SaveBackupTrigger::Auto && summary.status == SaveBackupStatus::Completed
-}
-
-fn schedule_window(schedule: &ProfileBackupSchedule, now_unix_millis: u128) -> ScheduleWindow {
-    match schedule.cadence {
-        BackupCadence::Manual => ScheduleWindow {
-            last_due_at: None,
-            next_due_at: None,
-        },
-        BackupCadence::Daily => daily_window(schedule, now_unix_millis),
-        BackupCadence::Weekly => weekly_window(schedule, now_unix_millis),
-    }
-}
-
-fn daily_window(schedule: &ProfileBackupSchedule, now_unix_millis: u128) -> ScheduleWindow {
-    let Some(schedule_minute) = schedule_minute_of_day(schedule) else {
-        return ScheduleWindow {
-            last_due_at: None,
-            next_due_at: None,
-        };
-    };
-    let now_day = (now_unix_millis / MILLIS_PER_DAY) as i128;
-    let today_due = slot_at_day(now_day, schedule_minute);
-    let last_due_day = if today_due <= now_unix_millis {
-        now_day
-    } else {
-        now_day - 1
-    };
-    let next_due_day = last_due_day + 1;
-
-    ScheduleWindow {
-        last_due_at: slot_at_day_checked(last_due_day, schedule_minute),
-        next_due_at: slot_at_day_checked(next_due_day, schedule_minute),
-    }
-}
-
-fn weekly_window(schedule: &ProfileBackupSchedule, now_unix_millis: u128) -> ScheduleWindow {
-    let Some(schedule_minute) = schedule_minute_of_day(schedule) else {
-        return ScheduleWindow {
-            last_due_at: None,
-            next_due_at: None,
-        };
-    };
-    if schedule.weekdays.is_empty() {
-        return ScheduleWindow {
-            last_due_at: None,
-            next_due_at: None,
-        };
-    }
-
-    let now_day = (now_unix_millis / MILLIS_PER_DAY) as i128;
-    let current_weekday = weekday_for_day(now_day);
-    let mut last_due_at: Option<u128> = None;
-    let mut next_due_at: Option<u128> = None;
-
-    for weekday in schedule.weekdays.iter().copied().filter(|day| *day <= 6) {
-        let days_since_weekday =
-            (i16::from(current_weekday) - i16::from(weekday)).rem_euclid(7) as i128;
-        let mut candidate_day = now_day - days_since_weekday;
-        let mut candidate = slot_at_day(candidate_day, schedule_minute);
-        if candidate > now_unix_millis {
-            candidate_day -= 7;
-            candidate = slot_at_day(candidate_day, schedule_minute);
-        }
-        if candidate_day >= 0 {
-            last_due_at = Some(last_due_at.map_or(candidate, |current| current.max(candidate)));
-        }
-
-        let days_until_weekday =
-            (i16::from(weekday) - i16::from(current_weekday)).rem_euclid(7) as i128;
-        let mut next_day = now_day + days_until_weekday;
-        let mut next_candidate = slot_at_day(next_day, schedule_minute);
-        if next_candidate <= now_unix_millis {
-            next_day += 7;
-            next_candidate = slot_at_day(next_day, schedule_minute);
-        }
-        next_due_at =
-            Some(next_due_at.map_or(next_candidate, |current| current.min(next_candidate)));
-    }
-
-    ScheduleWindow {
-        last_due_at,
-        next_due_at,
-    }
-}
-
-fn schedule_minute_of_day(schedule: &ProfileBackupSchedule) -> Option<u32> {
-    let hour = u32::from(schedule.hour?);
-    let minute = u32::from(schedule.minute?);
-    if hour >= 24 || minute >= 60 {
-        return None;
-    }
-    let minute_of_day = hour * 60 + minute;
-    if minute_of_day >= MINUTES_PER_DAY {
-        return None;
-    }
-    Some(minute_of_day)
-}
-
-fn slot_at_day(day: i128, minute_of_day: u32) -> u128 {
-    ((day as u128) * MILLIS_PER_DAY) + (u128::from(minute_of_day) * MILLIS_PER_MINUTE)
-}
-
-fn slot_at_day_checked(day: i128, minute_of_day: u32) -> Option<u128> {
-    if day < 0 {
-        return None;
-    }
-    Some(slot_at_day(day, minute_of_day))
-}
-
-fn weekday_for_day(day: i128) -> u8 {
-    ((day + i128::from(UNIX_EPOCH_WEEKDAY)).rem_euclid(7)) as u8
 }

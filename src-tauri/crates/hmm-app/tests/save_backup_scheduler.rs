@@ -1,6 +1,7 @@
 use anyhow::Result;
 use hmm_app::{
     SaveBackupAutoCheckRequest, SaveBackupAutoCheckStatus, SaveBackupAutoSchedulerService,
+    SaveBackupSchedulerTiming,
 };
 use hmm_core::{
     BackupCadence, GameId, Profile, ProfileBackupRetention, ProfileBackupSchedule,
@@ -16,8 +17,39 @@ use hmm_ports::{
 };
 use std::sync::{Arc, Mutex};
 
+#[path = "support/local_calendar.rs"]
+mod local_calendar;
+use local_calendar::FixedLocalCalendar;
+
+#[path = "support/save_backup_scheduler_timezone.rs"]
+mod timezone;
+
 const DAY_MS: u128 = 86_400_000;
 const HOUR_MS: u128 = 3_600_000;
+
+#[test]
+fn beijing_daily_eight_uses_local_time() {
+    let now = 20_000 * DAY_MS; // UTC 00:00 = 北京 08:00。
+    let harness = Harness::with_calendar(now, Arc::new(FixedLocalCalendar(8 * 3_600)));
+    harness.insert_profile("default");
+    harness.insert_settings(settings_with_schedule(ProfileBackupSchedule {
+        cadence: BackupCadence::Daily,
+        hour: Some(8),
+        minute: Some(0),
+        weekdays: vec![],
+    }));
+    harness.insert_backup(auto_summary("previous", now - DAY_MS));
+    let result = harness
+        .scheduler
+        .check_profile(SaveBackupAutoCheckRequest {
+            game_id: GameId::mhw(),
+            profile_id: ProfileId::new("default"),
+        })
+        .unwrap();
+    assert_eq!(result.status, SaveBackupAutoCheckStatus::Due);
+    assert_eq!(result.last_due_at, Some(now));
+    assert_eq!(result.next_due_at, Some(now + DAY_MS));
+}
 
 #[test]
 fn manual_schedule_is_reported_without_starting_auto_backup() {
@@ -475,6 +507,10 @@ struct Harness {
 
 impl Harness {
     fn new(now_unix_millis: u128) -> Self {
+        Self::with_calendar(now_unix_millis, Arc::new(FixedLocalCalendar::default()))
+    }
+
+    fn with_calendar(now_unix_millis: u128, calendar: Arc<dyn hmm_ports::LocalCalendar>) -> Self {
         let profile_repository = Arc::new(FakeProfileRepository::default());
         let settings_repository = Arc::new(FakeProfileSaveSettingsRepository::default());
         let backup_repository = Arc::new(FakeSaveBackupRepository::default());
@@ -489,7 +525,10 @@ impl Harness {
             scheduler_state_repository.clone(),
             game_running_detector.clone(),
             audit_log.clone(),
-            Arc::new(FixedClock { now_unix_millis }),
+            SaveBackupSchedulerTiming {
+                clock: Arc::new(FixedClock { now_unix_millis }),
+                calendar,
+            },
         );
 
         Self {
