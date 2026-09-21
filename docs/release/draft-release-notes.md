@@ -95,6 +95,24 @@ Mod 管理器：导入与管理 Mod、装备重定向，以及独立于 Mod 功�
 安装包**未经过代码签名**，Windows 安全中心（SmartScreen）可能提示「Windows 已保护你的电脑」。
 点击 **更多信息** → **仍要运行** 即可继续安装。
 
+### 官方渠道声明
+
+> [!WARNING]
+>
+> Helsincy Mod Manager 是**完全免费、开源**的桌面应用，**不会向用户收取任何费用**。
+> 请只通过下列官方渠道获取本软件与更新：
+>
+> | 类别 | 官方 |
+> | --- | --- |
+> | 官网 | **[hmm.helsincy.com](https://hmm.helsincy.com)** |
+> | 下载 | **[官网下载页](https://hmm.helsincy.com/download/)** · **[GitHub Releases](https://github.com/TheLostRiver/HelsincyModManager/releases)** |
+> | 源码 | **[github.com/TheLostRiver/HelsincyModManager](https://github.com/TheLostRiver/HelsincyModManager)** |
+> | 问题反馈 | **[GitHub Issues](https://github.com/TheLostRiver/HelsincyModManager/issues)** |
+>
+> **本项目的下载渠道只有这两个：GitHub Releases 与官网下载页。**
+> 任何向你收费、要求充值、索取登录凭据，或打着「加速下载」「绿色版」「破解版」旗号的第三方
+> 站点与客户端，都不是官方发布。如果你是从其他来源拿到的，请停止使用，并按上方渠道重新下载。
+
 ### 校验
 
 下载后用同版本的 `SHA256SUMS-0.1.1-alpha.txt` 核对文件哈希：
@@ -209,6 +227,26 @@ We recommend backing up your game saves before use.
 
 The installer is **not code-signed**, so Windows SmartScreen may show "Windows protected your PC."
 Click **More info** → **Run anyway** to continue.
+
+### Official download channels
+
+> [!WARNING]
+>
+> Helsincy Mod Manager is a **free, open-source** desktop application.
+> **We never charge you anything.** Get the app and its updates only from the official
+> channels below:
+>
+> | Category | Official |
+> | --- | --- |
+> | Website | **[hmm.helsincy.com](https://hmm.helsincy.com)** |
+> | Download | **[Download page](https://hmm.helsincy.com/download/)** · **[GitHub Releases](https://github.com/TheLostRiver/HelsincyModManager/releases)** |
+> | Source | **[github.com/TheLostRiver/HelsincyModManager](https://github.com/TheLostRiver/HelsincyModManager)** |
+> | Issues | **[GitHub Issues](https://github.com/TheLostRiver/HelsincyModManager/issues)** |
+>
+> **These are the only two download channels: GitHub Releases and the official website.**
+> Any site or client that charges you, asks for top-ups or login credentials, or advertises a
+> "faster download", "portable build", or "cracked version" is not an official release.
+> If you got the app from anywhere else, stop using it and download it again from the channels above.
 
 ### Verification
 
