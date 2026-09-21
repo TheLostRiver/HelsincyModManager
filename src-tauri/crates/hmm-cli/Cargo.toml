@@ -1,6 +1,6 @@
 [package]
 name = "hmm-cli"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 description = "Command-line transport for Helsincy Mod Manager"
 edition.workspace = true
 license.workspace = true

@@ -2,7 +2,7 @@
 
 Helsincy Mod Manager（HMM）是一款 Windows 优先的桌面 Mod 管理器，目前面向《怪物猎人：世界
 冰原》（MHW:I）。它提供 Mod 导入与管理、装备重定向，以及独立的多账号存档备份功能。
-当前版本为 `0.1.0-alpha.0`，仍处于 Alpha 阶段。
+当前版本为 `0.1.1-alpha`，仍处于 Alpha 阶段。
 
 项目入口、开发说明与支持方式见 [README](../README.md)。
 

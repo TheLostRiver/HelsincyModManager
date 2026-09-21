@@ -1865,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-app"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "anyhow",
  "hmac",
@@ -1881,7 +1881,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-cli"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "clap",
  "ctrlc",
@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-core"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "serde",
  "serde_json",
@@ -1909,7 +1909,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-games-mhw"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "crc32fast",
  "hmm-core",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-infra"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "anyhow",
  "cap-fs-ext",
@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-ports"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "anyhow",
  "hmm-core",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-runtime"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "anyhow",
  "cap-fs-ext",
@@ -1996,14 +1996,14 @@ dependencies = [
 
 [[package]]
 name = "hmm-save-backup-sidecars"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "hmm-tauri",
 ]
 
 [[package]]
 name = "hmm-tauri"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "anyhow",
  "hmm-app",
@@ -2027,7 +2027,7 @@ dependencies = [
 
 [[package]]
 name = "hmm-unrar-sys"
-version = "0.1.0-alpha.0"
+version = "0.1.1-alpha"
 dependencies = [
  "cc",
  "tempfile",
