@@ -100,7 +100,7 @@ Mod 管理器：导入与管理 Mod、装备重定向，以及独立于 Mod 功�
 下载后用同版本的 `SHA256SUMS-0.1.1-alpha.txt` 核对文件哈希：
 
 ```text
-<发布时填入>  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
+db9b94f5552dfa4112e623a090a170ee703c101b44e8b367b38a105e4a5906c5  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
 ```
 
 ---
@@ -215,5 +215,5 @@ Click **More info** → **Run anyway** to continue.
 Verify the downloaded file against the matching `SHA256SUMS-0.1.1-alpha.txt`:
 
 ```text
-<to be filled at release>  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
+db9b94f5552dfa4112e623a090a170ee703c101b44e8b367b38a105e4a5906c5  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
 ```

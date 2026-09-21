@@ -832,6 +832,15 @@ tag 的那一次**接受 `target_commitish`；**tag 已存在时既不可设也�
 - 先手动建了 draft（这时 `target_commitish` 只会被记成默认分支名 `main`）→ 走 upload 分支 →
   `gh release edit --target <sha>` → 同样 422 → 脚本 `throw`
 
+还有一个容易忽略、但能解释「为什么这条路本来就不通」的事实：**draft release 的 tag 是
+推迟创建的**。未发布的 draft 在 GitHub 上的 URL 形如
+`releases/tag/untagged-<hash>`，真正的 tag 要到 `--draft=false` 发布那一刻才建立。
+所以「先把 tag 推好、等 CI 去建 release」这个顺序与 release 流程本身是冲突的——
+tag 本来就该由发布动作创建。
+
+这一点也决定了删除 tag 是安全的：draft 阶段远端根本没有 tag 需要保护，发布时它会按
+`target_commitish` 重新建立。
+
 **处理**：**不要预推 tag**，让 tag 由 `gh release create` 自己创建，`--target` 才会生效。
 已经推了的话，删掉 tag 再触发／重跑 Release workflow：
 
