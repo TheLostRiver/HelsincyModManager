@@ -37,6 +37,7 @@
 | 断言路径大小写的测试一直绿，bug 修不修都绿 | NTFS 大小写不敏感，`join(..).exists()` 恒真；要枚举目录项逐字比对 | [4.11](#411-断言路径大小写不能靠-joinexistsntfs-上它恒真) |
 | 接管（adopt）过的 MOD 卸载失败 `install_uninstall_failed:uninstall`，恢复扫描报「目标变更」，一个文件没删 | 接管之后文件被改过，哈希门拒绝删除不是自己记录的那份；接管条目没有备份，这是想要的保护 | [3.5](#35-接管过的-mod-卸载失败恢复扫描报目标变更) |
 | 按验收步骤改了文件，命令成功，应用却像什么都没变（该被拒的操作成功了） | PowerShell 变量是窗口级的，换窗口后 `"$game\x"` 展开成 `\x`，写到了当前盘根目录 | [4.12](#412-验收命令换了-powershell-窗口变量为空路径悄悄落到盘根) |
+| 推 tag 触发的 Release workflow 失败，报 `Release.target_commitish is invalid`（422） | GitHub 只在**创建 tag 时**接受 `target_commitish`；tag 已存在则不可设也不可改 | [7.1](#71-推-tag-触发-release-workflow-必然失败gh-release-create---target-被拒) |
 
 ## 1. 环境与工具链
 
@@ -812,3 +813,39 @@ phase  operation  result  error_code  safe_path  item_count  duration_ms
 **校验方法**：别只看编译通过。要么在测试里用 `tracing::subscriber::with_default` +
 scoped 日志层断言落盘内容，要么真机触发一次**失败**路径后去看日志文件——
 成功路径不会留下这行日志，验证不了通道是否通。
+
+## 7. 发布与 CI
+
+### 7.1 推 tag 触发 Release workflow 必然失败（`gh release create --target` 被拒）
+
+**症状**：Release workflow 在 `Create draft release` 步骤失败，日志是
+`无法把 draft release v… 重新指向本次构建的提交`；手动执行同样命令则直接抛
+`HTTP 422: Validation Failed … Release.target_commitish is invalid`。
+**构建本身是成功的**——安装包已经打出来了，只是挂不上 release。
+
+**根因**：`release.yml` 建 draft 时用 `--target $env:GITHUB_SHA`，而 GitHub **只在创建
+tag 的那一次**接受 `target_commitish`；**tag 已存在时既不可设也不可改**，
+`gh release edit --target` 的 PATCH 一样被拒。于是「先推 tag → CI 建 release」这条路
+两个分支都走不通：
+
+- draft 不存在 → 走 create 分支 → `gh release create <已存在的 tag> --target <sha>` → 422
+- 先手动建了 draft（这时 `target_commitish` 只会被记成默认分支名 `main`）→ 走 upload 分支 →
+  `gh release edit --target <sha>` → 同样 422 → 脚本 `throw`
+
+**处理**：**不要预推 tag**，让 tag 由 `gh release create` 自己创建，`--target` 才会生效。
+已经推了的话，删掉 tag 再触发／重跑 Release workflow：
+
+```bash
+git push origin --delete v<version>
+git tag -d v<version>
+```
+
+删 tag 不影响正在跑的 run：workflow 里的 `$tag` 取自 `GITHUB_REF_NAME`（由触发事件固定），
+checkout 用的是 `GITHUB_SHA`，都不依赖 tag 对象是否存在。
+
+**校验方法**：`gh run list --workflow=release.yml --limit 5` 看 event 列。
+**`push` 触发的 Release 运行失败，先怀疑这条**，别一头扎进构建日志——构建很可能是好的，
+问题出在最后挂资产那一步。
+
+**历史证据**：2026-08-20 的 `workflow_dispatch` 运行 success（当时 tag 不存在，由 release
+创建）；2026-09-18 推 tag `v0.1.0-alpha.0` 触发的运行 failure，就是踩了这条，靠手动补完发布。
