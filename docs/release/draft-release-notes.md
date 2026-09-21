@@ -107,6 +107,7 @@ Mod 管理器：导入与管理 Mod、装备重定向，以及独立于 Mod 功�
 > | 官网 | **[hmm.helsincy.com](https://hmm.helsincy.com)** |
 > | 下载 | **[官网下载页](https://hmm.helsincy.com/download/)** · **[GitHub Releases](https://github.com/TheLostRiver/HelsincyModManager/releases)** |
 > | 源码 | **[github.com/TheLostRiver/HelsincyModManager](https://github.com/TheLostRiver/HelsincyModManager)** |
+> | 作者 | **[@TheLostRiver](https://github.com/TheLostRiver)** |
 > | 问题反馈 | **[GitHub Issues](https://github.com/TheLostRiver/HelsincyModManager/issues)** |
 >
 > **本项目的下载渠道只有这两个：GitHub Releases 与官网下载页。**
@@ -241,6 +242,7 @@ Click **More info** → **Run anyway** to continue.
 > | Website | **[hmm.helsincy.com](https://hmm.helsincy.com)** |
 > | Download | **[Download page](https://hmm.helsincy.com/download/)** · **[GitHub Releases](https://github.com/TheLostRiver/HelsincyModManager/releases)** |
 > | Source | **[github.com/TheLostRiver/HelsincyModManager](https://github.com/TheLostRiver/HelsincyModManager)** |
+> | Author | **[@TheLostRiver](https://github.com/TheLostRiver)** |
 > | Issues | **[GitHub Issues](https://github.com/TheLostRiver/HelsincyModManager/issues)** |
 >
 > **These are the only two download channels: GitHub Releases and the official website.**
