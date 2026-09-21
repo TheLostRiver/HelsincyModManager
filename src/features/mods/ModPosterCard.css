@@ -1038,12 +1038,83 @@
   height: 180px;
 }
 
+/*
+ * 状态标改为「局部磨砂」：只有文字背后一小片柔边衬底，封面其余部分保持清晰。
+ * 背景模糊 / 衬底浓度 / 文字左右留白三个参数由下方局部变量统一定义，
+ * classic、grid 与紧凑列表三视图共用同一套外观，位置各自声明。
+ * 衬底与模糊全部由 ::before 承担，文字本身不进滤镜，因此字始终是清晰的。
+ */
+:is(.view-classic, .view-grid, .view-list) .mod-card__status-pill {
+  --mod-card-frost-blur: 2.5px;
+  --mod-card-frost-opacity: 0.25;
+  --mod-card-frost-padding: 5px;
+  --mod-card-frost-rgb: 20 28 26;
+  --mod-card-frost-edge: 2px;
+  height: auto;
+  gap: 5px;
+  padding: 5px var(--mod-card-frost-padding);
+  border-radius: 12px;
+  border: none;
+  line-height: 16px;
+  color: #fff;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+  z-index: 2;
+}
+
 .view-classic .mod-card__status-pill,
 .view-grid .mod-card__status-pill {
   top: 12px;
   right: 12px;
   bottom: auto;
-  z-index: 2;
+}
+
+:is(.view-classic, .view-grid, .view-list) .mod-card__status-pill::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 12px;
+  background: rgb(var(--mod-card-frost-rgb) / var(--mod-card-frost-opacity));
+  backdrop-filter: blur(var(--mod-card-frost-blur));
+  -webkit-backdrop-filter: blur(var(--mod-card-frost-blur));
+  -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--mod-card-frost-edge),
+      black calc(100% - var(--mod-card-frost-edge)),
+      transparent
+    ),
+    linear-gradient(
+      to bottom,
+      transparent,
+      black var(--mod-card-frost-edge),
+      black calc(100% - var(--mod-card-frost-edge)),
+      transparent
+    );
+  mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--mod-card-frost-edge),
+      black calc(100% - var(--mod-card-frost-edge)),
+      transparent
+    ),
+    linear-gradient(
+      to bottom,
+      transparent,
+      black var(--mod-card-frost-edge),
+      black calc(100% - var(--mod-card-frost-edge)),
+      transparent
+    );
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+:is(.view-classic, .view-grid, .view-list) .mod-card__status-pill svg {
+  color: #9bedd0;
 }
 
 .view-classic .mod-card__selection-indicator,
