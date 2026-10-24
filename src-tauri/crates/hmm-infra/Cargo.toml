@@ -1,6 +1,6 @@
 [package]
 name = "hmm-infra"
-version = "0.1.1-alpha"
+version = "0.1.2-alpha"
 description = "Infrastructure adapters for Helsincy Mod Manager"
 edition.workspace = true
 license.workspace = true

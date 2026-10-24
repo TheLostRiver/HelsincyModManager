@@ -5,16 +5,16 @@
 
 ---
 
-# Helsincy Mod Manager 0.1.1-alpha
+# Helsincy Mod Manager 0.1.2-alpha
 
-第二个 Alpha 版本 · Second Alpha Release
+第三个 Alpha 版本 · Third Alpha Release
 
 ---
 
 ## 中文说明
 
-**版本**：`0.1.1-alpha`
-**发布日期**：2026-09-21
+**版本**：`0.1.2-alpha`
+**发布日期**：2026-10-24
 **发布类型**：Alpha —— 主体功能已经可用、界面也已稳定；Alpha 阶段可能存在一些 Bug，欢迎反馈
 **支持平台**：Windows x64（Tier 1）。Linux / Steam Deck 未经实机验证，不作为支持平台。
 
@@ -43,39 +43,16 @@ Mod 管理器：导入与管理 Mod、装备重定向，以及独立于 Mod 功�
 
 ### 本版本更新
 
-#### 自动备份改为跟随系统本地时间
+#### 游戏已经关闭，却仍提示「游戏正在运行」
 
-此前每日 / 每周自动备份会把你在设置里填写的钟点直接当成 UTC 时间。**北京时间设成每天 08:00，
-旧版本实际要到 16:00 才到期。**
+部分玩家遇到过：游戏早已退出，HMM 仍判定游戏在运行，于是**拒绝安装、卸载、恢复与存档还原**
+（批量安装结果显示 `install_blocked_game_running`），**自动存档备份也被一直延后**，直到重启电脑才恢复。
 
-- 备份计划现在按**系统本地时区**计算，并跟随目标日期的夏令时规则，不再按语言或地区推断。
-- 夏令时边界已明确：缺失的钟点（春季跳表）顺延到当天第一个有效分钟，最多 24 小时；
-  重复的钟点（秋季回拨）取较早的一次。
-- 保存备份设置后会立即重新计算「下次执行时间」，不必等下一轮检查。
-- 设置页补充了简体中文 / 日本語 / English 三语的「按系统本地时间」说明。
-- 备份历史、审计记录、清单与后台任务租约仍使用 UTC，**不改动已保存的数据**。
-
-#### 后台备份不再闪黑窗口，安装包不再依赖 VC++ 运行库
-
-- 修复 HMM 完全关闭后，由 Windows 计划任务唤起后台备份时**周期性闪出黑色控制台窗口**的问题。
-  两个后台程序原先带控制台子系统，改为无窗口子系统。
-- 修复安装包在部分干净系统上**因缺少 MSVC 运行库（`MSVCP140.dll`）而无法启动**的问题。
-  主程序与所有组件改用静态运行库，**不再需要单独安装 VC++ 运行库**。
-- 发布流程新增只读可执行文件门禁：核对架构、子系统与普通 / 延迟动态库导入，
-  存在动态 MSVC / UCRT 依赖、缺文件或畸形可执行文件时拒绝发布。
-
-#### Mod 卡片状态标改为局部磨砂
-
-- classic / grid 视图的**右上角**状态标与**紧凑列表**视图的状态标，从整块实色胶囊改为**局部磨砂**：
-  只在文字背后留一小片柔边衬底，封面其余部分保持清晰。
-- 模糊程度比原先更轻（背景模糊由 10px 降到 2.5px），文字始终不进入滤镜，所以字仍然锐利。
-- 效果是复杂封面上更容易同时看清 Mod 名称画面与状态。
-
-#### 新增玩家使用指南
-
-- 新增 [《存档备份使用指南》](https://github.com/TheLostRiver/HelsincyModManager/blob/main/docs/SAVE_BACKUP_USER_GUIDE.md)，
-  面向玩家说明首次设置、多账号、补做规则、登录后后台运行、系统时区与 UTC 文件命名、
-  保留策略、安全恢复及常见问题排查。README 正文与文档目录均提供入口。
+- 原因：Windows 的进程列表里可能残留一条与游戏同名、但实际早已停止运行（没有任何线程）的记录，
+  实测可在游戏退出后滞留数天，直到重启电脑。旧版本只比对进程名，会把它当成游戏仍在运行。
+- 现在：这类没有线程的残留不再算作游戏在运行。**游戏真正运行时仍会照常拦截写入**，
+  包括残留还在、你又重新启动了游戏的情况。
+- 本次修复不改动安装清单、备份格式与数据库结构，升级后无需重新扫描 Mod 库。
 
 ### 已知限制
 
@@ -116,18 +93,18 @@ Mod 管理器：导入与管理 Mod、装备重定向，以及独立于 Mod 功�
 
 ### 校验
 
-下载后用同版本的 `SHA256SUMS-0.1.1-alpha.txt` 核对文件哈希：
+下载后用同版本的 `SHA256SUMS-0.1.2-alpha.txt` 核对文件哈希：
 
 ```text
-db9b94f5552dfa4112e623a090a170ee703c101b44e8b367b38a105e4a5906c5  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
+<CI 产物生成后填入 / filled in after the CI build>  HelsincyModManager-0.1.2-alpha-windows-x64-setup.exe
 ```
 
 ---
 
 ## English
 
-**Version**: `0.1.1-alpha`
-**Release date**: 2026-09-21
+**Version**: `0.1.2-alpha`
+**Release date**: 2026-10-24
 **Release type**: Alpha — core features are usable and the UI is stable; expect some bugs during the Alpha stage
 **Supported platform**: Windows x64 (Tier 1). Linux / Steam Deck are unverified and not supported.
 
@@ -166,48 +143,20 @@ See [docs/PROJECT_FEATURES.md](https://github.com/TheLostRiver/HelsincyModManage
 
 ### Updated in this release
 
-#### Automatic backups now follow your system's local time
+#### "Game is running" no longer appears after the game has closed
 
-Daily and weekly automatic backups previously treated the time you entered as UTC. **Setting 08:00 in
-Beijing time meant the backup was not actually due until 16:00.**
+Some players found that HMM still considered the game running long after it had exited, so it
+**refused to install, uninstall, recover, or restore saves** (batch install results showed
+`install_blocked_game_running`), and **automatic save backups kept getting postponed** until the PC
+was restarted.
 
-- Backup schedules are now computed in your **system's local time zone** and follow the daylight-saving
-  rules of the target date. Nothing is inferred from language or region.
-- Daylight-saving boundaries are defined: a skipped hour (spring forward) rolls forward to the first valid
-  minute of that day, up to 24 hours; an ambiguous hour (fall back) resolves to the earlier instant.
-- Saving backup settings immediately recomputes the next run time instead of waiting for the next check.
-- The settings page gained Simplified Chinese / Japanese / English notes explaining that schedules use
-  system local time.
-- Backup history, audit records, manifests, and background-task leases remain UTC-based; **no stored data
-  is migrated**.
-
-#### No more flashing console windows, and no VC++ runtime requirement
-
-- Fixed a **black console window that flashed periodically** when the Windows scheduled task woke the
-  background backup after HMM was fully closed. Both background binaries used a console subsystem and now
-  use the windowless one.
-- Fixed startup failures on some clean systems caused by a **missing MSVC runtime (`MSVCP140.dll`)**.
-  The GUI and all components now link against a static runtime, so **installing the VC++ redistributable
-  is no longer required**.
-- The release pipeline gained a read-only executable gate: it verifies architecture, subsystem, and both
-  regular and delay-loaded DLL imports, and refuses to publish when dynamic MSVC / UCRT dependencies,
-  missing files, or malformed executables are found.
-
-#### Mod card status badges are now locally frosted
-
-- The status badge in the **top-right corner** of classic / grid cards and the badge in the
-  **compact list** view changed from a solid capsule to **local frosting**: a small soft-edged patch of
-  blur behind the text only, leaving the rest of the cover artwork crisp.
-- The blur is lighter than before (10px down to 2.5px), and the text itself is never put through the
-  filter, so it stays sharp.
-- The result is that the mod name, the artwork, and the status are easier to read together on busy covers.
-
-#### New player guide
-
-- Added the [Save Backup User Guide](https://github.com/TheLostRiver/HelsincyModManager/blob/main/docs/SAVE_BACKUP_USER_GUIDE.md)
-  (in Chinese), covering first-time setup, multiple accounts, catch-up rules, running in the background
-  after you log in, system time zone and UTC file naming, retention policies, safe restores, and
-  troubleshooting. Both the README and the docs index link to it.
+- Cause: the Windows process list can keep a leftover entry with the game's name that has in fact
+  stopped running (it has no threads left). It was observed to linger for days after the game exited,
+  until a reboot. Earlier versions matched on the process name only and mistook it for the running game.
+- Now: such thread-less leftovers no longer count as the game running. **HMM still blocks writes while
+  the game is actually running**, including when a leftover is present and you start the game again.
+- This fix does not change the install manifest, backup format, or database schema, so there is no need
+  to rescan your mod library after upgrading.
 
 ### Known limitations
 
@@ -252,8 +201,8 @@ Click **More info** → **Run anyway** to continue.
 
 ### Verification
 
-Verify the downloaded file against the matching `SHA256SUMS-0.1.1-alpha.txt`:
+Verify the downloaded file against the matching `SHA256SUMS-0.1.2-alpha.txt`:
 
 ```text
-db9b94f5552dfa4112e623a090a170ee703c101b44e8b367b38a105e4a5906c5  HelsincyModManager-0.1.1-alpha-windows-x64-setup.exe
+<CI 产物生成后填入 / filled in after the CI build>  HelsincyModManager-0.1.2-alpha-windows-x64-setup.exe
 ```

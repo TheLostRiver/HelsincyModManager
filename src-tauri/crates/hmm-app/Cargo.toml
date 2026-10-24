@@ -1,6 +1,6 @@
 [package]
 name = "hmm-app"
-version = "0.1.1-alpha"
+version = "0.1.2-alpha"
 description = "Application use cases for Helsincy Mod Manager"
 edition.workspace = true
 license.workspace = true
