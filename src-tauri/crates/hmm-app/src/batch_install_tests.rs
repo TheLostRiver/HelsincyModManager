@@ -226,7 +226,7 @@ impl BatchLifecycleRepository for FakeRepository {
         if self.fail_finish_attempt.load(Ordering::Relaxed)
             || self
                 .finish_attempt_failures_remaining
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
                     remaining.checked_sub(1)
                 })
                 .is_ok()
