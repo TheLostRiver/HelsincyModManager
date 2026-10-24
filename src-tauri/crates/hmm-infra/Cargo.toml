@@ -69,6 +69,14 @@ winreg = "0.56"
 [target.'cfg(not(windows))'.dependencies]
 libc.workspace = true
 
+# 测试用 VA clone 复现「进程表里残留同名 0 线程进程」的真实现场，
+# 见 game_running_detector/windows_processes.rs。
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_System_Diagnostics_ProcessSnapshotting",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 chrono-tz = "0.10"
 # 打开语料生成器：rar 的负测语料只能现场合成（.rar 提交不进仓库，
