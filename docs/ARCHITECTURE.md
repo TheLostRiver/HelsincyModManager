@@ -352,7 +352,9 @@ epoch/revision 给观察排序，并比较前后摘要，包含共享归属变�
 查询供批量取得精确 installedRevisionId。库相关查询和批量结果查询在 Tauri blocking worker 中读取
 作用域并执行阻塞 I/O；恢复扫描的跨进程准入、锁顺序、哈希和备份读取不变。
 Windows 进程检测使用 Tool Help 原生快照，每次写入前重新查询，快照／枚举失败有界重试三次后返回
-Unknown；仅枚举成功耗尽才返回 NotRunning。任务进度在 emit 前保存窄的进程内快照，Provider 仅对活跃任务查询该快照补收遗失事件，
+Unknown；仅枚举成功耗尽才返回 NotRunning。映像名相同但线程数为 0 的条目不算运行（实测残留的进程快照
+克隆即此形态，可在游戏退出后滞留数天）；遇到它要继续枚举，同名的活进程仍判运行。
+任务进度在 emit 前保存窄的进程内快照，Provider 仅对活跃任务查询该快照补收遗失事件，
 未知／失败读取不推断完成。分类响应写回仍匹配发起时的 generation。
 
 拖拽导入由路由之上的 `ModImportDropProvider` 持有会话草稿、已确认批次和串行执行队列。待导入、

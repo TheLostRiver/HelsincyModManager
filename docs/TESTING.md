@@ -1697,7 +1697,7 @@ cargo test -p hmm-tauri save_backup
 cmd /c corepack pnpm run test -- src/features/profiles/profileFrontendIntegration.test.mjs
 ```
 
-要求：调度器测试使用 fake repository / fake clock / fake game running detector；scheduler state repository 测试使用临时 SQLite；游戏运行检测测试只用 fixture 字符串，不依赖真实进程或真实游戏；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
+要求：调度器测试使用 fake repository / fake clock / fake game running detector；scheduler state repository 测试使用临时 SQLite；游戏运行检测测试只用 fixture 字符串或测试自己创建的进程（测试二进制自身、以唯一映像名启动的副本及其 VA clone），不依赖真实游戏进程；`get_save_backup_background_status` 的 DTO 测试必须断言序列化结果不含 `leaseOwner`、`leaseExpiresAt`、`workerInstanceId` 或任何路径字段。
 
 时区回归使用注入的日历 fixture；infra 的 IANA 规则测试仅使用 dev dependency `chrono-tz`，不得修改
 开发机系统时区。覆盖 UTC+8、负偏移和非整小时偏移、当地/UTC 跨日的 weekly、23/25 小时日计划、
